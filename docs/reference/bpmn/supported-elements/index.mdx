@@ -356,7 +356,7 @@ Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Sign
   <thead>
     <tr>
       <th colSpan="7">Task</th>
-      <th colSpan="2">Subprocess</th>
+      <th colSpan="3">Subprocess</th>
     </tr>
     <tr>
       <th>Service</th>
@@ -368,6 +368,7 @@ Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Sign
       <th>Manual</th>
       <th>Call Activity</th>
       <th>Sub-Process</th>
+      <th>Event Sub-Process</th>
     </tr>
   </thead>
   <tbody>
@@ -454,6 +455,16 @@ Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Sign
             className="bpmn-supported"
             src={require("!url-loader!../../assets/bpmn/activities/sub-process.svg").default}
             alt="Sub-Process"
+            height="60"
+          />
+        </a>
+      </td>
+      <td>
+        <a href="./activities/event-sub-process">
+          <img
+            className="bpmn-supported"
+            src={require("!url-loader!../../assets/bpmn/activities/event-sub-process.svg").default}
+            alt="Event Sub-Process"
             height="60"
           />
         </a>

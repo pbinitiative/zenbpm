@@ -65,6 +65,8 @@ Where each specification applies:
 
 Schedules process instance creation without any external trigger. A `timeDate` timer creates one instance at the given moment; a `timeCycle` timer creates an instance at each occurrence and re-arms itself until the cycle's repetitions or end date are exhausted. The schedule is registered when the process definition is deployed.
 
+A timer start event inside an [Event sub process](../activities/event-sub-process.md) additionally supports `timeDuration`, measured from when its containing scope becomes active.
+
 ### Timer intermediate catch event
 
 Pauses the flow: the token waits at the event until the timer fires — after a `timeDuration` measured from the token's arrival, or at an absolute `timeDate` — and then continues along the outgoing flow. Together with an [Event-based gateway](../gateways/event-based-gateway.md), a timer catch event commonly models a timeout branch racing against a message.

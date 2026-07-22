@@ -63,18 +63,20 @@ Message start, message intermediate catch, and message boundary events receive m
 | `bpmn:message`                            | `name`           | yes      | The message name. Publishers address messages by this name.                                                                                                                                        |
 | `bpmn:message` → `zenbpm:subscription`    | `correlationKey` | recommended | A literal value or a FEEL expression (prefixed with `=`) evaluated against the instance variables when the subscription is created; a published message must carry the same key to be correlated. Without it, messages are matched by name alone, so any waiting instance can consume the publish. Not used by message start events. |
 | `bpmn:messageEventDefinition`             | `messageRef`     | yes      | References the `bpmn:message` this event waits for.                                                                                                                                                |
-| `zenbpm:ioMapping` → `zenbpm:output`      | `source`, `target` | no     | Filters which payload variables are propagated to the instance. Catching events have no input side. Not applied on message start events. See [Variables](../../variables.md).                      |
+| `zenbpm:ioMapping` → `zenbpm:output`      | `source`, `target` | no     | Filters which payload variables are propagated to the instance. Catching events have no input side. Not applied on message start events. See [Variables](../../variable-mapping.md).                      |
 
 How a message reaches a catching event:
 
 1. When a token arrives at the event, the engine evaluates the correlation key against the instance variables and creates a **message subscription**. For message start events, the subscription is created at deployment time and has no correlation key.
 2. An external system publishes a message by name — and, when targeting a running instance, with a correlation key — via the REST or gRPC API. See [Send and receive messages](../../../../how-to/send-receive-messages.md).
-3. The engine matches the message to the waiting subscription and applies the payload: **without output mappings, all payload variables are propagated to the instance**; with `zenbpm:output` mappings, only the mapped ones. See [Variables](../../variables.md).
+3. The engine matches the message to the waiting subscription and applies the payload: **without output mappings, all payload variables are propagated to the instance**; with `zenbpm:output` mappings, only the mapped ones. See [Variables](../../variable-mapping.md).
 4. The token continues along the event's outgoing flow — or, for a start event, a new instance begins.
 
 #### Message start event
 
 Starts a new process instance whenever a matching message is published. The subscription exists at the process definition level, so no correlation key is involved — every published message with the matching name creates a fresh instance, and the full message payload becomes the instance's initial variables (output mappings are not applied on start events). Note that each published message is consumed by exactly one subscription: if several deployed processes subscribe to the same message name, one publish creates a single instance, not one per process.
+
+A message start event inside an [Event sub process](../activities/event-sub-process.md) works differently: its subscription is created per instance of the containing scope and **does** use a correlation key.
 
 #### Message intermediate catch event
 
@@ -95,7 +97,7 @@ To the engine, a throwing message event **is simply a job** — its execution is
 | ----------------------------------------------------- | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bpmn:messageEventDefinition`                         | `messageRef`       | yes      | Marks the event as a message event and documents which message it represents. The engine does not evaluate the referenced message — it only matters to the modeler and the worker. |
 | `zenbpm:taskDefinition`                               | `type`             | yes      | The job type. The engine creates a job of this type when the token arrives; workers subscribe to this type to receive the job.                     |
-| `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | `source`, `target` | no       | Maps variables into the job and the job's result back to the process, following the same rules as activities. See [Variables](../../variables.md). |
+| `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | `source`, `target` | no       | Maps variables into the job and the job's result back to the process, following the same rules as activities. See [Variables](../../variable-mapping.md). |
 
 Execution flow:
 
@@ -115,7 +117,7 @@ Identical to the message intermediate throw event, except that the path ends onc
 ## Related documentation
 
 - [Send and receive messages](../../../../how-to/send-receive-messages.md) — publishing messages and correlating them over the REST API.
-- [Variables](../../variables.md) — payload propagation rules for catching events.
+- [Variables](../../variable-mapping.md) — payload propagation rules for catching events.
 - [Receive task](../activities/tasks/receive-task.md) — the activity-shaped counterpart of the message catch event.
 - [Send task](../activities/tasks/send-task.md) — the activity-shaped counterpart of the message throw event.
 - [Jobs](../../../jobs.md) — how the jobs created by throwing message events are distributed and completed.

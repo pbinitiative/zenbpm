@@ -36,7 +36,7 @@ The default flow is the fallback path of an [Exclusive](./gateways/exclusive-gat
 
 - **Conditional flow** — a condition expression on a flow leaving an activity is not evaluated; route on conditions with an Exclusive or Inclusive gateway instead.
 - **Message flow** — the collaboration-diagram connector between pools; message exchange is modelled with [message events](./events/message-events.md) and [Send](./activities/tasks/send-task.md)/[Receive tasks](./activities/tasks/receive-task.md) instead.
-- **Data association** — the dotted connector between data objects and activities; data is passed through [variables](../variables.md) instead.
+- **Data association** — the dotted connector between data objects and activities; data is passed through [variables](../variable-mapping.md) instead.
 
 :::
 

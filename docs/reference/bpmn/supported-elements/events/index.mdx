@@ -128,6 +128,8 @@ The trigger depends on the type:
 - **[Message start event](./message-events.md#message-start-event)** — a new instance is created each time a matching message is published.
 - **[Timer start event](./timer-events.md#timer-start-event)** — instances are created on a schedule, without any external trigger.
 
+Start events also appear inside an [Event sub process](../activities/event-sub-process.md), where message, timer, and error triggers are supported and the start event may be non-interrupting.
+
 ## Intermediate events
 
 Intermediate events occur between the start and end of a process and are rendered as a double-line circle. They come in two directions:
@@ -167,11 +169,11 @@ Events handle variables differently from activities — the direction of the eve
 | Throwing message events — message intermediate throw, message end                                  | `zenbpm:input` / `zenbpm:output` | Executed as a job, exactly like a [Send task](../activities/tasks/send-task.md): input mappings prepare the variables the worker sees, output mappings propagate the worker's result following the activity rules.                              |
 | Timer and link events                                                                             | —                 | Carry no payload; the process variables are unchanged.                                                                                                                                                                                         |
 
-See [Variables](../../variables.md) for the full propagation rules.
+See [Variables](../../variable-mapping.md) for the full propagation rules.
 
 ## Related documentation
 
-- [Variables](../../variables.md) — output-mapping propagation rules for catching events and activities.
+- [Variables](../../variable-mapping.md) — output-mapping propagation rules for catching events and activities.
 - [Message events](./message-events.md), [Timer events](./timer-events.md), [Error events](./error-events.md), [Link events](./link-events.md) — the individual event types.
 - [Start a process instance](../../../../how-to/start-process-instance.mdx) — starting processes through none start events via the API.
 - [Event-based gateway](../gateways/event-based-gateway.md) — branching on the first of several catch events to trigger.

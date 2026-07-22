@@ -12,7 +12,7 @@ An activity is work performed within a business process. When a token arrives at
 Activities come in two kinds:
 
 - [Tasks](./tasks/index.md) — atomic units of work, such as executing a job, evaluating a decision, or waiting for a human or a message.
-- Subprocesses — compound activities that contain their own flow: a [Sub process](./sub-process.md) embedded in the diagram, or a [Call activity](./call-activity.md) invoking another process.
+- Subprocesses — compound activities that contain their own flow: a [Sub process](./sub-process.md) embedded in the diagram, a [Call activity](./call-activity.md) invoking another process, or an [Event sub process](./event-sub-process.md) started by an event while its scope is active.
 
 However different the work they perform is, all activities behave the same way towards the surrounding process — this page describes that shared behavior.
 
@@ -48,7 +48,7 @@ Every activity, regardless of its type, supports the following markup:
 
 | Markup                                                | Description                                                                                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | Maps variables between the process scope and the activity's local scope. See [Variables](../../variables.md).                                                                              |
+| `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | Maps variables between the process scope and the activity's local scope. See [Variables](../../variable-mapping.md).                                                                              |
 | `bpmn:multiInstanceLoopCharacteristics`               | A marker (not a separate activity type) that runs the activity once per element of a collection, sequentially or in parallel. See [Multi-instance activity](./activity-multi-instance.md). |
 | `bpmn:boundaryEvent` attached via `attachedToRef`     | Reacts to errors, messages, or timers while the activity is active, and routes the process accordingly. See [Boundary events](../events/index.mdx#boundary-events).                         |
 
@@ -61,7 +61,7 @@ The shared lifecycle:
 
 ## Related documentation
 
-- [Variables](../../variables.md) — variable scoping and mapping rules shared by all activities.
+- [Variables](../../variable-mapping.md) — variable scoping and mapping rules shared by all activities.
 - [Boundary events](../events/index.mdx#boundary-events) — handling errors, timeouts, and messages on a running activity.
 - [Multi-instance activity](./activity-multi-instance.md) — the multi-instance marker in detail.
 

@@ -23,8 +23,8 @@ Reference the process to call in a `zenbpm:calledElement` extension element. Opt
 | Extension element                    | Attribute          | Required | Description                                                                                                                            |
 | ------------------------------------ | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `zenbpm:calledElement`               | `processId`        | yes      | Id of the deployed process to start. Only a direct, static id is supported — expressions are not evaluated — and the latest deployed version is always used. |
-| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variables.md).                                                     |
-| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variables.md).                        |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variable-mapping.md).                                                     |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variable-mapping.md).                        |
 
 Execution flow:
 
@@ -36,7 +36,7 @@ Execution flow:
 
 ## Related documentation
 
-- [Variables](../../variables.md) — variable scoping and output mapping propagation rules.
+- [Variables](../../variable-mapping.md) — variable scoping and output mapping propagation rules.
 - [Error boundary event](../events/error-events.md#error-boundary-event) — catching errors thrown by the called process.
 - [Multi-instance activity](./activity-multi-instance.md) — calling the process once per element of a collection.
 

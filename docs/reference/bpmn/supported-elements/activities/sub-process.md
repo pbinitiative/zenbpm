@@ -14,7 +14,7 @@ Rendered collapsed as a rounded rectangle with a plus marker at the bottom cente
 
 - **Handle a section as a unit** — attach a single timer or error [boundary event](../events/index.mdx#boundary-events) to the Sub process to time-box or cancel a whole group of steps at once.
 - **Repeat a section per item** — put the [multi-instance marker](./activity-multi-instance.md) on the Sub process to run the embedded flow once per element of a collection.
-- **React to events while the process runs** — model an event sub process that is triggered by a message or timer whenever its scope is active.
+- **React to events while the process runs** — model an [Event sub process](./event-sub-process.md) that is triggered by a message, timer, or error whenever its scope is active.
 
 ## Usage in BPMN
 
@@ -22,9 +22,9 @@ A Sub process needs no ZenBPM-specific configuration: it is a `bpmn:subProcess` 
 
 | Element / attribute                  | Required | Description                                                                                                                       |
 | ------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------|
-| `zenbpm:ioMapping` → `zenbpm:input`  | no       | Initializes variables of the child instance. See [Variables](../../variables.md).                                                 |
-| `zenbpm:ioMapping` → `zenbpm:output` | no       | Maps variables of the completed child instance back to the parent scope. See [Variables](../../variables.md).                     |
-| `triggeredByEvent` attribute         | no       | `true` turns the Sub process into an event sub process — see below.                                                               |
+| `zenbpm:ioMapping` → `zenbpm:input`  | no       | Initializes variables of the child instance. See [Variables](../../variable-mapping.md).                                                 |
+| `zenbpm:ioMapping` → `zenbpm:output` | no       | Maps variables of the completed child instance back to the parent scope. See [Variables](../../variable-mapping.md).                     |
+| `triggeredByEvent` attribute         | no       | `true` turns the Sub process into an [Event sub process](./event-sub-process.md) — see below.                                     |
 
 Execution flow:
 
@@ -36,16 +36,11 @@ Execution flow:
 
 ### Event sub process
 
-A Sub process with `triggeredByEvent="true"` is not part of the normal flow — it has no incoming or outgoing sequence flows. It must contain exactly one start event, of message or timer type, and it is armed whenever its containing scope is active:
-
-- With an **interrupting** start event, triggering it cancels the remaining flow of the containing scope.
-- With a **non-interrupting** start event, the event sub process runs alongside the normal flow and can trigger repeatedly (for example on a timer cycle).
-
-Event sub processes can be nested inside other Sub processes.
+A Sub process with `triggeredByEvent="true"` is not part of the normal flow: it has no incoming or outgoing sequence flows and is started by its own message, timer, or error start event whenever its containing scope is active. See [Event sub process](./event-sub-process.md).
 
 ## Related documentation
 
-- [Variables](../../variables.md) — variable scoping and output mapping propagation rules.
+- [Variables](../../variable-mapping.md) — variable scoping and output mapping propagation rules.
 - [Boundary events](../events/index.mdx#boundary-events) — interrupting the whole Sub process on errors, timeouts, or messages.
 - [Multi-instance activity](./activity-multi-instance.md) — running the embedded flow once per element of a collection.
 

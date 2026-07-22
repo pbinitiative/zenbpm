@@ -23,7 +23,7 @@ The gateway itself carries no configuration; its outgoing sequence flows must ea
 Execution flow:
 
 1. A token arrives at the gateway and the engine subscribes to **all** target events at once — message subscriptions are created and timers armed, while the token waits at the gateway.
-2. The first event to occur wins: for a message, its payload is propagated according to the catch event's output mappings (see [Variables](../../variables.md)).
+2. The first event to occur wins: for a message, its payload is propagated according to the catch event's output mappings (see [Variables](../../variable-mapping.md)).
 3. All other subscriptions are terminated and timers cancelled — the losing branches can no longer trigger.
 4. The token continues along the outgoing flow of the **winning catch event**, not of the gateway.
 

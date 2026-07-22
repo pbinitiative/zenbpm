@@ -31,7 +31,7 @@ Add a `bpmn:multiInstanceLoopCharacteristics` element to the activity and config
 | `zenbpm:loopCharacteristics`            | `inputCollection`  | yes      | FEEL expression (prefixed with `=`) evaluated against the process scope. Must produce a list — otherwise the activity fails.                                      |
 | `zenbpm:loopCharacteristics`            | `inputElement`     | yes      | Name of the iteration-local variable that holds the current collection element.                                                                                   |
 | `zenbpm:loopCharacteristics`            | `outputCollection` | no       | Name of the process variable that receives the list of iteration results. Define it together with `outputElement` when the iterations produce results to keep.    |
-| `zenbpm:loopCharacteristics`            | `outputElement`    | no       | FEEL expression evaluated after each iteration, producing that iteration's entry in the output collection. See [Variables](../../variables.md) for mapping rules. |
+| `zenbpm:loopCharacteristics`            | `outputElement`    | no       | FEEL expression evaluated after each iteration, producing that iteration's entry in the output collection. See [Variables](../../variable-mapping.md) for mapping rules. |
 
 Execution flow:
 
@@ -43,7 +43,7 @@ Execution flow:
 
 ## Related documentation
 
-- [Variables](../../variables.md) — variable scoping and the output mapping rules the iterations rely on.
+- [Variables](../../variable-mapping.md) — variable scoping and the output mapping rules the iterations rely on.
 - [Boundary events](../events/index.mdx#boundary-events) — interrupting or reacting to the multi-instance activity as a whole.
 
 ## XML example

@@ -28,8 +28,8 @@ To evaluate a decision internally, reference a deployed DMN decision in a `zenbp
 | ------------------------------------ | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `zenbpm:calledDecision`              | `decisionId`       | yes      | Id of the deployed DMN decision to evaluate. Can be prefixed with the DMN resource id (`myDrd.myDecision`) to disambiguate decisions with the same id. |
 | `zenbpm:calledDecision`              | `resultVariable`   | yes      | Name of the local variable that receives the decision output.                                                                          |
-| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, used as the decision input context. See [Variables](../../../variables.md).        |
-| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the decision result back to the process scope. See [Variables](../../../variables.md).                                            |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, used as the decision input context. See [Variables](../../../variable-mapping.md).        |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the decision result back to the process scope. See [Variables](../../../variable-mapping.md).                                            |
 
 Execution flow:
 
@@ -47,7 +47,7 @@ With a `zenbpm:taskDefinition` extension element the decision is evaluated by an
 
 - [DMN engine](../../../../dmn/dmn-engine.md) — how decisions are deployed and evaluated by the internal engine.
 - [DMN supported elements](../../../../dmn/supported-elements/index.md) — decision tables, literal expressions, and other DMN elements a called decision can use.
-- [Variables](../../../variables.md) — variable scoping and output mapping propagation rules for activities.
+- [Variables](../../../variable-mapping.md) — variable scoping and output mapping propagation rules for activities.
 - [Jobs](../../../../jobs.md) — how jobs for the job-based implementation are created, distributed, and completed.
 - [Implement a job worker](../../../../../how-to/implement-job-worker.md) — build the application that evaluates job-based decisions.
 - [Error boundary event](../../events/error-events.md#error-boundary-event) — routing the process when the decision evaluation fails.

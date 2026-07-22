@@ -44,7 +44,7 @@ Execution flow:
 ## Related documentation
 
 - [Variables](../../variables.md) — variable scoping and the output mapping rules the iterations rely on.
-- [Boundary events](../events/boundary-events/index.md) — interrupting or reacting to the multi-instance activity as a whole.
+- [Boundary events](../events/index.mdx#boundary-events) — interrupting or reacting to the multi-instance activity as a whole.
 
 ## XML example
 

@@ -39,7 +39,7 @@ Execution flow:
 - [Implement a job worker](../../../../../how-to/implement-job-worker.md) — build the application that executes Service Task jobs.
 - [Variables](../../../variables.md) — variable scoping and output mapping propagation rules for activities.
 - [Handle errors](../../../../../how-to/handle-errors.md) — failing jobs, incidents, and recovering from errors.
-- [Error boundary event](../../events/boundary-events/error-boundary-event.md) — routing the process when a job throws a BPMN error.
+- [Error boundary event](../../events/error-events.md#error-boundary-event) — routing the process when a job throws a BPMN error.
 - [Multi-instance activity](../activity-multi-instance.md) — running a Service Task once per element of a collection.
 
 ## XML example

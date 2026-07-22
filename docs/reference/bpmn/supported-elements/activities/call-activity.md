@@ -32,12 +32,12 @@ Execution flow:
 2. A new instance of the called process is created, linked to the parent and running on the same partition. It starts with a snapshot copy of the parent's variables plus the input-mapped values; changes inside the called instance do not write back to the parent. The parent token waits, and boundary events attached to the Call Activity are armed.
 3. The called instance executes like any other process instance.
 4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues.
-5. An error end event in the called process bubbles up to the parent and can be caught by an [error boundary event](../events/boundary-events/error-boundary-event.md) on the Call Activity — including across nested Call Activities. An uncaught error creates an incident.
+5. An error end event in the called process bubbles up to the parent and can be caught by an [error boundary event](../events/error-events.md#error-boundary-event) on the Call Activity — including across nested Call Activities. An uncaught error creates an incident.
 
 ## Related documentation
 
 - [Variables](../../variables.md) — variable scoping and output mapping propagation rules.
-- [Error boundary event](../events/boundary-events/error-boundary-event.md) — catching errors thrown by the called process.
+- [Error boundary event](../events/error-events.md#error-boundary-event) — catching errors thrown by the called process.
 - [Multi-instance activity](./activity-multi-instance.md) — calling the process once per element of a collection.
 
 ## XML example

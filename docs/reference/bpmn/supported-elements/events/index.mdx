@@ -1,10 +1,13 @@
 ---
-sidebar_position: 1
+sidebar_position: 0
+sidebar_label: Overview
 ---
 
 # Events
 
-An event represents something that happens during the course of a process. Events affect the flow of the process and usually have a cause (trigger) or an impact (result).
+An event represents something that happens during a business process — a message arrives, time passes, an error occurs. Unlike activities, events do not perform work of their own: **catching** events wait for their trigger to occur, while **throwing** events produce a result and continue immediately.
+
+Two things define an event: its **position** in the process (start, intermediate, boundary, or end) and its **type** (what triggers it or what it produces). The same types reappear at every position, so each type is documented on a single page covering all its positions — this page describes the behavior the positions share, and how events handle variables.
 
 Green icons are supported and link to their documentation.
 
@@ -29,29 +32,29 @@ Green icons are supported and link to their documentation.
   <tbody>
     <tr>
       <td>None</td>
-      <td><a href="./start-events/none-start-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/none-start.svg').default} alt="None Start Event" /></a></td>
+      <td><a href="#start-events"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/none-start.svg').default} alt="None Start Event" /></a></td>
       <td></td>
       <td><img className="bpmn-unsupported" src={require('!url-loader!../../../assets/bpmn/events/none-intermediate-throw.svg').default} alt="None Intermediate Throw Event" /></td>
       <td></td>
       <td></td>
-      <td><a href="./end-events/none-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/none-end.svg').default} alt="None End Event" /></a></td>
+      <td><a href="#end-events"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/none-end.svg').default} alt="None End Event" /></a></td>
     </tr>
     <tr>
       <td>Message</td>
-      <td><a href="./start-events/message-start-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-start.svg').default} alt="Message Start Event" /></a></td>
-      <td><a href="./intermediate-events/message-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-intermediate-catch.svg').default} alt="Message Intermediate Catch Event" /></a></td>
-      <td><a href="./intermediate-events/message-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-intermediate-throw.svg').default} alt="Message Intermediate Throw Event" /></a></td>
-      <td><a href="./boundary-events/message-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-boundary-interrupting.svg').default} alt="Message Boundary Event (interrupting)" /></a></td>
-      <td><a href="./boundary-events/message-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-boundary-non-interrupting.svg').default} alt="Message Boundary Event (non-interrupting)" /></a></td>
-      <td><a href="./end-events/message-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-end.svg').default} alt="Message End Event" /></a></td>
+      <td><a href="./message-events#message-start-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-start.svg').default} alt="Message Start Event" /></a></td>
+      <td><a href="./message-events#message-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-intermediate-catch.svg').default} alt="Message Intermediate Catch Event" /></a></td>
+      <td><a href="./message-events#message-intermediate-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-intermediate-throw.svg').default} alt="Message Intermediate Throw Event" /></a></td>
+      <td><a href="./message-events#message-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-boundary-interrupting.svg').default} alt="Message Boundary Event (interrupting)" /></a></td>
+      <td><a href="./message-events#message-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-boundary-non-interrupting.svg').default} alt="Message Boundary Event (non-interrupting)" /></a></td>
+      <td><a href="./message-events#message-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/message-end.svg').default} alt="Message End Event" /></a></td>
     </tr>
     <tr>
       <td>Timer</td>
-      <td><a href="./start-events/timer-start-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-start.svg').default} alt="Timer Start Event" /></a></td>
-      <td><a href="./intermediate-events/timer-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-intermediate-catch.svg').default} alt="Timer Intermediate Catch Event" /></a></td>
+      <td><a href="./timer-events#timer-start-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-start.svg').default} alt="Timer Start Event" /></a></td>
+      <td><a href="./timer-events#timer-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-intermediate-catch.svg').default} alt="Timer Intermediate Catch Event" /></a></td>
       <td></td>
-      <td><a href="./boundary-events/timer-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-boundary-interrupting.svg').default} alt="Timer Boundary Event (interrupting)" /></a></td>
-      <td><a href="./boundary-events/timer-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-boundary-non-interrupting.svg').default} alt="Timer Boundary Event (non-interrupting)" /></a></td>
+      <td><a href="./timer-events#timer-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-boundary-interrupting.svg').default} alt="Timer Boundary Event (interrupting)" /></a></td>
+      <td><a href="./timer-events#timer-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/timer-boundary-non-interrupting.svg').default} alt="Timer Boundary Event (non-interrupting)" /></a></td>
       <td></td>
     </tr>
     <tr>
@@ -75,8 +78,8 @@ Green icons are supported and link to their documentation.
     <tr>
       <td>Link</td>
       <td></td>
-      <td><a href="./intermediate-events/link-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/link-intermediate-catch.svg').default} alt="Link Intermediate Catch Event" /></a></td>
-      <td><a href="./intermediate-events/link-intermediate-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/link-intermediate-throw.svg').default} alt="Link Intermediate Throw Event" /></a></td>
+      <td><a href="./link-events#link-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/link-intermediate-catch.svg').default} alt="Link Intermediate Catch Event" /></a></td>
+      <td><a href="./link-events#link-intermediate-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/link-intermediate-throw.svg').default} alt="Link Intermediate Throw Event" /></a></td>
       <td></td>
       <td></td>
       <td></td>
@@ -86,9 +89,9 @@ Green icons are supported and link to their documentation.
       <td></td>
       <td></td>
       <td></td>
-      <td><a href="./boundary-events/error-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/error-boundary-interrupting.svg').default} alt="Error Boundary Event (interrupting)" /></a></td>
+      <td><a href="./error-events#error-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/error-boundary-interrupting.svg').default} alt="Error Boundary Event (interrupting)" /></a></td>
       <td></td>
-      <td><a href="./end-events/error-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/error-end.svg').default} alt="Error End Event" /></a></td>
+      <td><a href="./error-events#error-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/events/error-end.svg').default} alt="Error End Event" /></a></td>
     </tr>
     <tr>
       <td>Signal</td>
@@ -117,16 +120,77 @@ None Intermediate Throw Event, Escalation, Conditional, Signal, Compensation, Ca
 
 ## Start events
 
-Start events denote the beginning of a process or subprocess. A Start Event defines the beginning of a process instance: it has no incoming sequence flows and exactly one outgoing sequence flow. It creates a new process instance when triggered, and a process can have multiple start events, each with a different trigger type.
+A start event defines the beginning of a process instance. It has no incoming sequence flows and exactly one outgoing sequence flow, and is rendered as a thin single-line circle. When its trigger occurs, a new process instance is created and a token starts moving along the outgoing flow. A process can have multiple start events, each with a different trigger.
+
+The trigger depends on the type:
+
+- **None start event** — no event definition is attached. The process is started explicitly by a caller, typically through the REST or gRPC API. See [Start a process instance](../../../../how-to/start-process-instance.mdx).
+- **[Message start event](./message-events.md#message-start-event)** — a new instance is created each time a matching message is published.
+- **[Timer start event](./timer-events.md#timer-start-event)** — instances are created on a schedule, without any external trigger.
 
 ## Intermediate events
 
-Intermediate events occur between the start and end of a process. They are either **catching** — waiting to react to something that happens — or **throwing** — indicating that something has happened and continuing immediately. Catch events pause the flow until the awaited trigger occurs; throw events execute once the token reaches them and continue onward without waiting.
+Intermediate events occur between the start and end of a process and are rendered as a double-line circle. They come in two directions:
+
+- **Catch events** pause the flow: the token waits at the event until the trigger occurs — a [message](./message-events.md#message-intermediate-catch-event) arrives or a [timer](./timer-events.md#timer-intermediate-catch-event) fires. Message and timer catch events can also follow an [Event-based gateway](../gateways/event-based-gateway.md), letting the process react to whichever trigger occurs first.
+- **Throw events** execute as soon as the token reaches them and continue onward — sending a [message](./message-events.md#message-intermediate-throw-event) or jumping to a [link](./link-events.md) target.
 
 ## Boundary events
 
-Boundary events model what should happen if an event occurs while an activity is active. A Boundary Event is attached to the border of an activity and triggers when a specific condition is met while the activity is active, creating an alternative path out of that activity. It can be **interrupting** — the attached activity is cancelled and the token moves along the boundary event's outgoing flow — or **non-interrupting** — the activity continues and a new parallel token is created on the outgoing flow.
+A boundary event is attached to the border of an activity via `attachedToRef` and models what should happen if its trigger occurs *while that activity is active*. It has no incoming flow and one outgoing flow that defines the alternative path. The engine subscribes to the trigger when the activity starts waiting and removes the subscription when the activity completes — a boundary event never fires for an already-completed activity.
+
+Boundary events come in two flavors, distinguished by the `cancelActivity` attribute and the border style:
+
+- **Interrupting** (solid border, the default) — the attached activity is cancelled, together with its jobs, child instances, and other boundary subscriptions, and the token moves along the boundary event's outgoing flow.
+- **Non-interrupting** (dashed border, `cancelActivity="false"`) — the activity keeps running and a new parallel token is created on the outgoing flow.
+
+Boundary events can be attached to Service tasks, Send tasks, User tasks, Business rule tasks, Receive tasks, Sub processes, and Call activities. Supported triggers are [message](./message-events.md#message-boundary-event), [timer](./timer-events.md#timer-boundary-event), and [error](./error-events.md#error-boundary-event) (error is always interrupting).
 
 ## End events
 
-End events denote the end of a particular sequence flow. An End Event marks the completion of a process path and has no outgoing sequence flows. A process may have multiple end events, and the process instance completes once all active tokens have reached an end event.
+An end event marks the completion of a process path. It has no outgoing sequence flows and is rendered as a thick single-line circle. A process may have multiple end events; the process instance completes once all of its active tokens have reached one.
+
+What happens when the token arrives depends on the type:
+
+- **None end event** — the path simply ends without producing any result.
+- **[Message end event](./message-events.md#message-end-event)** — a message is sent before the path ends.
+- **[Error end event](./error-events.md#error-end-event)** — the path ends by throwing a BPMN error that an error boundary event on an enclosing scope can catch.
+- **Terminate end event** (thick circle with a filled dot) — the entire process instance is cancelled immediately: all remaining tokens, active jobs, subscriptions, and called child instances are terminated, regardless of other active paths.
+
+## Variables
+
+Events handle variables differently from activities — the direction of the event decides which mappings apply:
+
+| Event kind                                                                                        | Mappings          | Behavior                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catching events that receive a payload — message start, message catch, message boundary, error boundary | `zenbpm:output`   | **Without output mappings, the entire payload is propagated** to the catching scope as-is. Add output mappings to propagate only selected variables — except on message start events, where the full payload always becomes the new instance's variables. Note that this is the opposite default from activities, which propagate nothing unmapped. |
+| Throwing message events — message intermediate throw, message end                                  | `zenbpm:input` / `zenbpm:output` | Executed as a job, exactly like a [Send task](../activities/tasks/send-task.md): input mappings prepare the variables the worker sees, output mappings propagate the worker's result following the activity rules.                              |
+| Timer and link events                                                                             | —                 | Carry no payload; the process variables are unchanged.                                                                                                                                                                                         |
+
+See [Variables](../../variables.md) for the full propagation rules.
+
+## Related documentation
+
+- [Variables](../../variables.md) — output-mapping propagation rules for catching events and activities.
+- [Message events](./message-events.md), [Timer events](./timer-events.md), [Error events](./error-events.md), [Link events](./link-events.md) — the individual event types.
+- [Start a process instance](../../../../how-to/start-process-instance.mdx) — starting processes through none start events via the API.
+- [Event-based gateway](../gateways/event-based-gateway.md) — branching on the first of several catch events to trigger.
+
+## XML example
+
+The events with no configuration beyond their definition: a none start event, a none end event, and a terminate end event cancelling the whole instance on an alternative path:
+
+```xml
+<bpmn:startEvent id="Start_Order" name="Order placed">
+  <bpmn:outgoing>Flow_Process</bpmn:outgoing>
+</bpmn:startEvent>
+
+<bpmn:endEvent id="End_Fulfilled" name="Order fulfilled">
+  <bpmn:incoming>Flow_Done</bpmn:incoming>
+</bpmn:endEvent>
+
+<bpmn:endEvent id="End_Cancelled" name="Order cancelled">
+  <bpmn:incoming>Flow_Cancel</bpmn:incoming>
+  <bpmn:terminateEventDefinition />
+</bpmn:endEvent>
+```

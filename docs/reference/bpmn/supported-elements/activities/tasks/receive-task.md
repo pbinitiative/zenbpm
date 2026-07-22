@@ -4,7 +4,7 @@ sidebar_position: 50
 
 # Receive task
 
-A Receive Task pauses the process and waits until a specific message is received, then continues execution. It behaves like a [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) modelled as a task shape, which allows attaching boundary events and multi-instance markers.
+A Receive Task pauses the process and waits until a specific message is received, then continues execution. It behaves like a [Message intermediate catch event](../../events/message-events.md#message-intermediate-catch-event) modelled as a task shape, which allows attaching boundary events and multi-instance markers.
 
 <img src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive task" width="110" height="90" />
 
@@ -18,11 +18,11 @@ Rendered as a rounded rectangle with an unfilled envelope icon in the top-left c
 
 ## Usage in BPMN
 
-A Receive Task references a message definition via its `messageRef` attribute; the message is correlated to a waiting instance exactly like a [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) — see that page for message definitions, subscriptions, and correlation keys. Additionally, with `instantiate="true"` the Receive Task can start a new process instance when the message arrives, like a message start event.
+A Receive Task references a message definition via its `messageRef` attribute; the message is correlated to a waiting instance exactly like a [Message intermediate catch event](../../events/message-events.md#catching-message-events) — see that page for message definitions, subscriptions, and correlation keys. Additionally, with `instantiate="true"` the Receive Task can start a new process instance when the message arrives, like a message start event.
 
 ## Related documentation
 
-- [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) — a Receive Task receives messages in nearly the same way as this event, so everything about defining messages, subscribing to them, and correlating them to a waiting process instance is documented there and applies here as well.
+- [Message events](../../events/message-events.md#catching-message-events) — a Receive Task receives messages in nearly the same way as a message intermediate catch event, so everything about defining messages, subscribing to them, and correlating them to a waiting process instance is documented there and applies here as well.
 
 ## XML example
 

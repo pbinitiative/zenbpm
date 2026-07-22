@@ -12,7 +12,7 @@ Rendered collapsed as a rounded rectangle with a plus marker at the bottom cente
 
 ## Use cases
 
-- **Handle a section as a unit** — attach a single timer or error [boundary event](../events/boundary-events/index.md) to the Sub process to time-box or cancel a whole group of steps at once.
+- **Handle a section as a unit** — attach a single timer or error [boundary event](../events/index.mdx#boundary-events) to the Sub process to time-box or cancel a whole group of steps at once.
 - **Repeat a section per item** — put the [multi-instance marker](./activity-multi-instance.md) on the Sub process to run the embedded flow once per element of a collection.
 - **React to events while the process runs** — model an event sub process that is triggered by a message or timer whenever its scope is active.
 
@@ -32,7 +32,7 @@ Execution flow:
 2. A token starts at each start event of the embedded flow — multiple start events of any supported type are allowed.
 3. The embedded flow executes as its own instance in its own scope; changes to its variables do not write back to the parent.
 4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues.
-5. An error end event inside the Sub process bubbles up and can be caught by an [error boundary event](../events/boundary-events/error-boundary-event.md) on the Sub process or a surrounding scope. An uncaught error creates an incident.
+5. An error end event inside the Sub process bubbles up and can be caught by an [error boundary event](../events/error-events.md#error-boundary-event) on the Sub process or a surrounding scope. An uncaught error creates an incident.
 
 ### Event sub process
 
@@ -46,7 +46,7 @@ Event sub processes can be nested inside other Sub processes.
 ## Related documentation
 
 - [Variables](../../variables.md) — variable scoping and output mapping propagation rules.
-- [Boundary events](../events/boundary-events/index.md) — interrupting the whole Sub process on errors, timeouts, or messages.
+- [Boundary events](../events/index.mdx#boundary-events) — interrupting the whole Sub process on errors, timeouts, or messages.
 - [Multi-instance activity](./activity-multi-instance.md) — running the embedded flow once per element of a collection.
 
 ## XML example

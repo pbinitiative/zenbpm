@@ -50,7 +50,7 @@ Every activity, regardless of its type, supports the following markup:
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | Maps variables between the process scope and the activity's local scope. See [Variables](../../variables.md).                                                                              |
 | `bpmn:multiInstanceLoopCharacteristics`               | A marker (not a separate activity type) that runs the activity once per element of a collection, sequentially or in parallel. See [Multi-instance activity](./activity-multi-instance.md). |
-| `bpmn:boundaryEvent` attached via `attachedToRef`     | Reacts to errors, messages, or timers while the activity is active, and routes the process accordingly. See [Boundary events](../events/boundary-events/index.md).                         |
+| `bpmn:boundaryEvent` attached via `attachedToRef`     | Reacts to errors, messages, or timers while the activity is active, and routes the process accordingly. See [Boundary events](../events/index.mdx#boundary-events).                         |
 
 The shared lifecycle:
 
@@ -62,7 +62,7 @@ The shared lifecycle:
 ## Related documentation
 
 - [Variables](../../variables.md) — variable scoping and mapping rules shared by all activities.
-- [Boundary events](../events/boundary-events/index.md) — handling errors, timeouts, and messages on a running activity.
+- [Boundary events](../events/index.mdx#boundary-events) — handling errors, timeouts, and messages on a running activity.
 - [Multi-instance activity](./activity-multi-instance.md) — the multi-instance marker in detail.
 
 ## XML example

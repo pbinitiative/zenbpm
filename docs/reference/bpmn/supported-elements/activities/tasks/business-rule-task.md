@@ -39,10 +39,6 @@ Execution flow:
 4. Output mappings are applied and the token moves on. **Without output mappings, the decision result is not propagated to the process scope** — map the result variable to keep it.
 5. If the decision cannot be found or evaluation fails, the task fails.
 
-:::note[Not yet supported]
-The latest deployed version of the decision is always evaluated — pinning a specific version via the `bindingType` and `versionTag` attributes is not yet supported.
-:::
-
 ### Job-based
 
 With a `zenbpm:taskDefinition` extension element the decision is evaluated by an external job worker instead of the internal DMN engine. The task is configured and executed exactly like a [Service task](./service-task.md) — see the [Service task usage](./service-task.md#usage-in-bpmn) for the configuration and XML example.

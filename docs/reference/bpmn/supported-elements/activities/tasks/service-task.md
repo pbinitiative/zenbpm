@@ -33,10 +33,6 @@ Execution flow:
 3. On completion, output mappings are applied and the token moves on. **Without output mappings, no variables returned by the worker are propagated to the process scope** — define an output mapping for every value you want to keep.
 4. On failure, an incident is created; the failure can be handled with an error boundary event.
 
-:::note[Not yet supported]
-The `retries` attribute of `zenbpm:taskDefinition` and task headers are parsed but not yet applied by the engine.
-:::
-
 ## Related documentation
 
 - [Jobs](../../../../jobs.md) — how jobs are created, distributed, and completed over the REST and gRPC APIs.

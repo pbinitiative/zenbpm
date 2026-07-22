@@ -1,103 +1,63 @@
 ---
-sidebar_position: 170
+sidebar_position: 30
 ---
 
-# Activity Multi-Instance
+# Multi-instance activity
 
-An Activity Multi-Instance is a BPMN activity configuration that allows an activity to be executed multiple times for a
-collection of items. It is used to model repeated execution of the same activity, either sequentially or in parallel,
-based on defined loop characteristics.
+A multi-instance activity runs one activity once per element of a collection — sequentially or in parallel. It is a marker placed on an activity, not a separate element type, and can be applied to any supported Task, Sub process, or Call activity. In ZenBPM the iterations execute inside a dedicated child process instance linked to the parent; the parent token waits at the activity until all iterations have completed.
 
-Multi-instance behavior can be applied to activities.
+<div style={{"display": "flex", "gap": "24px", "alignItems": "flex-start"}}>
 
-## Key characteristics
+<img src={require('!url-loader!../../../assets/bpmn/activities/activity-multi-instance-parallel.svg').default} alt="Parallel multi-instance" width="110" height="90" />
+<img src={require('!url-loader!../../../assets/bpmn/activities/activity-multi-instance-serial.svg').default} alt="Sequential multi-instance" width="110" height="90" />
 
-- **Multiple executions of the same activity:**  
-  The activity is executed once for each element in a defined collection.
+</div>
 
-- **Sequential or parallel execution:**  
-  A Multi-Instance activity can be configured to execute:
-  - **Sequentially:** instances are executed one after another.
-  - **In parallel:** all instances are executed at the same time.
+Rendered as the activity shape with a marker at the bottom center: three vertical bars for parallel, three horizontal bars for sequential execution.
 
-- **Collection-based:**  
-  The number of instances is determined by a collection or an expression evaluated at runtime.
+## Use cases
 
-- **Shared activity definition:**  
-  All instances share the same activity definition but have their own execution context.
+- **Collect approvals** — route the same user task to each approver in a list, one after another (sequential) or all at once (parallel).
+- **Process items of an order** — create one job per order line to reserve stock or calculate prices concurrently.
+- **Fan out child processes** — start a Call activity per element, for example one delivery process per shipment.
 
-- **Completion condition (optional):**  
-  The activity may define a completion condition that allows the multi-instance execution to finish before all instances
-  complete.
+## Usage in BPMN
 
-## Starting a Multi Instance
+Add a `bpmn:multiInstanceLoopCharacteristics` element to the activity and configure it with a `zenbpm:loopCharacteristics` extension element:
 
-A Multi-Instance configuration acts as a wrapper around the activity and controls how it is repeated and completed. Configuration has the following parameters:
+| Element                                 | Attribute          | Required | Description                                                                                                                                                       |
+| --------------------------------------- | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bpmn:multiInstanceLoopCharacteristics` | `isSequential`     | no       | `true` runs the iterations one after another; `false` or absent runs them all in parallel.                                                                        |
+| `zenbpm:loopCharacteristics`            | `inputCollection`  | yes      | FEEL expression (prefixed with `=`) evaluated against the process scope. Must produce a list — otherwise the activity fails.                                      |
+| `zenbpm:loopCharacteristics`            | `inputElement`     | yes      | Name of the iteration-local variable that holds the current collection element.                                                                                   |
+| `zenbpm:loopCharacteristics`            | `outputCollection` | no       | Name of the process variable that receives the list of iteration results. Define it together with `outputElement` when the iterations produce results to keep.    |
+| `zenbpm:loopCharacteristics`            | `outputElement`    | no       | FEEL expression evaluated after each iteration, producing that iteration's entry in the output collection. See [Variables](../../variables.md) for mapping rules. |
 
-| Parameter Name       | Description                                                                                                                                                                                                                   |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Input Collection     | Specifies the collection that the Multi-Instance activity iterates over. A new instance of the wrapped activity is created for each element in this collection. Each iteration processes a single element from the collection |
-| Output Collection    | Specifies the collection that aggregates results from all iterations. The collection becomes available after the entire Multi-Instance execution completes                                                                    |
-| Output Element       | Defines the result produced by a single iteration of the Multi-Instance activity. This value is derived from variables within the iteration scope                                                                             |
-| Completion Condition | Not supported yet.                                                                                                                                                                                                            |
+Execution flow:
 
-## Execution behavior
+1. A token arrives at the activity and `inputCollection` is evaluated against the process scope. A non-list value fails the activity; an empty list completes it immediately with an empty output collection.
+2. The engine creates a dedicated child process instance for the iterations, linked to the parent and running on the same [partition](../../../cluster.md). The parent token waits at the activity, and boundary events attached to the activity cover the entire multi-instance execution.
+3. Iterations run inside the child instance — all at once in parallel mode, one at a time in collection order in sequential mode. Each iteration executes the activity with its own local scope holding the current element under `inputElement`; the process variables remain readable by expressions and input mappings.
+4. After an iteration completes, `outputElement` is evaluated against the iteration's input variables plus the variables created by the activity's **output mappings**. **Raw variables returned by a job are not visible to `outputElement`** — map every value it needs with an output mapping on the activity first.
+5. When all iterations have completed, the collected results are written to the parent process scope as `outputCollection` — one entry per iteration, in collection order for sequential execution; the order is not guaranteed for parallel execution. The parent token then continues along the outgoing sequence flow.
 
-A Multi Instance behaves similarly to an independent process, but it is logically connected to the parent process
-instance.
+## Related documentation
 
+- [Variables](../../variables.md) — variable scoping and the output mapping rules the iterations rely on.
+- [Boundary events](../events/boundary-events/index.md) — interrupting or reacting to the multi-instance activity as a whole.
 
-### Sequential Multi Instance
-When a Sequential Multi Instance is triggered:
-- A new process instance is created.
-- The new instance is linked to its parent process instance.
-- The child process runs in its own isolated scope.
-- Only one activity instance is created and active at once.
-- Child process executes only its given activity one by one in a loop.
+## XML example
 
-### Parallel Multi Instance
-When a Parallel Multi Instance is triggered:
-- A new process instance is created.
-- The new instance is linked to its parent process instance.
-- The child process runs in its own isolated scope.
-- All the required activity instances are created.
-- Activity instance are executed in parallel.
-
-The child process for Multi Instance is started on the same [partition](../../../cluster.md) as the parent process that
-invoked it.
-
-In case of **Parallel** Multi Instance the behavior is the same expect the instances are all started at the start of the
-Multi Instance process.
-
-#### Variable Handling
-
-By default, no variables are inherited from the parent process instance.
-The child process operates within its own variable scope using variables from **Input Collection**.
-Upon completion **Output Elements** are collected and aggregated to **Output Collection** which is then propagated into the parent instance.
-
-## Input/Output
-
-Input and Output parameters still belong to its task, subprocess or call activity. These mappings control the variable
-scope at the start and end of the task, subprocess or call activity that is run in Multi Instance.
-
-### Output element with output mappings
-
-The Multi-Instance `outputElement` is evaluated after each iteration completes. Its expression can read:
-
-- the iteration input variables, such as the `inputElement`
-- the variables produced by the wrapped activity's output mappings
-
-Raw variables returned by a job or created inside the wrapped activity are not automatically available to `outputElement`. If `outputElement` should use a value returned by the activity, map that value with an output mapping first.
+A sequential multi-instance user task that gathers one approval per element of `approvers`. The task's output mappings expose the values entered by the user, and `outputElement` combines them into one object per iteration, collected in `approvalResults`:
 
 ```xml
-<bpmn:userTask id="review_task">
+<bpmn:userTask id="Activity_ReviewRequest" name="Review request">
   <bpmn:extensionElements>
     <zenbpm:ioMapping>
       <zenbpm:output source="=approver" target="reviewer" />
       <zenbpm:output source="=approved" target="approved" />
     </zenbpm:ioMapping>
   </bpmn:extensionElements>
-
   <bpmn:multiInstanceLoopCharacteristics isSequential="true">
     <bpmn:extensionElements>
       <zenbpm:loopCharacteristics
@@ -107,12 +67,12 @@ Raw variables returned by a job or created inside the wrapped activity are not a
         outputElement="={ reviewer: reviewer, approved: approved }" />
     </bpmn:extensionElements>
   </bpmn:multiInstanceLoopCharacteristics>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:userTask>
 ```
 
-In this example, each iteration receives one `approver`. When the user task completes, the task output mappings create `reviewer` and `approved` in the iteration output. The Multi-Instance `outputElement` then uses those mapped variables to append one object to `approvalResults`.
-
-For example, with `approvers = ["alice", "bob"]` and task completions that return `approved = true` and `approved = false`, the parent process receives:
+With `approvers = ["alice", "bob"]` and the two task completions returning `approved = true` and `approved = false`, the parent process receives:
 
 ```json
 {
@@ -122,43 +82,3 @@ For example, with `approvers = ["alice", "bob"]` and task completions that retur
   ]
 }
 ```
-
-For parallel Multi-Instance activities, `approvalResults` still contains one item per completed iteration, but the item order is not guaranteed.
-
-## Supported activity types
-
-Multi-instance behavior can be applied to the following activity types:
-
-- Task
-- UserTask
-- ServiceTask
-- SendTask
-- ReceiveTask
-- BusinessRuleTask
-- ScriptTask
-- ManualTask
-- SubProcess
-- CallActivity
-
-## Graphical notation
-
-A standard activity shape with a **multi-instance marker** at the bottom center:
-
-- **Three vertical lines:** parallel multi-instance
-
-![Parallel Multi-instance usage example](../../../assets/bpmn/parallel.svg)
-
-- **Three horizontal lines:** sequential multi-instance
-
-![Horizontal Multi-instance usage example](../../../assets/bpmn/sequential.svg)
-
-## XML Definition
-
-### Parallel multi-instance example
-
-```xml
-<bpmn:userTask id="ReviewTask" name="Review Document">
-  <bpmn:multiInstanceLoopCharacteristics isSequential="false">
-    <bpmn:loopCardinality>5</bpmn:loopCardinality>
-  </bpmn:multiInstanceLoopCharacteristics>
-</bpmn:userTask>

@@ -53,7 +53,3 @@ Green icons are supported and link to their documentation.
     </tr>
   </tbody>
 </table>
-
-:::note[Not yet supported]
-Script task, Manual task
-:::

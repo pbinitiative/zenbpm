@@ -1,4 +1,8 @@
 {
   "label": "Activities",
-  "position": 1
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "Work performed within a business process — tasks and subprocesses supported by the ZenBPM engine."
+  }
 }

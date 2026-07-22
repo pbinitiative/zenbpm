@@ -1,83 +1,59 @@
 ---
-sidebar_position: 50
+sidebar_position: 10
 ---
 
 # Call activity
 
-A Call Activity is a BPMN flow element that invokes a global process or a global task. It allows processes to reuse externally defined process logic, enabling modular and reusable process design.
+A Call Activity invokes another, independently deployed process. It lets several processes reuse the same process logic and keeps large models decomposed into separately deployed and versioned pieces. In ZenBPM the called process runs as its own process instance linked to the parent on the same [partition](../../../cluster.md); the parent token waits at the Call Activity until the called instance completes.
 
-## Key characteristics
-- Reusable subprocess invocation:
-	Call Activities reference global processes that can be called from multiple places, promoting reusability.
+<img src={require('!url-loader!../../../assets/bpmn/activities/call-activity.svg').default} alt="Call activity" width="110" height="90" />
 
-- Input and output parameters:
-	Supports passing data into and out of the called process through input/output parameter mappings.
+Rendered as a rounded rectangle with a thick border and a plus marker at the bottom center.
 
-- Process modularity:
-	Enables breaking down complex processes into smaller, manageable subprocesses that can be called as needed.
+## Use cases
 
-- Multiple instance support:
-	Can be configured for multiple instances, allowing parallel execution of the same subprocess.
+- **Reuse shared logic** — call one deployed process, such as customer verification, from several different parent processes.
+- **Decompose large processes** — split a complex model into separately deployed processes with independent lifecycles.
+- **Process collections** — combine with the [multi-instance marker](./activity-multi-instance.md) to start one called instance per element, for example one delivery process per shipment.
 
-- Error handling and compensation:
-	Not supported currently.
+## Usage in BPMN
 
-## Starting a Call Activity
+Reference the process to call in a `zenbpm:calledElement` extension element. Optionally, control the data that flows into and out of the called instance with a `zenbpm:ioMapping`.
 
-**Binding:** Specifies how the process definition is resolved.
-Currently, only `latest` tag is supported. This means the most recent version of the referenced process definition will be executed.
+| Extension element                    | Attribute          | Required | Description                                                                                                                            |
+| ------------------------------------ | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `zenbpm:calledElement`               | `processId`        | yes      | Id of the deployed process to start. Only a direct, static id is supported — expressions are not evaluated — and the latest deployed version is always used. |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variables.md).                                                     |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variables.md).                        |
 
-**ProcessId:** Identifies the process definition to be executed. Currently, only a direct ID reference is supported.
+Execution flow:
 
-## Execution behavior
-A Call Activity behaves similarly to an independent process, but it is logically connected to the parent process instance.
+1. A token arrives at the Call Activity, input mappings are evaluated, and the engine resolves the latest deployed process definition with the configured `processId` — if none is deployed, the activity fails.
+2. A new instance of the called process is created, linked to the parent and running on the same partition. It starts with a snapshot copy of the parent's variables plus the input-mapped values; changes inside the called instance do not write back to the parent. The parent token waits, and boundary events attached to the Call Activity are armed.
+3. The called instance executes like any other process instance.
+4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues.
+5. An error end event in the called process bubbles up to the parent and can be caught by an [error boundary event](../events/boundary-events/error-boundary-event.md) on the Call Activity — including across nested Call Activities. An uncaught error creates an incident.
 
-When a Call Activity is triggered:
-- A new process instance is created.
-- The new instance is linked to its parent process instance.
-- The child process runs in its own isolated scope.
+## Related documentation
 
-The called process for Call Activity is started on the same [partition](../../../cluster.md) as the parent process that invoked it.
+- [Variables](../../variables.md) — variable scoping and output mapping propagation rules.
+- [Error boundary event](../events/boundary-events/error-boundary-event.md) — catching errors thrown by the called process.
+- [Multi-instance activity](./activity-multi-instance.md) — calling the process once per element of a collection.
 
-#### Variable handling
-By default, no variables are inherited from the parent process instance.
-The called process operates within its own variable scope.
-Upon completion, result variables are not automatically propagated back to the parent process instance.
-Explicit input and output mappings must be defined if variable transfer is required.
+## XML example
 
-## Input/Output
-Input and Output parameters define how variables are transferred between the parent instance and Call Activity instance.
+A Call Activity that starts the latest deployed version of the `customer-verification` process. The input mapping passes the customer id into the called instance; the output mapping stores the verification result in the parent process variable `customerVerified`:
 
-#### Input parameters
-Used to initialize variables in the called process when the Call Activity starts.
-#### Output parameters
-Used to map variables from the called process back to the parent process when the Call Activity completes.
-
-These mappings control the variable scope at the start and end of the Call Activity instance.
-
-## Usage patterns
-- **Process decomposition:**
-	Use to break down large processes into smaller, reusable subprocesses.
-
-- **Reusable logic:**
-	Call common business logic or workflows from multiple parent processes.
-
-- **Dynamic subprocess selection:**
-	Conditionally call different subprocesses based on process data.
-
-- **Parallel processing:**
-	Configure multiple instances to process collections or perform parallel operations.
-
-## Graphical notation
-![Call activity usage example](../../../assets/bpmn/call_activity.svg)
-
-A rectangle with a thick border and a subprocess marker (small rectangle with a plus sign) in the bottom-center.
-
-## XML Definition
 ```xml
-<bpmn:callActivity id="CallActivity_1" name="Process Order" calledElement="ProcessOrderSubprocess">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:callActivity id="Activity_VerifyCustomer" name="Verify customer">
+  <bpmn:extensionElements>
+    <zenbpm:calledElement processId="customer-verification" />
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=order.customerId" target="customerId" />
+      <zenbpm:output source="=verificationResult" target="customerVerified" />
+    </zenbpm:ioMapping>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:callActivity>
 ```
-

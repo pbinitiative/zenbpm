@@ -40,7 +40,7 @@ Unlike the [Parallel gateway](./parallel-gateway.md), the join does not need tok
 
 ## Related documentation
 
-- [Conditional flow](../flows/conditional-flow.md) and [Default flow](../flows/default-flow.md) — the sequence flow markup in detail.
+- [Sequence flow](../sequence-flow.md) — sequence flow basics and the default flow markup.
 - [Exclusive gateway](./exclusive-gateway.md) — when exactly one path should be taken.
 - [Parallel gateway](./parallel-gateway.md) — when all paths should always run.
 

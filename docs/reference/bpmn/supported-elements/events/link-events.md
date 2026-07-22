@@ -60,7 +60,7 @@ The receiving side, rendered as a double-line circle with an unfilled arrow. It 
 ## Related documentation
 
 - [Events overview](./index.mdx) — positions, catch and throw semantics shared by all events.
-- [Sequence flow](../flows/sequence-flow.md) — the connection a link pair substitutes for.
+- [Sequence flow](../sequence-flow.md) — the connection a link pair substitutes for.
 
 ## XML example
 

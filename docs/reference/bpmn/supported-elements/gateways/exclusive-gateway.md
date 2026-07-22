@@ -38,7 +38,7 @@ When converging, an Exclusive gateway performs **no synchronization**: each arri
 
 ## Related documentation
 
-- [Conditional flow](../flows/conditional-flow.md) and [Default flow](../flows/default-flow.md) — the sequence flow markup in detail.
+- [Sequence flow](../sequence-flow.md) — sequence flow basics and the default flow markup.
 - [Inclusive gateway](./inclusive-gateway.md) — when more than one matching path should be taken.
 - [Business rule task](../activities/tasks/business-rule-task.md) — evaluating a DMN decision whose result the gateway branches on.
 

@@ -57,8 +57,8 @@ The routing decision is not configured on the gateway itself but on its **outgoi
 
 | Markup                     | Where                        | Description                                                                                                                                                                                  |
 | -------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bpmn:conditionExpression` | outgoing `bpmn:sequenceFlow` | A FEEL expression prefixed with `=` that must evaluate to a boolean, e.g. `= amount > 10000`. Evaluated against the process instance variables. See [Conditional flow](../flows/conditional-flow.md). |
-| `default` attribute        | the gateway element          | References the fallback flow taken when no condition evaluates to true. The default flow itself carries no condition. See [Default flow](../flows/default-flow.md).                          |
+| `bpmn:conditionExpression` | outgoing `bpmn:sequenceFlow` | A FEEL expression prefixed with `=` that must evaluate to a boolean, e.g. `= amount > 10000`. Evaluated against the process instance variables.                                                  |
+| `default` attribute        | the gateway element          | References the fallback flow taken when no condition evaluates to true. The default flow itself carries no condition. See [Default flow](../sequence-flow.md#default-flow).                   |
 
 Rules shared by the condition-evaluating gateways (Exclusive and Inclusive):
 
@@ -71,8 +71,7 @@ The [Parallel gateway](./parallel-gateway.md) ignores conditions entirely, and t
 
 ## Related documentation
 
-- [Conditional flow](../flows/conditional-flow.md) — the condition expression markup on sequence flows.
-- [Default flow](../flows/default-flow.md) — the fallback flow of Exclusive and Inclusive gateways.
+- [Sequence flow](../sequence-flow.md) — sequence flow basics and the default flow markup.
 - [Events overview](../events/index.mdx) — the catch events an Event-based gateway races.
 
 ## XML example

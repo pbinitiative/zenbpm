@@ -3,7 +3,7 @@ sidebar_position: 3
 ---
 # Conditional flow
 
-A Conditional Flow is a sequence flow with an attached condition expression. It is evaluated by an Exclusive or Inclusive gateway to determine whether the flow is taken.
+A Conditional Flow is a sequence flow with an attached condition expression, leaving an activity. The condition determines whether the token takes the flow.
 
 ## Key characteristics
 
@@ -27,4 +27,4 @@ A sequence flow arrow with a small diamond marker near the source.
 
 ## Current Implementation
 
-Supported.
+Not supported. A condition expression on a flow leaving an activity is not evaluated. Condition expressions are only evaluated on the outgoing flows of an [Exclusive gateway](../gateways/exclusive-gateway.md) or [Inclusive gateway](../gateways/inclusive-gateway.md) — use a gateway to route on conditions.

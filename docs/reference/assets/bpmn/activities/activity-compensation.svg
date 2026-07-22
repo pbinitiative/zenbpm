@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="110" height="90" viewBox="0 0 110 90" version="1.1">
+  <rect x="5" y="5" width="100" height="80" rx="10" ry="10" style="stroke-linecap: round; stroke-linejoin: round; stroke: rgb(34, 36, 42); stroke-width: 2px; fill: white; fill-opacity: 0.95;"/>
+  <path data-marker="compensation" d="M 54,68 L 46,73 L 54,78 Z M 63,68 L 55,73 L 63,78 Z" style="fill: white; stroke: rgb(34, 36, 42); stroke-width: 1.5px; stroke-linejoin: round; stroke-linecap: round;"/>
+</svg>

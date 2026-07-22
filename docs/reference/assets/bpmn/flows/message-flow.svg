@@ -1,27 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="260" height="50" viewBox="0 0 260 50">
-
-  <circle cx="25" cy="25"
-          r="18"
-          fill="white"
-          stroke="#20232A"
-          stroke-width="5"/>
-
-  <line x1="43" y1="25"
-        x2="55" y2="25"
-        stroke="#20232A"
-        stroke-width="5"/>
-
-  <line x1="55" y1="25"
-        x2="225" y2="25"
-        stroke="#20232A"
-        stroke-width="5"
-        stroke-dasharray="36 24"
-        stroke-linecap="round"/>
-
-  <polygon points="225,10 258,25 225,40"
-           fill="white"
-           stroke="#20232A"
-           stroke-width="5"
-           stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="60" viewBox="0 0 280 60">
+  <circle cx="25" cy="30" r="18" fill="white" stroke="#20232A" stroke-width="5"/>
+  <line x1="43" y1="30" x2="55" y2="30" stroke="#20232A" stroke-width="5"/>
+  <line x1="55" y1="30" x2="245" y2="30" stroke="#20232A" stroke-width="5" stroke-dasharray="36 24" stroke-linecap="round"/>
+  <polygon points="245,15 278,30 245,45" fill="white" stroke="#20232A" stroke-width="5" stroke-linejoin="round"/>
 </svg>

@@ -31,7 +31,20 @@ Instances of the application are connected through the internal GRPC api and whe
 The state of the cluster can be queried through the system API:
 
  - REST: `/system/status`
+ - REST build metadata: `/system/info`
  - GRPC: TODO: add grpc endpoint as well
+
+`GET /system/info` returns the version and commit used to build the running binary:
+
+```json
+{
+  "version": "1.5.0",
+  "commit": "7af392e"
+}
+```
+
+The version is read from `openapi/api.yaml`; the commit identifies the exact
+source revision.
 
 ## Partition clusters
 Partition clusters are smaller [RqLite](https://rqlite.io/) clusters created for data storage of each partition.

@@ -102,6 +102,9 @@ GET {{host}}/system/metrics
 ### Status
 GET {{host}}/system/status
 
+### SystemInfo
+GET {{host}}/system/info
+
 ### StartPprofServer
 POST {{host}}/v1/tests/{{node}}/start-pprof-server
 

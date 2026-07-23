@@ -14,14 +14,21 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/rest"
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
 
-var version string = "dev"
+var commit = "unknown"
 
 func main() {
 	profile.InitProfile()
 	log.Init()
-	log.Info("Starting ZenBPM version %s", version)
+
+	description, err := buildDescription(commit)
+	if err != nil {
+		log.Error("Failed to load embedded OpenAPI specification: %s", err)
+		os.Exit(1)
+	}
+	log.Info("Starting ZenBPM %s", description)
 
 	appContext, ctxCancel := context.WithCancel(context.Background())
 
@@ -41,7 +48,7 @@ func main() {
 	}
 
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf)
+	svr := rest.NewServer(zenNode, conf, commit)
 	svr.Start()
 
 	// Start ZenBpm GRPC API
@@ -61,6 +68,14 @@ func main() {
 		log.Error("failed to properly stop zen node: %s", err)
 	}
 	openTelemetry.Stop(appContext)
+}
+
+func buildDescription(commit string) (string, error) {
+	api, err := public.GetSwagger()
+	if err != nil {
+		return "", err
+	}
+	return "v" + api.Info.Version + " (" + commit + ")", nil
 }
 
 func handleSigterm(appStop chan os.Signal, ctx context.Context) {

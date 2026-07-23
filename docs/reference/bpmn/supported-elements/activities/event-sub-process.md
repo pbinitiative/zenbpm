@@ -6,7 +6,7 @@ sidebar_position: 25
 
 An Event sub process is a [Sub process](./sub-process.md) that is not part of the normal flow: it has no incoming or outgoing sequence flows and is started by its own **start event** instead. While its containing scope is active, the engine keeps the trigger armed — when the event occurs, the embedded flow runs as a child instance of that scope, either interrupting the scope or running alongside it.
 
-<img src={require('!url-loader!../../../assets/bpmn/activities/event-sub-process.svg').default} alt="Event sub process" width="220" height="150" />
+<img src={require('!url-loader!../../../assets/bpmn/activities/event-sub-process.svg').default} alt="Event sub process" width="110" height="90" />
 
 Rendered as a rounded rectangle with a dotted border; expanded, the embedded flow is drawn inside, beginning with the start event that triggers it.
 

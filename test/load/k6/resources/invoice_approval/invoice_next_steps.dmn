@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:biodi="http://bpmn.io/schema/dmn/biodi/2.0" id="StanoveniDalsihoPostupu_dodavatelskaFaktura" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <decision id="Decision_StanoveniDalsihoPostupu_DodavatelskaFaktura" name="Stanovení dalšího postupu s dodavatelskou fakturou">
+    <decisionTable id="DecisionTable_198kpsd">
+      <input id="Input_1" label="Existuje objednávka?">
+        <inputExpression id="InputExpression_1" typeRef="boolean">
+          <text>orderExists</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_1skdzpm" label="Údaje o dodavateli souhlasí s evidencí?">
+        <inputExpression id="LiteralExpression_1d29err" typeRef="boolean">
+          <text>supplierDataMatches</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_05ekijj" label="Spolehlivý plátce DPH?">
+        <inputExpression id="LiteralExpression_08ug52k" typeRef="boolean">
+          <text>isReliableVatPayer</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_0aycb2j" label="Bank.účet nalezen v registru DPH?">
+        <inputExpression id="LiteralExpression_18l6zk5" typeRef="boolean">
+          <text>isBankAccountRegistered</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_1sbi7y8" label="Soulad součtů: Faktura vs. Objednávka?" biodi:width="192">
+        <inputExpression id="LiteralExpression_0b32xac" typeRef="boolean">
+          <text>hasAmountMatch</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" label="Další způsob řešení" name="whatNext" typeRef="string" />
+      <output id="OutputClause_05n1wzy" label="Vyplatit pouze částku bez DPH?" name="shouldPayWithoutVat" typeRef="boolean" biodi:width="192" />
+      <output id="OutputClause_0cm6tit" label="Kód zamítnutí" name="invoiceRejectionReasonCode" typeRef="string" biodi:width="192" />
+      <rule id="DecisionRule_1o0an20">
+        <description>Dodavatelská faktura bude okamžitě zamítnuta</description>
+        <inputEntry id="UnaryTests_06zh170">
+          <text>false</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_10zvv4b">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1ivmob4">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1f4jlei">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0hkiqt9">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1izni5v">
+          <text>"Zamitnuto"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1klei91">
+          <text>false</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_108srwu">
+          <text>"Z1"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_0yjflh2">
+        <description>Dodavatelská faktura bude postoupena k manuálnímu ověření</description>
+        <inputEntry id="UnaryTests_0g3sh5h">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0llwtff">
+          <text>false</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1mz7eov">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0t4zdiw">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1y8qahb">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0nochow">
+          <text>"Manualne"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1hj7z8t">
+          <text>false</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1jgkd00">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_1y7o6tj">
+        <description>Pokračovat dál ve zpracovávání dodavatelské faktury - dojde k vyplacení částky bez DPH</description>
+        <inputEntry id="UnaryTests_0gb6hua">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1ymbg0w">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_00v37dx">
+          <text>false</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0j05gwd">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1waeov9">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0ce5sks">
+          <text>"Pokracovat"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0wsfqtv">
+          <text>true</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0xy0biv">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_02sg2n7">
+        <description>Dodavatelská faktura bude okamžitě zamítnuta</description>
+        <inputEntry id="UnaryTests_103qunz">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0jp5kv6">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_05b75k8">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1gj26p3">
+          <text>false</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0duc97h">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1thnxjh">
+          <text>"Zamitnuto"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1y3j3tm">
+          <text>false</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1pjvn6i">
+          <text>"Z2"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_1i6u1wj">
+        <description>Dodavatelská faktura bude postoupena k manuálnímu ověření</description>
+        <inputEntry id="UnaryTests_0jknk2o">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0gkra4p">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_05uor1a">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_04vse1z">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1z0eyea">
+          <text>false</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1h89drk">
+          <text>"Manualne"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1856qot">
+          <text>false</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0ted5zc">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_1n1v3gl">
+        <description>Pokračovat dál ve zpracovávání dodavatelské faktury</description>
+        <inputEntry id="UnaryTests_1ugwnob">
+          <text>true</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_19rdb4z">
+          <text>true</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1g8sx5w">
+          <text>true</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1vx3lkz">
+          <text>true</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0vatscw">
+          <text>true</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0qw8s5g">
+          <text>"Pokracovat"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0rwz7pm">
+          <text>false</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1riuu9h">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="Decision_StanoveniDalsihoPostupu_DodavatelskaFaktura">
+        <dc:Bounds height="80" width="180" x="431" y="170" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

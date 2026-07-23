@@ -11,6 +11,7 @@ import (
 
 type Querier interface {
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
@@ -33,6 +34,7 @@ type Querier interface {
 	FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
+	FindChildProcessInstancesPage(ctx context.Context, arg FindChildProcessInstancesPageParams) ([]FindChildProcessInstancesPageRow, error)
 	FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, arg FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams) (DecisionDefinition, error)
 	FindDecisionDefinitionsById(ctx context.Context, decisionID string) ([]DecisionDefinition, error)
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (DecisionInstance, error)

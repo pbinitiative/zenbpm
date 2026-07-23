@@ -22,6 +22,7 @@ func TestInMemoryStorage(t *testing.T) {
 	for name, testFunc := range tests {
 		t.Run(name, testFunc(store, t))
 	}
+	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
 }
 
 // Verifies UpdateOutputFlowElementInstance mirrors SQL COALESCE on completed_at:

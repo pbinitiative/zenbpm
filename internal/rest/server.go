@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -58,6 +60,20 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 			Addr:              conf.HttpServer.Addr,
 		},
 	}
+	restLogger := slog.Default().With(slog.String("logger", "rest"))
+	// Body capture is a separate opt-in from LogMode: when enabled, bodies are
+	// logged for whatever LogMode logs (including failed requests in "errors"
+	// mode). It stays off by default because capturing buffers every
+	// request/response body in memory even when it never gets logged.
+	r.Use(chimiddleware.RequestID)
+	r.Use(middleware.Logger(restLogger, &middleware.LoggingOpts{
+		Mode:            middleware.LogMode(conf.HttpServer.LogMode),
+		WithReferer:     true,
+		WithUserAgent:   true,
+		LogRequestBody:  conf.HttpServer.LogBody,
+		LogResponseBody: conf.HttpServer.LogBody,
+		IgnorePaths:     []string{"/system/metrics"},
+	}))
 	r.Use(middleware.Recovery())
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
@@ -85,9 +101,13 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
 			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
-			w.Header().Add("Content-Type", "application/json")
-			w.Write(state)
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
+			_, err := w.Write(state)
+			if err != nil {
+				log.Error("failed to write status: %v", err)
+				return
+			}
 		})
 	})
 	return &s
@@ -1238,6 +1258,9 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 
 func (s *Server) GetChildProcessInstances(ctx context.Context, request public.GetChildProcessInstancesRequestObject) (public.GetChildProcessInstancesResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetChildProcessInstances400JSONResponse(paginationErr.ToApiError()), nil
+	}
 
 	var state *int64
 	if request.Params.State != nil {
@@ -1287,15 +1310,8 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
-	var page int32
-	if request.Params.Page != nil {
-		page = *request.Params.Page
-	}
-
-	var size int32 = 20
-	if request.Params.Size != nil && *request.Params.Size != -1 {
-		size = *request.Params.Size
-	}
+	page := *request.Params.Page
+	size := *request.Params.Size
 
 	partitionedInstances, err := s.node.GetChildProcessInstances(
 		ctx,

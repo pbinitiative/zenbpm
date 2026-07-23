@@ -1502,25 +1502,7 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 // The check is not recursive because the inner child process instance will not be completed due to same reasons,
 // so it's enough to make a check only for 1 level deep
 func (engine *Engine) hasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error) {
-	tokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, processInstanceKey)
-	if err != nil {
-		return false, err
-	}
-	for _, token := range tokens {
-		childInstances, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
-		if err != nil {
-			return false, err
-		}
-		for _, child := range childInstances {
-			if child.Type() != runtime.ProcessTypeSubProcess {
-				continue
-			}
-			if child.ProcessInstance().State == runtime.ActivityStateReady || child.ProcessInstance().State == runtime.ActivityStateActive {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+	return engine.persistence.HasActiveSubProcessInstance(ctx, processInstanceKey)
 }
 
 func (engine *Engine) handleMessageEndEvent(

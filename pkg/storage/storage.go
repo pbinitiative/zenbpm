@@ -132,6 +132,8 @@ type ProcessDefinitionStorageWriter interface {
 type ProcessInstanceStorageReader interface {
 	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
 	FindProcessInstancesByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
+	// HasActiveSubProcessInstance returns true for child subprocesses that are ready or active.
+	HasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error)
 	// FindActiveProcessInstancesByDefinitionKeyAndStartElementId returns all process instances of the given
 	// process definition that are still alive (Active or Ready state) and were created from the supplied starting element.
 	FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error)

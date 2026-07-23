@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_process_instance_definition_created_at;

@@ -43,6 +43,10 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
 
 		assertMessageSubscriptionActive(t, instance.Key, "subProcessMessageEvent_12i3m6f")
+		subscription, found, err := findMessageSubscription(t, instance.Key, "subProcessMessageEvent_12i3m6f")
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Nil(t, subscription.ElementInstanceKey)
 
 		// Read and complete the active job for the service task
 		jobs, err := getJobs(t, zenclient.GetJobsParams{

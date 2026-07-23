@@ -107,6 +107,7 @@ type MessageSubscription struct {
 	CorrelationKey       sql.NullString `json:"correlation_key"`
 	ExecutionToken       sql.NullInt64  `json:"execution_token"`
 	Type                 int64          `json:"type"`
+	ElementInstanceKey   sql.NullInt64  `json:"element_instance_key"`
 }
 
 type MessageSubscriptionPointer struct {

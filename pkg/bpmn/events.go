@@ -436,6 +436,7 @@ func (engine *Engine) createMessageCatchEvent(
 		CorrelationKey:     correlationKey,
 		MessageSubscriptionData: runtime.MessageSubscriptionData{
 			Key:                  engine.generateKey(),
+			ElementInstanceKey:   &token.ElementInstanceKey,
 			ElementId:            element.GetId(),
 			Name:                 messageName,
 			State:                runtime.ActivityStateActive,

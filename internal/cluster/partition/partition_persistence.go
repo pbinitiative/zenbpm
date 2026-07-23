@@ -35,7 +35,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/rqlite/rqlite/v10/store"
@@ -1067,7 +1066,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 
 	var businessKey *string
 	if dbInstance.BusinessKey.Valid {
-		businessKey = ptr.To(dbInstance.BusinessKey.String)
+		businessKey = new(dbInstance.BusinessKey.String)
 	}
 
 	switch bpmnruntime.ProcessType(dbInstance.ProcessType) {
@@ -1591,7 +1590,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 		}
 		var assignee *string
 		if job.Assignee.Valid {
-			assignee = ptr.To(job.Assignee.String)
+			assignee = new(job.Assignee.String)
 		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
@@ -1641,7 +1640,7 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 	for i, job := range jobs {
 		var assignee *string
 		if job.Assignee.Valid {
-			assignee = ptr.To(job.Assignee.String)
+			assignee = new(job.Assignee.String)
 		}
 		var inputVariables map[string]interface{}
 		if job.InputVariables != "" {
@@ -2010,6 +2009,13 @@ func (rq *DB) inflateMessageSubscription(ctx context.Context, dbMessage sql.Mess
 	}
 }
 
+func nullInt64Pointer(value ssql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return new(value.Int64)
+}
+
 func (rq *DB) inflateTokenMessageSubscription(ctx context.Context, dbMessage sql.MessageSubscription, messageToken *bpmnruntime.ExecutionToken) (*bpmnruntime.TokenMessageSubscription, error) {
 	if !dbMessage.ExecutionToken.Valid ||
 		!dbMessage.CorrelationKey.Valid ||
@@ -2035,6 +2041,7 @@ func (rq *DB) inflateTokenMessageSubscription(ctx context.Context, dbMessage sql
 		CorrelationKey:     dbMessage.CorrelationKey.String,
 		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
 			Key:                  dbMessage.Key,
+			ElementInstanceKey:   nullInt64Pointer(dbMessage.ElementInstanceKey),
 			ElementId:            dbMessage.ElementID,
 			Name:                 dbMessage.Name,
 			State:                bpmnruntime.ActivityState(dbMessage.State),
@@ -2054,6 +2061,7 @@ func inflateInstanceMessageSubscription(dbMessage sql.MessageSubscription) (*bpm
 		CorrelationKey:     dbMessage.CorrelationKey.String,
 		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
 			Key:                  dbMessage.Key,
+			ElementInstanceKey:   nullInt64Pointer(dbMessage.ElementInstanceKey),
 			ElementId:            dbMessage.ElementID,
 			Name:                 dbMessage.Name,
 			State:                bpmnruntime.ActivityState(dbMessage.State),
@@ -2067,6 +2075,7 @@ func inflateDefinitionMessageSubscription(dbMessage sql.MessageSubscription) (*b
 	return &bpmnruntime.DefinitionMessageSubscription{
 		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
 			Key:                  dbMessage.Key,
+			ElementInstanceKey:   nullInt64Pointer(dbMessage.ElementInstanceKey),
 			ElementId:            dbMessage.ElementID,
 			Name:                 dbMessage.Name,
 			State:                bpmnruntime.ActivityState(dbMessage.State),
@@ -2215,6 +2224,10 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 	var processInstanceKey ssql.NullInt64
 	var executionTokenKey ssql.NullInt64
 	var correlationKey ssql.NullString
+	var elementInstanceKey ssql.NullInt64
+	if key := subscription.MessageSubscription().ElementInstanceKey; key != nil {
+		elementInstanceKey = ssql.NullInt64{Int64: *key, Valid: true}
+	}
 	var messageSubscriptionType bpmnruntime.MessageSubscriptionType
 	switch subscription := subscription.(type) {
 	case *bpmnruntime.TokenMessageSubscription:
@@ -2251,6 +2264,7 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 		ElementID:            subscription.MessageSubscription().ElementId,
 		ProcessDefinitionKey: subscription.MessageSubscription().ProcessDefinitionKey,
 		ProcessInstanceKey:   processInstanceKey,
+		ElementInstanceKey:   elementInstanceKey,
 		Name:                 subscription.MessageSubscription().Name,
 		State:                int64(subscription.MessageSubscription().State),
 		CreatedAt:            subscription.MessageSubscription().CreatedAt.UnixMilli(),

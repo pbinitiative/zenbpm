@@ -63,7 +63,7 @@ func runTests(m *testing.M) int {
 	}
 	defer func() { _ = zenNode.Stop() }()
 
-	svr := rest.NewServer(zenNode, conf)
+	svr := rest.NewServer(zenNode, conf, "test")
 	ln := svr.Start()
 	defer svr.Stop(appContext)
 

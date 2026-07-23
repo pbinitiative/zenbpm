@@ -18,6 +18,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -38,6 +39,12 @@ const (
 	PaginationMaxSize     int32 = 100
 )
 
+type systemStatus struct {
+	state.Cluster
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+}
+
 type Server struct {
 	sync.RWMutex
 	node   *cluster.ZenNode
@@ -48,7 +55,13 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
+func NewServer(node *cluster.ZenNode, conf config.Config, commit string) *Server {
+	api, err := public.GetSwagger()
+	if err != nil {
+		panic(fmt.Errorf("failed to load embedded OpenAPI specification: %w", err))
+	}
+	version := api.Info.Version
+
 	r := chi.NewRouter()
 	s := Server{
 		node: node,
@@ -99,10 +112,15 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
+			status := systemStatus{
+				Cluster: node.GetStatus(),
+				Version: version,
+				Commit:  commit,
+			}
+			body, _ := json.MarshalIndent(status, "", " ")
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(200)
-			_, err := w.Write(state)
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write(body)
 			if err != nil {
 				restLogger.Error("failed to write status", "error", err)
 				return

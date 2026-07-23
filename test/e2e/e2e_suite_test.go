@@ -82,7 +82,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf)
+	svr := rest.NewServer(zenNode, conf, "test")
 	ln := svr.Start()
 
 	// Create rest client

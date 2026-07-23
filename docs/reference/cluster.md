@@ -36,6 +36,22 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
+`GET /system/status` includes the version and commit used to build the running
+binary alongside the cluster state:
+
+```json
+{
+  "clusterConfig": { "desiredPartitions": 3 },
+  "partitions": {},
+  "nodes": {},
+  "version": "1.5.0",
+  "commit": "7af392e"
+}
+```
+
+The version is read from `openapi/api.yaml`; the commit identifies the exact
+source revision.
+
 ## Partition clusters
 
 Partition clusters are smaller [RqLite](https://rqlite.io/) clusters created for data storage of each partition.

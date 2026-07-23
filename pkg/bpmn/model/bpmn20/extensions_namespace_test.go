@@ -92,6 +92,32 @@ func TestUnmarshalZenbpmExtensions_ZeebeBackwardsCompat(t *testing.T) {
 	assert.Equal(t, "oldOutVar", task.GetOutputMapping()[0].Target)
 }
 
+func TestUnmarshalZenbpmExtensions_BusinessKeyInput(t *testing.T) {
+	businessKeyXML := `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:custom="` + zenbpmNS + `">
+  <bpmn:process id="business-key" isExecutable="true">
+    <bpmn:callActivity id="configured-call">
+      <bpmn:extensionElements>
+        <custom:in businessKey="=processBusinessKey" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
+    <bpmn:callActivity id="inherited-call" />
+    <bpmn:subProcess id="cleared-sub-process">
+      <bpmn:extensionElements>
+        <custom:in businessKey="" />
+      </bpmn:extensionElements>
+    </bpmn:subProcess>
+  </bpmn:process>
+</bpmn:definitions>`
+
+	var def TDefinitions
+	err := xml.Unmarshal([]byte(businessKeyXML), &def)
+	assert.NoError(t, err)
+	assert.Equal(t, "=processBusinessKey", *def.Process.CallActivity[0].GetBusinessKey())
+	assert.Nil(t, def.Process.CallActivity[1].GetBusinessKey())
+	assert.Equal(t, "", *def.Process.SubProcess[0].GetBusinessKey())
+}
+
 func TestUnmarshalZenbpmExtensions_UserTaskWithAssignment(t *testing.T) {
 	zenbpmXML := `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="` + zenbpmNS + `">

@@ -387,6 +387,17 @@ func resolveHistoryTTL(ctx context.Context, instance runtime.ProcessInstance) {
 	}
 }
 
+// resolveRootBusinessKey stores the request business key on the runtime object.
+// Child instances receive their resolved key explicitly at their creation site.
+func resolveRootBusinessKey(ctx context.Context, instance runtime.ProcessInstance) {
+	if instance.GetParentProcessInstanceKey() != nil || instance.ProcessInstance().BusinessKey != nil {
+		return
+	}
+	if businessKey, ok := appcontext.BusinessKeyFromContext(ctx); ok {
+		instance.ProcessInstance().BusinessKey = &businessKey
+	}
+}
+
 // createInstance creates a process instance for a given process definition and returns it.
 // Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
@@ -402,6 +413,7 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
+	resolveRootBusinessKey(ctx, instance)
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -485,6 +497,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
+	resolveRootBusinessKey(ctx, instance)
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {

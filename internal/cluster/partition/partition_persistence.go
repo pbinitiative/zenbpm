@@ -1214,10 +1214,13 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
-	businessKey, bkFound := appcontext.BusinessKeyFromContext(ctx)
-	if !bkFound && processInstance.ProcessInstance().BusinessKey != nil {
+	var businessKey string
+	var bkFound bool
+	if processInstance.ProcessInstance().BusinessKey != nil {
 		businessKey = *processInstance.ProcessInstance().BusinessKey
 		bkFound = true
+	} else {
+		businessKey, bkFound = appcontext.BusinessKeyFromContext(ctx)
 	}
 
 	var parentProcessExecutionToken ssql.NullInt64

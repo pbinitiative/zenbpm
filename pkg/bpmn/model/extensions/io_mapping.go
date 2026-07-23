@@ -7,6 +7,10 @@ type TIoMapping struct {
 	Target string `xml:"target,attr"`
 }
 
+type TIn struct {
+	BusinessKey string `xml:"businessKey,attr"`
+}
+
 type TCalledElement struct {
 	ProcessId   string  `xml:"processId,attr"`
 	BindingType *string `xml:"bindingType,attr,omitempty"`

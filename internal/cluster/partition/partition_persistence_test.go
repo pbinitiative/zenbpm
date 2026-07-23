@@ -596,6 +596,44 @@ func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {
 	require.False(t, childWithoutTTLRow.HistoryTtlSec.Valid)
 }
 
+func TestSaveProcessInstanceExplicitBusinessKeyOverridesContext(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-business-key-override")
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "business-key-override-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="business-key-override-process" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	emptyBusinessKey := ""
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			BusinessKey:    &emptyBusinessKey,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	ctx := appcontext.WithBusinessKey(t.Context(), "context-business-key")
+	require.NoError(t, db.SaveProcessInstance(ctx, &instance))
+
+	row, err := db.Queries.GetProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, row.BusinessKey.Valid)
+	assert.Equal(t, "", row.BusinessKey.String)
+}
+
 func queryCount(t *testing.T, db *DB, query string) int64 {
 	row := db.QueryRowContext(t.Context(), query)
 	var count int64

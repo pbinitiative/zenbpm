@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -25,6 +25,17 @@ import (
 )
 
 var app Application
+
+type testMainWithCleanup struct {
+	testMain *testing.M
+	cleanup  func()
+}
+
+func (m testMainWithCleanup) Run() int {
+	exitCode := m.testMain.Run()
+	m.cleanup()
+	return exitCode
+}
 
 type ClusterStatus struct {
 	ClusterConfig struct {
@@ -119,25 +130,32 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	code := m.Run()
-	// cleanup after the app
-	ctxCancel()
-	// cleanup
-	svr.Stop(appContext)
-	grpcSrv.Stop()
-	err = zenNode.Stop()
-	if err != nil {
-		log.Error("failed to properly stop zen node: %s", err)
-	}
-	openTelemetry.Stop(appContext)
-	os.RemoveAll(tempDir)
-	os.Exit(code)
+	goleak.VerifyTestMain(
+		testMainWithCleanup{
+			testMain: m,
+			cleanup: func() {
+				ctxCancel()
+				svr.Stop(appContext)
+				grpcSrv.Stop()
+				if err := zenNode.Stop(); err != nil {
+					log.Error("failed to properly stop zen node: %s", err)
+				}
+				openTelemetry.Stop(appContext)
+				err := os.RemoveAll(tempDir)
+				if err != nil {
+					return
+				}
+			},
+		},
+		goleak.IgnoreCurrent(),
+		goleak.IgnoreAnyFunction("github.com/rqlite/rqlite/v10/cluster.(*Service).handleConn"),
+	)
 }
 
 func cleanProcessInstances(t *testing.T) {
 	processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: ptr.To(zenclient.GetProcessInstancesParamsState("failed")),
-		Size:  ptr.To(int32(5000)),
+		State: new(zenclient.GetProcessInstancesParamsState("failed")),
+		Size:  new(int32(5000)),
 	})
 	assert.NoError(t, err)
 	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
@@ -154,15 +172,15 @@ func cleanProcessInstances(t *testing.T) {
 	}
 
 	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: ptr.To(zenclient.GetProcessInstancesParamsState("failed")),
-		Size:  ptr.To(int32(5000)),
+		State: new(zenclient.GetProcessInstancesParamsState("failed")),
+		Size:  new(int32(5000)),
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
 
 	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
-		Size:  ptr.To(int32(5000)),
+		State: new(zenclient.GetProcessInstancesParamsState("active")),
+		Size:  new(int32(5000)),
 	})
 	assert.NoError(t, err)
 	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
@@ -178,8 +196,8 @@ func cleanProcessInstances(t *testing.T) {
 		}
 	}
 	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
-		Size:  ptr.To(int32(5000)),
+		State: new(zenclient.GetProcessInstancesParamsState("active")),
+		Size:  new(int32(5000)),
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))

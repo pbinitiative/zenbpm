@@ -176,7 +176,8 @@ func (h reqIDHandler) cleanBodyAttr(attr slog.Attr, contentEncoding string) slog
 	if body == "" {
 		return slog.Attr{}
 	}
-	if contentEncoding != "" && contentEncoding != "identity" {
+	contentEncoding = strings.TrimSpace(contentEncoding)
+	if contentEncoding != "" && !strings.EqualFold(contentEncoding, "identity") {
 		decoded, ok := decodeBody(body, contentEncoding, h.maxBodyBytes)
 		if !ok {
 			return slog.String(attr.Key, "["+contentEncoding+" body omitted]")
@@ -194,7 +195,7 @@ func (h reqIDHandler) cleanBodyAttr(attr slog.Attr, contentEncoding string) slog
 // capture limit decodes into its readable prefix.
 func decodeBody(body string, contentEncoding string, maxBodyBytes int) (string, bool) {
 	var reader io.ReadCloser
-	switch contentEncoding {
+	switch strings.ToLower(strings.TrimSpace(contentEncoding)) {
 	case "gzip":
 		gzipReader, err := gzip.NewReader(strings.NewReader(body))
 		if err != nil {
@@ -231,7 +232,7 @@ func headerFromRecord(record slog.Record, groupKey, header string) string {
 			return true
 		}
 		for _, headerAttr := range attr.Value.Group() {
-			if headerAttr.Key == header {
+			if strings.EqualFold(headerAttr.Key, header) {
 				value = headerAttr.Value.String()
 				return false
 			}

@@ -57,8 +57,11 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	return engine.processTimerTriggerOnToken(ctx, timer)
 }
 
-func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	var tokens []runtime.ExecutionToken
+func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer) (
+	resInstance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
@@ -74,6 +77,17 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err)
 	}
+	// Make sure the instance locks held by the batch are released on every error path. Clear after a successful Flush (or a previous Clear) is a no-op.
+	defer func() {
+		if r := recover(); r != nil {
+			resInstance = nil
+			tokens = nil
+			retErr = fmt.Errorf("failed to trigger timer %d, panic recovered: %v\n%s", timer.Key, r, debug.Stack())
+		}
+		if retErr != nil {
+			batch.Clear(ctx)
+		}
+	}()
 	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)

@@ -13,7 +13,19 @@ func TestActivityElementTypes(t *testing.T) {
 	assert.Equal(t, ElementType("SUB_PROCESS"), (&TSubProcess{}).GetType())
 }
 
+// activityWithoutBusinessKey models an activity implemented by a downstream package.
+// It intentionally does not expose GetBusinessKey, because that is not an activity-wide concern.
+type activityWithoutBusinessKey struct {
+	TFlowNode
+}
+
+func (activityWithoutBusinessKey) GetMultiInstance() *TMultiInstance {
+	return nil
+}
+
 func TestAllInterfacesImplemented(t *testing.T) {
+	var _ Activity = (*activityWithoutBusinessKey)(nil)
+
 	var _ InternalTask = &TServiceTask{}
 	var _ InternalTask = &TUserTask{}
 	var _ InternalTask = &TBusinessRuleTask{}

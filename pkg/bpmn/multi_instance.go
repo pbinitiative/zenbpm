@@ -221,9 +221,7 @@ func (engine *Engine) startParallelMultiInstance(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.GetId(),
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, instance.ProcessInstance().BusinessKey),
 		},
 	)
 	if err != nil {
@@ -294,9 +292,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.GetId(),
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, instance.ProcessInstance().BusinessKey),
 		},
 	)
 	if err != nil {

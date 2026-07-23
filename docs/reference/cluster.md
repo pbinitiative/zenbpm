@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 ---
 import ApiOperation from "@theme/ApiOperation";
 import ApiSchema from "@theme/ApiSchema";
@@ -41,7 +41,7 @@ Current theoretical limit for partitions is 122 due to network multiplexer imple
 :::
 
 :::note[Future plans]
-You can specify how many partitions and partition replicas will be created through the [application configuration](./configuration.md). After the cluster has been created you can modify these through [zenctl](./zenctl.md) cli that is used to manage Zen clusters.
+You can specify how many partitions and partition replicas will be created through the [application configuration](/reference/configuration). After the cluster has been created you can modify these through [zenctl](/reference/zenctl) cli that is used to manage Zen clusters.
 :::
 
 :::note[Future plans]

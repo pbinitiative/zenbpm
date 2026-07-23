@@ -68,7 +68,7 @@ Message start, message intermediate catch, and message boundary events receive m
 How a message reaches a catching event:
 
 1. When a token arrives at the event, the engine evaluates the correlation key against the instance variables and creates a **message subscription**. For message start events, the subscription is created at deployment time and has no correlation key.
-2. An external system publishes a message by name — and, when targeting a running instance, with a correlation key — via the REST or gRPC API. See [Send and receive messages](../../../../how-to/send-receive-messages.md).
+2. An external system publishes a message by name — and, when targeting a running instance, with a correlation key — via the REST or gRPC API.
 3. The engine matches the message to the waiting subscription and applies the payload: **without output mappings, all payload variables are propagated to the instance**; with `zenbpm:output` mappings, only the mapped ones. See [Variables](../../variable-mapping.md).
 4. The token continues along the event's outgoing flow — or, for a start event, a new instance begins.
 
@@ -116,7 +116,6 @@ Identical to the message intermediate throw event, except that the path ends onc
 
 ## Related documentation
 
-- [Send and receive messages](../../../../how-to/send-receive-messages.md) — publishing messages and correlating them over the REST API.
 - [Variables](../../variable-mapping.md) — payload propagation rules for catching events.
 - [Receive task](../activities/tasks/receive-task.md) — the activity-shaped counterpart of the message catch event.
 - [Send task](../activities/tasks/send-task.md) — the activity-shaped counterpart of the message throw event.

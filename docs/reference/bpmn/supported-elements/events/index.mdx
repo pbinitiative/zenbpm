@@ -124,7 +124,7 @@ A start event defines the beginning of a process instance. It has no incoming se
 
 The trigger depends on the type:
 
-- **None start event** — no event definition is attached. The process is started explicitly by a caller, typically through the REST or gRPC API. See [Start a process instance](../../../../how-to/start-process-instance.mdx).
+- **None start event** — no event definition is attached. The process is started explicitly by a caller, typically through the REST or gRPC API.
 - **[Message start event](./message-events.md#message-start-event)** — a new instance is created each time a matching message is published.
 - **[Timer start event](./timer-events.md#timer-start-event)** — instances are created on a schedule, without any external trigger.
 
@@ -175,7 +175,6 @@ See [Variables](../../variable-mapping.md) for the full propagation rules.
 
 - [Variables](../../variable-mapping.md) — output-mapping propagation rules for catching events and activities.
 - [Message events](./message-events.md), [Timer events](./timer-events.md), [Error events](./error-events.md), [Link events](./link-events.md) — the individual event types.
-- [Start a process instance](../../../../how-to/start-process-instance.mdx) — starting processes through none start events via the API.
 - [Event-based gateway](../gateways/event-based-gateway.md) — branching on the first of several catch events to trigger.
 
 ## XML example

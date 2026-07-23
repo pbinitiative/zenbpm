@@ -18,7 +18,7 @@ The engine is fully instrumented via [OpenTelemetry](https://opentelemetry.io/):
 
 The engine uses a storage interface to interact with storage systems. ZenBPM platform implements a solution based on RqLite database. The codebase also provides a default implementation for in [memory storage](https://pkg.go.dev/github.com/pbinitiative/zenbpm/pkg/storage/inmemory) that is used by the engine's Unit tests.
 
-See [Variables](./variables.md) for variable propagation and output mapping rules.
+See [Variables](./variable-mapping.md) for variable propagation and output mapping rules.
 
 ## Node processing in the engine
 

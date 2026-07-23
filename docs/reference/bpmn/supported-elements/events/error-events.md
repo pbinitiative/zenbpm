@@ -45,7 +45,7 @@ Errors are declared once as `bpmn:error` elements and referenced by throwing and
 
 How an error travels through the process:
 
-1. An error is raised — a token reaches an error end event, or a job worker reports a business error with an error code instead of completing the job (see [Handle errors](../../../../how-to/handle-errors.md)).
+1. An error is raised — a token reaches an error end event, or a job worker reports a business error with an error code instead of completing the job.
 2. The engine looks for a matching error handler, starting at the enclosing activity and walking up the scope hierarchy — surrounding sub processes, then the call activities of parent processes. At each scope, both error boundary events and error [event sub processes](../activities/event-sub-process.md) are considered: a boundary event attached to the throwing activity wins over the scope's event sub process, and a handler referencing a specific error code wins over a catch-all.
 3. The first match wins: every scope between the throw and the catch is terminated, the boundary event interrupts its activity, and the token continues along the boundary event's outgoing flow. When the error comes from a failed job, the job's variables form the payload of the catching event — all of them are propagated unless `zenbpm:output` mappings select specific ones (see [Variables](../../variable-mapping.md)).
 4. If no scope catches the error, an **incident** is recorded and the affected part of the process stops for manual intervention.
@@ -60,7 +60,6 @@ Ends the current path by throwing the referenced error instead of completing nor
 
 ## Related documentation
 
-- [Handle errors](../../../../how-to/handle-errors.md) — throwing business errors from job workers, incidents, and recovery.
 - [Variables](../../variable-mapping.md) — payload propagation rules for catching events.
 - [Service task](../activities/tasks/service-task.md) — the job-based task whose failures error boundary events typically handle.
 - [Sub process](../activities/sub-process.md) and [Call activity](../activities/call-activity.md) — the scopes errors propagate out of.

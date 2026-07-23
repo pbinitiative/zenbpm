@@ -20,11 +20,11 @@ Rendered as a rounded rectangle with a gear icon in the top-left corner.
 
 To make a Service Task executable, define the job type in a `zenbpm:taskDefinition` extension element. Optionally, control the data that flows into and out of the task with a `zenbpm:ioMapping`.
 
-| Extension element                    | Attribute          | Required | Description                                                                                                                                                                               |
-| ------------------------------------ | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zenbpm:taskDefinition`              | `type`             | yes      | The job type. The engine creates a job of this type when the task is activated; workers subscribe to this type to receive the job.                                                        |
-| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, visible to the job worker. See [Variables](../../../variable-mapping.md). |
-| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the job's result variables back to the process scope. See [Variables](../../../variable-mapping.md).                     |
+| Extension element                    | Attribute          | Required | Description                                                                                                                        |
+| ------------------------------------ | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `zenbpm:taskDefinition`              | `type`             | yes      | The job type. The engine creates a job of this type when the task is activated; workers subscribe to this type to receive the job. |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, visible to the job worker. See [Variables](../../../variable-mapping.md).      |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the job's result variables back to the process scope. See [Variables](../../../variable-mapping.md).                          |
 
 Execution flow:
 
@@ -36,11 +36,7 @@ Execution flow:
 ## Related documentation
 
 - [Jobs](../../../../jobs.md) — how jobs are created, distributed, and completed over the REST and gRPC APIs.
-- [Implement a job worker](../../../../../how-to/implement-job-worker.md) — build the application that executes Service Task jobs.
 - [Variables](../../../variable-mapping.md) — variable scoping and output mapping propagation rules for activities.
-- [Handle errors](../../../../../how-to/handle-errors.md) — failing jobs, incidents, and recovering from errors.
-- [Error boundary event](../../events/error-events.md#error-boundary-event) — routing the process when a job throws a BPMN error.
-- [Multi-instance activity](../activity-multi-instance.md) — running a Service Task once per element of a collection.
 
 ## XML example
 

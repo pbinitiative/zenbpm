@@ -116,7 +116,12 @@ func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
-		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence))
+		// The BPMN engine owns this runtime. Reuse it for DMN evaluation instead
+		// of creating a second default FEEL worker pool with no shutdown owner.
+		engine.dmnEngine = dmn.NewEngine(
+			dmn.EngineWithStorage(persistence),
+			dmn.EngineWithFeel(engine.feelRuntime),
+		)
 	}
 }
 

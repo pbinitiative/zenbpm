@@ -22,8 +22,9 @@ import (
 )
 
 type ZenDmnEngine struct {
-	persistence storage.DecisionStorage
-	feelRuntime script.FeelRuntime
+	persistence     storage.DecisionStorage
+	feelRuntime     script.FeelRuntime
+	ownsFeelRuntime bool
 }
 
 type EngineOption = func(*ZenDmnEngine)
@@ -32,11 +33,14 @@ type EngineOption = func(*ZenDmnEngine)
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
-		feelRuntime: feel.NewFeelinRuntime(1, 1),
 	}
 
 	for _, option := range options {
 		option(&engine)
+	}
+	if engine.feelRuntime == nil {
+		engine.feelRuntime = feel.NewFeelinRuntime(1, 1)
+		engine.ownsFeelRuntime = true
 	}
 
 	return &engine
@@ -48,10 +52,26 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 	}
 }
 
+// EngineWithFeel sets the FEEL runtime used for expression evaluation and hands
+// its ownership to the caller. It is meant for construction time only (through
+// NewEngine): applying it to a running engine stops an already owned runtime and
+// with it any FEEL evaluation in flight.
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 	return func(engine *ZenDmnEngine) {
+		engine.Stop()
 		engine.feelRuntime = feel
+		engine.ownsFeelRuntime = false
 	}
+}
+
+// Stop releases resources created and owned by the DMN engine. A runtime
+// supplied through EngineWithFeel remains owned by the caller.
+func (engine *ZenDmnEngine) Stop() {
+	if !engine.ownsFeelRuntime || engine.feelRuntime == nil {
+		return
+	}
+	engine.ownsFeelRuntime = false
+	engine.feelRuntime.Stop()
 }
 
 func (engine *ZenDmnEngine) ParseDmnFromFile(filename string) (*dmn.TDefinitions, []byte, error) {

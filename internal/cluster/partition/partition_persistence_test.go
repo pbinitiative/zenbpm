@@ -3,6 +3,7 @@ package partition
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	ssql "database/sql"
 
+	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
@@ -148,6 +150,95 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 		}
 	}
 	return partition, conf, clientMgr, tStore, ts
+}
+
+func TestPartitionObserverConsumesRegisteredChannel(t *testing.T) {
+	partition, _, _, _, server := prepareTestSetup(t, false)
+	defer func() {
+		assert.NoError(t, partition.Stop())
+		assert.NoError(t, server.Close())
+	}()
+
+	require.NotNil(t, partition.observer, "raft observer has to stay registered while the node runs")
+	require.NotNil(t, partition.observerChan, "observer channel has to be reachable from the node")
+
+	// Data of a type the observer loop does not act on, so this only asserts
+	// that the loop drains the channel the raft observer publishes into and
+	// triggers no partition state change callback.
+	partition.observerChan <- raft.Observation{Data: struct{}{}}
+
+	require.Eventually(t, func() bool {
+		return len(partition.observerChan) == 0
+	}, 5*time.Second, 10*time.Millisecond, "partition observer did not consume the registered channel")
+}
+
+func TestZenPartitionNodeStopHandlesNilAndPartialNode(t *testing.T) {
+	var nilPartition *ZenPartitionNode
+	require.NoError(t, nilPartition.Stop())
+
+	partialPartition := &ZenPartitionNode{
+		config: &config.RqLite{},
+		logger: hclog.Default(),
+	}
+	require.NoError(t, partialPartition.Stop())
+}
+
+func TestZenPartitionNodeStopIsSafeToCallConcurrently(t *testing.T) {
+	observerClose := make(chan struct{})
+	observerDone := make(chan struct{})
+	go func() {
+		<-observerClose
+		close(observerDone)
+	}()
+
+	node := &ZenPartitionNode{
+		config:        &config.RqLite{},
+		logger:        hclog.Default(),
+		observerClose: observerClose,
+		observerDone:  observerDone,
+	}
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, node.Stop())
+		}()
+	}
+	wg.Wait()
+}
+
+func TestNewDBRejectsNegativeCacheSizes(t *testing.T) {
+	tests := []struct {
+		name        string
+		procDefSize int
+		decDefSize  int
+		errContains string
+	}{
+		{
+			name:        "process definition cache",
+			procDefSize: -1,
+			decDefSize:  1,
+			errContains: "failed to create process definition cache",
+		},
+		{
+			name:        "decision definition cache",
+			procDefSize: 1,
+			decDefSize:  -1,
+			errContains: "failed to create decision definition cache",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newDB(nil, 1, hclog.Default(), config.Persistence{
+				ProcDefCacheSize: tt.procDefSize,
+				DecDefCacheSize:  tt.decDefSize,
+			}, nil, nil, testDBOptions())
+			require.ErrorContains(t, err, tt.errContains)
+		})
+	}
 }
 
 func TestRqLiteStorage(t *testing.T) {

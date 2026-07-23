@@ -2,6 +2,7 @@ package partition
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -44,9 +45,11 @@ type ZenPartitionNode struct {
 	PartitionId     uint32
 	config          *config.RqLite
 	store           *store.Store
+	storeOpen       bool
 	DB              *DB
 	credentialStore *auth.CredentialsStore
 	clusterClient   *cluster.Client
+	clusterDialer   *network.ClosableDialer
 	clusterService  *cluster.Service
 	statusMu        sync.Mutex
 	statuses        map[string]httpd.StatusReporter
@@ -62,6 +65,9 @@ type ZenPartitionNode struct {
 	observerChan  chan raft.Observation
 	observerClose chan struct{}
 	observerDone  chan struct{}
+
+	stopOnce sync.Once
+	stopErr  error
 
 	stateChangeCallbacks PartitionChangesCallbacks
 }
@@ -99,7 +105,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	return startZenPartitionNode(ctx, mux, persistenceConfig, client, partition, callbacks, zenState, defaultDBOptions())
 }
 
-func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (*ZenPartitionNode, error) {
+func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (_ *ZenPartitionNode, err error) {
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
@@ -108,6 +114,14 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		logger:               hclog.Default().Named(fmt.Sprintf("zen-partition-node-%d", partition)),
 		stateChangeCallbacks: callbacks,
 	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		if cleanupErr := zpn.Stop(); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to clean up partition after startup error: %w", cleanupErr))
+		}
+	}()
 	zpn.logger.Info(fmt.Sprintf("Starting partition %d node", partition))
 
 	zpn.createMetrics()
@@ -196,9 +210,10 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	if err := str.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
+	zpn.storeOpen = true
 
-	observerChan := make(chan raft.Observation, observerChanLen)
-	zpn.observer = raft.NewObserver(observerChan, true, func(o *raft.Observation) bool {
+	zpn.observerChan = make(chan raft.Observation, observerChanLen)
+	zpn.observer = raft.NewObserver(zpn.observerChan, true, func(o *raft.Observation) bool {
 		_, isLeaderChange := o.Data.(raft.LeaderObservation)
 		_, isFailedHeartBeat := o.Data.(raft.FailedHeartbeatObservation)
 		_, isResumedHeartBeat := o.Data.(raft.ResumedHeartbeatObservation)
@@ -258,7 +273,23 @@ func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 	return zpn.clusterClient.Stats()
 }
 
+// Stop shuts the partition node down and releases its resources. It is safe to
+// call from multiple goroutines: the node is reachable both from Controller.Stop
+// and from the partition leaving handler, and the shutdown sequence closes
+// channels that must not be closed twice.
 func (zpn *ZenPartitionNode) Stop() error {
+	if zpn == nil {
+		return nil
+	}
+	zpn.stopOnce.Do(func() {
+		zpn.stopErr = zpn.stop()
+	})
+	return zpn.stopErr
+}
+
+func (zpn *ZenPartitionNode) stop() error {
+	var stopErr error
+
 	if zpn.Engine != nil {
 		zpn.Engine.Stop()
 	}
@@ -271,33 +302,62 @@ func (zpn *ZenPartitionNode) Stop() error {
 	if zpn.JsRuntime != nil {
 		zpn.JsRuntime.Stop()
 	}
-	zpn.clusterService.Close()
-	if zpn.config.RaftClusterRemoveOnShutdown {
-		remover := cluster.NewRemover(zpn.clusterClient, 1*time.Second, zpn.store)
-		remover.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, zpn.config.JoinAs))
-		zpn.logger.Info("initiating removal of this node from cluster before shutdown")
-		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err := remover.Do(removeCtx, zpn.config.NodeID, true)
-		cancel()
-		if err != nil {
-			return fmt.Errorf("failed to remove this node from cluster before shutdown: %w", err)
-		}
-		zpn.logger.Info("removed this node successfully from cluster before shutdown")
+	if zpn.observer != nil && zpn.storeOpen {
+		zpn.store.DeregisterObserver(zpn.observer)
+		zpn.observer = nil
+	}
+	if zpn.observerClose != nil {
+		close(zpn.observerClose)
+		<-zpn.observerDone
+		zpn.observerClose = nil
+		zpn.observerDone = nil
 	}
 
-	if zpn.config.RaftStepdownOnShutdown {
-		if zpn.store.IsLeader() {
-			// Don't log a confusing message if (probably) not Leader
+	if zpn.storeOpen {
+		standalone := zpn.store.IsStandalone()
+		if zpn.config.RaftClusterRemoveOnShutdown && !standalone {
+			remover := cluster.NewRemover(zpn.clusterClient, 1*time.Second, zpn.store)
+			remover.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, zpn.config.JoinAs))
+			zpn.logger.Info("initiating removal of this node from cluster before shutdown")
+			removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := remover.Do(removeCtx, zpn.config.NodeID, true)
+			cancel()
+			if err != nil {
+				stopErr = errors.Join(stopErr, fmt.Errorf("failed to remove this node from cluster before shutdown: %w", err))
+			} else {
+				zpn.logger.Info("removed this node successfully from cluster before shutdown")
+			}
+		} else if zpn.config.RaftClusterRemoveOnShutdown {
+			zpn.logger.Info("skipping removal of the only voting node during shutdown")
+		}
+
+		if zpn.config.RaftStepdownOnShutdown && !standalone && zpn.store.IsLeader() {
 			zpn.logger.Info("stepping down as Leader before shutdown")
+			if err := zpn.store.Stepdown(true, ""); err != nil {
+				stopErr = errors.Join(stopErr, fmt.Errorf("failed to step down partition leader: %w", err))
+			}
 		}
-		zpn.store.Stepdown(true, "")
 	}
 
-	if err := zpn.store.Close(true); err != nil {
-		zpn.logger.Info(fmt.Sprintf("failed to close store: %s", err.Error()))
+	if zpn.clusterDialer != nil {
+		if err := zpn.clusterDialer.Close(); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to close RQLite cluster connections: %w", err))
+		}
+	}
+	if zpn.clusterService != nil {
+		if err := zpn.clusterService.Close(); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to close RQLite cluster service: %w", err))
+		}
+	}
+	if zpn.storeOpen {
+		if err := zpn.store.Close(true); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to close RQLite store: %w", err))
+		} else {
+			zpn.storeOpen = false
+		}
 	}
 	zpn.logger.Info("rqlite server stopped")
-	return nil
+	return stopErr
 }
 
 func (zpn *ZenPartitionNode) registerStatus(key string, stat httpd.StatusReporter) error {
@@ -377,6 +437,7 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 
 	safego.Go("partition-observer", zpn.logger, func() {
 		defer close(doneCh)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -506,8 +567,10 @@ func (zpn *ZenPartitionNode) createClusterClient(cfg *config.RqLite, clstr *clus
 	if err != nil {
 		return nil, fmt.Errorf("failed to create RqLite cluster dialer: %s", err.Error())
 	}
+	zpn.clusterDialer = clstrDialer
 	clstrClient := cluster.NewClient(clstrDialer, cfg.ClusterConnectTimeout)
 	if err := clstrClient.SetLocal(cfg.RaftAdv, clstr); err != nil {
+		_ = clstrDialer.Close()
 		return nil, fmt.Errorf("failed to set cluster client local parameters: %s", err.Error())
 	}
 	return clstrClient, nil

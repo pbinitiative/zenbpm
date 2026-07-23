@@ -105,7 +105,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 			w.WriteHeader(200)
 			_, err := w.Write(state)
 			if err != nil {
-				log.Error("failed to write status: %v", err)
+				restLogger.Error("failed to write status", "error", err)
 				return
 			}
 		})

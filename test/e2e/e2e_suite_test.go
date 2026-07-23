@@ -134,21 +134,19 @@ func TestMain(m *testing.M) {
 		testMainWithCleanup{
 			testMain: m,
 			cleanup: func() {
-				ctxCancel()
 				svr.Stop(appContext)
 				grpcSrv.Stop()
 				if err := zenNode.Stop(); err != nil {
 					log.Error("failed to properly stop zen node: %s", err)
 				}
 				openTelemetry.Stop(appContext)
+				ctxCancel()
 				err := os.RemoveAll(tempDir)
 				if err != nil {
 					return
 				}
 			},
 		},
-		goleak.IgnoreCurrent(),
-		goleak.IgnoreAnyFunction("github.com/rqlite/rqlite/v10/cluster.(*Service).handleConn"),
 	)
 }
 

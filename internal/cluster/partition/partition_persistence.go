@@ -28,7 +28,6 @@ import (
 	ssql "database/sql"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/hashicorp/golang-lru/v2/expirable"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
@@ -52,8 +51,8 @@ type DB struct {
 	Partition              uint32
 	migrationDir           string
 	tracer                 trace.Tracer
-	pdCache                *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
-	drdCache               *expirable.LRU[int64, dmnruntime.DmnResourceDefinition]
+	pdCache                *ttlCache[int64, bpmnruntime.ProcessDefinition]
+	drdCache               *ttlCache[int64, dmnruntime.DmnResourceDefinition]
 	client                 *client.ClientManager
 	zenState               func() state.Cluster
 	historyDeleteBatchSize int
@@ -119,6 +118,14 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	if opts.historyDeleteBatchSize <= 0 {
 		opts.historyDeleteBatchSize = defaultHistoryDeleteBatchSize
 	}
+	pdCache, err := newTTLCache[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, time.Duration(cfg.ProcDefCacheTTL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create process definition cache: %w", err)
+	}
+	drdCache, err := newTTLCache[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, time.Duration(cfg.DecDefCacheTTL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create decision definition cache: %w", err)
+	}
 	db := &DB{
 		Store:                  store,
 		logger:                 logger,
@@ -126,8 +133,8 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		tracer:                 otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		Partition:              partition,
 		migrationDir:           migrationDir,
-		pdCache:                expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Duration(cfg.ProcDefCacheTTL)),
-		drdCache:               expirable.NewLRU[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
+		pdCache:                pdCache,
+		drdCache:               drdCache,
 		client:                 client,
 		zenState:               zenState,
 		historyDeleteBatchSize: opts.historyDeleteBatchSize,

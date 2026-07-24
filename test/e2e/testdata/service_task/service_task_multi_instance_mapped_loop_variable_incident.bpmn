@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_service_task_multi_instance_mapped_loop_variable_incident" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="service_task_multi_instance_mapped_loop_variable_incident" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>flow_to_service_task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_to_service_task" sourceRef="start_event" targetRef="service_task" />
+    <bpmn:serviceTask id="service_task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="mapped-loop-variable-incident" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=item + &#34;-mapped&#34;" target="item" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_to_service_task</bpmn:incoming>
+      <bpmn:outgoing>flow_to_end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zenbpm:loopCharacteristics inputCollection="=items" inputElement="item" outputCollection="results" outputElement="=item" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow_to_end" sourceRef="service_task" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

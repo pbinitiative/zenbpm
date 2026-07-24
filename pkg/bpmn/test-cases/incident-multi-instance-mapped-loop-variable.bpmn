@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_incident_multi_instance_mapped_loop_variable" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="incident-multi-instance-mapped-loop-variable" isExecutable="true">
+    <bpmn:startEvent id="start">
+      <bpmn:outgoing>flow-to-task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow-to-task" sourceRef="start" targetRef="retry-task" />
+    <bpmn:serviceTask id="retry-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="mapped-loop-variable-retry-job" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=item + &#34;-mapped&#34;" target="item" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow-to-task</bpmn:incoming>
+      <bpmn:outgoing>flow-to-end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zenbpm:loopCharacteristics inputCollection="=items" inputElement="item" outputCollection="results" outputElement="=item" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow-to-end" sourceRef="retry-task" targetRef="end" />
+    <bpmn:endEvent id="end">
+      <bpmn:incoming>flow-to-end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

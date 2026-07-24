@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -37,6 +38,41 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 	}
 
 	return engine.createStartEventSubscriptions(ctx, batch, subProcess.TProcess, *processDefinition, &instance)
+}
+
+func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
+	element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(job.ElementId)
+	task, ok := element.(bpmn20.InternalTask)
+	if !ok {
+		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
+	}
+
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find flow element instance %d for job %d: %w", job.ElementInstanceKey, job.Key, err)
+	}
+
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	if activity, ok := element.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
+		inputElementName := activity.GetMultiInstance().LoopCharacteristics.InputElementName
+		inputElement, ok := flowElementInstance.InputVariables[inputElementName]
+		if !ok {
+			return fmt.Errorf("failed to find multi-instance input variable %s for job %d", inputElementName, job.Key)
+		}
+		variableHolder.SetLocalVariable(inputElementName, inputElement)
+	}
+
+	flowElementInput := variableHolder.ExecutionScopeSnapshot()
+	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression); err != nil {
+		return fmt.Errorf("failed to evaluate input variables for job %d: %w", job.Key, err)
+	}
+	job.InputVariables = variableHolder.LocalVariables()
+
+	flowElementInstance.InputVariables = flowElementInput
+	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
+		return fmt.Errorf("failed to update input variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	return nil
 }
 
 func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr error) {
@@ -131,6 +167,9 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 
 	// TODO: the same thing has to happen for other waiting subscriptions
 	if job != nil {
+		if err := engine.reevaluateJobInputVariables(ctx, &batch, instance, job); err != nil {
+			return err
+		}
 		incident.Token.State = runtime.TokenStateWaiting
 		job.State = runtime.ActivityStateActive
 		err := batch.SaveJob(ctx, *job)

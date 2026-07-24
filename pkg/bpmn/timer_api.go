@@ -57,8 +57,11 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	return engine.processTimerTriggerOnToken(ctx, timer)
 }
 
-func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	var tokens []runtime.ExecutionToken
+func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer) (
+	resInstance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
@@ -74,6 +77,17 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err)
 	}
+	// Make sure the instance locks held by the batch are released on every error path. Clear after a successful Flush (or a previous Clear) is a no-op.
+	defer func() {
+		if r := recover(); r != nil {
+			resInstance = nil
+			tokens = nil
+			retErr = fmt.Errorf("failed to trigger timer %d, panic recovered: %v\n%s", timer.Key, r, debug.Stack())
+		}
+		if retErr != nil {
+			batch.Clear(ctx)
+		}
+	}()
 	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)
@@ -92,7 +106,6 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	case *bpmn20.TEventBasedGateway:
 		t, err := engine.publishEventOnEventGateway(ctx, &batch, nodeT, timer, instance, nil)
 		if err != nil {
-			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
 		}
 		tokens = t
@@ -123,12 +136,10 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		}
 		tokens, err = engine.handleElementTransition(ctx, &batch, instance, nodeT, *timer.Token)
 		if err != nil {
-			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
-			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
 	case bpmn20.Activity:
@@ -137,12 +148,10 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		}
 		tokens, err = engine.handleBoundaryTimer(ctx, &batch, timer, instance, *timer.Token)
 		if err != nil {
-			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
-			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
 

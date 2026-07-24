@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_cancelrace" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="timer-boundary-noninterrupting-cancel-race" name="Boundary timer cancelled right before firing" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="main-task" />
+    <bpmn:serviceTask id="main-task" name="Main task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="race-main-job" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_final</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="BoundaryTimer_main" cancelActivity="false" attachedToRef="main-task">
+      <bpmn:outgoing>Flow_boundary_end</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_cancelrace">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT3S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_boundary_end" sourceRef="BoundaryTimer_main" targetRef="EndEvent_boundary" />
+    <bpmn:endEvent id="EndEvent_boundary">
+      <bpmn:incoming>Flow_boundary_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_main_final" sourceRef="main-task" targetRef="final-task" />
+    <bpmn:serviceTask id="final-task" name="Final task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="race-final-job" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_main_final</bpmn:incoming>
+      <bpmn:outgoing>Flow_final_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_final_end" sourceRef="final-task" targetRef="EndEvent_main" />
+    <bpmn:endEvent id="EndEvent_main">
+      <bpmn:incoming>Flow_final_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="timer-boundary-noninterrupting-cancel-race">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_main_task_di" bpmnElement="main-task">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_boundary_timer_di" bpmnElement="BoundaryTimer_main">
+        <dc:Bounds x="322" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_end_boundary_di" bpmnElement="EndEvent_boundary">
+        <dc:Bounds x="442" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_final_task_di" bpmnElement="final-task">
+        <dc:Bounds x="430" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_end_main_di" bpmnElement="EndEvent_main">
+        <dc:Bounds x="592" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="218" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_final_di" bpmnElement="Flow_main_final">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="430" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_boundary_end_di" bpmnElement="Flow_boundary_end">
+        <di:waypoint x="340" y="178" />
+        <di:waypoint x="340" y="230" />
+        <di:waypoint x="442" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_final_end_di" bpmnElement="Flow_final_end">
+        <di:waypoint x="530" y="120" />
+        <di:waypoint x="592" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

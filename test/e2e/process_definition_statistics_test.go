@@ -98,6 +98,113 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NotNil(t, found)
 		assert.Equal(t, 1, found.InstanceCounts.Total)
 		assert.Equal(t, 1, found.InstanceCounts.Failed)
+		assert.Equal(t, 1, found.InstanceCounts.WithIncident)
+	})
+
+	t.Run("withIncident counts active process instances that have an unresolved incident", func(t *testing.T) {
+		def, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+		require.NoError(t, err)
+
+		instance, err := createProcessInstance(t, &def.Key, map[string]any{"testVar": 1})
+		require.NoError(t, err)
+		require.NotEmpty(t, instance.Key)
+		t.Cleanup(func() {
+			_, _ = app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		})
+
+		failJobForElementId(t, instance.Key, "service-task-1", nil, nil)
+		assertProcessInstanceIncidentsLength(t, instance.Key, 1)
+
+		var found *zenclient.ProcessDefinitionStatistics
+		require.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
+				&zenclient.GetProcessDefinitionStatisticsParams{
+					BpmnProcessDefinitionKeyIn: &[]int64{def.Key},
+				})
+			if err != nil || resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+				return false
+			}
+			for _, item := range allStatsItems(resp.JSON200) {
+				if item.Key != def.Key {
+					continue
+				}
+				found = &item
+				return item.InstanceCounts.Total == 1 &&
+					item.InstanceCounts.Active == 1 &&
+					item.InstanceCounts.Failed == 0 &&
+					item.InstanceCounts.Completed == 0 &&
+					item.InstanceCounts.Terminated == 0 &&
+					item.InstanceCounts.WithIncident == 1
+			}
+			return false
+		}, 10*time.Second, 100*time.Millisecond,
+			"statistics should report one active instance with an unresolved incident")
+
+		require.NotNil(t, found, "definition should be present in statistics")
+		assert.Equal(t, 1, found.InstanceCounts.Total, "should have exactly one instance")
+		assert.Equal(t, 1, found.InstanceCounts.Active, "instance is still active after job failure")
+		assert.Equal(t, 0, found.InstanceCounts.Failed, "active instance with incident must not be reported as failed")
+		assert.Equal(t, 0, found.InstanceCounts.Completed)
+		assert.Equal(t, 0, found.InstanceCounts.Terminated)
+		assert.Equal(t, 1, found.InstanceCounts.WithIncident, "active instance with unresolved incident must be counted in withIncident")
+	})
+
+	t.Run("withIncident counts only the instances that actually have an unresolved incident", func(t *testing.T) {
+		// Two active instances, only one of them will receive an incident.
+		def, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+		require.NoError(t, err)
+
+		instanceWithIncident, err := createProcessInstance(t, &def.Key, map[string]any{"testVar": 1})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = app.restClient.CancelProcessInstanceWithResponse(t.Context(), instanceWithIncident.Key)
+		})
+
+		instanceWithoutIncident, err := createProcessInstance(t, &def.Key, map[string]any{"testVar": 2})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = app.restClient.CancelProcessInstanceWithResponse(t.Context(), instanceWithoutIncident.Key)
+		})
+
+		// Both instances are active; only fail the job of the first one.
+		failJobForElementId(t, instanceWithIncident.Key, "service-task-1", nil, nil)
+		assertProcessInstanceIncidentsLength(t, instanceWithIncident.Key, 1)
+
+		// Wait until both service tasks are in waiting state, otherwise
+		// filtering by definition key can return stale results.
+		var stats *zenclient.ProcessDefinitionStatisticsPage
+		require.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
+				&zenclient.GetProcessDefinitionStatisticsParams{
+					BpmnProcessDefinitionKeyIn: &[]int64{def.Key},
+				})
+			if err != nil || resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+				return false
+			}
+			stats = resp.JSON200
+			for _, item := range allStatsItems(stats) {
+				if item.Key != def.Key {
+					continue
+				}
+				return item.InstanceCounts.Total == 2 &&
+					item.InstanceCounts.Active == 2 &&
+					item.InstanceCounts.WithIncident == 1
+			}
+			return false
+		}, 10*time.Second, 100*time.Millisecond,
+			"statistics should report 2 total/active instances and exactly 1 with incident")
+
+		var found *zenclient.ProcessDefinitionStatistics
+		for _, item := range allStatsItems(stats) {
+			if item.Key == def.Key {
+				found = &item
+				break
+			}
+		}
+		require.NotNil(t, found)
+		assert.Equal(t, 2, found.InstanceCounts.Total)
+		assert.Equal(t, 2, found.InstanceCounts.Active)
+		assert.Equal(t, 1, found.InstanceCounts.WithIncident)
 	})
 
 	t.Run("filter by bpmnProcessIdIn", func(t *testing.T) {

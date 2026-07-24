@@ -158,6 +158,17 @@ instance_counts AS (
   WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
   AND pi.process_type not in (2, 4) -- except SubProcess and MultiInstance
   GROUP BY pi.process_definition_key
+),
+incident_instance_counts AS (
+  SELECT
+    pi.process_definition_key,
+    COUNT(DISTINCT pi.key) AS with_incident_count
+  FROM process_instance AS pi
+  INNER JOIN incident AS i ON i.process_instance_key = pi.key
+  WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
+    AND pi.process_type NOT IN (2, 4) -- except SubProcess and MultiInstance
+    AND i.resolved_at IS NULL
+  GROUP BY pi.process_definition_key
 )
 SELECT
   fd."key",
@@ -169,9 +180,11 @@ SELECT
   COALESCE(ic.completed_count, 0) AS completed_count,
   COALESCE(ic.terminated_count, 0) AS terminated_count,
   COALESCE(ic.failed_count, 0) AS failed_count,
+  COALESCE(iic.with_incident_count, 0) AS with_incident_count,
   COUNT(*) OVER() AS total_count
 FROM filtered_definitions AS fd
 LEFT JOIN instance_counts AS ic ON fd."key" = ic.process_definition_key
+LEFT JOIN incident_instance_counts AS iic ON fd."key" = iic.process_definition_key
 ORDER BY
   -- workaround for sqlc - sort parameter handling
   CASE CAST(?3 AS TEXT) WHEN 'name_asc' THEN fd.bpmn_process_name END ASC,
@@ -198,18 +211,22 @@ type FindProcessDefinitionStatisticsParams struct {
 }
 
 type FindProcessDefinitionStatisticsRow struct {
-	Key             int64   `json:"key"`
-	Version         int64   `json:"version"`
-	BpmnProcessID   string  `json:"bpmn_process_id"`
-	BpmnProcessName string  `json:"bpmn_process_name"`
-	TotalInstances  int64   `json:"total_instances"`
-	ActiveCount     float64 `json:"active_count"`
-	CompletedCount  float64 `json:"completed_count"`
-	TerminatedCount float64 `json:"terminated_count"`
-	FailedCount     float64 `json:"failed_count"`
-	TotalCount      int64   `json:"total_count"`
+	Key               int64   `json:"key"`
+	Version           int64   `json:"version"`
+	BpmnProcessID     string  `json:"bpmn_process_id"`
+	BpmnProcessName   string  `json:"bpmn_process_name"`
+	TotalInstances    int64   `json:"total_instances"`
+	ActiveCount       float64 `json:"active_count"`
+	CompletedCount    float64 `json:"completed_count"`
+	TerminatedCount   float64 `json:"terminated_count"`
+	FailedCount       float64 `json:"failed_count"`
+	WithIncidentCount int64   `json:"with_incident_count"`
+	TotalCount        int64   `json:"total_count"`
 }
 
+// with_incident_count is the number of process instances that have at least one
+// directly associated unresolved incident. Each instance is counted once,
+// regardless of its state or number of unresolved incidents.
 func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitionStatistics,
 		arg.Offset,
@@ -237,6 +254,7 @@ func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindP
 			&i.CompletedCount,
 			&i.TerminatedCount,
 			&i.FailedCount,
+			&i.WithIncidentCount,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

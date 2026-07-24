@@ -164,6 +164,7 @@ func (q *Queries) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx
 }
 
 const findChildProcessInstancesPage = `-- name: FindChildProcessInstancesPage :many
+WITH paged AS (
 SELECT
     pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
@@ -199,6 +200,42 @@ ORDER BY
     CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
     pi.created_at DESC
 LIMIT ?8 OFFSET ?7
+)
+SELECT
+    paged.key,
+    paged.process_definition_key,
+    paged.business_key,
+    paged.created_at,
+    paged.state,
+    paged.variables,
+    paged.parent_process_execution_token,
+    paged.parent_process_target_element_id,
+    paged.parent_process_target_element_instance_key,
+    paged.process_type,
+    paged.history_ttl_sec,
+    paged.history_delete_sec,
+    paged.start_element_id,
+    paged.bpmn_process_id,
+    CAST((
+        SELECT COUNT(*)
+        FROM incident AS i
+        WHERE i.process_instance_key = paged.key
+          AND i.resolved_at IS NULL
+    ) AS INTEGER) AS incident_count,
+    paged.total_count
+FROM paged
+ORDER BY
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc' THEN paged.created_at END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN paged.created_at END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN paged."key" END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN paged."key" END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN paged.state END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN paged.state END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc' THEN paged.business_key END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN paged.business_key END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN paged.bpmn_process_id END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN paged.bpmn_process_id END DESC,
+    paged.created_at DESC
 `
 
 type FindChildProcessInstancesPageParams struct {
@@ -227,6 +264,7 @@ type FindChildProcessInstancesPageRow struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	IncidentCount                         int64          `json:"incident_count"`
 	TotalCount                            int64          `json:"total_count"`
 }
 
@@ -263,6 +301,7 @@ func (q *Queries) FindChildProcessInstancesPage(ctx context.Context, arg FindChi
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
 			&i.BpmnProcessID,
+			&i.IncidentCount,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -337,18 +376,18 @@ WITH process_instance_candidates AS (
         process_instance AS pi
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
     WHERE
-        (?12 <> 0 OR ?13 IS NOT NULL)
-        AND ?14 IS NOT NULL
+        (?2 <> 0 OR ?3 IS NOT NULL)
+        AND ?4 IS NOT NULL
         AND pi.process_definition_key IN (
             SELECT candidate.key
             FROM process_definition AS candidate
             WHERE
-                (?12 = 0 OR candidate.key = ?12)
-                AND (?13 IS NULL OR candidate.bpmn_process_id = ?13)
+                (?2 = 0 OR candidate.key = ?2)
+                AND (?3 IS NULL OR candidate.bpmn_process_id = ?3)
         )
         AND pi.created_at BETWEEN
-            CAST(?14 AS INTEGER)
-            AND COALESCE(CAST(?15 AS INTEGER), 9223372036854775807)
+            CAST(?4 AS INTEGER)
+            AND COALESCE(CAST(?5 AS INTEGER), 9223372036854775807)
 
     UNION ALL
 
@@ -360,30 +399,31 @@ WITH process_instance_candidates AS (
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
     WHERE
         CASE WHEN
-            (?12 <> 0 OR ?13 IS NOT NULL)
-            AND ?14 IS NOT NULL
+            (?2 <> 0 OR ?3 IS NOT NULL)
+            AND ?4 IS NOT NULL
         THEN 0 ELSE 1 END
-        AND CASE WHEN ?12 <> 0 THEN
-            pi.process_definition_key = ?12
+        AND CASE WHEN ?2 <> 0 THEN
+            pi.process_definition_key = ?2
         ELSE
             1
         END
-        AND CASE WHEN ?13 IS NOT NULL THEN
-            pd.bpmn_process_id = ?13
+        AND CASE WHEN ?3 IS NOT NULL THEN
+            pd.bpmn_process_id = ?3
         ELSE
             1
         END
-        AND CASE WHEN ?14 IS NOT NULL THEN
-            pi.created_at >= ?14
+        AND CASE WHEN ?4 IS NOT NULL THEN
+            pi.created_at >= ?4
         ELSE
             1
         END
-        AND CASE WHEN ?15 IS NOT NULL THEN
-            pi.created_at <= ?15
+        AND CASE WHEN ?5 IS NOT NULL THEN
+            pi.created_at <= ?5
         ELSE
             1
         END
-)
+),
+paged AS (
 SELECT
     process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.bpmn_process_id,
     COUNT(*) OVER () AS total_count
@@ -392,52 +432,52 @@ FROM
 WHERE
     -- Keep sort_by_order as the first parameter: ORDER BY refers to it as ?1.
     CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
-    AND CASE WHEN ?2 <> 0 THEN
+    AND CASE WHEN ?6 <> 0 THEN
         process_instance_candidates.parent_process_execution_token IN (
             SELECT
                 execution_token.key
             FROM
                 execution_token
             WHERE
-                execution_token.process_instance_key = ?2)
+                execution_token.process_instance_key = ?6)
     ELSE
         1
     END
     AND
-    CASE WHEN ?3 IS NOT NULL THEN
-        process_instance_candidates.business_key = ?3
+    CASE WHEN ?7 IS NOT NULL THEN
+        process_instance_candidates.business_key = ?7
     ELSE
         1
     END
     AND
-    CASE WHEN ?4 IS NOT NULL THEN
+    CASE WHEN ?8 IS NOT NULL THEN
         EXISTS (
             SELECT 1 FROM execution_token et
             WHERE et.process_instance_key = process_instance_candidates.key
-              AND et.element_id = ?4
+              AND et.element_id = ?8
         )
     ELSE
         1
     END
     AND
-    CASE WHEN ?5 IS NOT NULL THEN
-       process_instance_candidates.state = ?5
+    CASE WHEN ?9 IS NOT NULL THEN
+       process_instance_candidates.state = ?9
     ELSE
         1
     END
     AND
     -- workaround for sqlc
     (
-    CASE WHEN ?6 IS NULL AND ?7 IS NULL AND ?8 IS NULL AND ?9 IS NULL THEN
+    CASE WHEN ?10 IS NULL AND ?11 IS NULL AND ?12 IS NULL AND ?13 IS NULL THEN
        1
     ELSE
-         (?6 IS NOT NULL AND process_instance_candidates.process_type = ?6)
+         (?10 IS NOT NULL AND process_instance_candidates.process_type = ?10)
          OR
-         (?7 IS NOT NULL AND process_instance_candidates.process_type = ?7)
+         (?11 IS NOT NULL AND process_instance_candidates.process_type = ?11)
          OR
-         (?8 IS NOT NULL AND process_instance_candidates.process_type = ?8)
+         (?12 IS NOT NULL AND process_instance_candidates.process_type = ?12)
          OR
-         (?9 IS NOT NULL AND process_instance_candidates.process_type = ?9)
+         (?13 IS NOT NULL AND process_instance_candidates.process_type = ?13)
     END
     )
     -- end of workaround
@@ -454,11 +494,54 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN process_instance_candidates.bpmn_process_id END DESC,
   process_instance_candidates.created_at DESC
 
-LIMIT ?11 OFFSET ?10
+LIMIT ?15 OFFSET ?14
+)
+SELECT
+    paged.key,
+    paged.process_definition_key,
+    paged.business_key,
+    paged.created_at,
+    paged.state,
+    paged.variables,
+    paged.parent_process_execution_token,
+    paged.parent_process_target_element_id,
+    paged.parent_process_target_element_instance_key,
+    paged.process_type,
+    paged.history_ttl_sec,
+    paged.history_delete_sec,
+    paged.start_element_id,
+    paged.bpmn_process_id,
+    CAST((
+        SELECT COUNT(*)
+        FROM incident AS i
+        WHERE i.process_instance_key = paged.key
+          AND i.resolved_at IS NULL
+    ) AS INTEGER) AS incident_count,
+    paged.total_count
+FROM paged
+WHERE
+    -- Keep sort_by_order as the first parameter: ORDER BY refers to it as ?1.
+    CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN paged.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN paged.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN paged."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN paged."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN paged.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN paged.state END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN paged.business_key END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN paged.business_key END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN paged.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN paged.bpmn_process_id END DESC,
+  paged.created_at DESC
 `
 
 type FindProcessInstancesPageParams struct {
 	SortByOrder             interface{}   `json:"sort_by_order"`
+	ProcessDefinitionKey    interface{}   `json:"process_definition_key"`
+	BpmnProcessID           interface{}   `json:"bpmn_process_id"`
+	CreatedFrom             interface{}   `json:"created_from"`
+	CreatedTo               sql.NullInt64 `json:"created_to"`
 	ParentInstanceKey       interface{}   `json:"parent_instance_key"`
 	BusinessKey             interface{}   `json:"business_key"`
 	ActivityID              interface{}   `json:"activity_id"`
@@ -469,10 +552,6 @@ type FindProcessInstancesPageParams struct {
 	FilterTypeSubProcess    interface{}   `json:"filter_type_sub_process"`
 	Offset                  int64         `json:"offset"`
 	Size                    int64         `json:"size"`
-	ProcessDefinitionKey    interface{}   `json:"process_definition_key"`
-	BpmnProcessID           interface{}   `json:"bpmn_process_id"`
-	CreatedFrom             interface{}   `json:"created_from"`
-	CreatedTo               sql.NullInt64 `json:"created_to"`
 }
 
 type FindProcessInstancesPageRow struct {
@@ -490,6 +569,7 @@ type FindProcessInstancesPageRow struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	IncidentCount                         int64          `json:"incident_count"`
 	TotalCount                            int64          `json:"total_count"`
 }
 
@@ -497,6 +577,10 @@ type FindProcessInstancesPageRow struct {
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage,
 		arg.SortByOrder,
+		arg.ProcessDefinitionKey,
+		arg.BpmnProcessID,
+		arg.CreatedFrom,
+		arg.CreatedTo,
 		arg.ParentInstanceKey,
 		arg.BusinessKey,
 		arg.ActivityID,
@@ -507,10 +591,6 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 		arg.FilterTypeSubProcess,
 		arg.Offset,
 		arg.Size,
-		arg.ProcessDefinitionKey,
-		arg.BpmnProcessID,
-		arg.CreatedFrom,
-		arg.CreatedTo,
 	)
 	if err != nil {
 		return nil, err
@@ -534,6 +614,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
 			&i.BpmnProcessID,
+			&i.IncidentCount,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

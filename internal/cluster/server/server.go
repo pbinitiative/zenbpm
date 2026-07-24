@@ -1122,6 +1122,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				ParentInstanceKey: parentInstanceKey,
 				BusinessKey:       businessKey,
 				Type:              new(instances[i].ProcessType),
+				IncidentCount:     new(instances[i].IncidentCount),
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{
@@ -1190,6 +1191,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 			ParentInstanceKey: &parentInstanceKey,
 			BusinessKey:       businessKey,
 			Type:              new(instances[i].ProcessType),
+			IncidentCount:     new(instances[i].IncidentCount),
 		}
 	}
 
@@ -1789,11 +1791,12 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 				BpmnProcessId:   new(stat.BpmnProcessID),
 				BpmnProcessName: new(stat.BpmnProcessName),
 				InstanceCounts: &proto.InstanceCounts{
-					Total:      new(stat.TotalInstances),
-					Active:     new(int64(stat.ActiveCount)),
-					Completed:  new(int64(stat.CompletedCount)),
-					Terminated: new(int64(stat.TerminatedCount)),
-					Failed:     new(int64(stat.FailedCount)),
+					Total:        new(stat.TotalInstances),
+					Active:       new(int64(stat.ActiveCount)),
+					Completed:    new(int64(stat.CompletedCount)),
+					Terminated:   new(int64(stat.TerminatedCount)),
+					Failed:       new(int64(stat.FailedCount)),
+					WithIncident: new(stat.WithIncidentCount),
 				},
 			}
 		}

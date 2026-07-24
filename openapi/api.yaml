@@ -952,6 +952,7 @@ paths:
                       completed: 1180
                       terminated: 20
                       failed: 5
+                      withIncident: 0
                   - key: 4503599627370510
                     version: 1
                     bpmnProcessId: "order-fulfillment"
@@ -963,6 +964,7 @@ paths:
                       completed: 750
                       terminated: 15
                       failed: 5
+                      withIncident: 2
                 page: 1
                 size: 10
                 count: 2
@@ -1169,6 +1171,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
+                        incidentCount: 1
                         variables:
                           customerId: "customer-456"
                           amount: 1000
@@ -1178,6 +1181,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
+                        incidentCount: 0
                         variables:
                           customerId: "customer-789"
                           amount: 5000
@@ -1190,6 +1194,7 @@ paths:
                         bpmnProcessId: "loan-application"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
+                        incidentCount: 2
                         variables:
                           customerId: "customer-101"
                           amount: 7500
@@ -1448,6 +1453,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
+                        incidentCount: 1
                         variables:
                           customerId: "customer-456"
                           amount: 1000
@@ -1456,6 +1462,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
+                        incidentCount: 0
                         variables:
                           customerId: "customer-789"
                           amount: 5000
@@ -1466,6 +1473,7 @@ paths:
                         processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
+                        incidentCount: 2
                         variables:
                           customerId: "customer-101"
                           amount: 7500
@@ -3137,6 +3145,7 @@ components:
         - completed
         - terminated
         - failed
+        - withIncident
       properties:
         total:
           type: integer
@@ -3153,6 +3162,15 @@ components:
         failed:
           type: integer
           description: Number of failed instances
+        withIncident:
+          type: integer
+          description: >
+            Number of process instances that currently have at least one
+            directly associated unresolved incident. Each process instance is
+            counted once, regardless of how many incidents it has, and
+            regardless of its state (i.e. active, completed, terminated or
+            failed). Incidents associated with nested subprocess or
+            multi-instance scopes are not rolled up to their parent instance.
     ProcessInstancePage:
       type: object
       allOf:
@@ -3208,6 +3226,13 @@ components:
           $ref: "#/components/schemas/ProcessInstanceProcessType"
         variables:
           type: object
+        incidentCount:
+          type: integer
+          description: >
+            Number of currently unresolved incidents directly associated with
+            this process instance. Present on process-instance list responses
+            and omitted from responses where the count is not calculated.
+            Zero when the listed instance has no open incidents.
     ProcessInstanceProcessType:
       type: string
       enum:

@@ -68,6 +68,9 @@ type Querier interface {
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
+	// with_incident_count is the number of process instances that have at least one
+	// directly associated unresolved incident. Each instance is counted once,
+	// regardless of its state or number of unresolved incidents.
 	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
 	FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error)
 	FindProcessDefinitionTimersInStateByElement(ctx context.Context, arg FindProcessDefinitionTimersInStateByElementParams) ([]Timer, error)

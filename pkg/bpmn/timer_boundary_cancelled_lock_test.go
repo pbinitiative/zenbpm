@@ -53,7 +53,7 @@ func TestTriggerBoundaryTimer_AlreadyCancelled_ReleasesInstanceLock(t *testing.T
 		"process instance lock must be released after triggering an already-cancelled timer")
 	engine.runningInstances.unlockInstance(piKey)
 
-	job := findActiveJob(store, piKey, "simple-job")
+	job := findActiveJob(t, store, piKey, "simple-job")
 	require.NotNil(t, job, "the service task job must still be active")
 	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, nil))
 
@@ -63,9 +63,12 @@ func TestTriggerBoundaryTimer_AlreadyCancelled_ReleasesInstanceLock(t *testing.T
 	}, 5*time.Second, 100*time.Millisecond, "process instance should complete after the job is done")
 }
 
-func findActiveJob(store *inmemory.Storage, processInstanceKey int64, jobType string) *runtime.Job {
-	for _, job := range store.Jobs {
-		if job.ProcessInstanceKey == processInstanceKey && job.Type == jobType && job.State == runtime.ActivityStateActive {
+func findActiveJob(t *testing.T, store *inmemory.Storage, processInstanceKey int64, jobType string) *runtime.Job {
+	t.Helper()
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	for _, job := range jobs {
+		if job.Type == jobType && job.State == runtime.ActivityStateActive {
 			return &job
 		}
 	}

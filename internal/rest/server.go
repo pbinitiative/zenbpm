@@ -39,6 +39,11 @@ const (
 	PaginationMaxSize     int32 = 100
 )
 
+type buildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+}
+
 type Server struct {
 	sync.RWMutex
 	node   *cluster.ZenNode
@@ -49,7 +54,16 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
+func NewServer(node *cluster.ZenNode, conf config.Config, commit string) *Server {
+	api, err := public.GetSwagger()
+	if err != nil {
+		panic(fmt.Errorf("failed to load embedded OpenAPI specification: %w", err))
+	}
+	info := buildInfo{
+		Version: api.Info.Version,
+		Commit:  commit,
+	}
+
 	r := chi.NewRouter()
 	s := Server{
 		node: node,
@@ -99,6 +113,12 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	// register system endpoints
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
+		r.Get("/info", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(info); err != nil {
+				log.Error("failed to write system info: %v", err)
+			}
+		})
 		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
 			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
 			w.Header().Set("Content-Type", "application/json")

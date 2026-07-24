@@ -71,9 +71,10 @@ install_trivy() {
 build_scan_image() {
   require_release_tag
 
+  make generate
   mkdir -p linux/amd64
   CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-s -w -X main.version=${RELEASE_TAG#v}" \
+    -ldflags "-s -w -X main.commit=$(git rev-parse --short=7 HEAD)" \
     -o linux/amd64/zenbpm \
     ./cmd/zenbpm
 

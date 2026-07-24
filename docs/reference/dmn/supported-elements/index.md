@@ -6,7 +6,7 @@ sidebar_position: 0
 
 DMN elements supported by the ZenBPM engine.
 
-A Decision Requirements Diagram is built from four node types: **Decision**, **Business Knowledge Model**, **Input Data**, and **Knowledge Source**. **Decision table**, **Literal expression**, and **Empty decision** are not separate DRD nodes — they are the three logic variants a **Decision** node can hold (DMN also defines other variants, such as Context and Relation, which are not covered here). They're listed as their own rows below because each has distinct graphical notation and XML.
+A DMN file deployed to ZenBPM describes a **Decision Requirements Graph** — one or more decisions, the data they need, and the requirements between them. Each **Decision** node carries exactly one piece of decision logic. DMN defines several logic variants; ZenBPM documents the two that are covered by tests and used in practice: the **Decision table** and the **Literal expression**.
 
 ## Types
 
@@ -16,44 +16,33 @@ Green icons are supported and link to their documentation.
   <thead>
     <tr>
       <th>Element</th>
-      <th style={{width: '150px'}}>Icon</th>
+      <th style={{width: '240px'}}>Icon</th>
       <th>Description</th>
     </tr>
   </thead>
   <tbody>
     <tr>
+      <td><a href="./decision-requirements-graph">Decision requirements graph</a></td>
+      <td><a href="./decision-requirements-graph"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/decision-requirements-graph.svg').default} alt="Decision requirements graph" height="60" /></a></td>
+      <td>The decisions in a DMN file and the information requirements that wire them together, including the input data each decision needs.</td>
+    </tr>
+    <tr>
       <td><a href="./decision-table">Decision table</a></td>
       <td><a href="./decision-table"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/decision-table.svg').default} alt="Decision table" height="70" /></a></td>
-      <td>Maps combinations of input conditions to output results in a structured table format — the most common way to express decision logic in DMN.</td>
+      <td>Maps combinations of input conditions to output results in a structured table — the most common way to express decision logic in DMN.</td>
     </tr>
     <tr>
       <td><a href="./literal-expression">Literal expression</a></td>
       <td><a href="./literal-expression"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/literal-expression.svg').default} alt="Literal expression" height="70" /></a></td>
       <td>A decision expressed as a single FEEL expression that evaluates directly to a value.</td>
     </tr>
-    <tr>
-      <td><a href="./empty-decision">Empty decision</a></td>
-      <td><a href="./empty-decision"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/empty-decision.svg').default} alt="Empty decision" height="70" /></a></td>
-      <td>A decision node with no logic defined, used as a placeholder for a decision that has not yet been implemented.</td>
-    </tr>
-    <tr>
-      <td><a href="./input-data">Input data</a></td>
-      <td><a href="./input-data"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/input-data.svg').default} alt="Input data" height="60" /></a></td>
-      <td>An external data source or variable provided as input to one or more decisions.</td>
-    </tr>
-    <tr>
-      <td><a href="./knowledge-source">Knowledge source</a></td>
-      <td><a href="./knowledge-source"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/knowledge-source.svg').default} alt="Knowledge source" height="70" /></a></td>
-      <td>A reference to the authority, regulation, or document that justifies a decision. Documentation only, with no effect on execution.</td>
-    </tr>
-    <tr>
-      <td><a href="./business-knowledge-model">Business knowledge model</a></td>
-      <td><a href="./business-knowledge-model"><img className="bpmn-supported" src={require('!url-loader!../../assets/dmn/business-knowledge-model.svg').default} alt="Business knowledge model" height="60" /></a></td>
-      <td>A reusable encapsulation of decision logic — typically a function — that can be invoked by decisions or other business knowledge models.</td>
-    </tr>
   </tbody>
 </table>
 
-:::note[Not yet supported]
-Decision Service
+:::note[Not supported]
+**Business knowledge model** and **Knowledge source** are ignored by the XML parser. A file containing them deploys successfully, but they have no effect on evaluation and cannot be invoked.
+
+**Decision service** is not supported.
+
+A **decision with no logic** — an empty decision node used as a modelling placeholder — deploys successfully but fails when it is evaluated. Give every decision you intend to evaluate a decision table or a literal expression.
 :::

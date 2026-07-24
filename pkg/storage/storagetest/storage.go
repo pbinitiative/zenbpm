@@ -49,6 +49,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
+		st.TestFlowElementInstanceSaveUpdatesOnlyInputVariables,
 		st.TestFlowElementInstanceCompletedAt,
 		st.TestFlowElementInstanceSaveWithCompletedAt,
 		st.TestFlowElementInstanceUpdateOutputInsertPath,
@@ -740,6 +741,44 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, _ 
 		}
 		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceSaveUpdatesOnlyInputVariables(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		key := s.GenerateId()
+		createdAt := time.Now().Truncate(time.Millisecond)
+		completedAt := createdAt.Add(time.Second)
+		saved := bpmnruntime.FlowElementInstance{
+			Key:                key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-input-update",
+			ElementType:        "INTERMEDIATE_CATCH_EVENT",
+			CreatedAt:          createdAt,
+			ExecutionTokenKey:  s.GenerateId(),
+			InputVariables:     map[string]any{"input": "before"},
+			OutputVariables:    map[string]any{"output": "preserved"},
+			CompletedAt:        &completedAt,
+		}
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), saved))
+
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:            key,
+			InputVariables: map[string]any{"input": "after"},
+		}))
+
+		updated, err := s.GetFlowElementInstanceByKey(t.Context(), key)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]any{"input": "after"}, updated.InputVariables)
+		assert.Equal(t, saved.ProcessInstanceKey, updated.ProcessInstanceKey)
+		assert.Equal(t, saved.ElementId, updated.ElementId)
+		assert.Equal(t, saved.ElementType, updated.ElementType)
+		assert.Equal(t, saved.CreatedAt, updated.CreatedAt)
+		assert.Equal(t, saved.ExecutionTokenKey, updated.ExecutionTokenKey)
+		assert.Equal(t, saved.OutputVariables, updated.OutputVariables)
+		if assert.NotNil(t, updated.CompletedAt) {
+			assert.Equal(t, *saved.CompletedAt, *updated.CompletedAt)
+		}
 	}
 }
 

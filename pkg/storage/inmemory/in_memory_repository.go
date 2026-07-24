@@ -1060,6 +1060,11 @@ var _ storage.FlowElementInstanceWriter = &Storage{}
 func (mem *Storage) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	if existing, exists := mem.FlowElementInstance[flowElementInstance.Key]; exists {
+		// Mirror SQL: INSERT ... ON CONFLICT DO UPDATE SET input_variables.
+		existing.InputVariables = flowElementInstance.InputVariables
+		flowElementInstance = existing
+	}
 	mem.FlowElementInstance[flowElementInstance.Key] = flowElementInstance
 	return nil
 }

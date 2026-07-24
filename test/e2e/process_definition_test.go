@@ -348,14 +348,28 @@ func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionI
 }
 
 func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, error) {
+	const pageSize int32 = 100
+	page := int32(1)
+	definitions := make([]zenclient.ProcessDefinitionSimple, 0)
 
-	resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-		Size: new(int32(100)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list process definitions: %w", err)
+	for {
+		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			Page: &page,
+			Size: new(pageSize),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list process definitions page %d: %w", page, err)
+		}
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("failed to list process definitions page %d: unexpected status %d", page, resp.StatusCode())
+		}
+
+		definitions = append(definitions, resp.JSON200.Items...)
+		if len(definitions) >= resp.JSON200.TotalCount || len(resp.JSON200.Items) == 0 {
+			return definitions, nil
+		}
+		page++
 	}
-	return resp.JSON200.Items, nil
 }
 
 func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {

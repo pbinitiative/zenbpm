@@ -68,7 +68,26 @@ type GrpcServer struct {
 type HttpServer struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
+	// LogMode controls request logging: "errors" (default, status >= 400 only),
+	// "all" (every request) or "off" (no request logging).
+	LogMode string `yaml:"logMode" json:"logMode" env:"REST_API_LOG_MODE" env-default:"errors"`
+	// LogBody enables capturing request and response bodies for logged requests.
+	// When true, bodies are included for whatever LogMode logs (e.g. failed
+	// requests in "errors" mode). Capturing buffers the whole body of every
+	// request/response in memory even when it ends up not being logged, so keep
+	// this off on busy servers unless you need body diagnostics.
+	LogBody bool `yaml:"logBody" json:"logBody" env:"REST_API_LOG_BODY" env-default:"false"`
 }
+
+// Request logging modes for HttpServer.LogMode.
+const (
+	// LogModeErrors logs failed requests only (status >= 400).
+	LogModeErrors = "errors"
+	// LogModeAll logs every request.
+	LogModeAll = "all"
+	// LogModeOff disables request logging entirely.
+	LogModeOff = "off"
+)
 
 type Tracing struct {
 	Enabled         bool     `yaml:"enabled" json:"enabled" env:"TRACING_ENABLED" env-default:"false"`
@@ -105,6 +124,12 @@ type ScriptVmPoolConf struct {
 // important zenbpm policies. It must be called at least once on a Config
 // object before the Config object is used.
 func (c *Config) validate() error {
+	switch c.HttpServer.LogMode {
+	case "", LogModeErrors, LogModeAll, LogModeOff:
+	default:
+		return fmt.Errorf("invalid httpServer.logMode %q, supported: %s, %s, %s",
+			c.HttpServer.LogMode, LogModeErrors, LogModeAll, LogModeOff)
+	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv
 	}

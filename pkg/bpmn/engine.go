@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"go.opentelemetry.io/otel"
@@ -117,7 +116,12 @@ func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
-		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence))
+		// The BPMN engine owns this runtime. Reuse it for DMN evaluation instead
+		// of creating a second default FEEL worker pool with no shutdown owner.
+		engine.dmnEngine = dmn.NewEngine(
+			dmn.EngineWithStorage(persistence),
+			dmn.EngineWithFeel(engine.feelRuntime),
+		)
 	}
 }
 
@@ -238,7 +242,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	for _, incident := range incidents {
-		incident.ResolvedAt = ptr.To(time.Now())
+		incident.ResolvedAt = new(time.Now())
 		err = batch.SaveIncident(ctx, incident)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
@@ -1281,6 +1285,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 		CorrelationKey:     correlationKey,
 		MessageSubscriptionData: runtime.MessageSubscriptionData{
 			Key:                  engine.generateKey(),
+			ElementInstanceKey:   new(currentToken.ElementInstanceKey),
 			ElementId:            element.GetId(),
 			Name:                 messageName,
 			State:                runtime.ActivityStateActive,
@@ -1502,25 +1507,7 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 // The check is not recursive because the inner child process instance will not be completed due to same reasons,
 // so it's enough to make a check only for 1 level deep
 func (engine *Engine) hasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error) {
-	tokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, processInstanceKey)
-	if err != nil {
-		return false, err
-	}
-	for _, token := range tokens {
-		childInstances, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
-		if err != nil {
-			return false, err
-		}
-		for _, child := range childInstances {
-			if child.Type() != runtime.ProcessTypeSubProcess {
-				continue
-			}
-			if child.ProcessInstance().State == runtime.ActivityStateReady || child.ProcessInstance().State == runtime.ActivityStateActive {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+	return engine.persistence.HasActiveSubProcessInstance(ctx, processInstanceKey)
 }
 
 func (engine *Engine) handleMessageEndEvent(

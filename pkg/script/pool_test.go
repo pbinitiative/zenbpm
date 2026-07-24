@@ -31,10 +31,23 @@ func TestNewRunnerPool_PanicGuardOnBadSizes(t *testing.T) {
 	})
 }
 
+func TestRunnerPoolStopWaitsForCleanupLoop(t *testing.T) {
+	pool := NewRunnerPool(fakeFactory{}, 1, 0)
+
+	pool.Stop()
+
+	select {
+	case <-pool.cleanupDone:
+	default:
+		t.Fatal("Stop returned before the cleanup loop exited")
+	}
+	assert.NotPanics(t, pool.Stop, "Stop should be idempotent")
+}
+
 func TestDrainIdleRunners_DiscardsRunnersAboveMin(t *testing.T) {
 	pool := NewRunnerPool(fakeFactory{}, 5, 1)
 	defer pool.Stop()
-	
+
 	for i := 0; i < 3; i++ {
 		pool.activeRunnersMu.Lock()
 		pool.pool <- pool.runnerFactory.NewRunner()
@@ -140,7 +153,7 @@ func (l *recordingLogger) waitForError(t *testing.T) {
 
 func TestRunnerPoolCleanup_PanicIsRecovered(t *testing.T) {
 	logger := newRecordingLogger()
-	
+
 	done := make(chan struct{})
 	startCleanupLoop(logger, func() {
 		defer close(done)

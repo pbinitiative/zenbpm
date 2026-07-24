@@ -814,6 +814,7 @@ message ProtoMessageSubscription {
   string correlation_key = 6;
   int64 state = 7;
   int64 created_at = 8;
+  int64 element_instance_key = 9;
 }
 
 message PartitionedMessageSubscriptions {
@@ -830,6 +831,7 @@ message ProtoTimerSubscription {
   int64 state = 5;
   int64 created_at = 6;
   int64 due_at = 7;
+  int64 element_instance_key = 8;
 }
 
 message ProtoErrorSubscription {

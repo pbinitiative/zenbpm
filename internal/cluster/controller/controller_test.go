@@ -3,9 +3,11 @@ package controller
 import (
 	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -16,7 +18,93 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestControllerStopDisablesClusterStateChangeNotifications(t *testing.T) {
+	tStore := &countingControllerTestStore{
+		ControllerTestStore: &ControllerTestStore{
+			id: "test-node-1",
+			clusterState: state.Cluster{
+				Partitions: map[uint32]state.Partition{},
+				Nodes:      map[string]state.Node{},
+			},
+		},
+	}
+	controller, err := NewController(nil, config.Cluster{})
+	require.NoError(t, err)
+	controller.store = tStore
+	controller.logger = hclog.NewNullLogger()
+	controller.handleClusterChanges = true
+
+	require.NoError(t, controller.Stop())
+	controller.ClusterStateChangeNotification(t.Context())
+
+	assert.Zero(t, tStore.isLeaderCalls.Load())
+}
+
+func TestControllerStopWaitsForInFlightClusterStateChangeNotification(t *testing.T) {
+	notificationStarted := make(chan struct{})
+	releaseNotification := make(chan struct{})
+	tStore := &countingControllerTestStore{
+		ControllerTestStore: &ControllerTestStore{
+			id: "test-node-1",
+			clusterState: state.Cluster{
+				Partitions: map[uint32]state.Partition{},
+				Nodes:      map[string]state.Node{},
+			},
+		},
+		isLeaderFn: func(call int32) bool {
+			if call == 1 {
+				close(notificationStarted)
+				<-releaseNotification
+			}
+			return false
+		},
+	}
+	controller, err := NewController(nil, config.Cluster{})
+	require.NoError(t, err)
+	controller.store = tStore
+	controller.logger = hclog.NewNullLogger()
+	controller.handleClusterChanges = true
+
+	notificationDone := make(chan struct{})
+	go func() {
+		defer close(notificationDone)
+		controller.ClusterStateChangeNotification(t.Context())
+	}()
+	<-notificationStarted
+
+	stopDone := make(chan error, 1)
+	go func() {
+		stopDone <- controller.Stop()
+	}()
+
+	select {
+	case err := <-stopDone:
+		t.Fatalf("Stop returned before the in-flight notification completed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseNotification)
+	require.NoError(t, <-stopDone)
+	<-notificationDone
+
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, int32(1), tStore.isLeaderCalls.Load())
+}
+
+func TestControllerStopCancelsPendingPartitionJoinRetry(t *testing.T) {
+	controller, err := NewController(nil, config.Cluster{})
+	require.NoError(t, err)
+	controller.handleClusterChanges = true
+
+	controller.handlePartitionStateInitializing(t.Context(), 1, nil)
+
+	startedAt := time.Now()
+	require.NoError(t, controller.Stop())
+	assert.Less(t, time.Since(startedAt), time.Second)
+}
 
 func TestControllerCanStartNewPartitions(t *testing.T) {
 	mux, ln, err := network.NewNodeMux("")
@@ -105,6 +193,20 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Second, "Failed to verify that second partition was started. State was: %s", controller.store.ClusterState().Nodes[tStore.id].Partitions[2].State)
+}
+
+type countingControllerTestStore struct {
+	*ControllerTestStore
+	isLeaderCalls atomic.Int32
+	isLeaderFn    func(call int32) bool
+}
+
+func (c *countingControllerTestStore) IsLeader() bool {
+	call := c.isLeaderCalls.Add(1)
+	if c.isLeaderFn != nil {
+		return c.isLeaderFn(call)
+	}
+	return c.ControllerTestStore.IsLeader()
 }
 
 type ControllerTestStore struct {

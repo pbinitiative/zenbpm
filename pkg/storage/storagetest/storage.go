@@ -257,6 +257,53 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, _ *
 	}
 }
 
+// TestHasActiveSubProcessInstance verifies that HasActiveSubProcessInstance
+// reports child subprocess instances in both the ready and active states.
+func (st *StorageTester) TestHasActiveSubProcessInstance(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		parentKey := s.GenerateId()
+		parent := getProcessInstance(parentKey, st.processDefinition)
+		assert.NoError(t, s.SaveProcessInstance(t.Context(), parent))
+
+		parentToken := bpmnruntime.ExecutionToken{
+			Key:                s.GenerateId(),
+			ElementInstanceKey: s.GenerateId(),
+			ProcessInstanceKey: parentKey,
+			State:              bpmnruntime.TokenStateWaiting,
+		}
+		assert.NoError(t, s.SaveToken(t.Context(), parentToken))
+
+		child := &bpmnruntime.SubProcessInstance{
+			ParentProcessExecutionToken: parentToken,
+			ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+				Definition: &st.processDefinition,
+				Key:        s.GenerateId(),
+				CreatedAt:  time.Now().Truncate(time.Millisecond),
+				State:      bpmnruntime.ActivityStateReady,
+			},
+		}
+		assert.NoError(t, s.SaveProcessInstance(t.Context(), child))
+
+		hasActiveChild, err := s.HasActiveSubProcessInstance(t.Context(), parentKey)
+		assert.NoError(t, err)
+		assert.True(t, hasActiveChild, "a READY subprocess must keep its parent alive")
+
+		child.ProcessInstance().State = bpmnruntime.ActivityStateActive
+		assert.NoError(t, s.SaveProcessInstance(t.Context(), child))
+
+		hasActiveChild, err = s.HasActiveSubProcessInstance(t.Context(), parentKey)
+		assert.NoError(t, err)
+		assert.True(t, hasActiveChild, "an ACTIVE subprocess must keep its parent alive")
+
+		child.ProcessInstance().State = bpmnruntime.ActivityStateCompleted
+		assert.NoError(t, s.SaveProcessInstance(t.Context(), child))
+
+		hasActiveChild, err = s.HasActiveSubProcessInstance(t.Context(), parentKey)
+		assert.NoError(t, err)
+		assert.False(t, hasActiveChild, "a completed subprocess must not keep its parent alive")
+	}
+}
+
 func getTimer(key, pdKey, piKey int64, originActivity bpmnruntime.Job) bpmnruntime.Timer {
 	return bpmnruntime.Timer{
 		ElementId:            fmt.Sprintf("timer-%d", key),
@@ -465,6 +512,7 @@ func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionTo
 		CorrelationKey:     fmt.Sprintf("correlation-%d", r),
 		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
 			ElementId:            fmt.Sprintf("message-%d", r),
+			ElementInstanceKey:   &token.ElementInstanceKey,
 			Key:                  r + 400,
 			ProcessDefinitionKey: pdKey,
 			Name:                 fmt.Sprintf("message-%d", r),

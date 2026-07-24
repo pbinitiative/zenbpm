@@ -446,6 +446,24 @@ func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(ctx context.Co
 	return res, nil
 }
 
+// HasActiveSubProcessInstance reports whether a ready or active subprocess instance exists.
+func (mem *Storage) HasActiveSubProcessInstance(_ context.Context, processInstanceKey int64) (bool, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	for _, processInstance := range mem.ProcessInstances {
+		instance, ok := processInstance.(*bpmnruntime.SubProcessInstance)
+		if !ok {
+			continue
+		}
+		if instance.ParentProcessExecutionToken.ProcessInstanceKey == processInstanceKey &&
+			(instance.ProcessInstance().State == bpmnruntime.ActivityStateReady ||
+				instance.ProcessInstance().State == bpmnruntime.ActivityStateActive) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()

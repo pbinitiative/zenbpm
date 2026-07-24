@@ -70,24 +70,71 @@ WHERE key IN (sqlc.slice('keys'));
 
 
 -- name: FindProcessInstancesPage :many
+WITH process_instance_candidates AS (
+    -- Use the definition/created_at index only when both parts of its prefix
+    -- are selective.
+    SELECT pi.*, pd.bpmn_process_id
+    FROM
+        process_instance AS pi
+        INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+    WHERE
+        (@process_definition_key <> 0 OR @bpmn_process_id IS NOT NULL)
+        AND sqlc.narg('created_from') IS NOT NULL
+        AND pi.process_definition_key IN (
+            SELECT candidate.key
+            FROM process_definition AS candidate
+            WHERE
+                (@process_definition_key = 0 OR candidate.key = @process_definition_key)
+                AND (@bpmn_process_id IS NULL OR candidate.bpmn_process_id = @bpmn_process_id)
+        )
+        AND pi.created_at BETWEEN
+            CAST(sqlc.narg('created_from') AS INTEGER)
+            AND COALESCE(CAST(sqlc.narg('created_to') AS INTEGER), 9223372036854775807)
+
+    UNION ALL
+
+    -- Preserve the sequential scan for listings without an index-selective
+    -- definition and lower time bound. The branches are mutually exclusive.
+    SELECT pi.*, pd.bpmn_process_id
+    FROM
+        process_instance AS pi NOT INDEXED
+        INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+    WHERE
+        CASE WHEN
+            (@process_definition_key <> 0 OR @bpmn_process_id IS NOT NULL)
+            AND sqlc.narg('created_from') IS NOT NULL
+        THEN 0 ELSE 1 END
+        AND CASE WHEN @process_definition_key <> 0 THEN
+            pi.process_definition_key = @process_definition_key
+        ELSE
+            1
+        END
+        AND CASE WHEN @bpmn_process_id IS NOT NULL THEN
+            pd.bpmn_process_id = @bpmn_process_id
+        ELSE
+            1
+        END
+        AND CASE WHEN sqlc.narg('created_from') IS NOT NULL THEN
+            pi.created_at >= sqlc.narg('created_from')
+        ELSE
+            1
+        END
+        AND CASE WHEN sqlc.narg('created_to') IS NOT NULL THEN
+            pi.created_at <= sqlc.narg('created_to')
+        ELSE
+            1
+        END
+)
 SELECT
-    pi.*, pd.bpmn_process_id,
+    process_instance_candidates.*,
     COUNT(*) OVER () AS total_count
 FROM
-    process_instance AS pi
-    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
-
+    process_instance_candidates
 WHERE
-    -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+    -- Keep sort_by_order as the first parameter: ORDER BY refers to it as ?1.
     CASE WHEN @sort_by_order IS NULL THEN 1 ELSE 1 END
-    AND
-    CASE WHEN @process_definition_key <> 0 THEN
-        pi.process_definition_key = @process_definition_key
-    ELSE
-        1
-    END
     AND CASE WHEN @parent_instance_key <> 0 THEN
-        pi.parent_process_execution_token IN (
+        process_instance_candidates.parent_process_execution_token IN (
             SELECT
                 execution_token.key
             FROM
@@ -99,13 +146,7 @@ WHERE
     END
     AND
     CASE WHEN @business_key IS NOT NULL THEN
-        pi.business_key = @business_key
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN @bpmn_process_id IS NOT NULL THEN
-        pd.bpmn_process_id = @bpmn_process_id
+        process_instance_candidates.business_key = @business_key
     ELSE
         1
     END
@@ -113,27 +154,15 @@ WHERE
     CASE WHEN @activity_id IS NOT NULL THEN
         EXISTS (
             SELECT 1 FROM execution_token et
-            WHERE et.process_instance_key = pi.key
+            WHERE et.process_instance_key = process_instance_candidates.key
               AND et.element_id = @activity_id
         )
     ELSE
         1
     END
     AND
-    CASE WHEN @created_from IS NOT NULL THEN
-       pi.created_at >= @created_from
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN @created_to IS NOT NULL THEN
-       pi.created_at <= @created_to
-    ELSE
-        1
-    END
-    AND
     CASE WHEN @state IS NOT NULL THEN
-       pi.state = @state
+       process_instance_candidates.state = @state
     ELSE
         1
     END
@@ -143,30 +172,67 @@ WHERE
     CASE WHEN @filter_type_call_activity IS NULL AND @filter_type_multi_instance IS NULL AND @filter_type_default IS NULL AND @filter_type_sub_process IS NULL THEN
        1
     ELSE
-         (@filter_type_call_activity IS NOT NULL AND pi.process_type = @filter_type_call_activity)
+         (@filter_type_call_activity IS NOT NULL AND process_instance_candidates.process_type = @filter_type_call_activity)
          OR
-         (@filter_type_multi_instance IS NOT NULL AND pi.process_type = @filter_type_multi_instance)
+         (@filter_type_multi_instance IS NOT NULL AND process_instance_candidates.process_type = @filter_type_multi_instance)
          OR
-         (@filter_type_default IS NOT NULL AND pi.process_type = @filter_type_default)
+         (@filter_type_default IS NOT NULL AND process_instance_candidates.process_type = @filter_type_default)
          OR
-         (@filter_type_sub_process IS NOT NULL AND pi.process_type = @filter_type_sub_process)
+         (@filter_type_sub_process IS NOT NULL AND process_instance_candidates.process_type = @filter_type_sub_process)
     END
     )
     -- end of workaround
 ORDER BY
 -- workaround for sqlc which does not replace params in order by
-  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN pi.business_key END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN pi.business_key END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN pd.bpmn_process_id END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
-  pi.created_at DESC
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN process_instance_candidates.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN process_instance_candidates.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN process_instance_candidates."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN process_instance_candidates."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN process_instance_candidates.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN process_instance_candidates.state END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN process_instance_candidates.business_key END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN process_instance_candidates.business_key END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN process_instance_candidates.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN process_instance_candidates.bpmn_process_id END DESC,
+  process_instance_candidates.created_at DESC
 
+LIMIT @size OFFSET @offset;
+
+-- name: FindChildProcessInstancesPage :many
+SELECT
+    pi.*, pd.bpmn_process_id,
+    COUNT(*) OVER () AS total_count
+FROM
+    execution_token AS parent_token
+    INNER JOIN process_instance AS pi ON pi.parent_process_execution_token = parent_token.key
+    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+WHERE
+    -- Keep sort_by_order as the first parameter for the positional ORDER BY workaround below.
+    CASE WHEN @sort_by_order IS NULL THEN 1 ELSE 1 END
+    AND parent_token.process_instance_key = @parent_instance_key
+    AND pi.process_type IN (
+        @filter_type_call_activity,
+        @filter_type_multi_instance,
+        @filter_type_sub_process
+    )
+    AND CASE WHEN @state IS NOT NULL THEN
+        pi.state = @state
+    ELSE
+        1
+    END
+ORDER BY
+    -- sqlc does not replace named parameters in ORDER BY, so ?1 refers to sort_by_order above.
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc' THEN pi.created_at END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc' THEN pi.business_key END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN pi.business_key END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
+    pi.created_at DESC
 LIMIT @size OFFSET @offset;
 
 -- name: FindProcessesByParentExecutionToken :many
@@ -176,6 +242,17 @@ FROM
     process_instance
 WHERE
     parent_process_execution_token = @parent_process_execution_token;
+
+-- name: CountActiveSubProcessInstances :one
+SELECT
+    CAST(COUNT(*) AS INTEGER)
+FROM
+    process_instance AS child
+    INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
+WHERE
+    et.process_instance_key = @process_instance_key
+    AND child.process_type = @process_type
+    AND child.state IN (@active_state, @ready_state);
 
 -- name: GetProcessInstance :one
 SELECT

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_process_instance_parent_execution_token;

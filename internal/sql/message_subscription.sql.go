@@ -56,7 +56,7 @@ func (q *Queries) DeleteProcessInstancesMessageSubscriptions(ctx context.Context
 
 const findDefinitionMessageSubscription = `-- name: FindDefinitionMessageSubscription :one
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
     message_subscription
 WHERE
@@ -95,13 +95,14 @@ func (q *Queries) FindDefinitionMessageSubscription(ctx context.Context, arg Fin
 		&i.CorrelationKey,
 		&i.ExecutionToken,
 		&i.Type,
+		&i.ElementInstanceKey,
 	)
 	return i, err
 }
 
 const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
     message_subscription
 WHERE
@@ -134,13 +135,14 @@ func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx con
 		&i.CorrelationKey,
 		&i.ExecutionToken,
 		&i.Type,
+		&i.ElementInstanceKey,
 	)
 	return i, err
 }
 
 const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
     message_subscription
 WHERE
@@ -173,6 +175,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 			&i.CorrelationKey,
 			&i.ExecutionToken,
 			&i.Type,
+			&i.ElementInstanceKey,
 		); err != nil {
 			return nil, err
 		}
@@ -189,7 +192,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 
 const findProcessInstanceMessageSubscriptionsPage = `-- name: FindProcessInstanceMessageSubscriptionsPage :many
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type,
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key,
     COUNT(*) OVER () AS total_count
 FROM
     message_subscription
@@ -218,6 +221,7 @@ type FindProcessInstanceMessageSubscriptionsPageRow struct {
 	CorrelationKey       sql.NullString `json:"correlation_key"`
 	ExecutionToken       sql.NullInt64  `json:"execution_token"`
 	Type                 int64          `json:"type"`
+	ElementInstanceKey   sql.NullInt64  `json:"element_instance_key"`
 	TotalCount           int64          `json:"total_count"`
 }
 
@@ -246,6 +250,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptionsPage(ctx context.Contex
 			&i.CorrelationKey,
 			&i.ExecutionToken,
 			&i.Type,
+			&i.ElementInstanceKey,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -263,7 +268,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptionsPage(ctx context.Contex
 
 const findTokenMessageSubscriptions = `-- name: FindTokenMessageSubscriptions :many
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
     message_subscription
 WHERE
@@ -296,6 +301,7 @@ func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTok
 			&i.CorrelationKey,
 			&i.ExecutionToken,
 			&i.Type,
+			&i.ElementInstanceKey,
 		); err != nil {
 			return nil, err
 		}
@@ -312,7 +318,7 @@ func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTok
 
 const getMessageSubscriptionByKey = `-- name: GetMessageSubscriptionByKey :one
 SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
     message_subscription
 WHERE
@@ -339,14 +345,15 @@ func (q *Queries) GetMessageSubscriptionByKey(ctx context.Context, arg GetMessag
 		&i.CorrelationKey,
 		&i.ExecutionToken,
 		&i.Type,
+		&i.ElementInstanceKey,
 	)
 	return i, err
 }
 
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec
-INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
+INSERT INTO message_subscription(key, element_id, element_instance_key, process_definition_key, process_instance_key, name, state,
     created_at, correlation_key, execution_token, type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
@@ -355,6 +362,7 @@ ON CONFLICT
 type SaveMessageSubscriptionParams struct {
 	Key                  int64          `json:"key"`
 	ElementID            string         `json:"element_id"`
+	ElementInstanceKey   sql.NullInt64  `json:"element_instance_key"`
 	ProcessDefinitionKey int64          `json:"process_definition_key"`
 	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
 	Name                 string         `json:"name"`
@@ -369,6 +377,7 @@ func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSu
 	_, err := q.db.ExecContext(ctx, saveMessageSubscription,
 		arg.Key,
 		arg.ElementID,
+		arg.ElementInstanceKey,
 		arg.ProcessDefinitionKey,
 		arg.ProcessInstanceKey,
 		arg.Name,

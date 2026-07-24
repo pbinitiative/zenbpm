@@ -94,7 +94,7 @@ func setupMeterProvider(appName string) (*metric.MeterProvider, error) {
 	RequestDuration, err = otel.Meter(requestMeter).Float64Histogram("request_duration", metrics.WithUnit("ms"), metrics.WithDescription("Time the server took to handle the request, milliseconds"))
 	errJoin = errors.Join(errJoin, err)
 	if errJoin != nil {
-		return nil, fmt.Errorf("failed to create otel instruments: %w", err)
+		return nil, fmt.Errorf("failed to create otel instruments: %w", errJoin)
 	}
 	return meterProvider, nil
 }

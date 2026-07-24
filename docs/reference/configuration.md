@@ -27,10 +27,12 @@ Top-level configuration object.
 
 Defines settings for the public **REST API server**.
 
-| Field     | Type   | Env Variable       | Default | Description                        |
-|-----------|--------|--------------------|---------|------------------------------------|
-| `context` | string | `REST_API_CONTEXT` | `/`     | Base context path for the API      |
-| `addr`    | string | `REST_API_ADDR`    | `:8080` | Address the server binds to        |
+| Field     | Type   | Env Variable       | Default  | Description                                                                |
+|-----------|--------|--------------------|----------|----------------------------------------------------------------------------|
+| `context` | string | `REST_API_CONTEXT` | `/`      | Base context path for the API                                              |
+| `addr`    | string | `REST_API_ADDR`    | `:8080`  | Address the server binds to                                                |
+| `logMode` | string | `REST_API_LOG_MODE`| `errors` | Which requests are logged: `errors` (status >= 400 only), `all`, or `off`  |
+| `logBody` | bool   | `REST_API_LOG_BODY`| `false`  | Include request/response bodies in logged requests. Buffers every body in memory, so keep off on busy servers |
 
 ---
 

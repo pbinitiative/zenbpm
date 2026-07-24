@@ -275,6 +275,7 @@ func (engine *Engine) PublishMessageOnEventSubprocess(ctx context.Context, messa
 				CorrelationKey:     current.CorrelationKey,
 				MessageSubscriptionData: runtime.MessageSubscriptionData{
 					Key:                  engine.generateKey(),
+					ElementInstanceKey:   current.ElementInstanceKey,
 					ElementId:            current.ElementId,
 					Name:                 current.Name,
 					State:                runtime.ActivityStateActive,

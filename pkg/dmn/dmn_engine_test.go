@@ -14,6 +14,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,6 +28,9 @@ func TestMain(m *testing.M) {
 	var exitCode int
 
 	defer func() {
+		if dmnEngine != nil {
+			dmnEngine.Stop()
+		}
 		os.Exit(exitCode)
 	}()
 
@@ -34,6 +38,60 @@ func TestMain(m *testing.M) {
 
 	// Run the tests
 	exitCode = m.Run()
+}
+
+type trackingFeelRuntime struct {
+	stopCount int
+}
+
+func (r *trackingFeelRuntime) UnaryTest(string, map[string]any) (bool, error) {
+	return false, nil
+}
+
+func (r *trackingFeelRuntime) Evaluate(string, map[string]any) (any, error) {
+	return nil, nil
+}
+
+func (r *trackingFeelRuntime) Stop() {
+	r.stopCount++
+}
+
+func TestZenDmnEngineStopStopsOwnedRuntimeOnce(t *testing.T) {
+	runtime := &trackingFeelRuntime{}
+	engine := &ZenDmnEngine{feelRuntime: runtime, ownsFeelRuntime: true}
+
+	engine.Stop()
+	engine.Stop()
+
+	assert.Equal(t, 1, runtime.stopCount)
+}
+
+func TestZenDmnEngineStopReleasesDefaultRuntime(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+	engine := NewEngine()
+	engine.Stop()
+}
+
+func TestZenDmnEngineStopPreservesInjectedRuntime(t *testing.T) {
+	runtime := &trackingFeelRuntime{}
+	engine := NewEngine(EngineWithFeel(runtime))
+
+	engine.Stop()
+
+	assert.Equal(t, 0, runtime.stopCount)
+}
+
+func TestEngineWithFeelStopsReplacedOwnedRuntime(t *testing.T) {
+	ownedRuntime := &trackingFeelRuntime{}
+	injectedRuntime := &trackingFeelRuntime{}
+	engine := &ZenDmnEngine{feelRuntime: ownedRuntime, ownsFeelRuntime: true}
+
+	EngineWithFeel(injectedRuntime)(engine)
+
+	assert.Equal(t, 1, ownedRuntime.stopCount)
+	assert.Same(t, injectedRuntime, engine.feelRuntime)
+	assert.False(t, engine.ownsFeelRuntime)
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {

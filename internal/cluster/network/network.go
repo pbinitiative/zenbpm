@@ -69,7 +69,8 @@ func NewRqLiteRaftDialer(partition uint32, cert, key, caCert, serverName string,
 	return tcp.NewDialer(GetPartitionRaftHeaderByte(partition), dialerTLSConfig), nil
 }
 
-func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName string, Insecure bool) (*tcp.Dialer, error) {
+// NewRqLiteClusterDialer creates a closeable RQLite cluster dialer for a partition.
+func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName string, Insecure bool) (*ClosableDialer, error) {
 	var dialerTLSConfig *tls.Config
 	var err error
 	if cert != "" || key != "" {
@@ -78,7 +79,7 @@ func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName stri
 			return nil, fmt.Errorf("failed to create TLS config for Cluster dialer: %s", err.Error())
 		}
 	}
-	return tcp.NewDialer(GetPartitionClusterHeaderByte(partition), dialerTLSConfig), nil
+	return newClosableDialer(tcp.NewDialer(GetPartitionClusterHeaderByte(partition), dialerTLSConfig)), nil
 }
 
 func GetPartitionRaftHeaderByte(partition uint32) byte {

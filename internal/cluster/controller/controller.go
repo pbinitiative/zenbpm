@@ -42,8 +42,12 @@ type Controller struct {
 	persistenceConfig       config.Persistence
 	mux                     *tcp.Mux
 	logger                  hclog.Logger
+	clusterChangesMu        sync.RWMutex
 	handleClusterChanges    bool
 	clusterStateChangeHooks []func(context.Context)
+	shutdownCh              chan struct{}
+	shutdownOnce            sync.Once
+	backgroundWg            sync.WaitGroup
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
@@ -54,6 +58,7 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		logger:                  hclog.Default().Named("zen-controller"),
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
+		shutdownCh:              make(chan struct{}),
 	}
 	return &c, nil
 }
@@ -82,7 +87,9 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 		return fmt.Errorf("failed to start controller, rqLite config validation failed: %w", err)
 	}
 	c.persistenceConfig = persistenceConfig
+	c.clusterChangesMu.Lock()
 	c.handleClusterChanges = true
+	c.clusterChangesMu.Unlock()
 	// TODO: start engines for assigned partitions
 	c.ClusterStateChangeNotification(context.Background())
 	return nil
@@ -90,6 +97,11 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 
 // ClusterStateChangeNotification is called in a goroutine from FSM when changes are applied to the state
 func (c *Controller) ClusterStateChangeNotification(ctx context.Context) {
+	// Synchronize notifications with Stop so shutdown can wait for in-flight
+	// notifications and prevent a later one from starting another partition.
+	c.clusterChangesMu.RLock()
+	defer c.clusterChangesMu.RUnlock()
+
 	if !c.handleClusterChanges {
 		return
 	}
@@ -289,7 +301,6 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
-		_ = partitionNode.Stop()
 		return
 	}
 	c.partitions[partitionId] = partitionNode
@@ -302,14 +313,31 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	if !ok {
 		// TODO: add timestamps or something into the state so that this is not necessary
 		// if we dont receive another state change in time rerun the joining procedure
+		c.backgroundWg.Add(1)
 		safego.Go("partition-join-retry", c.logger, func() {
-			time.Sleep(5 * time.Second)
-			if ctx.Err() != nil {
+			defer c.backgroundWg.Done()
+
+			retryTimer := time.NewTimer(5 * time.Second)
+			defer retryTimer.Stop()
+			select {
+			case <-retryTimer.C:
+			case <-ctx.Done():
+				return
+			case <-c.shutdownCh:
 				return
 			}
+
+			// Keep the same lock order as ClusterStateChangeNotification and
+			// Stop. If shutdown has already begun, do not start a new partition.
+			c.clusterChangesMu.RLock()
+			defer c.clusterChangesMu.RUnlock()
+			if !c.handleClusterChanges {
+				return
+			}
+
 			c.partitionsMu.Lock()
+			defer c.partitionsMu.Unlock()
 			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
-			c.partitionsMu.Unlock()
 		})
 
 		// partition might still be running joining operation
@@ -414,10 +442,8 @@ func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 		c.logger.Warn(fmt.Sprintf("Failed to find partition to leave: %d", partitionId))
 		return
 	}
-	err := toLeave.Stop()
-	if err != nil {
-		c.logger.Warn(fmt.Sprintf("Failed to stop partition %d.", partitionId))
-		return
+	if err := toLeave.Stop(); err != nil {
+		c.logger.Warn(fmt.Sprintf("Failed to stop partition %d: %s", partitionId, err))
 	}
 	delete(c.partitions, partitionId)
 	// TODO: verify that partition leader removes the node from the state after it gets removed from the cluster
@@ -444,11 +470,36 @@ func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) erro
 }
 
 func (c *Controller) Stop() error {
+	// The store keeps dispatching cluster state change notifications until it is
+	// closed. Wait for any in-flight notification and prevent subsequent ones
+	// from starting another partition after the map has been drained.
+	c.clusterChangesMu.Lock()
+	c.handleClusterChanges = false
+	c.shutdownOnce.Do(func() {
+		close(c.shutdownCh)
+	})
+
+	// Take the partitions out of the map under the lock and stop them outside of
+	// both controller locks. The handlers can no longer find them and partition
+	// Stop is idempotent.
+	c.partitionsMu.Lock()
+	partitions := make([]*partition.ZenPartitionNode, 0, len(c.partitions))
+	for partitionID, partitionNode := range c.partitions {
+		partitions = append(partitions, partitionNode)
+		delete(c.partitions, partitionID)
+	}
+	c.partitionsMu.Unlock()
+	c.clusterChangesMu.Unlock()
+
+	// Retry goroutines are registered while holding clusterChangesMu for read,
+	// so no new Add can race with this Wait after the write lock above.
+	c.backgroundWg.Wait()
+
 	var joinErr error
-	for _, partition := range c.partitions {
-		err := partition.Stop()
+	for _, partitionNode := range partitions {
+		err := partitionNode.Stop()
 		if err != nil {
-			joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop partition %d: %w", partition.PartitionId, err))
+			joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop partition %d: %w", partitionNode.PartitionId, err))
 		}
 	}
 	return joinErr

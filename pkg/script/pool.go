@@ -25,6 +25,8 @@ type RunnerPool struct {
 	activeRunnersMu    *sync.Mutex
 	maxVmPoolSize      int // max amount of active runners
 	minVmPoolSize      int // min amount of active runners
+	cleanupDone        chan struct{}
+	stopOnce           sync.Once
 }
 
 func NewRunnerPool(runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize int) *RunnerPool {
@@ -43,6 +45,7 @@ func NewRunnerPool(runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize
 		activeRunnersMu:    &sync.Mutex{},
 		maxVmPoolSize:      maxVmPoolSize,
 		minVmPoolSize:      minVmPoolSize,
+		cleanupDone:        make(chan struct{}),
 	}
 
 	//start min amount of runners
@@ -55,7 +58,10 @@ func NewRunnerPool(runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize
 
 	//cleanup runners every 10 minutes
 	//should clean runners only when they are not being used
-	startCleanupLoop(safego.DefaultLogger, runtime.cleanupLoop)
+	startCleanupLoop(safego.DefaultLogger, func() {
+		defer close(runtime.cleanupDone)
+		runtime.cleanupLoop()
+	})
 	return &runtime
 }
 
@@ -100,7 +106,10 @@ func (r *RunnerPool) drainIdleRunners() {
 }
 
 func (r *RunnerPool) Stop() {
-	r.cancel()
+	r.stopOnce.Do(func() {
+		r.cancel()
+		<-r.cleanupDone
+	})
 }
 
 func (r *RunnerPool) GetRunnerFromPool() Runner {

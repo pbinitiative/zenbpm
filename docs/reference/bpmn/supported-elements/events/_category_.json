@@ -1,0 +1,8 @@
+{
+  "label": "Events",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Something that happens during the course of a process — start, intermediate, boundary, and end events supported by the ZenBPM engine."
+  }
+}

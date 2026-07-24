@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="960"
+     height="260"
+     viewBox="0 0 960 260">
+
+  <defs>
+    <marker id="drg-arrow"
+            viewBox="0 0 12 12"
+            refX="11"
+            refY="6"
+            markerWidth="7"
+            markerHeight="7"
+            orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#20232A"/>
+    </marker>
+  </defs>
+
+  <!-- Input data -->
+  <rect x="6" y="90"
+        width="240"
+        height="90"
+        rx="45"
+        ry="45"
+        fill="white"
+        stroke="#20232A"
+        stroke-width="6"/>
+
+  <text x="126" y="135"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="34"
+        fill="#20232A">
+    Input data
+  </text>
+
+  <!-- Information requirement -->
+  <line x1="252" y1="135"
+        x2="306" y2="135"
+        stroke="#20232A"
+        stroke-width="6"
+        marker-end="url(#drg-arrow)"/>
+
+  <!-- Required decision -->
+  <rect x="318" y="80"
+        width="280"
+        height="110"
+        fill="white"
+        stroke="#20232A"
+        stroke-width="6"/>
+
+  <rect x="334" y="96"
+        width="40"
+        height="40"
+        rx="3"
+        fill="#1E88E5"/>
+
+  <rect x="342" y="107"
+        width="24"
+        height="17"
+        fill="none"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <line x1="342" y1="115"
+        x2="366" y2="115"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <line x1="348" y1="107"
+        x2="348" y2="124"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <text x="458" y="160"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="34"
+        fill="#20232A">
+    Decision A
+  </text>
+
+  <!-- Information requirement -->
+  <line x1="604" y1="135"
+        x2="658" y2="135"
+        stroke="#20232A"
+        stroke-width="6"
+        marker-end="url(#drg-arrow)"/>
+
+  <!-- Requiring decision -->
+  <rect x="670" y="80"
+        width="280"
+        height="110"
+        fill="white"
+        stroke="#20232A"
+        stroke-width="6"/>
+
+  <rect x="686" y="96"
+        width="40"
+        height="40"
+        rx="3"
+        fill="#1E88E5"/>
+
+  <rect x="694" y="107"
+        width="24"
+        height="17"
+        fill="none"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <line x1="694" y1="115"
+        x2="718" y2="115"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <line x1="700" y1="107"
+        x2="700" y2="124"
+        stroke="white"
+        stroke-width="2.5"/>
+
+  <text x="810" y="160"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="34"
+        fill="#20232A">
+    Decision B
+  </text>
+
+</svg>

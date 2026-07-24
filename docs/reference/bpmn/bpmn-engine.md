@@ -18,7 +18,7 @@ The engine is fully instrumented via [OpenTelemetry](https://opentelemetry.io/):
 
 The engine uses a storage interface to interact with storage systems. ZenBPM platform implements a solution based on RqLite database. The codebase also provides a default implementation for in [memory storage](https://pkg.go.dev/github.com/pbinitiative/zenbpm/pkg/storage/inmemory) that is used by the engine's Unit tests.
 
-See [Variables](/reference/bpmn/variables) for variable propagation and output mapping rules.
+See [Variables](./variable-mapping.md) for variable propagation and output mapping rules.
 
 ## Node processing in the engine
 
@@ -105,3 +105,13 @@ For usage please see [OpenAPI](pathname:///redocusaurus/api.yaml).
 ## XML parser
 
 TODO: add information about how we are parsing xml definitions of processes
+
+ZenBPM-specific extension elements (task definitions, input/output mappings, etc.) use the `zenbpm` namespace:
+
+```xml
+xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"
+```
+
+:::tip[Migrating from Camunda 8]
+Diagrams using the `zeebe` namespace (`xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"`) are also accepted — extension elements such as `zeebe:taskDefinition` and `zeebe:ioMapping` work as their `zenbpm` counterparts.
+:::

@@ -55,7 +55,11 @@ func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing
 		// manager's in-memory waiting list. The completion cancels the timer in the DB, but the
 		// in-memory copy still fires at DueAt and must handle the Cancelled state gracefully.
 		raceWindow := timer.DueAt.Add(-400 * time.Millisecond)
-		require.True(t, time.Now().Before(raceWindow), "missed timer cancellation race window; retry this attempt")
+		if !time.Now().Before(raceWindow) {
+			t.Logf("missed timer cancellation race window (attempt %d); cleaning up and retrying", i)
+			cleanupOwnedProcessInstance(t, instance.Key)
+			continue
+		}
 		waitUntil(t, raceWindow)
 		require.NoError(t, completeJob(t, mainJob.Key, nil))
 

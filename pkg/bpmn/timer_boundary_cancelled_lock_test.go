@@ -67,9 +67,9 @@ func findActiveJob(t *testing.T, store *inmemory.Storage, processInstanceKey int
 	t.Helper()
 	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), processInstanceKey)
 	require.NoError(t, err)
-	for _, job := range jobs {
-		if job.Type == jobType && job.State == runtime.ActivityStateActive {
-			return &job
+	for i := range jobs {
+		if jobs[i].Type == jobType && jobs[i].State == runtime.ActivityStateActive {
+			return &jobs[i]
 		}
 	}
 	return nil

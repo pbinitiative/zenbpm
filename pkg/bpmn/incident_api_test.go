@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -77,6 +78,158 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
 
+}
+
+func TestResolveJobIncidentReevaluatesInputMappingsWithCurrentProcessVariables(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/incident-job-input-refresh.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"sourceValue": "original",
+		"staleValue":  "remove-before-retry",
+	})
+	require.NoError(t, err)
+
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "original", jobs[0].InputVariables["workerValue"])
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+
+	_, err = engine.DeleteInstanceVariable(t.Context(), instance.ProcessInstance().Key, "staleValue")
+	require.NoError(t, err)
+	_, _, err = engine.ModifyInstance(t.Context(), instance.ProcessInstance().Key, nil, nil, map[string]interface{}{
+		"sourceValue": "corrected",
+	})
+	require.NoError(t, err)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incidents[0].Key))
+
+	flowElementInstance, err := store.GetFlowElementInstanceByKey(t.Context(), jobs[0].ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"sourceValue": "corrected",
+	}, flowElementInstance.InputVariables)
+
+	storedJob, err := store.FindJobByJobKey(t.Context(), jobs[0].Key)
+	require.NoError(t, err)
+	assert.Equal(t, jobs[0].Key, storedJob.Key)
+	assert.Equal(t, map[string]interface{}{
+		"sourceValue": "corrected",
+		"workerValue": "corrected",
+	}, storedJob.InputVariables)
+
+	activatedJobs, err := engine.ActivateJobs(t.Context(), "incident-retry-job")
+	require.NoError(t, err)
+	require.Len(t, activatedJobs, 1)
+	assert.Equal(t, jobs[0].Key, activatedJobs[0].Key())
+	assert.Equal(t, "corrected", activatedJobs[0].Variable("workerValue"))
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), activatedJobs[0].Key(), nil))
+	completedJob, err := store.FindJobByJobKey(t.Context(), activatedJobs[0].Key())
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, completedJob.State)
+	resolvedIncident, err := store.FindIncidentByKey(t.Context(), incidents[0].Key)
+	require.NoError(t, err)
+	assert.NotNil(t, resolvedIncident.ResolvedAt)
+	completedInstance, err := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, completedInstance.ProcessInstance().State)
+}
+
+func TestResolveMultiInstanceJobIncidentPreservesIterationVariable(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/multi_instance_service_task.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"testInputCollection": []string{"first"},
+		"currentProcessValue": "original",
+	})
+	require.NoError(t, err)
+
+	var jobs []runtime.Job
+	require.Eventually(t, func() bool {
+		jobs, err = store.FindActiveJobsByType(t.Context(), "TestType")
+		return err == nil && len(jobs) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, "first", jobs[0].InputVariables["testElementInput"])
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), jobs[0].ProcessInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+
+	_, _, err = engine.ModifyInstance(t.Context(), jobs[0].ProcessInstanceKey, nil, nil, map[string]interface{}{
+		"currentProcessValue": "corrected",
+	})
+	require.NoError(t, err)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incidents[0].Key))
+
+	flowElementInstance, err := store.GetFlowElementInstanceByKey(t.Context(), jobs[0].ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, "corrected", flowElementInstance.InputVariables["currentProcessValue"])
+	assert.Equal(t, "first", flowElementInstance.InputVariables["item"])
+	assert.NotContains(t, flowElementInstance.InputVariables, "testElementInput")
+
+	activatedJobs, err := engine.ActivateJobs(t.Context(), "TestType")
+	require.NoError(t, err)
+	require.Len(t, activatedJobs, 1)
+	assert.Equal(t, "first", activatedJobs[0].Variable("testElementInput"))
+	assert.Equal(t, "corrected", activatedJobs[0].Variable("currentProcessValue"))
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), activatedJobs[0].Key(), map[string]interface{}{
+		"testJobOutput": "first-completed",
+	}))
+	require.Eventually(t, func() bool {
+		completedRoot, rootErr := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		completedIteration, iterationErr := store.FindProcessInstanceByKey(t.Context(), jobs[0].ProcessInstanceKey)
+		return rootErr == nil && iterationErr == nil &&
+			completedRoot.ProcessInstance().State == runtime.ActivityStateCompleted &&
+			completedIteration.ProcessInstance().State == runtime.ActivityStateCompleted
+	}, time.Second, 10*time.Millisecond)
+	completedJob, err := store.FindJobByJobKey(t.Context(), activatedJobs[0].Key())
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, completedJob.State)
+	resolvedIncident, err := store.FindIncidentByKey(t.Context(), incidents[0].Key)
+	require.NoError(t, err)
+	assert.NotNil(t, resolvedIncident.ResolvedAt)
+}
+
+func TestResolveMultiInstanceJobIncidentReevaluatesMappingFromOriginalIterationVariable(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/incident-multi-instance-mapped-loop-variable.bpmn")
+	require.NoError(t, err)
+	_, err = engine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"items": []string{"first"},
+	})
+	require.NoError(t, err)
+
+	var jobs []runtime.Job
+	require.Eventually(t, func() bool {
+		jobs, err = store.FindActiveJobsByType(t.Context(), "mapped-loop-variable-retry-job")
+		return err == nil && len(jobs) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, "first-mapped", jobs[0].InputVariables["item"])
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), jobs[0].ProcessInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incidents[0].Key))
+
+	activatedJobs, err := engine.ActivateJobs(t.Context(), "mapped-loop-variable-retry-job")
+	require.NoError(t, err)
+	require.Len(t, activatedJobs, 1)
+	assert.Equal(t, "first-mapped", activatedJobs[0].Variable("item"))
 }
 
 func TestResolveIncidentReturnsErrNotFound(t *testing.T) {

@@ -48,14 +48,11 @@ func TestCancelTimer_BatchFlushFails_TimerIsRepolledIntoTimerManager(t *testing.
 	require.True(t, time.Now().Before(timers[0].DueAt.Add(-200*time.Millisecond)),
 		"test setup took too long; boundary timer would fire before the job completion — cannot exercise the race")
 
-	// Completing the job cancels the boundary timer: cancelTimer removes the in-memory copy and
-	// stages the Cancelled state into the batch, whose flush is set up to fail.
 	store.failFlush.Store(true)
 	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
 	require.ErrorContains(t, err, "injected flush failure")
 	store.failFlush.Store(false)
 
-	// The failed cancellation must leave a consistent, recoverable state behind.
 	dbTimer, err := store.GetTimer(t.Context(), timerKey)
 	require.NoError(t, err)
 	assert.Equal(t, runtime.TimerStateCreated, dbTimer.TimerState,
@@ -64,14 +61,11 @@ func TestCancelTimer_BatchFlushFails_TimerIsRepolledIntoTimerManager(t *testing.
 		"in-memory timer must have been removed from the timer manager by the cancellation attempt")
 	requireInstanceLockReleased(t, &engine, piKey, "process instance lock must be released after the failed job completion")
 
-	// The next poll must take the overdue Created timer back into the timer manager and process
-	// it: the non-interrupting boundary event fires and the timer ends up Triggered.
 	require.Eventually(t, func() bool {
 		dbTimer, err := store.GetTimer(t.Context(), timerKey)
 		return err == nil && dbTimer.TimerState == runtime.TimerStateTriggered
 	}, 10*time.Second, 50*time.Millisecond, "overdue Created timer should be re-polled into the timer manager and triggered")
 
-	// The engine must remain fully operable: the job is still active and can now be completed.
 	job = findActiveJob(t, store.Storage, piKey, "simple-job")
 	require.NotNil(t, job, "the service task job must still be active after the failed completion")
 	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, nil))
@@ -113,7 +107,6 @@ func TestCancelTimer_BatchFlushSucceeds_InFlightPollCannotReinsertTimer(t *testi
 	require.False(t, timerManagerHasWaitingTimer(engine.timerManager, timer.Key),
 		"successful flush must reject a stale timer returned by an in-flight poll")
 
-	// A later successful poll observes the committed state and clears the temporary tombstone.
 	require.NoError(t, engine.timerManager.pollTimers(time.Now().Add(2*time.Hour)))
 	engine.timerManager.addWaitingTimer(timer)
 	require.True(t, timerManagerHasWaitingTimer(engine.timerManager, timer.Key),

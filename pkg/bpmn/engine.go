@@ -109,6 +109,10 @@ func NewEngine(options ...EngineOption) Engine {
 	return engine
 }
 
+func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
+	return func(engine *Engine) { engine.AddEventExporter(exporter) }
+}
+
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
@@ -134,6 +138,12 @@ func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
 		engine.jsRuntime.Stop()
 		engine.jsRuntime = jsRuntime
+	}
+}
+
+func EngineWithLogger(logger hclog.Logger) EngineOption {
+	return func(engine *Engine) {
+		engine.logger = logger
 	}
 }
 

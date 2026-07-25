@@ -109,10 +109,6 @@ func NewEngine(options ...EngineOption) Engine {
 	return engine
 }
 
-func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
-	return func(engine *Engine) { engine.AddEventExporter(exporter) }
-}
-
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
@@ -138,12 +134,6 @@ func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
 		engine.jsRuntime.Stop()
 		engine.jsRuntime = jsRuntime
-	}
-}
-
-func EngineWithLogger(logger hclog.Logger) EngineOption {
-	return func(engine *Engine) {
-		engine.logger = logger
 	}
 }
 
@@ -213,8 +203,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 		return nil, fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	for _, timer := range timers {
-		timer.TimerState = runtime.TimerStateCancelled
-		err = batch.SaveTimer(ctx, timer)
+		err = engine.cancelTimer(ctx, batch, timer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
 		}
@@ -1478,8 +1467,7 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 				return errors.Join(newEngineErrorf("failed to load active timers for key: %d", instance.ProcessInstance().Key), err)
 			}
 			for _, timer := range timers {
-				timer.TimerState = runtime.TimerStateCancelled
-				if err = batch.SaveTimer(ctx, timer); err != nil {
+				if err = engine.cancelTimer(ctx, batch, timer); err != nil {
 					return errors.Join(newEngineErrorf("failed to cancel timer %d for process instance key: %d", timer.Key, instance.ProcessInstance().Key), err)
 				}
 			}
@@ -1548,7 +1536,7 @@ func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, ba
 			if err != nil {
 				return nil, fmt.Errorf("failed to handle plain EndEvent: %w", err)
 			}
-			for i, _ := range tokens {
+			for i := range tokens {
 				if tokens[i].Key == jobToken.Key {
 					tokens[i].State = runtime.TokenStateCompleted
 				}

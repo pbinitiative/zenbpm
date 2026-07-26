@@ -26,15 +26,9 @@ func TestTriggerBoundaryTimer_AlreadyCancelled_ReleasesInstanceLock(t *testing.T
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-noninterrupting.bpmn")
 	require.NoError(t, err)
 
-	instance, err := engine.CreateInstance(t.Context(), process, nil)
-	require.NoError(t, err)
-	piKey := instance.ProcessInstance().Key
-
 	// Find the boundary timer and mark it Cancelled to simulate the race where the job was
 	// completed (cancelling the timer) right before the scheduler fired it.
-	timers, err := store.FindProcessInstanceTimers(t.Context(), piKey, runtime.TimerStateCreated)
-	require.NoError(t, err)
-	require.Len(t, timers, 1)
+	piKey, timers := createInstanceAndGetTimers(t, &engine, store, process)
 	target := timers[0]
 	require.NotNil(t, target.Token, "boundary timer must carry an execution token")
 
@@ -49,18 +43,13 @@ func TestTriggerBoundaryTimer_AlreadyCancelled_ReleasesInstanceLock(t *testing.T
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "timer is already cancelled")
 
-	require.NoError(t, engine.runningInstances.tryLockInstance(t.Context(), piKey),
-		"process instance lock must be released after triggering an already-cancelled timer")
-	engine.runningInstances.unlockInstance(piKey)
+	requireInstanceLockReleased(t, &engine, piKey, "process instance lock must be released after triggering an already-cancelled timer")
 
 	job := findActiveJob(t, store, piKey, "simple-job")
 	require.NotNil(t, job, "the service task job must still be active")
 	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, nil))
 
-	require.Eventually(t, func() bool {
-		pi, err := store.FindProcessInstanceByKey(t.Context(), piKey)
-		return err == nil && pi.ProcessInstance().GetState() == runtime.ActivityStateCompleted
-	}, 5*time.Second, 100*time.Millisecond, "process instance should complete after the job is done")
+	waitForProcessInstanceState(t, store, piKey, runtime.ActivityStateCompleted)
 }
 
 func findActiveJob(t *testing.T, store *inmemory.Storage, processInstanceKey int64, jobType string) *runtime.Job {
@@ -73,4 +62,27 @@ func findActiveJob(t *testing.T, store *inmemory.Storage, processInstanceKey int
 		}
 	}
 	return nil
+}
+
+// createInstanceAndGetTimers creates a new process instance from the given definition and
+// returns its key along with the single Created boundary timer. The test fails immediately if
+// instance creation or timer lookup does not produce exactly one Created timer.
+func createInstanceAndGetTimers(t *testing.T, eng *Engine, store *inmemory.Storage, process *runtime.ProcessDefinition) (piKey int64, timers []runtime.Timer) {
+	t.Helper()
+	instance, err := eng.CreateInstance(t.Context(), process, nil)
+	require.NoError(t, err)
+	piKey = instance.ProcessInstance().Key
+
+	timers, err = store.FindProcessInstanceTimers(t.Context(), piKey, runtime.TimerStateCreated)
+	require.NoError(t, err)
+	require.Len(t, timers, 1)
+	return
+}
+
+// requireInstanceLockReleased verifies that the process instance lock is not held by asserting
+// that tryLockInstance succeeds, then immediately releasing it again.
+func requireInstanceLockReleased(t *testing.T, eng *Engine, piKey int64, msg string) {
+	t.Helper()
+	require.NoError(t, eng.runningInstances.tryLockInstance(t.Context(), piKey), msg)
+	eng.runningInstances.unlockInstance(piKey)
 }

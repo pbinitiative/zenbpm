@@ -43,6 +43,40 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 	return currentToken, err
 }
 
+// cancelTimer is the single place that cancels a timer.
+// If the batch later fails to flush, the DB timer stays in Created state while the in-memory copy is already gone.
+// That is recovered automatically: the timer manager puts it back into its waiting list for processing.
+func (engine *Engine) cancelTimer(ctx context.Context, batch *EngineBatch, timer runtime.Timer) error {
+	timer.TimerState = runtime.TimerStateCancelled
+	if err := batch.SaveTimer(ctx, timer); err != nil {
+		return fmt.Errorf("failed to save cancelled timer %d: %w", timer.Key, err)
+	}
+	// Remove the in-memory copy already before the flush (not only in the post-flush action) so
+	// its waiter cannot fire and contend on the instance lock while the cancelling batch is still
+	// open. The cost is the failed-flush recovery gap described above; do not defer this removal
+	// entirely to the post-flush action.
+	engine.timerManager.removeTimer(timer)
+	batch.AddPostFlushAction(ctx, func() {
+		engine.timerManager.tombstoneCancelledTimer(timer)
+	})
+	return nil
+}
+
+// cancelProcessInstanceTimers cancels every Created timer of the process instance through cancelTimer,
+// including token-less timers such as event-subprocess timer start events.
+func (engine *Engine) cancelProcessInstanceTimers(ctx context.Context, batch *EngineBatch, instanceKey int64) error {
+	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instanceKey, runtime.TimerStateCreated)
+	if err != nil {
+		return fmt.Errorf("failed to find timers for instance %d: %w", instanceKey, err)
+	}
+	for _, timer := range timers {
+		if err := engine.cancelTimer(ctx, batch, timer); err != nil {
+			return fmt.Errorf("failed to cancel timer %d for instance %d: %w", timer.Key, instanceKey, err)
+		}
+	}
+	return nil
+}
+
 func (engine *Engine) createDurationTimer(
 	instance runtime.ProcessInstance,
 	timerDef bpmn20.TTimerEventDefinition,

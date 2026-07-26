@@ -17,7 +17,10 @@ import (
 type processTimerFunc func(ctx context.Context, timer runtime.Timer)
 
 // pollTimerFunc must return an array of timers that are in active state and should fire before end
-// timerManager does the de-duplication of already running timers and timers returned by this function
+// timerManager does the de-duplication of already running timers and timers returned by this function.
+// The read must observe all previously committed timer state changes (read-your-writes / at least
+// weak consistency) — the timer manager clears cancellation tombstones after each successful poll
+// on the assumption that the poll saw every cancellation committed before it started.
 type pollTimerFunc func(ctx context.Context, end time.Time) ([]runtime.Timer, error)
 
 type waitingTimer struct {
@@ -39,6 +42,7 @@ type timerManager struct {
 	waitingTimers    []waitingTimer
 	waitingTimersWg  *sync.WaitGroup
 	runWg            *sync.WaitGroup
+	cancelledKeys    map[int64]struct{}
 	shuttingDown     bool
 }
 
@@ -56,6 +60,7 @@ func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFu
 		pollTimerFunc:    pollTimeFunc,
 		processTimerFunc: processTimerFunc,
 		logger:           hclog.Default().Named("timer-manager"),
+		cancelledKeys:    make(map[int64]struct{}),
 	}
 }
 
@@ -87,13 +92,46 @@ func (tm *timerManager) removeTimer(timer runtime.Timer) {
 
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
+	tm.deleteWaitingTimerLocked(timer.Key)
+}
+
+// deleteWaitingTimerLocked removes the waiting timer with the given key from the in-memory
+// waiting list and cancels its waiter goroutine. Callers must hold tm.mu for writing.
+func (tm *timerManager) deleteWaitingTimerLocked(key int64) {
 	tm.waitingTimers = slices.DeleteFunc(tm.waitingTimers, func(t waitingTimer) bool {
-		if t.timer.Key != timer.Key {
+		if t.timer.Key != key {
 			return false
 		}
 		t.cancel()
 		return true
 	})
+}
+
+// tombstoneCancelledTimer installs a cancellation tombstone for the timer key and purges the
+// waiting list, preventing a poll that started before the cancellation committed from
+// reinserting its stale Created copy. The single poll loop clears this tombstone only after it
+// has finished adding all results from a later poll.
+func (tm *timerManager) tombstoneCancelledTimer(timer runtime.Timer) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.cancelledKeys[timer.Key] = struct{}{}
+	tm.deleteWaitingTimerLocked(timer.Key)
+}
+
+func (tm *timerManager) pollTimers(end time.Time) error {
+	toFireTimers, err := tm.pollTimerFunc(tm.ctx, end)
+	if err != nil {
+		return err
+	}
+	for _, timer := range toFireTimers {
+		tm.addWaitingTimer(timer)
+	}
+	// Any successful poll (an empty result included) started after all tombstoned cancellations
+	// were committed, so it observed their Cancelled state and the tombstones are no longer needed.
+	tm.mu.Lock()
+	clear(tm.cancelledKeys)
+	tm.mu.Unlock()
+	return nil
 }
 
 func (tm *timerManager) run() {
@@ -128,13 +166,10 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 		tm.processTimerFunc(context.WithoutCancel(tm.ctx), timer)
 	case t := <-pollTicker.C:
 		nextPoll := t.Add(tm.pollTimerDelay)
-		toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)
+		err := tm.pollTimers(nextPoll)
 		if err != nil {
 			tm.logger.Error(fmt.Sprintf("Failed to poll timers for processing: %s", err))
 			return
-		}
-		for _, tft := range toFireTimers {
-			tm.addWaitingTimer(tft)
 		}
 		tm.mu.Lock()
 		tm.nextPoll = t.Add(tm.pollTimerDelay)
@@ -147,6 +182,9 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if tm.shuttingDown {
+		return
+	}
+	if _, cancelled := tm.cancelledKeys[tft.Key]; cancelled {
 		return
 	}
 	for _, wt := range tm.waitingTimers {
@@ -182,11 +220,9 @@ func (tm *timerManager) start() {
 	tm.mu.Lock()
 	tm.nextPoll = time.Now().Add(tm.pollTimerDelay)
 	tm.mu.Unlock()
-	tm.runWg.Add(1)
-	go func() {
-		defer tm.runWg.Done()
+	tm.runWg.Go(func() {
 		tm.run()
-	}()
+	})
 }
 
 func (tm *timerManager) stop() {

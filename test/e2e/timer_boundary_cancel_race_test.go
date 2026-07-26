@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -20,10 +21,13 @@ import (
 // cancelling the instance) then hung and the engine appeared frozen.
 //
 // The engine polls due timers into memory one poll cycle (POLL_TIMER_DELAY_SECONDS=1 in e2e)
-// ahead of their due date, while job completion cancels boundary timers in the DB only. The
-// test drives the job completion into that last poll window (shortly before DueAt) so the
-// already-loaded timer fires against the cancelled DB state. It then verifies the engine stays
-// fully operable: the follow-up job completes and the instance reaches Completed. Several
+// ahead of their due date. Job completion now cancels boundary timers through the engine's
+// single cancelTimer method, which also removes the already-loaded in-memory copy from the
+// timer manager. A short-lived post-flush cancellation tombstone rejects stale Created results
+// from an in-flight poll; persisted-state validation remains the final guard if a waiter already
+// reached the trigger channel. The test drives job completion into that last poll window
+// (shortly before DueAt) and verifies the engine stays fully operable: the follow-up job completes
+// and the instance reaches Completed. Several
 // instances are exercised to make hitting the race window overwhelmingly likely.
 func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing.T) {
 	cleanProcessInstances(t)
@@ -38,6 +42,7 @@ func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing
 	definition := deployAndGetUniqueProcessDefinition(t, bpmnFile)
 	require.NotZero(t, definition.Key, "Definition key should not be zero")
 
+	exercisedAttempts := 0
 	for i := range attempts {
 		instance, err := createProcessInstance(t, &definition.Key, nil)
 		require.NoError(t, err)
@@ -52,8 +57,8 @@ func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing
 
 		// Complete the main job shortly before the boundary timer's due date, inside the last
 		// poll window, when the timer has most likely already been loaded into the timer
-		// manager's in-memory waiting list. The completion cancels the timer in the DB, but the
-		// in-memory copy still fires at DueAt and must handle the Cancelled state gracefully.
+		// manager's in-memory waiting list. The completion must cancel the timer in the DB and
+		// remove the in-memory copy without allowing an in-flight poll to reinsert it.
 		raceWindow := timer.DueAt.Add(-400 * time.Millisecond)
 		if !time.Now().Before(raceWindow) {
 			t.Logf("missed timer cancellation race window (attempt %d); cleaning up and retrying", i)
@@ -61,9 +66,10 @@ func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing
 			continue
 		}
 		waitUntil(t, raceWindow)
+		exercisedAttempts++
 		require.NoError(t, completeJob(t, mainJob.Key, nil))
 
-		// Let the due date pass (plus a margin for the trigger to run) so the cancelled in-memory timer has fired by now.
+		// Let the due date pass (plus a margin) so a leftover in-memory timer would have fired by now.
 		waitUntil(t, timer.DueAt.Add(1500*time.Millisecond))
 
 		_, err = listProcessDefinitions(t)
@@ -87,6 +93,79 @@ func TestTimerBoundaryCancelledRightBeforeFiringKeepsEngineResponsive(t *testing
 		require.NoError(t, err)
 		require.Len(t, cancelled, 1, "the boundary timer should be Cancelled for instance %d", instance.Key)
 	}
+	require.Positive(t, exercisedAttempts, "at least one attempt must exercise the timer cancellation window")
+}
+
+// TestProcessInstanceCancelledRightBeforeBoundaryTimerFiresKeepsEngineResponsive covers the
+// process-instance cancellation path of the engine's single timer-cancel method (cancelTimer):
+// cancelling an instance whose non-interrupting boundary timer is already loaded into the timer
+// manager's in-memory waiting list must remove that in-memory copy as well, so the timer does
+// not fire against the cancelled DB state and the engine stays fully responsive afterwards.
+// The cancellation is driven into the last poll window (shortly before DueAt), when the timer
+// has already been polled into memory. Several instances are exercised to make hitting the window overwhelmingly likely.
+func TestProcessInstanceCancelledRightBeforeBoundaryTimerFiresKeepsEngineResponsive(t *testing.T) {
+	cleanProcessInstances(t)
+
+	const (
+		bpmnFile        = "testdata/timer/timer-boundary-noninterrupting-cancel-race.bpmn"
+		mainTaskElement = "main-task"
+		// A slow runner can miss the -400ms race window on some attempts; keep enough attempts
+		// that at least one is overwhelmingly likely to exercise the cancellation window.
+		attempts = 5
+	)
+
+	definition := deployAndGetUniqueProcessDefinition(t, bpmnFile)
+	require.NotZero(t, definition.Key, "Definition key should not be zero")
+
+	exercisedAttempts := 0
+	for i := range attempts {
+		instance, err := createProcessInstance(t, &definition.Key, nil)
+		require.NoError(t, err)
+		require.NotZero(t, instance.Key, "Process instance key should not be zero")
+
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instance.Key))
+		require.NoError(t, err)
+
+		waitForProcessInstanceActiveJobByElementId(t, instance.Key, mainTaskElement)
+
+		timer := waitForCreatedProcessInstanceTimer(t, store, instance.Key)
+
+		// Cancel the process instance shortly before the boundary timer's due date, inside the
+		// last poll window, when the timer has most likely already been loaded into the timer
+		// manager's in-memory waiting list.
+		raceWindow := timer.DueAt.Add(-400 * time.Millisecond)
+		if !time.Now().Before(raceWindow) {
+			t.Logf("missed timer cancellation race window (attempt %d); cleaning up and retrying", i)
+			cleanupOwnedProcessInstance(t, instance.Key)
+			continue
+		}
+		waitUntil(t, raceWindow)
+		exercisedAttempts++
+
+		cancelResp, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, cancelResp.StatusCode(),
+			"process instance %d cancellation should succeed", instance.Key)
+
+		// Let the due date pass (plus a margin) so a leftover in-memory timer would have fired by now.
+		waitUntil(t, timer.DueAt.Add(1500*time.Millisecond))
+
+		_, err = listProcessDefinitions(t)
+		require.NoError(t, err, "engine must keep serving process definition list after the instance cancellation")
+
+		pi, err := getProcessInstance(t, instance.Key)
+		require.NoError(t, err)
+		require.Equal(t, zenclient.ProcessInstanceStateTerminated, pi.State,
+			"process instance %d should stay Terminated after the timer due date passed", instance.Key)
+
+		cancelled, err := store.FindProcessInstanceTimers(t.Context(), instance.Key, bpmnruntime.TimerStateCancelled)
+		require.NoError(t, err)
+		require.Len(t, cancelled, 1, "the boundary timer should be Cancelled for instance %d", instance.Key)
+		created, err := store.FindProcessInstanceTimers(t.Context(), instance.Key, bpmnruntime.TimerStateCreated)
+		require.NoError(t, err)
+		require.Empty(t, created, "no Created timer should remain for cancelled instance %d", instance.Key)
+	}
+	require.Positive(t, exercisedAttempts, "at least one attempt must exercise the timer cancellation window")
 }
 
 // waitForCreatedProcessInstanceTimer waits until the process instance has exactly one timer in Created state and returns it.

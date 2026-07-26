@@ -255,8 +255,7 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *En
 		return fmt.Errorf("failed to find timer subscriptions for instance %d: %w", processInstanceKey, err)
 	}
 	for _, timerSubscription := range timerSubscriptions {
-		timerSubscription.TimerState = runtime.TimerStateCancelled
-		err = batch.SaveTimer(ctx, timerSubscription)
+		err = engine.cancelTimer(ctx, batch, timerSubscription)
 		if err != nil {
 			return fmt.Errorf("failed to save changes to timer subscription %d: %w", timerSubscription.Key, err)
 		}
@@ -272,6 +271,22 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *En
 		err = batch.SaveErrorSubscription(ctx, errorSubscription)
 		if err != nil {
 			return fmt.Errorf("failed to save changes to error subscription %d: %w", errorSubscription.Key, err)
+		}
+	}
+	return nil
+}
+
+// terminateProcessInstanceMessageSubscriptions terminates every Active message subscription of the process instance.
+// it also covers token-less subscriptions such as event-subprocess message start events (InstanceMessageSubscription).
+func (engine *Engine) terminateProcessInstanceMessageSubscriptions(ctx context.Context, batch *EngineBatch, instanceKey int64) error {
+	messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instanceKey, runtime.ActivityStateActive)
+	if err != nil {
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instanceKey, err)
+	}
+	for _, messageSubscription := range messageSubscriptions {
+		messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
+		if err := batch.SaveMessageSubscription(ctx, messageSubscription); err != nil {
+			return fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.MessageSubscription().Key, err)
 		}
 	}
 	return nil
@@ -396,9 +411,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		if event.GetKey() == sub.Key {
 			continue
 		}
-		sub.TimerState = runtime.TimerStateCancelled
-		engine.timerManager.removeTimer(sub)
-		err := batch.SaveTimer(ctx, sub)
+		err := engine.cancelTimer(ctx, batch, sub)
 		if err != nil {
 			return nil, err
 		}

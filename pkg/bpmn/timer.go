@@ -62,6 +62,21 @@ func (engine *Engine) cancelTimer(ctx context.Context, batch *EngineBatch, timer
 	return nil
 }
 
+// cancelProcessInstanceTimers cancels every Created timer of the process instance through cancelTimer,
+// including token-less timers such as event-subprocess timer start events.
+func (engine *Engine) cancelProcessInstanceTimers(ctx context.Context, batch *EngineBatch, instanceKey int64) error {
+	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instanceKey, runtime.TimerStateCreated)
+	if err != nil {
+		return fmt.Errorf("failed to find timers for instance %d: %w", instanceKey, err)
+	}
+	for _, timer := range timers {
+		if err := engine.cancelTimer(ctx, batch, timer); err != nil {
+			return fmt.Errorf("failed to cancel timer %d for instance %d: %w", timer.Key, instanceKey, err)
+		}
+	}
+	return nil
+}
+
 func (engine *Engine) createDurationTimer(
 	instance runtime.ProcessInstance,
 	timerDef bpmn20.TTimerEventDefinition,

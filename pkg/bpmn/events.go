@@ -276,6 +276,22 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *En
 	return nil
 }
 
+// terminateProcessInstanceMessageSubscriptions terminates every Active message subscription of the process instance.
+// it also covers token-less subscriptions such as event-subprocess message start events (InstanceMessageSubscription).
+func (engine *Engine) terminateProcessInstanceMessageSubscriptions(ctx context.Context, batch *EngineBatch, instanceKey int64) error {
+	messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instanceKey, runtime.ActivityStateActive)
+	if err != nil {
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instanceKey, err)
+	}
+	for _, messageSubscription := range messageSubscriptions {
+		messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
+		if err := batch.SaveMessageSubscription(ctx, messageSubscription); err != nil {
+			return fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.MessageSubscription().Key, err)
+		}
+	}
+	return nil
+}
+
 type GatewayEvent interface {
 	GetId() string
 	GetKey() int64

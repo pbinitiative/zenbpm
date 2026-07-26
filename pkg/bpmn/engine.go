@@ -181,17 +181,8 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch, omitTokenKeys ...int64,
 ) (terminatedTokens []runtime.ExecutionToken, err error) {
 	// Cancel all message subscriptions
-	messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	for _, messageSubscription := range messageSubscriptions {
-		messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
-		err = batch.SaveMessageSubscription(ctx, messageSubscription)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.MessageSubscription().Key, err)
-		}
+	if err := engine.terminateProcessInstanceMessageSubscriptions(ctx, batch, instance.ProcessInstance().GetInstanceKey()); err != nil {
+		return nil, fmt.Errorf("failed to cancel message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	// Cancel all error subscriptions
@@ -208,15 +199,8 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	// Cancel all timer subscriptions
-	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	for _, timer := range timers {
-		err = engine.cancelTimer(ctx, batch, timer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
-		}
+	if err := engine.cancelProcessInstanceTimers(ctx, batch, instance.ProcessInstance().Key); err != nil {
+		return nil, fmt.Errorf("failed to cancel timers for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	// Cancel all jobs
@@ -1472,26 +1456,13 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 		}
 		if !hasActiveSubProcess {
 			// Cancel all active timers for this process instance
-			timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
-			if err != nil {
-				return errors.Join(newEngineErrorf("failed to load active timers for key: %d", instance.ProcessInstance().Key), err)
-			}
-			for _, timer := range timers {
-				if err = engine.cancelTimer(ctx, batch, timer); err != nil {
-					return errors.Join(newEngineErrorf("failed to cancel timer %d for process instance key: %d", timer.Key, instance.ProcessInstance().Key), err)
-				}
+			if err := engine.cancelProcessInstanceTimers(ctx, batch, instance.ProcessInstance().Key); err != nil {
+				return errors.Join(newEngineErrorf("failed to cancel timers for process instance key: %d", instance.ProcessInstance().Key), err)
 			}
 
 			// Cancel all active message subscriptions for this process instance
-			messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
-			if err != nil {
-				return errors.Join(newEngineErrorf("failed to load active message subscriptions for key: %d", instance.ProcessInstance().Key), err)
-			}
-			for _, messageSubscription := range messageSubscriptions {
-				messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
-				if err = batch.SaveMessageSubscription(ctx, messageSubscription); err != nil {
-					return errors.Join(newEngineErrorf("failed to cancel message subscription %d for process instance key: %d", messageSubscription.MessageSubscription().Key, instance.ProcessInstance().Key), err)
-				}
+			if err := engine.terminateProcessInstanceMessageSubscriptions(ctx, batch, instance.ProcessInstance().Key); err != nil {
+				return errors.Join(newEngineErrorf("failed to cancel message subscriptions for process instance key: %d", instance.ProcessInstance().Key), err)
 			}
 
 			instance.ProcessInstance().State = runtime.ActivityStateCompleted

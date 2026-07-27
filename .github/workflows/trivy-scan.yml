@@ -50,6 +50,13 @@ jobs:
         if: always()
         run: bash scripts/ci/release-security.sh summarize
 
+      - name: notify discord on findings
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+        run: bash scripts/ci/release-security.sh notify-discord-if-findings
+
       - name: upload trivy image sarif
         if: ${{ always() && hashFiles('trivy-reports/image.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4

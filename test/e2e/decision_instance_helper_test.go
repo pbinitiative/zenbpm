@@ -70,15 +70,10 @@ func assertDecisionInputs(t testing.TB, inputs *[]zenclient.EvaluatedInput, expe
 				continue
 			}
 
-			var inputValue any
-			if input.InputValue != nil {
-				inputValue = *input.InputValue
-			}
-
 			if *input.InputId == expectedInput.InputId &&
 				*input.InputName == expectedInput.InputName &&
 				*input.InputExpression == expectedInput.InputExpression &&
-				assert.ObjectsAreEqualValues(expectedInput.InputValue, inputValue) {
+				assert.ObjectsAreEqualValues(expectedInput.InputValue, input.InputValue) {
 				found = true
 				break
 			}
@@ -120,11 +115,6 @@ func assertDecisionMatchedRulesOutputs(t testing.TB, outputs *[]zenclient.Evalua
 	for _, output := range *outputs {
 		found := false
 
-		var outputValue any
-		if output.OutputValue != nil {
-			outputValue = *output.OutputValue
-		}
-
 		for _, expectedInput := range expectedDecisionOutputs {
 			if output.OutputId == nil ||
 				output.OutputName == nil {
@@ -133,7 +123,7 @@ func assertDecisionMatchedRulesOutputs(t testing.TB, outputs *[]zenclient.Evalua
 
 			if *output.OutputId == expectedInput.OutputId &&
 				*output.OutputName == expectedInput.OutputName &&
-				assert.ObjectsAreEqualValues(expectedInput.OutputValue, outputValue) {
+				assert.ObjectsAreEqualValues(expectedInput.OutputValue, output.OutputValue) {
 				found = true
 				break
 			}

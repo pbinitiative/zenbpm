@@ -56,11 +56,11 @@ func TestDecisionInstance(t *testing.T) {
 		assert.Equal(t, "claim.amountOfDamage", *inputs[0].InputExpression)
 		assert.Equal(t, "Input_1", *inputs[0].InputId)
 		assert.Equal(t, "Value", *inputs[0].InputName)
-		assert.Equal(t, 15000.0, *inputs[0].InputValue)
+		assert.Equal(t, 15000.0, inputs[0].InputValue)
 		assert.Equal(t, "claim.insuranceType", *inputs[1].InputExpression)
 		assert.Equal(t, "InputClause_137jnlm", *inputs[1].InputId)
 		assert.Equal(t, "Insurance Type", *inputs[1].InputName)
-		assert.Equal(t, "MAJ", *inputs[1].InputValue)
+		assert.Equal(t, "MAJ", inputs[1].InputValue)
 		assert.Equal(t, 1, len(*evaluateDec.MatchedRules))
 		matchedRule := (*evaluateDec.MatchedRules)[0]
 		assert.Equal(t, "DecisionRule_1k1p1ib", *matchedRule.RuleId)
@@ -69,7 +69,7 @@ func TestDecisionInstance(t *testing.T) {
 		evaluatedOutput := (*matchedRule.EvaluatedOutputs)[0]
 		assert.Equal(t, "Output_1", *evaluatedOutput.OutputId)
 		assert.Equal(t, "canAutoLiquidate", *evaluatedOutput.OutputName)
-		assert.Equal(t, true, *evaluatedOutput.OutputValue)
+		assert.Equal(t, true, evaluatedOutput.OutputValue)
 	})
 }
 

@@ -3,40 +3,67 @@ sidebar_position: 110
 ---
 # Client Libraries
 
-ZenBPM provides officially supported client libraries in multiple programming languages to help developers integrate with the engine more easily.
+ZenBPM provides officially supported client libraries that wrap its REST and gRPC APIs so you don't have to hand-roll HTTP calls or gRPC streams.
 
-The versions of the libraries are aligned with the ZenBPM engine versions.
+Every client does two things:
+
+- **REST** — deploy process/decision resources, start instances, query state.
+- **gRPC** — run *job workers*: subscribe to a job type, complete or fail jobs over a bidirectional stream.
+
+## Versioning
+
+The Go client ships as part of the engine module, so it tracks the engine version. The **Java** client is published to **Maven Central** under group `org.pbinitiative.zenbpm`, and its version tracks the engine version too (e.g. `1.4.0`).
+
+## Choosing a client
+
+| Language | Artifact | Use when |
+|---|---|---|
+| Go | `github.com/pbinitiative/zenbpm/pkg/zenclient` | Any Go application. Ships as part of the engine module. |
+| Java | `org.pbinitiative.zenbpm:zenbpm-client-core` | Java apps **not** using Spring Boot. Works on older Java versions. |
+| Java | `org.pbinitiative.zenbpm:zenbpm-spring-boot-starter` | Spring Boot apps. Adds auto-configuration and the `@JobWorker` annotation; pulls in `zenbpm-client-core`. |
+
+> The examples below omit error handling for brevity. Handle returned errors/exceptions in real code.
+
+---
 
 ## Go Client
 
-The Go client is part of the ZenBPM engine and is available as package `github.com/pbinitiative/zenbpm/pkg/zenclient`.
+The Go client lives in package `github.com/pbinitiative/zenbpm/pkg/zenclient` and provides both a REST client and a gRPC worker client.
 
-The `zenclient` package provides two clients:
-- REST (HTTP) client for managing process/decision resources, starting instances, etc.
-- gRPC worker client for subscribing to job types and completing/failing jobs via a bidirectional stream.
+### Install
 
-### Usage examples
-#### Deploy a BPMN process definition and start a process instance
-Simplified example:
+```bash
+go get github.com/pbinitiative/zenbpm@latest
+```
+
+The client is part of the engine module, so its version follows the engine version.
+
+### Deploy and start an instance (REST)
+
 ```go
-restClient, _ := zenclient.NewClient("http://localhost:8080/v1")
+// The "WithResponses" client returns typed, parsed responses (with JSON201 etc.).
+restClient, _ := zenclient.NewClientWithResponses("http://localhost:8080/v1")
 
+// Deploy is a multipart upload of the .bpmn file.
 var bodyBuf bytes.Buffer
 mw := multipart.NewWriter(&bodyBuf)
-...
-resp1, _ := restClient.CreateProcessDefinitionWithBody(
-    ctx,
-    mw.FormDataContentType(),
-    &bodyBuf,
-)
+// ... write the .bpmn file into the "resource" form field ...
+mw.Close()
 
-startBody := zenclient.CreateProcessInstanceJSONRequestBody{
-    ProcessDefinitionKey: key,
-}
-resp2, _ := restClient.CreateProcessInstance(ctx, startBody)
+defResp, _ := restClient.CreateProcessDefinitionWithBodyWithResponse(
+    ctx, mw.FormDataContentType(), &bodyBuf,
+)
+key := defResp.JSON201.ProcessDefinitionKey
+
+// Start an instance from the returned key.
+instResp, _ := restClient.CreateProcessInstanceWithResponse(ctx,
+    zenclient.CreateProcessInstanceJSONRequestBody{ProcessDefinitionKey: &key},
+)
+_ = instResp.JSON201 // the started ProcessInstance
 ```
-#### Register a worker
-Simplified example:
+
+### Register a worker (gRPC)
+
 ```go
 conn, _ := grpc.NewClient("127.0.0.1:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
 defer conn.Close()
@@ -44,92 +71,141 @@ defer conn.Close()
 zen := zenclient.NewGrpc(conn)
 
 jobWorker := func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
-// ...
+    vars := job.GetVariables()
+
+    // ... do the work ...
+
+    // Success: return output variables (or an empty map) and nil.
+    return map[string]any{"result": "done"}, nil
+
+    // To fail the job (and trigger a retry) return a WorkerError instead:
+    //   return nil, &zenclient.WorkerError{ErrorCode: "BUSINESS_ERROR"}
 }
 
 zen.RegisterWorker(context.Background(), "my-client-id", jobWorker, "my-job-type")
 ```
+
+---
+
 ## Java Client
 
-The Java client is a lightweight library that wraps the REST and gRPC APIs, providing a type-safe interface for Java applications.
+The Java client wraps the REST and gRPC APIs with a type-safe interface (DTOs are generated from the OpenAPI spec). Source: [zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client).
 
-The client is available on GitHub: [zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client)
+### Install
 
-There are 2 artefacts available:
-- **zenbpm-client-code:** the core library, can be used independently of Spring Boot and supports old java versions
-- **zenbpm-spring-boot-starter:** a Spring Boot starter that provides auto-configuration for the core library and `@JobWorker("jobName")` method annotation.
+The client is on **Maven Central** (group `org.pbinitiative.zenbpm`), so no extra repository is needed. Set `zenbpm.version` to the version matching your engine.
 
-### Features
+**Spring Boot** — a complete, copy-pasteable `pom.xml` for a worker application:
 
-* Spring Boot auto-configuration (drop-in starter)
-* REST client (`ApiClient` + typed APIs generated from OpenAPI)
-* gRPC job workers via `@JobWorker` and ZenbpmJobWorkerManager
-* OpenTelemetry interceptors for REST and spans for gRPC
-* Configurable HTTP/gRPC logging
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
 
-### Build Java Client
-``mvn clean package``
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.4</version>
+    <relativePath/>
+  </parent>
 
-### Getting started
+  <groupId>com.example</groupId>
+  <artifactId>my-worker</artifactId>
+  <version>1.0.0</version>
 
-Add the starter to your application and the core client as needed.
+  <properties>
+    <java.version>17</java.version>
+    <zenbpm.version>1.4.0</zenbpm.version>
+    <opentelemetry.version>1.58.0</opentelemetry.version>
+  </properties>
 
-Maven:
+  <dependencyManagement>
+    <dependencies>
+      <!-- The ZenBPM starter needs a newer OpenTelemetry than Spring Boot 3.3.x manages. -->
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${opentelemetry.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Spring Boot core. The ZenBPM starter declares spring-boot-autoconfigure as optional (not transitive), so the application must provide Spring Boot itself. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <!-- ZenBPM Spring Boot starter: provides @JobWorker and auto-connects on startup. -->
+    <dependency>
+      <groupId>org.pbinitiative.zenbpm</groupId>
+      <artifactId>zenbpm-spring-boot-starter</artifactId>
+      <version>${zenbpm.version}</version>
+    </dependency>
+    <!-- Required for gRPC job workers. -->
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-netty-shaded</artifactId>
+      <version>1.80.0</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+```
+
+**Non-Spring (core only)** — if you're not using Spring Boot, depend on the core client instead of the starter (no OpenTelemetry BOM or `spring-boot-starter` needed):
+
 ```xml
 <dependency>
-  <groupId>org.zenbpm</groupId>
-  <artifactId>zenbpm-spring-boot-starter</artifactId>
-  <version>${zenbpm.version}</version>
-</dependency>
-<dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-client-core</artifactId>
   <version>${zenbpm.version}</version>
 </dependency>
 ```
 
-Configure connection settings in application.yml 
+### Configure
 
-values shown in `zenbpm` section are defaults.
+The Spring Boot starter is configured through `application.yml`. Minimal configuration to connect to a local engine:
 
-`logging` section configures logging for rest and grpc clients separately.
- - `DEBUG` levels expose headers of calls and responses.
- - `TRACE` level exposes full request and response bodies. **Never use this in production!**
 ```yaml
 zenbpm:
   restUrl: http://localhost:8080/v1
-  restLoggingEnabled: true
   grpcHost: localhost
   grpcPort: 9090
-  grpcPlaintext: true
-  grpcLoggingEnabled: true
-  jobWorkerEnabled: true
-  otelEnabled: true
-  
-logging:
-  level:
-    root: INFO
-    org.zenbpm.rest: TRACE
-    org.zenbpm.grpc: DEBUG
-
+  grpcPlaintext: true       # local/dev only; use TLS in production
+  jobWorkerEnabled: true    # connect job workers on startup
 ```
 
-### Working examples
+See [Configuration reference](#configuration-reference) for all options, including logging.
 
-#### 1) Use REST APIs
-Inject the provided ZenbpmClientService to obtain the ApiClient, then create a typed API.
+> Using `zenbpm-client-core` without Spring Boot? You configure the `ApiClient` and worker manager programmatically instead of via `application.yml` — see the [client repository](https://github.com/pbinitiative/zenbpm-java-client) for a plain-Java example.
+
+### Deploy and start an instance (REST)
+
+Inject `ZenbpmClientService` to obtain the `ApiClient`, then use the typed APIs.
 
 ```java
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.zenbpm.rest.ZenbpmClientService;
-import org.zenbpm.client.ApiException;
-import org.zenbpm.client.ApiClient;
-import org.zenbpm.client.api.ProcessDefinitionApi;
-import org.zenbpm.client.api.ProcessInstanceApi;
-import org.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+import org.pbinitiative.zenbpm.rest.ZenbpmClientService;
+import org.pbinitiative.zenbpm.client.ApiException;
+import org.pbinitiative.zenbpm.client.ApiClient;
+import org.pbinitiative.zenbpm.client.api.ProcessDefinitionApi;
+import org.pbinitiative.zenbpm.client.api.ProcessInstanceApi;
+import org.pbinitiative.zenbpm.client.api.dto.CreateProcessInstanceRequest;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -137,72 +213,104 @@ public class MyService {
   @Autowired
   private ZenbpmClientService zenbpm;
 
-  public Long deployExampleProcess() throws ApiException {
+  public Long deployProcess(String bpmnXml) throws ApiException {
     ApiClient apiClient = zenbpm.getApiClient();
     ProcessDefinitionApi defApi = new ProcessDefinitionApi(apiClient);
 
-    // Example: create a process definition from a BPMN string (adjust to your endpoint contract)
-    String bpmnXml = "<definitions ...>...</definitions>";
-    Long definitionKey = defApi.createProcessDefinition(bpmnXml).getProcessDefinitionKey();
-    return definitionKey;
+    // Deploy the BPMN definition; the generated client returns the 201 response body.
+    return defApi.createProcessDefinition(bpmnXml).getProcessDefinitionKey();
   }
 
-  public void startMyProcess() throws ApiException {
+  public void startProcess(Long definitionKey) throws ApiException {
     ApiClient apiClient = zenbpm.getApiClient();
     ProcessInstanceApi piApi = new ProcessInstanceApi(apiClient);
 
-    Map<String, Object> vars = new HashMap<>();
-    vars.put("orderId", 12345L);
-
     CreateProcessInstanceRequest req = new CreateProcessInstanceRequest()
-        .processDefinitionKey(123456L)
-        .variables(vars);
+        .processDefinitionKey(definitionKey)
+        .variables(Map.of("orderId", 12345L));
 
     piApi.createProcessInstance(req);
   }
 }
 ```
 
-Notes:
-- Available typed APIs include ProcessDefinitionApi, ProcessInstanceApi, JobApi, MessageApi, etc. Construct them with the provided ApiClient.
-- Methods and DTOs come from the generated package `org.zenbpm.client.api` and `org.zenbpm.client.api.dto`.
+Available typed APIs include `ProcessDefinitionApi`, `ProcessInstanceApi`, `JobApi`, `MessageApi`, and others. Methods and DTOs come from the generated packages `org.pbinitiative.zenbpm.client.api` and `org.pbinitiative.zenbpm.client.api.dto`.
 
-#### 2) Register a gRPC job worker
-Create a Spring bean with a method annotated by `@JobWorker`. Accepted method signatures:
-- no parameters
-- one parameter of type `org.zenbpm.proto.Zenbpm.WaitingJob`
-- one parameter of type `org.zenbpm.grpc.JobContext`
-- one parameter of type `Map<String, Object>`
+### Register a worker (gRPC)
 
-Return value can be any object and will be serialized as variables for job completion. Throwing an exception fails the job.
+Annotate a Spring bean method with `@JobWorker("<job-type>")`. The gRPC worker manager connects on application startup when `zenbpm.jobWorkerEnabled` is `true`.
 
 ```java
 import org.springframework.stereotype.Component;
-import org.zenbpm.grpc.JobWorker;
-import org.zenbpm.grpc.JobContext;
+import org.pbinitiative.zenbpm.grpc.JobWorker;
+import org.pbinitiative.zenbpm.grpc.JobContext;
 import java.util.Map;
-import java.util.HashMap;
 
 @Component
 public class EmailWorker {
   @JobWorker("send-email")
   public Map<String, Object> handleJob(JobContext ctx) {
-    Map<String,Object> vars = ctx.getVariables();
+    Map<String, Object> vars = ctx.getVariables();
     String to = (String) vars.get("email");
 
-    // send email ...
+    // ... send the email ...
 
-    Map<String, Object> result = new HashMap<>();
-    result.put("success", true);
-    result.put("message", "Email to " + to + " mocked successfully");
-    return result;
+    // Return value is serialized as output variables on job completion.
+    return Map.of("emailSent", true);
+    // Throw an exception to fail the job (triggering a retry).
   }
 }
 ```
 
-The gRPC worker manager connects on application start if `zenbpm.jobWorkerEnabled` is true.
+Accepted `@JobWorker` method parameters (pick one):
+
+- no parameters
+- `org.pbinitiative.zenbpm.proto.Zenbpm.WaitingJob`
+- `org.pbinitiative.zenbpm.grpc.JobContext`
+- `Map<String, Object>` (the job variables)
+
+---
+
+## Configuration reference
+
+Full set of `application.yml` options for the Java Spring Boot starter.
+
+| Key | Purpose |
+|---|---|
+| `zenbpm.restUrl` | Base URL of the engine REST API (include `/v1`). |
+| `zenbpm.grpcHost` | Engine gRPC host. |
+| `zenbpm.grpcPort` | Engine gRPC port. |
+| `zenbpm.grpcPlaintext` | Use plaintext gRPC (no TLS). Local/dev only. |
+| `zenbpm.jobWorkerEnabled` | Connect registered job workers on startup. |
+| `zenbpm.otelEnabled` | Enable OpenTelemetry interceptors (REST) and spans (gRPC). |
+| `zenbpm.restLoggingEnabled` | Enable request/response logging for the REST client. |
+| `zenbpm.grpcLoggingEnabled` | Enable logging for the gRPC client. |
+
+> See the [client repository](https://github.com/pbinitiative/zenbpm-java-client) for the authoritative list of options and their defaults.
+
+Logging verbosity is controlled through standard Spring logging levels, configured **per client** (`org.pbinitiative.zenbpm.rest`, `org.pbinitiative.zenbpm.grpc`):
+
+- `DEBUG` — exposes request/response headers.
+- `TRACE` — exposes full request and response **bodies**. **Never use `TRACE` in production**; it can leak sensitive data.
+
+```yaml
+logging:
+  level:
+    org.pbinitiative.zenbpm.rest: DEBUG
+    org.pbinitiative.zenbpm.grpc: DEBUG
+```
+
+## Building the Java client from source
+
+Most users consume the published Maven Central artifacts and don't need this. To build the Java client from source:
+
+```bash
+mvn clean package
+```
 
 ## Future Clients
+
+Officially supported clients are planned for:
 
 - Python
 - JavaScript / TypeScript

@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
@@ -80,7 +79,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	r.Use(middleware.StripEmptyQueryParams())
 	r.Route("/v1", func(r chi.Router) {
 		// mount generated handler from open-api
-		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
+		h := public.Handler(public.NewStrictHandlerWithOptions(&s, nil, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 				writeError(w, r, http.StatusBadRequest, public.Error{
 					Message: err.Error(),

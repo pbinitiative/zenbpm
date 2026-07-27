@@ -275,7 +275,7 @@ notify_discord() {
     )
   }' "$summary_file")
 
-  curl -fsS \
+  curl --connect-timeout 10 --max-time 30 -fsS \
     -H 'Content-Type: application/json' \
     -d "$payload" \
     "$DISCORD_WEBHOOK_URL"

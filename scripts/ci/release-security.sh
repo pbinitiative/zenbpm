@@ -19,6 +19,8 @@ Commands:
   resolve-digest     Resolve the published image digest and write outputs
   summarize          Build trivy-reports/summary.json and write outputs
   notify-discord     Send the release scan summary to Discord
+  notify-discord-if-findings
+                      Send the scan summary to Discord only when findings exist
 
 Common env:
   RELEASE_TAG         Release tag. Defaults to GITHUB_REF_NAME.
@@ -273,10 +275,35 @@ notify_discord() {
     )
   }' "$summary_file")
 
-  curl -fsS \
+  curl --connect-timeout 10 --max-time 30 -fsS \
     -H 'Content-Type: application/json' \
     -d "$payload" \
     "$DISCORD_WEBHOOK_URL"
+}
+
+notify_discord_if_findings() {
+  local summary_file="${TRIVY_REPORT_DIR}/summary.json"
+
+  if [ ! -s "$summary_file" ]; then
+    echo "${summary_file} does not exist; run summarize before notify-discord-if-findings" >&2
+    exit 1
+  fi
+
+  local finding_count
+  finding_count=$(jq '(
+    .image_vulnerabilities.HIGH +
+    .image_vulnerabilities.CRITICAL +
+    .filesystem_vulnerabilities.HIGH +
+    .filesystem_vulnerabilities.CRITICAL +
+    .secrets
+  )' "$summary_file")
+
+  if [ "$finding_count" -eq 0 ]; then
+    echo "No HIGH/CRITICAL vulnerabilities or secrets found; skipping Discord notification."
+    return 0
+  fi
+
+  notify_discord
 }
 
 command="${1:-}"
@@ -298,6 +325,9 @@ case "$command" in
     ;;
   notify-discord)
     notify_discord
+    ;;
+  notify-discord-if-findings)
+    notify_discord_if_findings
     ;;
   -h|--help|help)
     usage

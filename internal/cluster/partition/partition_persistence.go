@@ -2445,6 +2445,9 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 	var res bpmnruntime.FlowElementInstance
 	flowElementInstance, err := rq.Queries.GetFlowElementInstanceByKey(ctx, key)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return res, storage.ErrNotFound
+		}
 		return res, err
 	}
 

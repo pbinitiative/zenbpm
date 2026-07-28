@@ -49,6 +49,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
+		st.TestFlowElementInstanceReaderNotFound,
 		st.TestFlowElementInstanceCompletedAt,
 		st.TestFlowElementInstanceSaveWithCompletedAt,
 		st.TestFlowElementInstanceUpdateOutputInsertPath,
@@ -740,6 +741,15 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, _ 
 		}
 		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)
+	}
+}
+
+// TestFlowElementInstanceReaderNotFound verifies that an exact lookup of a missing
+// flow element instance follows the storage contract and returns storage.ErrNotFound.
+func (st *StorageTester) TestFlowElementInstanceReaderNotFound(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		_, err := s.GetFlowElementInstanceByKey(t.Context(), s.GenerateId())
+		assert.ErrorIs(t, err, storage.ErrNotFound)
 	}
 }
 

@@ -907,6 +907,19 @@ func (engine *Engine) processFlowNode(
 }
 
 func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
+	if activity, ok := element.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
+		// Multi-instance history is written by startSequentialMultiInstance /
+		// startParallelMultiInstance in the parent process and by each iteration inside
+		// the multi-instance instance, so every create path of an activity that can carry
+		// loop characteristics must persist its own row.
+		//
+		// Returning false here would do more than add a stray row: the final control pass
+		// reuses the last iteration's ElementInstanceKey, and SaveFlowElementInstance is
+		// an upsert, so the generic save would overwrite that iteration's input variables
+		// with nil and break the output collection built from them.
+		return true
+	}
+
 	switch element.(type) {
 	case *bpmn20.TParallelGateway, *bpmn20.TInclusiveGateway:
 		// Synchronizing gateway cycles consume multiple tokens but produce one
@@ -1146,7 +1159,7 @@ func (engine *Engine) handleElementTransition(
 	case *runtime.DefaultProcessInstance, *runtime.SubProcessInstance, *runtime.CallActivityInstance:
 		return engine.handleDefaultElementTransition(ctx, batch, inst, element, currentToken)
 	case *runtime.MultiInstanceInstance:
-		return engine.handleMultiInstanceElementTransition(ctx, batch, inst, element, currentToken)
+		return engine.calculateMultiInstanceElementTransition(ctx, inst, element, currentToken)
 	default:
 		return nil, fmt.Errorf("unsupported instance type: %T", instance)
 	}

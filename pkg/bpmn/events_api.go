@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -66,10 +67,9 @@ func (engine *Engine) receiveTaskOwnsSubscription(ctx context.Context, instance 
 	if err != nil {
 		return false, fmt.Errorf("failed to load receive task flow element instance %d: %w", message.Token.ElementInstanceKey, err)
 	}
+	// Must stay non-nil: evaluateInputMappingsAgainstScope writes the mapped values back into it.
 	localVars := make(map[string]interface{}, len(flowElementInstance.InputVariables))
-	for key, value := range flowElementInstance.InputVariables {
-		localVars[key] = value
-	}
+	maps.Copy(localVars, flowElementInstance.InputVariables)
 	if err := engine.evaluateInputMappingsAgainstScope(localVars, receiveTask.GetInputMapping()); err != nil {
 		return false, fmt.Errorf("failed to evaluate input mappings for receive task %s: %w", receiveTask.GetId(), err)
 	}

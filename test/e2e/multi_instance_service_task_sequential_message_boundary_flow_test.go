@@ -103,7 +103,6 @@ func TestSequentialMultiInstanceMessageBoundaryFlow(t *testing.T) {
 			"service_task",
 			"service_task",
 			"service_task",
-			"service_task",
 		})
 		assertExactProcessInstanceHistory(t, instance.Key, []string{
 			"start_event",

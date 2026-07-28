@@ -140,13 +140,69 @@ func TestProcessTimerTriggerOnInstanceCreation_DoesNotRenewTimer(t *testing.T) {
 		"the original timer (looked up by key) must be Triggered")
 }
 
+// TestPublishMessageOnInstanceCreation_FailedOutputMappingKeepsSubscriptionActive verifies that a
+// message start event whose output mapping cannot be evaluated does NOT consume the subscription.
+// The mapping is a deterministic, definition-level error: consuming the trigger would drop the
+// message payload while creating neither a process instance nor an incident, leaving nothing for an
+// operator to replay. Leaving the subscription Active keeps the message publishable after a fix.
+func TestPublishMessageOnInstanceCreation_FailedOutputMappingKeepsSubscriptionActive(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	err := engine.Start(t.Context())
+	require.NoError(t, err)
+	defer engine.Stop()
+
+	h := engine.NewTaskHandler().
+		Type("input-task-for-message-start-event-test").
+		Handler(func(_ ActivatedJob) {})
+	defer engine.RemoveHandler(h)
+
+	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/message-start-event-process.bpmn")
+	require.NoError(t, err)
+	// Attach an unparseable output mapping to the message start event. An undefined variable would not
+	// do: the FEEL runtime resolves those to nil rather than failing.
+	const startEventExtensionElements = `<bpmn:extensionElements />`
+	require.Contains(t, string(bpmnData), startEventExtensionElements)
+	xmlData := []byte(strings.Replace(string(bpmnData), startEventExtensionElements, `<bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=iban: &#34;DE456&#34;	" target="mapped" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>`, 1))
+
+	def, err := engine.LoadFromBytes(t.Context(), xmlData, engine.generateKey())
+	require.NoError(t, err)
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
+
+	subsBefore := definitionMessageSubscriptionsForDefinition(store, def.Key)
+	require.Len(t, subsBefore, 1)
+	originalKey := subsBefore[0].MessageSubscription().Key
+
+	err = engine.PublishMessageByName(t.Context(), "messageStartEventProcessRef", nil, map[string]any{"payload": "kept"})
+	require.Error(t, err, "an unevaluatable start-event output mapping must surface to the publisher")
+	assert.ErrorContains(t, err, "failed to apply output mappings")
+
+	subsAfter := definitionMessageSubscriptionsForDefinition(store, def.Key)
+	require.Len(t, subsAfter, 1, "a failed mapping must neither consume nor renew the subscription")
+	assert.Equal(t, originalKey, subsAfter[0].MessageSubscription().Key)
+	assert.Equal(t, runtime.ActivityStateActive, subsAfter[0].MessageSubscription().State,
+		"the subscription must stay Active so the message can be republished once the mapping is fixed")
+
+	for _, pi := range store.ProcessInstances {
+		piData := pi.ProcessInstance()
+		if piData.Definition != nil && piData.Definition.Key == def.Key {
+			t.Fatalf("no process instance must be created when the start event output mapping fails")
+		}
+	}
+}
+
 // TestHandleStartEventInstanceCreation_SkipRefreshSkipsRenewal verifies that when the refresh
 // callback reports the trigger should be skipped (e.g. the subscription has already been
 // consumed by a concurrent publisher), neither markConsumed nor the renewal run.
 func TestHandleStartEventInstanceCreation_SkipRefreshSkipsRenewal(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	err := engine.Start(t.Context())
+	require.NoError(t, err)
 	defer engine.Stop()
 
 	def, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/message-start-event-process.bpmn")

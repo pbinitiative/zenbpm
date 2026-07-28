@@ -116,7 +116,6 @@ func (s *jobServer) distributeJobs() {
 			s.logger.Info("Stopping job distribution", "err", s.ctx.Err())
 			return
 		}
-		s.clientMu.RLock()
 		jobTypes := make([]string, 0, len(s.jobTypes))
 		clients := make(map[ClientID]int64)
 		for jobType, jobTypeData := range s.jobTypes {
@@ -125,7 +124,6 @@ func (s *jobServer) distributeJobs() {
 				clients[client] = maxActiveJobsPerClient
 			}
 		}
-		s.clientMu.RUnlock()
 		s.distributedJobsMu.Lock()
 		currentKeys := make([]int64, len(s.distributedJobs))
 		now := time.Now()
@@ -181,7 +179,7 @@ func (s *jobServer) distributeJobs() {
 			}
 			jobTypeData.index++
 			// index overflow
-			if jobTypeData.index >= len(jobTypeData.clients) {
+			if jobTypeData.index >= len(jobTypeData.clients)-1 {
 				jobTypeData.index = 0
 			}
 			clientIdx := jobTypeData.index
@@ -193,7 +191,7 @@ func (s *jobServer) distributeJobs() {
 			if clients[clientID] <= 0 {
 				jobTypeData.index++
 				// index overflow
-				if jobTypeData.index >= len(jobTypeData.clients) {
+				if jobTypeData.index >= len(jobTypeData.clients)-1 {
 					jobTypeData.index = 0
 				}
 				clientIdx = jobTypeData.index

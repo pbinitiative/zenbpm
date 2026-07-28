@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -103,14 +102,17 @@ func deployCallActivityMessageBoundaryDefinitionsWithInterrupting(t testing.TB, 
 	correlationKey := fmt.Sprintf("%s-key-%d", baseProcessID, suffix)
 	content := string(readBPMNTestCaseFile(t, parentFilename))
 	if interrupting {
-		content = strings.Replace(content, `cancelActivity="false"`, `cancelActivity="true"`, 1)
+		content = requireInterruptingBoundary(t, parentFilename, content)
 	}
-	content = strings.NewReplacer(
-		fmt.Sprintf(`bpmn:process id="%s"`, baseProcessID), fmt.Sprintf(`bpmn:process id="%s"`, processID),
-		fmt.Sprintf(`calledElement processId="%s"`, callActivityErrorBoundaryChildProcessId), fmt.Sprintf(`calledElement processId="%s"`, childProcessID),
-		`name="message"`, fmt.Sprintf(`name="%s"`, messageName),
-		`correlationKey="=correlationKey"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey),
-	).Replace(content)
+	content = replaceInBPMNFixture(t, parentFilename, content,
+		fmt.Sprintf(`bpmn:process id="%s"`, baseProcessID), fmt.Sprintf(`bpmn:process id="%s"`, processID))
+	content = replaceInBPMNFixture(t, parentFilename, content,
+		fmt.Sprintf(`calledElement processId="%s"`, callActivityErrorBoundaryChildProcessId),
+		fmt.Sprintf(`calledElement processId="%s"`, childProcessID))
+	content = replaceInBPMNFixture(t, parentFilename, content,
+		`name="message"`, fmt.Sprintf(`name="%s"`, messageName))
+	content = replaceInBPMNFixture(t, parentFilename, content,
+		`correlationKey="=correlationKey"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey))
 
 	return deployBPMNTestCaseContent(t, parentFilename, []byte(content)), messageName, correlationKey
 }

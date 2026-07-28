@@ -32,7 +32,7 @@
   </bpmn:process>
   <bpmn:message id="simple-message" name="message">
     <bpmn:extensionElements>
-      <zenbpm:subscription correlationKey="=&#34;message-boundary-event-interruptingCorrelationKey&#34;" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

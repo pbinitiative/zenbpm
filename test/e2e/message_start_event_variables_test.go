@@ -31,7 +31,7 @@ func TestMessageStartEventVariables(t *testing.T) {
 		})
 
 		assertProcessInstanceVariables(t, instance.Key, variables)
-		assertFlowElementOutputVariables(t, instance.Key, messageStartEventElementID, variables)
+		assertFlowElementOutputVariables(t, instance.Key, messageStartEventElementID, nil)
 
 		taskJob := waitForProcessInstanceActiveJobByElementId(t, instance.Key, messageStartEventTaskID)
 		require.Equal(t, messageID, taskJob.InputVariables["messageId"])

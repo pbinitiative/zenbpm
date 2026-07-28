@@ -164,7 +164,8 @@ type TIntermediateCatchEvent struct {
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
-func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+// UnmarshalXML decodes an intermediate catch event from its BPMN XML representation.
+func (intermediateCatchEvent *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
 		MessageEventDefinition  *TMessageEventDefinition  `xml:"messageEventDefinition"`
@@ -179,32 +180,43 @@ func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start x
 	if err != nil {
 		return err
 	}
-	definitions.TEvent = tempStruct.TEvent
+	intermediateCatchEvent.TEvent = tempStruct.TEvent
 	switch {
 	case tempStruct.MessageEventDefinition != nil:
 		tempStruct.MessageEventDefinition.input = tempStruct.Input
 		tempStruct.MessageEventDefinition.output = tempStruct.Output
-		definitions.EventDefinition = *tempStruct.MessageEventDefinition
+		intermediateCatchEvent.EventDefinition = *tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition != nil:
-		definitions.EventDefinition = *tempStruct.TimerEventDefinition
+		intermediateCatchEvent.EventDefinition = *tempStruct.TimerEventDefinition
 	case tempStruct.LinkEventDefinition != nil:
-		definitions.EventDefinition = *tempStruct.LinkEventDefinition
+		intermediateCatchEvent.EventDefinition = *tempStruct.LinkEventDefinition
 	default:
 		for _, u := range tempStruct.UnknownEventDefinitions {
 			if isEventDefinitionElement(u.XMLName.Local) {
-				definitions.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
+				intermediateCatchEvent.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
 				break
 			}
 		}
 	}
-	definitions.ParallelMultiple = tempStruct.ParallelMultiple
-	definitions.Input = tempStruct.Input
-	definitions.Output = tempStruct.Output
+	intermediateCatchEvent.ParallelMultiple = tempStruct.ParallelMultiple
+	intermediateCatchEvent.Input = tempStruct.Input
+	intermediateCatchEvent.Output = tempStruct.Output
 	return nil
 }
 
+// GetType returns the element type for an intermediate catch event.
 func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
 	return ElementTypeIntermediateCatchEvent
+}
+
+// GetInputMapping returns the input mappings configured for the intermediate catch event.
+func (intermediateCatchEvent TIntermediateCatchEvent) GetInputMapping() []extensions.TIoMapping {
+	return intermediateCatchEvent.Input
+}
+
+// GetOutputMapping returns the output mappings configured for the intermediate catch event.
+func (intermediateCatchEvent TIntermediateCatchEvent) GetOutputMapping() []extensions.TIoMapping {
+	return intermediateCatchEvent.Output
 }
 
 type TIntermediateThrowEvent struct {
@@ -216,12 +228,23 @@ type TIntermediateThrowEvent struct {
 	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
-func (d TIntermediateThrowEvent) GetInputMapping() []extensions.TIoMapping  { return d.Input }
-func (d TIntermediateThrowEvent) GetOutputMapping() []extensions.TIoMapping { return d.Output }
+// GetInputMapping returns the input mappings configured for the intermediate throw event.
+func (intermediateThrowEvent TIntermediateThrowEvent) GetInputMapping() []extensions.TIoMapping {
+	return intermediateThrowEvent.Input
+}
 
-func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.TypeName }
+// GetOutputMapping returns the output mappings configured for the intermediate throw event.
+func (intermediateThrowEvent TIntermediateThrowEvent) GetOutputMapping() []extensions.TIoMapping {
+	return intermediateThrowEvent.Output
+}
 
-func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+// GetTaskType returns the task type configured for the intermediate throw event.
+func (intermediateThrowEvent TIntermediateThrowEvent) GetTaskType() string {
+	return intermediateThrowEvent.TaskDefinition.TypeName
+}
+
+// UnmarshalXML decodes an intermediate throw event from its BPMN XML representation.
+func (intermediateThrowEvent *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
 		MessageEventDefinition  *TMessageEventDefinition   `xml:"messageEventDefinition"`
@@ -236,31 +259,32 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 	if err != nil {
 		return err
 	}
-	definitions.TEvent = tempStruct.TEvent
+	intermediateThrowEvent.TEvent = tempStruct.TEvent
 	switch {
 	case tempStruct.MessageEventDefinition != nil:
 		tempStruct.MessageEventDefinition.input = tempStruct.Input
 		tempStruct.MessageEventDefinition.output = tempStruct.Output
-		definitions.EventDefinition = *tempStruct.MessageEventDefinition
+		intermediateThrowEvent.EventDefinition = *tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition != nil:
-		definitions.EventDefinition = *tempStruct.TimerEventDefinition
+		intermediateThrowEvent.EventDefinition = *tempStruct.TimerEventDefinition
 	case tempStruct.LinkEventDefinition != nil:
-		definitions.EventDefinition = *tempStruct.LinkEventDefinition
+		intermediateThrowEvent.EventDefinition = *tempStruct.LinkEventDefinition
 	default:
 		for _, u := range tempStruct.UnknownEventDefinitions {
 			if isEventDefinitionElement(u.XMLName.Local) {
-				definitions.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
+				intermediateThrowEvent.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
 				break
 			}
 		}
 	}
-	definitions.Input = tempStruct.Input
-	definitions.Output = tempStruct.Output
-	definitions.TaskDefinition = tempStruct.TaskDefinition
+	intermediateThrowEvent.Input = tempStruct.Input
+	intermediateThrowEvent.Output = tempStruct.Output
+	intermediateThrowEvent.TaskDefinition = tempStruct.TaskDefinition
 	return nil
 }
 
-func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
+// GetType returns the element type for an intermediate throw event.
+func (intermediateThrowEvent TIntermediateThrowEvent) GetType() ElementType {
 	return ElementTypeIntermediateThrowEvent
 }
 

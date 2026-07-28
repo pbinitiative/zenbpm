@@ -1,9 +1,7 @@
 package e2e
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
@@ -299,65 +297,4 @@ func TestMessageBoundaryEventFlow(t *testing.T) {
 			"end_event_main",
 		})
 	})
-}
-
-func deployMessageBoundaryDefinition(t testing.TB, filename string, baseProcessID string) (int64, string, string) {
-	return deployMessageBoundaryDefinitionWithInterrupting(t, filename, baseProcessID, false)
-}
-
-func deployInterruptingMessageBoundaryDefinition(t testing.TB, filename string, baseProcessID string) (int64, string, string) {
-	return deployMessageBoundaryDefinitionWithInterrupting(t, filename, baseProcessID, true)
-}
-
-func deployMessageBoundaryDefinitionWithInterrupting(t testing.TB, filename string, baseProcessID string, interrupting bool) (int64, string, string) {
-	t.Helper()
-
-	suffix := messageEventTestSuffix()
-	processID := fmt.Sprintf("%s-%d", baseProcessID, suffix)
-	messageName := fmt.Sprintf("%s-ref-%d", baseProcessID, suffix)
-	correlationKey := fmt.Sprintf("%s-key-%d", baseProcessID, suffix)
-	content := string(readBPMNTestCaseFile(t, filename))
-	if interrupting {
-		content = strings.Replace(content, `cancelActivity="false"`, `cancelActivity="true"`, 1)
-	}
-	content = strings.NewReplacer(
-		fmt.Sprintf(`bpmn:process id="%s"`, baseProcessID), fmt.Sprintf(`bpmn:process id="%s"`, processID),
-		`name="message"`, fmt.Sprintf(`name="%s"`, messageName),
-		`correlationKey="=&#34;message-boundary-event-interruptingCorrelationKey&#34;"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey),
-		`correlationKey="=correlationKey"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey),
-	).Replace(content)
-
-	return deployBPMNTestCaseContent(t, filename, []byte(content)), messageName, correlationKey
-}
-
-func deployTwoMessageBoundaryDefinition(t testing.TB, filename string, baseProcessID string) (int64, string, string, string, string) {
-	t.Helper()
-
-	suffix := messageEventTestSuffix()
-	processID := fmt.Sprintf("%s-%d", baseProcessID, suffix)
-	messageAName := fmt.Sprintf("%s-a-ref-%d", baseProcessID, suffix)
-	messageBName := fmt.Sprintf("%s-b-ref-%d", baseProcessID, suffix)
-	correlationKeyA := fmt.Sprintf("%s-a-key-%d", baseProcessID, suffix)
-	correlationKeyB := fmt.Sprintf("%s-b-key-%d", baseProcessID, suffix)
-	content := strings.NewReplacer(
-		fmt.Sprintf(`bpmn:process id="%s"`, baseProcessID), fmt.Sprintf(`bpmn:process id="%s"`, processID),
-		`name="messageA"`, fmt.Sprintf(`name="%s"`, messageAName),
-		`name="messageB"`, fmt.Sprintf(`name="%s"`, messageBName),
-		`correlationKey="=correlationKeyA"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKeyA),
-		`correlationKey="=correlationKeyB"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKeyB),
-	).Replace(string(readBPMNTestCaseFile(t, filename)))
-
-	definitionKey := deployBPMNTestCaseContent(t, filename, []byte(content))
-	return definitionKey, messageAName, correlationKeyA, messageBName, correlationKeyB
-}
-
-func createMessageBoundaryInstance(t testing.TB, definitionKey int64) zenclient.ProcessInstance {
-	t.Helper()
-
-	processInstance, err := createProcessInstance(t, &definitionKey, map[string]any{})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		cleanupOwnedProcessInstance(t, processInstance.Key)
-	})
-	return processInstance
 }

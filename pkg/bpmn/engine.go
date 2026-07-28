@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -918,12 +919,12 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 	token runtime.ExecutionToken,
 ) error {
 	var outputVariables map[string]any
-	if instance.Type() == runtime.ProcessTypeDefault && isMessageStartEvent(element) {
-		instanceVariables := instance.ProcessInstance().VariableHolder.LocalVariables()
-		outputVariables = make(map[string]any, len(instanceVariables))
-		for key, value := range instanceVariables {
-			outputVariables[key] = value
-		}
+	// Unmapped message payload already lives on the process instance. Keep history
+	// compact by recording only an explicitly mapped start-event output.
+	if instance.Type() == runtime.ProcessTypeDefault &&
+		isMessageStartEvent(element) &&
+		len(element.GetOutputMapping()) > 0 {
+		outputVariables = maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables())
 	}
 
 	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{

@@ -542,6 +542,84 @@ func TestMultiInstanceParallelServiceTaskStartsAndCompletesWorkerJob(t *testing.
 	assertOutputCollectionMatches(t, instance, []string{"test1newVal", "test2newVal", "test3newVal"})
 	assertProcessCompletionWithSubProcess(t, instance)
 }
+
+func TestMultiInstanceCompletionDoesNotCreatePhantomHistory(t *testing.T) {
+	t.Run("sequential worker job", func(t *testing.T) {
+		assertMultiInstanceCompletionDoesNotCreatePhantomHistory(
+			t,
+			"./test-cases/multi_instance_service_task.bpmn",
+			false,
+		)
+	})
+
+	t.Run("parallel worker jobs", func(t *testing.T) {
+		assertMultiInstanceCompletionDoesNotCreatePhantomHistory(
+			t,
+			"./test-cases/multi_instance_parallel_service_task.bpmn",
+			false,
+		)
+	})
+
+	t.Run("sequential local task", func(t *testing.T) {
+		assertMultiInstanceCompletionDoesNotCreatePhantomHistory(
+			t,
+			"./test-cases/multi_instance_service_task.bpmn",
+			true,
+		)
+	})
+
+	t.Run("parallel local tasks", func(t *testing.T) {
+		assertMultiInstanceCompletionDoesNotCreatePhantomHistory(
+			t,
+			"./test-cases/multi_instance_parallel_service_task.bpmn",
+			true,
+		)
+	})
+}
+
+func assertMultiInstanceCompletionDoesNotCreatePhantomHistory(t *testing.T, processPath string, local bool) {
+	t.Helper()
+
+	process, err := bpmnEngine.LoadFromFile(t.Context(), processPath)
+	require.NoError(t, err)
+
+	if local {
+		taskHandler := bpmnEngine.NewTaskHandler().Id("Activity_0rae016").Handler(func(job ActivatedJob) {
+			job.SetOutputVariable("testJobOutput", "test1newVal")
+			job.Complete()
+		})
+		defer bpmnEngine.RemoveHandler(taskHandler)
+	}
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"testInputCollection": []string{"test1"},
+	})
+	require.NoError(t, err)
+	multiInstance := findChildMultiInstanceInstance(t, instance.ProcessInstance().Key)
+
+	if !local {
+		completeWorkerJobs(t, []string{"test1"}, "testJobOutput")
+	}
+	waitForProcessCompletion(t, instance.ProcessInstance().Key, 500*time.Millisecond, 100*time.Millisecond)
+
+	history, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(
+		t.Context(),
+		multiInstance.ProcessInstance().Key,
+		false,
+	)
+	require.NoError(t, err)
+	require.Len(t, history, 1, "one input item must create exactly one multi-instance history entry")
+	assert.NotNil(t, history[0].CompletedAt, "the only multi-instance history entry must be completed")
+
+	tokens, err := bpmnEngine.persistence.GetCompletedTokensForProcessInstance(
+		t.Context(),
+		multiInstance.ProcessInstance().Key,
+	)
+	require.NoError(t, err)
+	require.Len(t, tokens, 1)
+	assert.Equal(t, history[0].Key, tokens[0].ElementInstanceKey, "the completed token must reference the real iteration")
+}
+
 func TestMultiInstanceParallelServiceTaskStartsAndCompletesLocalJob(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/multi_instance_parallel_service_task.bpmn")
 	assert.NoError(t, err)
@@ -1039,7 +1117,23 @@ func assertMultiInstanceReceiveTaskSkipsWithEmptyOutput(t *testing.T, instance r
 	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subProcesses))
+	assertNoActiveHistoryEntries(t, updatedInstance.ProcessInstance().Key)
 }
+
+// assertNoActiveHistoryEntries fails if a completed process instance left behind a
+// history entry that was never closed.
+func assertNoActiveHistoryEntries(t *testing.T, instanceKey int64) {
+	t.Helper()
+	history, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instanceKey, false)
+	require.NoError(t, err)
+	require.NotEmpty(t, history)
+	for _, elementInstance := range history {
+		assert.NotNil(t, elementInstance.CompletedAt,
+			"history entry %s (%s) must not stay active after the process instance completed",
+			elementInstance.ElementId, elementInstance.ElementType)
+	}
+}
+
 func assertProcessCompletionWithSubProcess(t *testing.T, instance runtime.ProcessInstance) {
 	t.Helper()
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)

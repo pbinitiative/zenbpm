@@ -37,6 +37,42 @@ func TestBoundaryEventParses(t *testing.T) {
 	assert.Equal(t, "simple-boundary-id", m.MessageRef)
 }
 
+func TestIntermediateMessageThrowEventParsesMappings(t *testing.T) {
+	const processXML = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="message-throw" isExecutable="true">
+    <bpmn:intermediateThrowEvent id="message_throw_event">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="message-publication" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=payload" target="messagePayload" />
+          <zenbpm:output source="=deliveryId" target="publicationResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:messageEventDefinition id="message_definition" />
+    </bpmn:intermediateThrowEvent>
+  </bpmn:process>
+</bpmn:definitions>`
+
+	var definitions TDefinitions
+	err := xml.Unmarshal([]byte(processXML), &definitions)
+	assert.NoError(t, err)
+	if assert.Len(t, definitions.Process.IntermediateThrowEvent, 1) {
+		event := definitions.Process.IntermediateThrowEvent[0]
+		assert.Equal(t, "message-publication", event.GetTaskType())
+		if assert.Len(t, event.GetInputMapping(), 1) {
+			assert.Equal(t, "=payload", event.GetInputMapping()[0].Source)
+			assert.Equal(t, "messagePayload", event.GetInputMapping()[0].Target)
+		}
+		if assert.Len(t, event.GetOutputMapping(), 1) {
+			assert.Equal(t, "=deliveryId", event.GetOutputMapping()[0].Source)
+			assert.Equal(t, "publicationResult", event.GetOutputMapping()[0].Target)
+		}
+		_, ok := event.EventDefinition.(TMessageEventDefinition)
+		assert.True(t, ok)
+	}
+}
+
 func readBpnmFile(t testing.TB, filename string) (result TDefinitions, err error) {
 	t.Helper()
 

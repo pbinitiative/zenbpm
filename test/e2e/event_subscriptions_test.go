@@ -12,8 +12,6 @@ import (
 )
 
 func TestGetProcessInstanceMessageSubscriptions(t *testing.T) {
-	//t.Parallel()
-
 	definition, err := deployGetDefinition(t, "simple-intermediate-message-catch-event.bpmn", "simple-intermediate-message-catch-event")
 	require.NoError(t, err)
 
@@ -38,8 +36,14 @@ func TestGetProcessInstanceMessageSubscriptions(t *testing.T) {
 	assert.Equal(t, 1, resp.JSON200.TotalCount)
 	require.Len(t, resp.JSON200.Items, 1)
 	item := resp.JSON200.Items[0]
+	assert.NotZero(t, item.Key)
+	assert.False(t, item.CreatedAt.IsZero())
+	assert.Equal(t, "msg", item.ElementId)
 	assert.Equal(t, "msg", item.MessageName)
+	require.NotNil(t, item.CorrelationKey)
+	assert.Equal(t, "key", *item.CorrelationKey)
 	assert.Equal(t, zenclient.EventSubscriptionStateActive, item.State)
+	assert.Equal(t, definition.Key, item.ProcessDefinitionKey)
 	assert.Equal(t, instance.Key, item.ProcessInstanceKey)
 	require.NotNil(t, item.ElementInstanceKey)
 

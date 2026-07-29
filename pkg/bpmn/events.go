@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -21,8 +22,16 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch *Engin
 		return nil, err
 	}
 
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
+	// A missing history row must not wedge a waiting token: the catch event's input scope is then simply
+	// unknown and the output mapping is evaluated against the instance scope alone (nil local variables).
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, message.Token.ElementInstanceKey)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, fmt.Errorf("failed to load intermediate message catch event flow element instance %d: %w", message.Token.ElementInstanceKey, err)
+	}
+	inputVariables := maps.Clone(flowElementInstance.InputVariables)
+
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, inputVariables)
+	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -216,10 +225,7 @@ func (engine *Engine) propagateAndSaveReceiveTaskOutputVariables(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("failed to load receive task flow element instance %d: %w", token.ElementInstanceKey, err)
 	}
-	inputVariables := make(map[string]interface{}, len(flowElementInstance.InputVariables))
-	for key, value := range flowElementInstance.InputVariables {
-		inputVariables[key] = value
-	}
+	inputVariables := maps.Clone(flowElementInstance.InputVariables)
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, inputVariables)
 	if err := engine.evaluateInputMappingsAgainstScope(variableHolder.LocalVariables(), input); err != nil {
@@ -323,8 +329,11 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		return nil, nil
 	}
 	var token runtime.ExecutionToken
-	var outputVariables map[string]any
-	switch catchEvent.EventDefinition.(type) {
+	var (
+		inputVariables  map[string]any
+		outputVariables map[string]any
+	)
+	switch eventDefinition := catchEvent.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
 		message := event.(*runtime.TokenMessageSubscription)
 		message.State = runtime.ActivityStateCompleted
@@ -333,8 +342,12 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", message.Key, err)
 		}
 		token = message.Token
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		outputVariables, err = variableHolder.PropagateMappedOutputsOrAll(catchEvent.Output, variables, engine.evaluateExpression)
+		inputVariables, err = engine.evaluateMessageCatchEventInputVariables(instance, eventDefinition)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate event gateway catch event input variables for %s: %w", catchEvent.GetId(), err)
+		}
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, inputVariables)
+		outputVariables, err = variableHolder.PropagateMappedOutputsOrAll(catchEvent.GetOutputMapping(), variables, engine.evaluateExpression)
 		if err != nil {
 			return nil, err
 		}
@@ -381,7 +394,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		ElementType:        string(catchEvent.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  token.Key,
-		InputVariables:     nil,
+		InputVariables:     inputVariables,
 		OutputVariables:    outputVariables,
 		CompletedAt:        new(time.Now()),
 	})
@@ -432,8 +445,13 @@ func (engine *Engine) createMessageCatchEvent(
 	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
 ) (runtime.ExecutionToken, error) {
-	// TODO: handle input variables
-	correlationKey, err := engine.getMessageCorrelationKey(*instance.ProcessInstance().Definition, &instance, messageDef)
+	inputVariables, err := engine.evaluateMessageCatchEventInputVariables(instance, messageDef)
+	if err != nil {
+		token.State = runtime.TokenStateFailed
+		return token, fmt.Errorf("failed to evaluate message catch event input variables for %s: %w", element.GetId(), err)
+	}
+
+	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, inputVariables, messageDef)
 	if err != nil {
 		token.State = runtime.TokenStateFailed
 		return token, fmt.Errorf("failed to evaluate message correlation key: %w", err)
@@ -463,8 +481,40 @@ func (engine *Engine) createMessageCatchEvent(
 		return token, fmt.Errorf("failed to save new message subscription %+v: %w", subscription, err)
 	}
 
+	// A direct intermediate catch event owns the token's history row, so persist its
+	// evaluated local scope now. Event-based gateway catches share the gateway token;
+	// the winning catch evaluates and records its own scope when the message arrives.
+	_, isIntermediateCatchEvent := element.(*bpmn20.TIntermediateCatchEvent)
+	if isIntermediateCatchEvent && element.GetId() == token.ElementId {
+		err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                token.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  token.Key,
+			InputVariables:     inputVariables,
+			OutputVariables:    nil,
+		})
+		if err != nil {
+			token.State = runtime.TokenStateFailed
+			return token, fmt.Errorf("failed to save message catch event flow element instance %s: %w", element.GetId(), err)
+		}
+	}
+
 	token.State = runtime.TokenStateWaiting
 	return token, nil
+}
+
+func (engine *Engine) evaluateMessageCatchEventInputVariables(
+	instance runtime.ProcessInstance,
+	messageDef bpmn20.TMessageEventDefinition,
+) (map[string]any, error) {
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(messageDef.GetInputMapping(), engine.evaluateExpression); err != nil {
+		return nil, err
+	}
+	return variableHolder.LocalVariables(), nil
 }
 
 func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.ProcessDefinition, instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (string, error) {

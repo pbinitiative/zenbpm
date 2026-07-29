@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -279,15 +280,13 @@ func (engine *Engine) terminateExecutionTokens(
 
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
-		for _, elementInstanceKey := range elementInstanceKeysToTerminate {
-			if activeToken.ElementInstanceKey == elementInstanceKey {
-				err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
-				if err != nil {
-					return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
-				}
-			} else {
-				activeTokensLeft = append(activeTokensLeft, activeToken)
+		if slices.Contains(elementInstanceKeysToTerminate, activeToken.ElementInstanceKey) {
+			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
+			if err != nil {
+				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
 			}
+		} else {
+			activeTokensLeft = append(activeTokensLeft, activeToken)
 		}
 	}
 
@@ -808,13 +807,12 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		//TODO: input output Variables
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
-		if err := engine.completeFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
 			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
@@ -911,6 +909,33 @@ func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
 	default:
 		return false
 	}
+}
+
+func (engine *Engine) completeStartEventFlowElementInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TStartEvent,
+	token runtime.ExecutionToken,
+) error {
+	var outputVariables map[string]any
+	// Unmapped message payload already lives on the process instance. Keep history
+	// compact by recording only an explicitly mapped start-event output.
+	if instance.Type() == runtime.ProcessTypeDefault &&
+		isMessageStartEvent(element) &&
+		len(element.GetOutputMapping()) > 0 {
+		outputVariables = maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables())
+	}
+
+	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                token.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
+		ExecutionTokenKey:  token.Key,
+		OutputVariables:    outputVariables,
+		CompletedAt:        new(time.Now()),
+	})
 }
 
 // completeFlowElementInstance updates the history row keyed by token.ElementInstanceKey.

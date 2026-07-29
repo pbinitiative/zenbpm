@@ -11,10 +11,11 @@ import (
 func TestMessageEndEvent(t *testing.T) {
 	var instance zenclient.ProcessInstance
 	var jobToComplete zenclient.Job
-	definition, err := deployGetDefinition(t, "message_end_event.bpmn", "message_end_event")
+	var err error
+	definitionKey := deployTestDataProcessDefinitionKey(t, messageEndEventBasicPath)
 
 	t.Run("create process instance with message end event", func(t *testing.T) {
-		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definitionKey, map[string]any{
 			"instVar": "instVarValue",
 		})
 		assert.NoError(t, err)

@@ -80,7 +80,7 @@ dockers_v2:
     ids: 
      - zenbpm
     tags:
-      - '{{ if and (eq .Env.GORELEASER_DOCKER_LATEST "true") (eq .Prerelease "") (hasPrefix "v" .Tag) }}latest{{ end }}'
+      - '{{ if and (eq .Env.GORELEASER_DOCKER_LATEST "true") (not .IsSnapshot) (eq .Prerelease "") }}latest{{ end }}'
       - "{{ .Tag }}"
     platforms:
     - linux/amd64

@@ -412,6 +412,7 @@ func TestChildBusinessKeyExpressionFailuresCreateIncident(t *testing.T) {
 
 				instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, failure.variables)
 				require.Error(t, err)
+				require.NotNil(t, instance)
 				assert.ErrorContains(t, err, failure.expectedError)
 				if failure.forbiddenError != "" {
 					assert.NotContains(t, err.Error(), failure.forbiddenError)

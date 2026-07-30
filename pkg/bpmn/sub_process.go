@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -24,11 +25,12 @@ func (engine *Engine) resolveChildBusinessKey(parentBusinessKey, expression *str
 		inheritedBusinessKey := *parentBusinessKey
 		return &inheritedBusinessKey, nil
 	}
-	if *expression == "" {
+	trimmedExpression := strings.TrimSpace(*expression)
+	if trimmedExpression == "" {
 		emptyBusinessKey := ""
 		return &emptyBusinessKey, nil
 	}
-	if (*expression)[0] != '=' {
+	if (trimmedExpression)[0] != '=' {
 		return nil, fmt.Errorf("business key expression must start with '='")
 	}
 

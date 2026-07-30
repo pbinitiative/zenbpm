@@ -1226,7 +1226,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	if processInstance.ProcessInstance().BusinessKey != nil {
 		businessKey = *processInstance.ProcessInstance().BusinessKey
 		bkFound = true
-	} else {
+	} else if processInstance.GetParentProcessInstanceKey() == nil {
 		businessKey, bkFound = appcontext.BusinessKeyFromContext(ctx)
 	}
 

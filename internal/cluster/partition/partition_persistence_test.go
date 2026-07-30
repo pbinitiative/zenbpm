@@ -725,6 +725,64 @@ func TestSaveProcessInstanceExplicitBusinessKeyOverridesContext(t *testing.T) {
 	assert.Equal(t, "", row.BusinessKey.String)
 }
 
+func TestSaveChildProcessInstanceDoesNotUseContextBusinessKey(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-child-business-key-context")
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "child-business-key-context-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="child-business-key-context-process" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	parent := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &parent))
+
+	parentToken := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: db.GenerateId(),
+		ElementId:          "sub-process",
+		ProcessInstanceKey: parent.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	require.NoError(t, db.SaveToken(t.Context(), parentToken))
+
+	child := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           parentToken,
+		ParentProcessTargetElementInstanceKey: parentToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          parentToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	ctx := appcontext.WithBusinessKey(t.Context(), "context-business-key")
+	require.NoError(t, db.SaveProcessInstance(ctx, &child))
+
+	row, err := db.Queries.GetProcessInstance(t.Context(), child.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.False(t, row.BusinessKey.Valid)
+}
+
 func queryCount(t *testing.T, db *DB, query string) int64 {
 	row := db.QueryRowContext(t.Context(), query)
 	var count int64

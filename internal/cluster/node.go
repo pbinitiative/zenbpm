@@ -11,6 +11,7 @@ import (
 	"hash/fnv"
 	"net"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -112,6 +113,9 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	)
 	if err = node.store.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
+	}
+	if err = node.store.RegisterMetrics(); err != nil {
+		node.logger.Error("Failed to register cluster store metrics", "err", err)
 	}
 
 	node.client = client.NewClientManager(node.store)
@@ -1866,6 +1870,45 @@ func (node *ZenNode) GetStatus() state.Cluster {
 		return state.Cluster{}
 	}
 	return node.store.ClusterState()
+}
+
+// Health evaluates the readiness of this node in the cluster. It returns
+// false together with the list of reasons when:
+//   - the main Zen cluster has no elected raft leader,
+//   - fewer partitions exist in the cluster state than desired,
+//   - any partition has no leader registered in the cluster state,
+//   - this node is not (yet) present in the cluster state,
+//   - this node owns a partition that is not in the Initialized state.
+func (node *ZenNode) Health() (bool, []string) {
+	if node.store == nil {
+		return false, []string{"cluster store is not initialized"}
+	}
+	reasons := make([]string, 0)
+	if !node.store.HasLeader() {
+		reasons = append(reasons, "no cluster leader elected")
+	}
+	cs := node.store.ClusterState()
+	if desired := cs.Config.DesiredPartitions; uint32(len(cs.Partitions)) < desired {
+		reasons = append(reasons, fmt.Sprintf("cluster has %d of %d desired partitions", len(cs.Partitions), desired))
+	}
+	partitionReasons := make([]string, 0)
+	for id, partition := range cs.Partitions {
+		if partition.LeaderId == "" {
+			partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d has no leader", id))
+		}
+	}
+	if self, err := cs.GetNode(node.store.NodeID()); err != nil {
+		partitionReasons = append(partitionReasons, "node is not registered in the cluster state")
+	} else {
+		for id, partition := range self.Partitions {
+			if partition.State != state.NodePartitionStateInitialized {
+				partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d on this node is in state %s", id, partition.State))
+			}
+		}
+	}
+	sort.Strings(partitionReasons)
+	reasons = append(reasons, partitionReasons...)
+	return len(reasons) == 0, reasons
 }
 
 func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {

@@ -685,6 +685,9 @@ func (engine *Engine) createTimerStartEventTimers(
 	saved := *timer
 	batch.AddPostFlushAction(ctx, func() {
 		engine.timerManager.registerTimer(saved)
+		// definition-level timers are saved through a raw storage.Batch and
+		// bypass EngineBatch.SaveTimer, so record the lifecycle metric here
+		engine.recordTimerMetric(ctx, saved)
 	})
 	return nil
 }

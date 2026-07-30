@@ -9,6 +9,8 @@ import (
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type EngineBatch struct {
@@ -151,7 +153,14 @@ func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.
 	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
 	b.b.SaveToken(ctx, token)
 	b.b.SaveProcessInstance(ctx, instance)
-	b.b.SaveIncident(ctx, createNewIncidentFromToken(err, token, b.engine))
+	incident := createNewIncidentFromToken(err, token, b.engine)
+	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
+		b.engine.logger.Error("failed to queue incident for token", "token", token.Key, "err", saveErr)
+	} else {
+		b.postFlushActions = append(b.postFlushActions, func() {
+			b.engine.recordIncidentMetric(ctx, incident)
+		})
+	}
 }
 
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
@@ -185,6 +194,9 @@ func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnrunt
 	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
 		return fmt.Errorf("failed to save message incident: %w", saveErr)
 	}
+	b.postFlushActions = append(b.postFlushActions, func() {
+		b.engine.recordIncidentMetric(ctx, incident)
+	})
 	return nil
 }
 
@@ -205,7 +217,13 @@ func (b *EngineBatch) SaveProcessInstance(ctx context.Context, processInstance b
 }
 
 func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
-	return b.b.SaveTimer(ctx, timer)
+	if err := b.b.SaveTimer(ctx, timer); err != nil {
+		return err
+	}
+	b.postFlushActions = append(b.postFlushActions, func() {
+		b.engine.recordTimerMetric(ctx, timer)
+	})
+	return nil
 }
 
 func (b *EngineBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
@@ -237,7 +255,48 @@ func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, histo
 }
 
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
-	return b.b.SaveIncident(ctx, incident)
+	if err := b.b.SaveIncident(ctx, incident); err != nil {
+		return err
+	}
+	b.postFlushActions = append(b.postFlushActions, func() {
+		b.engine.recordIncidentMetric(ctx, incident)
+	})
+	return nil
+}
+
+// recordIncidentMetric increments the incident engine metrics. Incidents with
+// ResolvedAt set are counted as resolved, others as created.
+func (engine *Engine) recordIncidentMetric(ctx context.Context, incident bpmnruntime.Incident) {
+	if engine == nil || engine.metrics == nil {
+		return
+	}
+	if incident.ResolvedAt != nil {
+		engine.metrics.IncidentsResolved.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("element_id", incident.ElementId),
+		))
+		return
+	}
+	engine.metrics.IncidentsCreated.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("element_id", incident.ElementId),
+	))
+}
+
+// recordTimerMetric increments timer engine metrics based on the state the
+// timer is being persisted with. It is shared by EngineBatch and the raw
+// storage.Batch code paths (definition-level timer start events) so every
+// durable timer state transition is counted exactly once.
+func (engine *Engine) recordTimerMetric(ctx context.Context, timer bpmnruntime.Timer) {
+	if engine == nil || engine.metrics == nil {
+		return
+	}
+	switch timer.TimerState {
+	case bpmnruntime.TimerStateCreated:
+		engine.metrics.TimersScheduled.Add(ctx, 1)
+	case bpmnruntime.TimerStateTriggered:
+		engine.metrics.TimersFired.Add(ctx, 1)
+	case bpmnruntime.TimerStateCancelled:
+		engine.metrics.TimersCancelled.Add(ctx, 1)
+	}
 }
 
 func (b *EngineBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {

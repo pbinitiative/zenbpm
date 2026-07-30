@@ -416,6 +416,12 @@ func (s *Store) Close(wait bool) (retErr error) {
 		return nil
 	}
 
+	// release the otel callback registration so the global meter provider
+	// does not keep this closed store alive
+	if err := s.unregisterMetrics(); err != nil {
+		s.logger.Warn(fmt.Sprintf("failed to unregister store metrics: %s", err))
+	}
+
 	close(s.observerClose)
 	<-s.observerDone
 

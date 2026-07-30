@@ -13,18 +13,31 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
+
+const dmnEngineName = "dmn-engine"
 
 type ZenDmnEngine struct {
 	persistence     storage.DecisionStorage
 	feelRuntime     script.FeelRuntime
 	ownsFeelRuntime bool
+
+	tracer             trace.Tracer
+	evaluationsTotal   metric.Int64Counter
+	evaluationDuration metric.Float64Histogram
 }
 
 type EngineOption = func(*ZenDmnEngine)
@@ -33,6 +46,20 @@ type EngineOption = func(*ZenDmnEngine)
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
+		tracer:      otel.GetTracerProvider().Tracer(dmnEngineName),
+	}
+	meter := otel.GetMeterProvider().Meter(dmnEngineName)
+	var err error
+	engine.evaluationsTotal, err = meter.Int64Counter("dmn_evaluations", metric.WithDescription("Number of DMN decision evaluations"))
+	if err != nil {
+		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluations_total instrument", "err", err)
+	}
+	engine.evaluationDuration, err = meter.Float64Histogram("dmn_evaluation_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of DMN decision evaluations, milliseconds"),
+	)
+	if err != nil {
+		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluation_duration instrument", "err", err)
 	}
 
 	for _, option := range options {
@@ -279,7 +306,36 @@ func (engine *ZenDmnEngine) evaluateDRD(
 	dmnResourceDefinition *runtime.DmnResourceDefinition,
 	decisionDefinition *runtime.DecisionDefinition,
 	inputVariableContext map[string]interface{},
-) (*EvaluatedDRDResult, error) {
+) (_ *EvaluatedDRDResult, retErr error) {
+	start := time.Now()
+	// stable span name keeps the tracing backend operation index bounded;
+	// the decision id is carried by the zenbpm.decision.id attribute
+	ctx, evalSpan := engine.tracer.Start(ctx, "dmn.evaluate-decision", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeDecisionId, decisionDefinition.Id),
+		attribute.Int64(otelPkg.AttributeDecisionKey, decisionDefinition.Key),
+		attribute.String(otelPkg.AttributeDrdId, dmnResourceDefinition.Id),
+	))
+	defer func() {
+		outcome := "success"
+		if retErr != nil {
+			outcome = "error"
+			evalSpan.RecordError(retErr)
+			evalSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		if engine.evaluationsTotal != nil {
+			engine.evaluationsTotal.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("decision_id", decisionDefinition.Id),
+				attribute.String("outcome", outcome),
+			))
+		}
+		if engine.evaluationDuration != nil {
+			engine.evaluationDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.String("decision_id", decisionDefinition.Id),
+			))
+		}
+		evalSpan.End()
+	}()
+
 	result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, decisionDefinition.Id, inputVariableContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate DecisionDefinition %s in DmnResourceDefinition %s:%d: %w",

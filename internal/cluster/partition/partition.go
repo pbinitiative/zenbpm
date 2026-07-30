@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -82,6 +84,22 @@ func (zpn *ZenPartitionNode) createMetrics() {
 	if err != nil {
 		zpn.logger.Error("Failed to register meter for jobsWaiting", "err", err)
 	}
+	zpn.metrics.hasLeader, err = otel.Meter(partitionMeter).Int64Gauge("partition_raft_has_leader", metric.WithDescription("1 when the partition raft group has an elected leader (local raft view; see partition_has_leader for the replicated cluster-state view), 0 otherwise"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for hasLeader", "err", err)
+	}
+	zpn.metrics.isLeader, err = otel.Meter(partitionMeter).Int64Gauge("partition_node_is_leader", metric.WithDescription("1 when this node is the partition raft leader, 0 otherwise"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for isLeader", "err", err)
+	}
+	zpn.metrics.dbSize, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_db_size", metric.WithUnit("By"), metric.WithDescription("Size of the partition SQLite database files on disk, bytes"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for dbSize", "err", err)
+	}
+	zpn.metrics.leaderChanges, err = otel.Meter(partitionMeter).Int64Counter("partition_leader_changes", metric.WithDescription("Number of partition raft leader changes observed by this node"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for leaderChanges", "err", err)
+	}
 }
 
 type PartitionChangesCallbacks struct {
@@ -95,6 +113,14 @@ type PartitionChangesCallbacks struct {
 type partitionMetrics struct {
 	jobsWaiting            metric.Int64Gauge
 	processInstancesActive metric.Int64Gauge
+	// hasLeader reports whether the partition raft group currently has a leader (0/1)
+	hasLeader metric.Int64Gauge
+	// isLeader reports whether this node is the partition raft leader (0/1)
+	isLeader metric.Int64Gauge
+	// dbSize reports the size of the partition SQLite database files on disk, in bytes
+	dbSize metric.Int64Gauge
+	// leaderChanges counts partition raft leader changes observed by this node
+	leaderChanges metric.Int64Counter
 }
 
 const (
@@ -485,6 +511,11 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 						}
 					}
 				case raft.LeaderObservation:
+					if zpn.metrics.leaderChanges != nil && signal.LeaderID != "" {
+						zpn.metrics.leaderChanges.Add(context.Background(), 1, metric.WithAttributes(
+							attribute.Int64("partition", int64(zpn.PartitionId)),
+						))
+					}
 					if zpn.stateChangeCallbacks.LeaderChange == nil {
 						break
 					}
@@ -514,6 +545,31 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 
 func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	ctx := context.Background()
+
+	partitionAttr := metric.WithAttributes(attribute.Int64("partition", int64(zpn.PartitionId)))
+	if zpn.metrics.hasLeader != nil {
+		leaderAddr, _ := zpn.store.LeaderAddr()
+		hasLeader := int64(0)
+		if leaderAddr != "" {
+			hasLeader = 1
+		}
+		zpn.metrics.hasLeader.Record(ctx, hasLeader, partitionAttr)
+	}
+	if zpn.metrics.isLeader != nil {
+		isLeader := int64(0)
+		if zpn.store.IsLeader() {
+			isLeader = 1
+		}
+		zpn.metrics.isLeader.Record(ctx, isLeader, partitionAttr)
+	}
+	if zpn.metrics.dbSize != nil {
+		if size, err := zpn.dbSizeBytes(); err != nil {
+			zpn.logger.Debug("Failed to compute rqlite db size", "partition", zpn.PartitionId, "err", err)
+		} else {
+			zpn.metrics.dbSize.Record(ctx, size, partitionAttr)
+		}
+	}
+
 	g, gCtx := errgroup.WithContext(ctx)
 
 	var waitingJobs int64
@@ -544,6 +600,28 @@ func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	zpn.metrics.processInstancesActive.Record(ctx, activeInstances, metric.WithAttributes(
 		attribute.Int64("partition", int64(zpn.PartitionId)),
 	))
+}
+
+// dbSizeBytes returns the combined on-disk size of the partition SQLite
+// database files (main db + WAL/SHM) in the rqlite data directory.
+func (zpn *ZenPartitionNode) dbSizeBytes() (int64, error) {
+	if zpn.config == nil || zpn.config.DataPath == "" {
+		return 0, fmt.Errorf("no data path configured")
+	}
+	matches, err := filepath.Glob(filepath.Join(zpn.config.DataPath, "db.sqlite*"))
+	if err != nil {
+		return 0, fmt.Errorf("failed to glob sqlite files: %w", err)
+	}
+	var total int64
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			zpn.logger.Debug("Failed to stat sqlite file for db size metric", "file", match, "err", err)
+			continue
+		}
+		total += info.Size()
+	}
+	return total, nil
 }
 
 func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.CredentialsStore, error) {

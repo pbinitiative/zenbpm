@@ -92,6 +92,7 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 				attribute.String("type", job.Type),
 				attribute.Bool("internal", false),
 			))
+			engine.recordJobLifetime(ctx, job, "failed")
 		}
 	}()
 
@@ -339,6 +340,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 
 		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
+		engine.recordJobLifetime(ctx, job, "completed")
 		return nil
 	} else {
 		err = batch.Flush(ctx)
@@ -347,6 +349,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 
 		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
+		engine.recordJobLifetime(ctx, job, "completed")
 
 		if !messageEndEventHandled {
 			err := engine.RunProcessInstance(ctx, instance, tokens)
@@ -374,4 +377,15 @@ func (engine *Engine) refreshAndValidateJob(ctx context.Context, jobKey int64) (
 		return runtime.Job{}, newEngineErrorf("job already failed: %d", job.Key)
 	}
 	return job, nil
+}
+
+// recordJobLifetime records the time between job creation and its terminal state, in milliseconds.
+func (engine *Engine) recordJobLifetime(ctx context.Context, job runtime.Job, outcome string) {
+	if engine.metrics == nil || job.CreatedAt.IsZero() {
+		return
+	}
+	engine.metrics.JobLifetime.Record(ctx, float64(time.Since(job.CreatedAt))/float64(time.Millisecond), metric.WithAttributes(
+		attribute.String("type", job.Type),
+		attribute.String("outcome", outcome),
+	))
 }

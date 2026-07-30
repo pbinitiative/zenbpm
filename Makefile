@@ -281,7 +281,8 @@ run2: ## Start 2nd node
 .PHONY: start-monitoring
 start-monitoring: ## Start monitoring stack
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
-	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus  --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name alertmanager -p 9093:9093 -v ./scripts/alertmanager.yml:/etc/alertmanager/alertmanager.yml prom/alertmanager --config.file=/etc/alertmanager/alertmanager.yml
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml -v ./scripts/prometheus-rules.yml:/etc/prometheus/prometheus-rules.yml prom/prometheus  --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
 	@# Host CPU / memory / disk usage + disk I/O. On Linux this reports the real host;
 	@# on macOS Docker Desktop it reports the Docker VM (see scripts/prometheus.yml).
@@ -291,6 +292,7 @@ start-monitoring: ## Start monitoring stack
 stop-monitoring:
 	@docker stop grafana
 	@docker stop prometheus
+	@docker stop alertmanager
 	@docker stop jaeger
 	@docker stop node-exporter
 

@@ -20,6 +20,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"go.opentelemetry.io/otel/metric"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -63,6 +64,10 @@ type Store struct {
 
 	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
+
+	// metricsRegistration is the otel observable-callback registration created
+	// by RegisterMetrics; released in Close via unregisterMetrics
+	metricsRegistration metric.Registration
 }
 
 type Config struct {

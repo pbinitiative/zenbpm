@@ -92,7 +92,7 @@ For a business rule task, `decisionOutput` is what lands in the task's `resultVa
 Evaluating a decision evaluates the whole requirement subgraph beneath it. Requirements are resolved depth-first, in document order, before the decision's own logic runs:
 
 - A `requiredInput` is checked against the evaluation input. If no variable matches the input data's `name`, the evaluation fails.
-- A `requiredDecision` is evaluated recursively **with the original evaluation input**, so a required decision never sees the results of its siblings. Its result is then merged into the requiring decision's variable context under the required decision's `name` (or `id`, when `name` is empty).
+- A `requiredDecision` is evaluated recursively **with the original evaluation input**, so a required decision never sees the results of its siblings. A decision table or context result is merged into the requiring decision's variable context under the required decision's `id`; a literal-expression result is merged under its `variable/@name`. The decision's `name` attribute is display-only.
 
 Requirements can only point at decisions inside the same DMN file. Cyclic requirements are not detected at deployment time — validation of cycles, duplicate ids and similar structural problems is not implemented yet.
 

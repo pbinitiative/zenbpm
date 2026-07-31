@@ -337,7 +337,15 @@ func (engine *ZenDmnEngine) evaluateDecision(
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
 	}
+	return engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, foundDecision, inputVariableContext)
+}
 
+func (engine *ZenDmnEngine) evaluateResolvedDecision(
+	ctx context.Context,
+	dmnResourceDefinition *runtime.DmnResourceDefinition,
+	foundDecision *dmn.TDecision,
+	inputVariableContext map[string]interface{},
+) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	evaluatedDependencies := make([]EvaluatedDecisionResult, 0)
 
 	localVariableContext := make(map[string]interface{})
@@ -351,27 +359,44 @@ func (engine *ZenDmnEngine) evaluateDecision(
 			requiredDecisionRef := requirement.RequiredResource.(dmn.TRequiredDecision).Href
 
 			requiredDecisionId := strings.TrimPrefix(requiredDecisionRef, "#")
-			result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, requiredDecisionId, inputVariableContext)
+			requiredDecision := findDecisionDefinition(dmnResourceDefinition, requiredDecisionId)
+			if requiredDecision == nil {
+				return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: requiredDecisionId}
+			}
+			result, dependencies, err := engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, requiredDecision, inputVariableContext)
 			if err != nil {
-				return result, dependencies, err
+				return EvaluatedDecisionResult{}, nil, err
 			}
-
-			for key, outputVariable := range result.DecisionOutput {
-				localVariableContext[key] = outputVariable
+			// DecisionOutput is always keyed by the decision id, regardless of decision type.
+			requiredDecisionValue := result.DecisionOutput[requiredDecision.Id]
+			requiredDecisionVariableName := requiredDecisionId
+			if requiredDecision.LiteralExpression != nil {
+				requiredDecisionVariableName = requiredDecision.Variable.Name
 			}
+			localVariableContext[requiredDecisionVariableName] = requiredDecisionValue
 			evaluatedDependencies = append(evaluatedDependencies, result)
 			evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 		case dmn.TRequiredInput:
 			requiredInputRef := requirement.RequiredResource.(dmn.TRequiredInput).Href
 
 			requiredInputId := strings.TrimPrefix(requiredInputRef, "#")
+			foundRequiredInput := false
 
 			for _, input := range dmnResourceDefinition.Definitions.InputData {
 				if input.Id == requiredInputId {
-					if _, ok := inputVariableContext[input.Name]; !ok {
-						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", input.Name)
+					foundRequiredInput = true
+					requiredInputName := input.Variable.Name
+					if requiredInputName == "" {
+						requiredInputName = input.Name
 					}
+					if _, ok := inputVariableContext[requiredInputName]; !ok {
+						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", requiredInputName)
+					}
+					break
 				}
+			}
+			if !foundRequiredInput {
+				return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input %s not found", requiredInputId)
 			}
 		default:
 			return EvaluatedDecisionResult{}, nil, fmt.Errorf("unsupported information requirement resource type: %T", requirement.RequiredResource)
@@ -382,29 +407,26 @@ func (engine *ZenDmnEngine) evaluateDecision(
 	var matchedRules []EvaluatedRule
 	var evaluatedInputs []EvaluatedInput
 	var err error
-	var decisionName string
 
-	if foundDecision.Name != "" {
-		decisionName = foundDecision.Name
-	} else {
-		decisionName = foundDecision.Id
-	}
-
+	// The top-level DecisionOutput is always keyed by the decision id, regardless
+	// of decision type, so requiring decisions and API consumers can rely on a
+	// single, uniform keying convention.
 	var decisionType dmn.EvaluatedDecisionType
 	if foundDecision.DecisionTable != nil {
-		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, decisionName, localVariableContext)
+		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
 		decisionType = dmn.DecisionTable
 	} else if foundDecision.LiteralExpression != nil {
-		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, decisionName, localVariableContext)
+		literalOutput, err := engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
+		decisionOutput = map[string]interface{}{foundDecision.Id: literalOutput[foundDecision.Variable.Name]}
 		decisionType = dmn.LiteralExpression
 	} else if foundDecision.Context != nil {
-		decisionOutput, err = engine.evaluateContext(foundDecision.Context, decisionName, localVariableContext)
+		decisionOutput, err = engine.evaluateContext(foundDecision.Context, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
@@ -500,6 +522,10 @@ func normalizeFeelStringLiteral(expr string) string {
 }
 
 func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLiteralExpression, variable *dmn.TVariable, decisionId string, localVariableContext map[string]interface{}) (map[string]any, error) {
+	if variable == nil {
+		return nil, fmt.Errorf("literal expression decision %s has no result variable", decisionId)
+	}
+
 	var resultValue any
 	var err error
 	switch literalExpression.ExpressionLanguage {

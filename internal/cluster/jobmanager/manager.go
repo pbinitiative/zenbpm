@@ -163,8 +163,6 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 	if maps.Equal(m.currentPartitionRoles, newPartitionLeaders) {
 		return
 	}
-	// TODO: multiple nodes
-	// m.OnPartitionRoleChange(ctx)
 	m.currentPartitionRoles = newPartitionLeaders
 	// Partition leaders are registered in the cluster state asynchronously, so a
 	// partition can become available after the manager has been started. Without

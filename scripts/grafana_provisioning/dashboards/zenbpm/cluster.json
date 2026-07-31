@@ -43,8 +43,27 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Desired minus existing partitions. partition_has_leader only emits series for partitions present in the cluster state, so a partition that was never created would silently disappear from the Partition leaders panel. Mirrors the PartitionDeficit alert.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "green", "index": 0, "text": "OK" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "id": 8,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "max(cluster_desired_partitions) - max(cluster_partitions)", "legendFormat": "missing partitions", "refId": "A" } ],
+      "title": "Partition deficit",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
       "id": 3,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [

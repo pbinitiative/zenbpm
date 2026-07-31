@@ -127,7 +127,7 @@ placeholder webhook receiver). Key alerts:
 Provisioned automatically from `scripts/grafana_provisioning/dashboards/zenbpm/`:
 
 - `main.json` — processes, jobs, distribution, request duration
-- `cluster.json` — leadership, raft health, leader changes
+- `cluster.json` — leadership, partition deficit, raft health, leader changes
 - `incidents.json` — incidents, job failures, message correlation, timers, DMN
 - `storage.json` — rqlite DB size/growth, read/write latency percentiles, disk
 - `latency.json` — business latency percentiles and throughput

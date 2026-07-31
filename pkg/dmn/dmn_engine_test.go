@@ -23,117 +23,38 @@ import (
 var dmnEngine *ZenDmnEngine
 var engineStorage *inmemory.Storage
 
-func TestMapRequiredDecisionOutputReturnsNilWhenOutputKeyIsMissing(t *testing.T) {
+func TestDecisionOutputIsKeyedByDecisionID(t *testing.T) {
 	t.Run("decision table", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:            "decisionTable",
-			DecisionTable: &dmnModel.TDecisionTable{},
-		}
+		engine := NewEngine()
+		resourceDefinition := requiredDecisionResourceDefinition()
 
-		result, err := mapRequiredDecisionOutput(decision, map[string]interface{}{})
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "riskDecision", nil)
 
 		assert.NoError(t, err)
-		assert.Nil(t, result)
+		assert.Equal(t, map[string]interface{}{
+			"riskDecision": map[string]interface{}{"risk": "LOW"},
+		}, result.DecisionOutput)
 	})
 
 	t.Run("literal expression", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:                "literalExpression",
-			Variable:          &dmnModel.TVariable{Name: "literalResult"},
-			LiteralExpression: &dmnModel.TLiteralExpression{},
-		}
+		engine := NewEngine()
+		resourceDefinition := requiredLiteralExpressionResourceDefinition()
 
-		result, err := mapRequiredDecisionOutput(decision, map[string]interface{}{})
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "riskDecision", nil)
 
 		assert.NoError(t, err)
-		assert.Nil(t, result)
+		assert.Equal(t, map[string]interface{}{"riskDecision": "LOW"}, result.DecisionOutput)
 	})
 
-	t.Run("named context", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:      "contextDecision",
-			Name:    "Context Decision",
-			Context: &dmnModel.TContext{},
-		}
+	t.Run("context with display name differing from id", func(t *testing.T) {
+		engine := NewEngine()
+		resourceDefinition := requiredContextResourceDefinition()
 
-		result, err := mapRequiredDecisionOutput(decision, map[string]interface{}{})
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "contextDecision", nil)
 
 		assert.NoError(t, err)
-		assert.Nil(t, result)
+		assert.Equal(t, map[string]interface{}{"contextDecision": "LOW"}, result.DecisionOutput)
 	})
-
-	t.Run("unnamed context", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:      "contextDecision",
-			Context: &dmnModel.TContext{},
-		}
-
-		result, err := mapRequiredDecisionOutput(decision, map[string]interface{}{})
-
-		assert.NoError(t, err)
-		assert.Nil(t, result)
-	})
-}
-
-func TestMapRequiredDecisionOutputUsesDecisionIDForDecisionTable(t *testing.T) {
-	decision := &dmnModel.TDecision{
-		Id:            "riskDecision",
-		Name:          "Risk Decision",
-		DecisionTable: &dmnModel.TDecisionTable{},
-	}
-	decisionResult := map[string]interface{}{
-		"riskDecision": map[string]interface{}{"risk": "LOW"},
-	}
-
-	result, err := mapRequiredDecisionOutput(decision, decisionResult)
-
-	assert.NoError(t, err)
-	assert.Equal(t, map[string]interface{}{"risk": "LOW"}, result)
-}
-
-func TestMapRequiredDecisionOutputUsesDecisionNameOrIDForContext(t *testing.T) {
-	t.Run("uses decision name", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:      "contextDecision",
-			Name:    "Context Decision",
-			Context: &dmnModel.TContext{},
-		}
-		decisionResult := map[string]interface{}{
-			"Context Decision": map[string]interface{}{"approved": true},
-		}
-
-		result, err := mapRequiredDecisionOutput(decision, decisionResult)
-
-		assert.NoError(t, err)
-		assert.Equal(t, map[string]interface{}{"approved": true}, result)
-	})
-
-	t.Run("uses decision ID when name is empty", func(t *testing.T) {
-		decision := &dmnModel.TDecision{
-			Id:      "contextDecision",
-			Context: &dmnModel.TContext{},
-		}
-		decisionResult := map[string]interface{}{
-			"contextDecision": map[string]interface{}{"approved": true},
-		}
-
-		result, err := mapRequiredDecisionOutput(decision, decisionResult)
-
-		assert.NoError(t, err)
-		assert.Equal(t, map[string]interface{}{"approved": true}, result)
-	})
-}
-
-func TestMapRequiredDecisionOutputRejectsMissingLiteralExpressionVariable(t *testing.T) {
-	decision := &dmnModel.TDecision{
-		Id:                "literalDecision",
-		LiteralExpression: &dmnModel.TLiteralExpression{},
-	}
-
-	result, err := mapRequiredDecisionOutput(decision, map[string]interface{}{})
-
-	assert.EqualError(t, err, "literal expression decision literalDecision has no result variable")
-	assert.Nil(t, result)
 }
 
 func TestEvaluateDecisionSupportsRequiredDecisionTableID(t *testing.T) {
@@ -639,6 +560,24 @@ func requiredLiteralExpressionResourceDefinition() *dmnRuntime.DmnResourceDefini
 					},
 				},
 			},
+		},
+	}
+}
+
+func requiredContextResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{{
+				Id:   "contextDecision",
+				Name: "Context Decision",
+				Context: &dmnModel.TContext{
+					ContextEntries: []dmnModel.TContextEntry{{
+						LiteralExpression: &dmnModel.TLiteralExpression{
+							Text: dmnModel.Text{Text: `"LOW"`},
+						},
+					}},
+				},
+			}},
 		},
 	}
 }

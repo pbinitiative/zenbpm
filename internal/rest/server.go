@@ -1,3 +1,5 @@
+// Package rest exposes the public REST API of a ZenBPM node, including the
+// OpenAPI-generated endpoints, Prometheus metrics and health probes.
 package rest
 
 import (
@@ -117,12 +119,12 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		})
 		// liveness probe: reports only that the process is up. It deliberately does not check raft state
 		// so that a leaderless node is not restarted in a loop by an orchestrator.
-		r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
+		r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 			writeHealthResponse(w, restLogger, true, nil)
 		})
 		// readiness probe: 503 until the cluster has a leader, every partition
 		// has a leader and all partitions owned by this node are initialized.
-		r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
 			healthy, reasons := node.Health()
 			writeHealthResponse(w, restLogger, healthy, reasons)
 		})

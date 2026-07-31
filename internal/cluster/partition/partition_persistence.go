@@ -422,6 +422,9 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 	return r.rowsAffected, nil
 }
 
+// ExecContext executes a single write SQL statement against the partition
+// rqlite store. It records an "rqlite-exec" trace span and the execution
+// duration metric labeled with the partition and outcome.
 func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) (_ ssql.Result, retErr error) {
 	start := time.Now()
 	ctx, execSpan := rq.tracer.Start(ctx, "rqlite-exec", trace.WithAttributes(
@@ -474,6 +477,9 @@ func (rq *DB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error
 	return nil, errors.New("PrepareContext not supported by rqlite")
 }
 
+// QueryContext executes a read SQL query against the partition rqlite store.
+// It records an "rqlite-query" trace span and the query duration metric
+// labeled with the partition and outcome.
 func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (_ *sql.Rows, retErr error) {
 	start := time.Now()
 	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(

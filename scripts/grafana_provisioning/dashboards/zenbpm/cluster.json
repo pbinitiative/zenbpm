@@ -37,7 +37,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [ { "expr": "min by(partition) (partition_has_leader)", "legendFormat": "partition {{partition}}", "refId": "A" } ],
+      "targets": [ { "expr": "max by(partition) (partition_has_leader)", "legendFormat": "partition {{partition}}", "refId": "A" } ],
       "title": "Partition leaders",
       "type": "stat"
     },

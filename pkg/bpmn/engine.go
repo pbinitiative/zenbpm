@@ -392,7 +392,7 @@ func (engine *Engine) createInstance(
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
@@ -482,7 +482,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", instance.ProcessInstance().Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {

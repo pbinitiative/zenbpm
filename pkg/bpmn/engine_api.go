@@ -177,7 +177,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 
 	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 
@@ -207,7 +207,7 @@ mainLoop:
 			continue
 		}
 		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", currentToken.ElementId), trace.WithAttributes(
-			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
+			attribute.String(otelPkg.AttributeElementID, currentToken.ElementId),
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
@@ -507,7 +507,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, processInstance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.ProcessInstance().Definition.Key),
 	))
 	defer createSpan.End()
@@ -581,7 +581,7 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("delete-instance-variable:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, processInstance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.ProcessInstance().Definition.Key),
 	))
 	defer createSpan.End()

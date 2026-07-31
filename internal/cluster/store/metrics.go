@@ -75,7 +75,7 @@ func (s *Store) RegisterMetrics() error {
 		return err
 	}
 
-	reg, err := meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+	reg, err := meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
 		if !s.open.Load() {
 			return nil
 		}

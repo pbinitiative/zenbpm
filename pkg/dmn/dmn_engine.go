@@ -311,9 +311,9 @@ func (engine *ZenDmnEngine) evaluateDRD(
 	// stable span name keeps the tracing backend operation index bounded;
 	// the decision id is carried by the zenbpm.decision.id attribute
 	ctx, evalSpan := engine.tracer.Start(ctx, "dmn.evaluate-decision", trace.WithAttributes(
-		attribute.String(otelPkg.AttributeDecisionId, decisionDefinition.Id),
+		attribute.String(otelPkg.AttributeDecisionID, decisionDefinition.Id),
 		attribute.Int64(otelPkg.AttributeDecisionKey, decisionDefinition.Key),
-		attribute.String(otelPkg.AttributeDrdId, dmnResourceDefinition.Id),
+		attribute.String(otelPkg.AttributeDrdID, dmnResourceDefinition.Id),
 	))
 	defer func() {
 		outcome := "success"

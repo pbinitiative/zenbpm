@@ -1888,7 +1888,7 @@ func (node *ZenNode) Health() (bool, []string) {
 		reasons = append(reasons, "no cluster leader elected")
 	}
 	cs := node.store.ClusterState()
-	if desired := cs.Config.DesiredPartitions; uint32(len(cs.Partitions)) < desired {
+	if desired := cs.Config.DesiredPartitions; int64(len(cs.Partitions)) < int64(desired) {
 		reasons = append(reasons, fmt.Sprintf("cluster has %d of %d desired partitions", len(cs.Partitions), desired))
 	}
 	partitionReasons := make([]string, 0)

@@ -381,7 +381,7 @@ func (engine *Engine) refreshAndValidateJob(ctx context.Context, jobKey int64) (
 
 // recordJobLifetime records the time between job creation and its terminal state, in milliseconds.
 func (engine *Engine) recordJobLifetime(ctx context.Context, job runtime.Job, outcome string) {
-	if engine.metrics == nil || job.CreatedAt.IsZero() {
+	if engine.metrics == nil || engine.metrics.JobLifetime == nil || job.CreatedAt.IsZero() {
 		return
 	}
 	engine.metrics.JobLifetime.Record(ctx, float64(time.Since(job.CreatedAt))/float64(time.Millisecond), metric.WithAttributes(

@@ -34,7 +34,7 @@ func (engine *Engine) PublishMessageByKey(ctx context.Context, subscriptionKey i
 // counter. Only bounded values (names of deployed subscriptions or "unknown")
 // may be passed as name to keep metric cardinality under control.
 func (engine *Engine) recordMessageCorrelationFailure(ctx context.Context, name string, reason string) {
-	if engine.metrics == nil {
+	if engine.metrics == nil || engine.metrics.MessageCorrelationFailed == nil {
 		return
 	}
 	engine.metrics.MessageCorrelationFailed.Add(ctx, 1, metric.WithAttributes(

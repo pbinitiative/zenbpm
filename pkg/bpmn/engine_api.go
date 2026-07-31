@@ -322,11 +322,13 @@ mainLoop:
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
-		if createdAt := instance.ProcessInstance().CreatedAt; !createdAt.IsZero() {
-			engine.metrics.ProcessInstanceDuration.Record(ctx, float64(time.Since(createdAt))/float64(time.Millisecond), metric.WithAttributes(
-				attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
-				attribute.String("state", instance.ProcessInstance().State.String()),
-			))
+		if engine.metrics != nil && engine.metrics.ProcessInstanceDuration != nil {
+			if createdAt := instance.ProcessInstance().CreatedAt; !createdAt.IsZero() {
+				engine.metrics.ProcessInstanceDuration.Record(ctx, float64(time.Since(createdAt))/float64(time.Millisecond), metric.WithAttributes(
+					attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
+					attribute.String("state", instance.ProcessInstance().State.String()),
+				))
+			}
 		}
 	}
 

@@ -271,9 +271,14 @@ func (engine *Engine) recordIncidentMetric(ctx context.Context, incident bpmnrun
 		return
 	}
 	if incident.ResolvedAt != nil {
-		engine.metrics.IncidentsResolved.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("element_id", incident.ElementId),
-		))
+		if engine.metrics.IncidentsResolved != nil {
+			engine.metrics.IncidentsResolved.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("element_id", incident.ElementId),
+			))
+		}
+		return
+	}
+	if engine.metrics.IncidentsCreated == nil {
 		return
 	}
 	engine.metrics.IncidentsCreated.Add(ctx, 1, metric.WithAttributes(

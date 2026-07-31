@@ -52,7 +52,7 @@ func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	var err error
 	engine.evaluationsTotal, err = meter.Int64Counter("dmn_evaluations", metric.WithDescription("Number of DMN decision evaluations"))
 	if err != nil {
-		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluations_total instrument", "err", err)
+		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluations instrument", "err", err)
 	}
 	engine.evaluationDuration, err = meter.Float64Histogram("dmn_evaluation_duration",
 		metric.WithUnit("ms"),

@@ -168,63 +168,6 @@ func TestEvaluateDecisionRejectsUnknownRequiredInput(t *testing.T) {
 	assert.EqualError(t, err, "required input annualIncomeInput not found")
 }
 
-func requiredDecisionResourceDefinition() *dmnRuntime.DmnResourceDefinition {
-	return &dmnRuntime.DmnResourceDefinition{
-		Definitions: dmnModel.TDefinitions{
-			Decisions: []dmnModel.TDecision{
-				{
-					Id:   "riskDecision",
-					Name: "RiskDecision",
-					DecisionTable: &dmnModel.TDecisionTable{
-						HitPolicy: dmnModel.HitPolicyFirst,
-						Outputs: []dmnModel.TOutput{{
-							Name: "risk",
-						}},
-						Rules: []dmnModel.TRule{{
-							OutputEntry: []dmnModel.TOutputEntry{{Text: `"LOW"`}},
-						}},
-					},
-				},
-				{
-					Id:   "approvalDecision",
-					Name: "ApprovalDecision",
-					InformationRequirement: []dmnModel.TInformationRequirement{{
-						RequiredResource: dmnModel.TRequiredDecision{Href: "#riskDecision"},
-					}},
-					DecisionTable: &dmnModel.TDecisionTable{
-						HitPolicy: dmnModel.HitPolicyFirst,
-						Inputs: []dmnModel.TInput{{
-							InputExpression: dmnModel.TInputExpression{Text: "riskDecision.risk"},
-						}},
-						Outputs: []dmnModel.TOutput{{
-							Name: "approved",
-						}},
-						Rules: []dmnModel.TRule{{
-							InputEntry:  []dmnModel.TInputEntry{{Text: `"LOW"`}},
-							OutputEntry: []dmnModel.TOutputEntry{{Text: "true"}},
-						}},
-					},
-				},
-			},
-		},
-	}
-}
-
-func requiredInputResourceDefinition(inputData []dmnModel.TInputData) *dmnRuntime.DmnResourceDefinition {
-	return &dmnRuntime.DmnResourceDefinition{
-		Definitions: dmnModel.TDefinitions{
-			InputData: inputData,
-			Decisions: []dmnModel.TDecision{{
-				Id: "inputDecision",
-				InformationRequirement: []dmnModel.TInformationRequirement{{
-					RequiredResource: dmnModel.TRequiredInput{Href: "#annualIncomeInput"},
-				}},
-				DecisionTable: &dmnModel.TDecisionTable{},
-			}},
-		},
-	}
-}
-
 func TestEvaluateLiteralExpressionRejectsMissingResultVariable(t *testing.T) {
 	engine := NewEngine()
 
@@ -555,6 +498,72 @@ func TestBulkEvaluateDRD(t *testing.T) {
 	}
 }
 
+func TestFindAndEvaluateDRDNonExistingDecisionWrapsStorageErrNotFound(t *testing.T) {
+	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+
+	_, err := engine.FindAndEvaluateDRD(t.Context(), "latest", "non-existing-decision-id", "", nil)
+
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, storage.ErrNotFound), "error should wrap storage.ErrNotFound so the cluster layer can detect it as a 404")
+}
+
+func requiredDecisionResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:   "riskDecision",
+					Name: "RiskDecision",
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Outputs: []dmnModel.TOutput{{
+							Name: "risk",
+						}},
+						Rules: []dmnModel.TRule{{
+							OutputEntry: []dmnModel.TOutputEntry{{Text: `"LOW"`}},
+						}},
+					},
+				},
+				{
+					Id:   "approvalDecision",
+					Name: "ApprovalDecision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#riskDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Inputs: []dmnModel.TInput{{
+							InputExpression: dmnModel.TInputExpression{Text: "riskDecision.risk"},
+						}},
+						Outputs: []dmnModel.TOutput{{
+							Name: "approved",
+						}},
+						Rules: []dmnModel.TRule{{
+							InputEntry:  []dmnModel.TInputEntry{{Text: `"LOW"`}},
+							OutputEntry: []dmnModel.TOutputEntry{{Text: "true"}},
+						}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func requiredInputResourceDefinition(inputData []dmnModel.TInputData) *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			InputData: inputData,
+			Decisions: []dmnModel.TDecision{{
+				Id: "inputDecision",
+				InformationRequirement: []dmnModel.TInformationRequirement{{
+					RequiredResource: dmnModel.TRequiredInput{Href: "#annualIncomeInput"},
+				}},
+				DecisionTable: &dmnModel.TDecisionTable{},
+			}},
+		},
+	}
+}
+
 func loadBulkTestConfigs() ([]configuration, error) {
 	files, err := os.ReadDir(filepath.Join(".", "test-data", "bulk-evaluation-test"))
 	if err != nil {
@@ -592,13 +601,4 @@ func loadBulkTestConfigs() ([]configuration, error) {
 	}
 
 	return configurations, nil
-}
-
-func TestFindAndEvaluateDRDNonExistingDecisionWrapsStorageErrNotFound(t *testing.T) {
-	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
-
-	_, err := engine.FindAndEvaluateDRD(t.Context(), "latest", "non-existing-decision-id", "", nil)
-
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, storage.ErrNotFound), "error should wrap storage.ErrNotFound so the cluster layer can detect it as a 404")
 }

@@ -41,7 +41,7 @@ Evaluation flow:
 
 ### Referencing a required decision's result
 
-A required decision's result is merged under its **`name`** attribute, falling back to `id` when `name` is empty. For a decision table the merged value is the hit policy result, so a named output is reached as `<decisionName>.<outputName>`:
+A required decision's result is merged under its **`id`** attribute. For a decision table the merged value is the hit policy result, so a named output is reached as `<decisionId>.<outputName>`:
 
 ```xml
 <inputExpression id="approval_input_riskLevel" typeRef="string">

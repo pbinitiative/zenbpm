@@ -22,8 +22,8 @@ Every `<decision>` in a deployed file becomes a decision definition that can be 
 
 | Element                                              | Attribute | Required | Description                                                                                                                                                     |
 | ---------------------------------------------------- | --------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `decision`                                           | `id`      | yes      | Identifies the decision. Referenced by `zenbpm:calledDecision` on a business rule task and by `requiredDecision` inside the same file.                            |
-| `decision`                                           | `name`    | no       | Display name. Also the key under which this decision's result is exposed to decisions that require it; falls back to `id` when empty.                             |
+| `decision`                                           | `id`      | yes      | Identifies the decision. Referenced by `zenbpm:calledDecision` on a business rule task and by `requiredDecision` inside the same file. Decision-table results are exposed to requiring decisions under this key. |
+| `decision`                                           | `name`    | no       | Display name. It is not used to reference the decision or its result.                                                                                             |
 | `decision` → `extensionElements` → `zenbpm:versionTag` | `value` | no       | Marks this version of the decision so it can be selected with the `versionTag` binding type. See [DMN engine](../dmn-engine.md#binding-types).                    |
 | `informationRequirement` → `requiredDecision`        | `href`   | –        | `#` followed by the `id` of another decision **in the same DMN file**.                                                                                            |
 | `informationRequirement` → `requiredInput`           | `href`   | –        | `#` followed by the `id` of an `inputData` element.                                                                                                               |
@@ -50,7 +50,7 @@ A required decision's result is merged under its **`id`** attribute. For a decis
 ```
 
 :::caution
-The `<variable>` element of a decision that holds a decision table is **not** used as the result key — the decision's `name` is. Keep the `name` of any decision that other decisions require a valid FEEL identifier: names containing spaces cannot be referenced from an input expression.
+The `<variable>` element of a decision that holds a decision table is **not** used as the result key — the decision's `id` is. Keep the `id` of any decision that other decisions require as a valid FEEL identifier.
 :::
 
 :::note[Limitations]

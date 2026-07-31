@@ -337,7 +337,15 @@ func (engine *ZenDmnEngine) evaluateDecision(
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
 	}
+	return engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, foundDecision, inputVariableContext)
+}
 
+func (engine *ZenDmnEngine) evaluateResolvedDecision(
+	ctx context.Context,
+	dmnResourceDefinition *runtime.DmnResourceDefinition,
+	foundDecision *dmn.TDecision,
+	inputVariableContext map[string]interface{},
+) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	evaluatedDependencies := make([]EvaluatedDecisionResult, 0)
 
 	localVariableContext := make(map[string]interface{})
@@ -351,20 +359,23 @@ func (engine *ZenDmnEngine) evaluateDecision(
 			requiredDecisionRef := requirement.RequiredResource.(dmn.TRequiredDecision).Href
 
 			requiredDecisionId := strings.TrimPrefix(requiredDecisionRef, "#")
-			result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, requiredDecisionId, inputVariableContext)
-			if err != nil {
-				return result, dependencies, err
-			}
-
 			requiredDecision := findDecisionDefinition(dmnResourceDefinition, requiredDecisionId)
 			if requiredDecision == nil {
-				return result, dependencies, &DecisionNotFoundError{DecisionID: requiredDecisionId}
+				return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: requiredDecisionId}
+			}
+			result, dependencies, err := engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, requiredDecision, inputVariableContext)
+			if err != nil {
+				return EvaluatedDecisionResult{}, nil, err
 			}
 			requiredDecisionValue, err := mapRequiredDecisionOutput(requiredDecision, result.DecisionOutput)
 			if err != nil {
-				return result, dependencies, fmt.Errorf("failed to map required decision %s output: %w", requiredDecisionId, err)
+				return EvaluatedDecisionResult{}, nil, fmt.Errorf("failed to map required decision %s output: %w", requiredDecisionId, err)
 			}
-			localVariableContext[requiredDecisionId] = requiredDecisionValue
+			requiredDecisionVariableName := requiredDecisionId
+			if requiredDecision.LiteralExpression != nil {
+				requiredDecisionVariableName = requiredDecision.Variable.Name
+			}
+			localVariableContext[requiredDecisionVariableName] = requiredDecisionValue
 			evaluatedDependencies = append(evaluatedDependencies, result)
 			evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 		case dmn.TRequiredInput:
@@ -414,7 +425,7 @@ func (engine *ZenDmnEngine) evaluateDecision(
 		}
 		decisionType = dmn.DecisionTable
 	} else if foundDecision.LiteralExpression != nil {
-		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, decisionName, localVariableContext)
+		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}

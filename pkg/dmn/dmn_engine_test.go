@@ -136,9 +136,21 @@ func TestMapRequiredDecisionOutputRejectsMissingLiteralExpressionVariable(t *tes
 	assert.Nil(t, result)
 }
 
-func TestEvaluateDecisionSupportsRequiredDecisionID(t *testing.T) {
+func TestEvaluateDecisionSupportsRequiredDecisionTableID(t *testing.T) {
 	engine := NewEngine()
 	resourceDefinition := requiredDecisionResourceDefinition()
+
+	result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "approvalDecision", nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"approvalDecision": map[string]interface{}{"approved": true},
+	}, result.DecisionOutput)
+}
+
+func TestEvaluateDecisionSupportsRequiredLiteralExpressionVariableName(t *testing.T) {
+	engine := NewEngine()
+	resourceDefinition := requiredLiteralExpressionResourceDefinition()
 
 	result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "approvalDecision", nil)
 
@@ -166,6 +178,33 @@ func TestEvaluateDecisionRejectsUnknownRequiredInput(t *testing.T) {
 	_, _, err := NewEngine().evaluateDecision(t.Context(), resourceDefinition, "inputDecision", nil)
 
 	assert.EqualError(t, err, "required input annualIncomeInput not found")
+}
+
+func TestEvaluateDecisionReturnsZeroValuesForRequiredDecisionError(t *testing.T) {
+	resourceDefinition := &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:                "literalDecision",
+					Name:              "Literal Decision",
+					LiteralExpression: &dmnModel.TLiteralExpression{},
+				},
+				{
+					Id: "requiringDecision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#literalDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{},
+				},
+			},
+		},
+	}
+
+	result, dependencies, err := NewEngine().evaluateDecision(t.Context(), resourceDefinition, "requiringDecision", nil)
+
+	assert.EqualError(t, err, "literal expression decision literalDecision has no result variable")
+	assert.Equal(t, EvaluatedDecisionResult{}, result)
+	assert.Nil(t, dependencies)
 }
 
 func TestEvaluateLiteralExpressionRejectsMissingResultVariable(t *testing.T) {
@@ -560,6 +599,46 @@ func requiredInputResourceDefinition(inputData []dmnModel.TInputData) *dmnRuntim
 				}},
 				DecisionTable: &dmnModel.TDecisionTable{},
 			}},
+		},
+	}
+}
+
+func requiredLiteralExpressionResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:   "riskDecision",
+					Name: "Risk Decision",
+					Variable: &dmnModel.TVariable{
+						Name:    "riskResult",
+						TypeRef: dmnModel.TypeRefString,
+					},
+					LiteralExpression: &dmnModel.TLiteralExpression{
+						Text: dmnModel.Text{Text: `"LOW"`},
+					},
+				},
+				{
+					Id:   "approvalDecision",
+					Name: "Approval Decision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#riskDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Inputs: []dmnModel.TInput{{
+							InputExpression: dmnModel.TInputExpression{Text: "riskResult"},
+						}},
+						Outputs: []dmnModel.TOutput{{
+							Name: "approved",
+						}},
+						Rules: []dmnModel.TRule{{
+							InputEntry:  []dmnModel.TInputEntry{{Text: `"LOW"`}},
+							OutputEntry: []dmnModel.TOutputEntry{{Text: "true"}},
+						}},
+					},
+				},
+			},
 		},
 	}
 }

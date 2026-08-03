@@ -29,7 +29,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/stretchr/testify/assert"
@@ -92,7 +91,7 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 		return &zenproto.FindActiveMessageResponse{
 			Error: &zenproto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, status.Error(codes.NotFound, err.Error())
 	}
@@ -444,9 +443,9 @@ func TestDataCleanup(t *testing.T) {
 		timer := runtime.Timer{
 			ElementId:            "timer-elem",
 			Key:                  r2 + 80,
-			ElementInstanceKey:   ptr.To(r2 + 81),
+			ElementInstanceKey:   new(r2 + 81),
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   ptr.To(inst2.ProcessInstance().Key),
+			ProcessInstanceKey:   new(inst2.ProcessInstance().Key),
 			TimerState:           runtime.TimerStateCreated,
 			CreatedAt:            time.Now(),
 			DueAt:                time.Now().Add(1 * time.Hour),
@@ -814,8 +813,8 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 			return &zenproto.FindActiveMessageResponse{
 				Key:                  &pointer.MessageSubscriptionKey,
 				ElementId:            nil,
-				ProcessDefinitionKey: ptr.To(int64(1)),
-				ProcessInstanceKey:   ptr.To(int64(1)),
+				ProcessDefinitionKey: new(int64(1)),
+				ProcessInstanceKey:   new(int64(1)),
 				Name:                 &pointer.Name,
 				State:                &pointer.State,
 				CorrelationKey:       &pointer.CorrelationKey,

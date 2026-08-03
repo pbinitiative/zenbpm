@@ -5,7 +5,6 @@ import (
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
@@ -43,8 +42,8 @@ func TestTimerEventSubProcess(t *testing.T) {
 
 		// Read and complete the active job for the service task
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
-			JobType:            ptr.To("input-task-timer-event-subprocess-interrupting"),
-			ProcessInstanceKey: ptr.To(instance.Key),
+			JobType:            new("input-task-timer-event-subprocess-interrupting"),
+			ProcessInstanceKey: new(instance.Key),
 		})
 		assert.NoError(t, err)
 		require.Equal(t, 1, len(jobs.Partitions), "Should have exactly one partition with jobs")
@@ -412,7 +411,7 @@ func assertSingleJobState(t *testing.T, instanceKey int64, expectedJobState zenc
 
 	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
-			ProcessInstanceKey: ptr.To(instanceKey),
+			ProcessInstanceKey: new(instanceKey),
 		})
 		assert.NoError(collect, err)
 		assert.Equal(collect, 1, len(jobs.Partitions), "Should have one partition with jobs")

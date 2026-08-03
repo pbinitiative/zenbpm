@@ -281,7 +281,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 		}
 		items = append(items, &proto.DmnResourceDefinition{
 			Key:                     &def.Key,
-			Version:                 ptr.To(int32(def.Version)),
+			Version:                 new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 			DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 			Definition:              []byte(def.DmnData),
 			DmnDefinitionName:       &def.DmnDefinitionName,
@@ -289,7 +289,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 	}
 	return proto.DmnResourceDefinitionsPage{
 		Items:      items,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: new(int32(totalCount)),
 	}, nil
 }
 
@@ -308,7 +308,7 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 	}
 	return proto.DmnResourceDefinition{
 		Key:                     &def.Key,
-		Version:                 ptr.To(int32(def.Version)),
+		Version:                 new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 		Definition:              []byte(def.DmnData),
 		DmnDefinitionName:       &def.DmnDefinitionName,
@@ -361,7 +361,7 @@ func (node *ZenNode) deployDmnResourceDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
-		Key:  ptr.To(definitionKey),
+		Key:  new(definitionKey),
 		Data: data,
 	})
 
@@ -536,7 +536,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:                                    ptr.To(definitionKey),
+		Key:                                    new(definitionKey),
 		Data:                                   data,
 		ResourceName:                           &resourceName,
 		RegisterProcessDefinitionSubscriptions: &registerProcessDefinitionSubscriptions,
@@ -769,14 +769,14 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 		}
 		resp = append(resp, &proto.ProcessDefinition{
 			Key:         &def.Key,
-			Version:     ptr.To(int32(def.Version)),
+			Version:     new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 			ProcessId:   &def.BpmnProcessID,
 			ProcessName: &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: new(int32(totalCount)),
 	}, nil
 }
 
@@ -795,7 +795,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
-		Version:    ptr.To(int32(def.Version)),
+		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
@@ -816,7 +816,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
-		Version:    ptr.To(int32(def.Version)),
+		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
@@ -1305,7 +1305,7 @@ func (node *ZenNode) getJobsForPartition(
 	}
 	var reqState *int64
 	if jobState != nil {
-		reqState = ptr.To(int64(*jobState))
+		reqState = new(int64(*jobState))
 	}
 
 	var sortString string

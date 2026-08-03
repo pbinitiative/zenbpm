@@ -203,7 +203,7 @@ func TestBusinessKey(t *testing.T) {
 	t.Run("complete service task", func(t *testing.T) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
 			ProcessInstanceKey: &instance.Key,
-			State:              ptr.To(zenclient.JobStateActive),
+			State:              new(zenclient.JobStateActive),
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobs.Partitions)
@@ -217,7 +217,7 @@ func TestBusinessKey(t *testing.T) {
 	t.Run("complete user task", func(t *testing.T) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
 			ProcessInstanceKey: &instance.Key,
-			State:              ptr.To(zenclient.JobStateActive),
+			State:              new(zenclient.JobStateActive),
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobs.Partitions)
@@ -296,9 +296,9 @@ func TestCreatedAt(t *testing.T) {
 	t.Run("find process instances by createdAt in past sorted desc", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &definition.BpmnProcessId,
-			CreatedFrom:   ptr.To(past),
-			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
-			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderDesc),
+			CreatedFrom:   new(past),
+			SortBy:        new(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+			SortOrder:     new(zenclient.GetProcessInstancesParamsSortOrderDesc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -311,9 +311,9 @@ func TestCreatedAt(t *testing.T) {
 	t.Run("find process instances by createdAt in past sorted asc", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &definition.BpmnProcessId,
-			CreatedFrom:   ptr.To(past),
-			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
-			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
+			CreatedFrom:   new(past),
+			SortBy:        new(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+			SortOrder:     new(zenclient.GetProcessInstancesParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -326,8 +326,8 @@ func TestCreatedAt(t *testing.T) {
 	t.Run("find process instances by createdAt in past by default created_at desc", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &definition.BpmnProcessId,
-			CreatedFrom:   ptr.To(past),
-			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+			CreatedFrom:   new(past),
+			SortBy:        new(zenclient.GetProcessInstancesParamsSortByCreatedAt),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -340,7 +340,7 @@ func TestCreatedAt(t *testing.T) {
 	t.Run("find process instances by createdAt in future", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &definition.BpmnProcessId,
-			CreatedFrom:   ptr.To(future),
+			CreatedFrom:   new(future),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 0, processInstances.JSON200.TotalCount)
@@ -383,16 +383,22 @@ func TestState(t *testing.T) {
 	invalidDefinition, _ := deployGetUniqueDefinition(t, "service-task-invalid-input.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
+		activeInstance, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
-		assert.NoError(t, err)
-		assert.NotEmpty(t, instance1.Key)
-		instance2, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
+		require.NoError(t, err)
+		require.NotEmpty(t, activeInstance.Key)
+		require.Equal(t, zenclient.ProcessInstanceStateActive, activeInstance.State)
+
+		terminatedInstance, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
-		assert.NoError(t, err)
-		assert.NotEmpty(t, instance2.Key)
+		require.NoError(t, err)
+		require.NotEmpty(t, terminatedInstance.Key)
+
+		response, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), terminatedInstance.Key)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, response.StatusCode())
 	})
 	t.Run("create process instance for service-task-invalid-input.bpmn", func(t *testing.T) {
 		invalidInstance, err := createProcessInstance(t, &invalidDefinition.Key, map[string]any{
@@ -405,7 +411,7 @@ func TestState(t *testing.T) {
 	t.Run("find process instances by state=failed", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &invalidDefinition.BpmnProcessId,
-			State:         ptr.To(zenclient.GetProcessInstancesParamsStateFailed),
+			State:         new(zenclient.GetProcessInstancesParamsStateFailed),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
@@ -416,30 +422,36 @@ func TestState(t *testing.T) {
 	t.Run("find process instances sorted by state asc", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &validDefinition.BpmnProcessId,
-			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
-			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
+			SortBy:        new(zenclient.GetProcessInstancesParamsSortByState),
+			SortOrder:     new(zenclient.GetProcessInstancesParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
-		stateSlice := make([]string, 0, len(processInstances.JSON200.Partitions[0].Items))
+		stateSlice := make([]zenclient.ProcessInstanceState, 0, len(processInstances.JSON200.Partitions[0].Items))
 		for _, part := range processInstances.JSON200.Partitions[0].Items {
-			stateSlice = append(stateSlice, (string)(part.State))
+			stateSlice = append(stateSlice, part.State)
 		}
-		assert.True(t, sort.SliceIsSorted(stateSlice, func(p, q int) bool { return stateSlice[p] < stateSlice[q] }))
+		assert.Equal(t, []zenclient.ProcessInstanceState{
+			zenclient.ProcessInstanceStateActive,
+			zenclient.ProcessInstanceStateTerminated,
+		}, stateSlice)
 	})
 	t.Run("find process instances sorted by state desc", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &validDefinition.BpmnProcessId,
-			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
-			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
+			SortBy:        new(zenclient.GetProcessInstancesParamsSortByState),
+			SortOrder:     new(zenclient.GetProcessInstancesParamsSortOrderDesc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
-		stateSlice := make([]string, 0, len(processInstances.JSON200.Partitions[0].Items))
+		stateSlice := make([]zenclient.ProcessInstanceState, 0, len(processInstances.JSON200.Partitions[0].Items))
 		for _, part := range processInstances.JSON200.Partitions[0].Items {
-			stateSlice = append(stateSlice, (string)(part.State))
+			stateSlice = append(stateSlice, part.State)
 		}
-		assert.True(t, sort.SliceIsSorted(stateSlice, func(p, q int) bool { return stateSlice[p] > stateSlice[q] }))
+		assert.Equal(t, []zenclient.ProcessInstanceState{
+			zenclient.ProcessInstanceStateTerminated,
+			zenclient.ProcessInstanceStateActive,
+		}, stateSlice)
 	})
 }
 
@@ -481,8 +493,8 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	t.Run("find process instances by IncludeChildProcesses=true", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			IncludeChildProcesses: ptr.To(true),
-			State:                 ptr.To(zenclient.GetProcessInstancesParamsState("active")),
+			IncludeChildProcesses: new(true),
+			State:                 new(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 6, processInstances.JSON200.TotalCount)
@@ -494,8 +506,8 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	t.Run("find process instances by IncludeChildProcesses=false", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			IncludeChildProcesses: ptr.To(false),
-			State:                 ptr.To(zenclient.GetProcessInstancesParamsState("active")),
+			IncludeChildProcesses: new(false),
+			State:                 new(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
@@ -507,7 +519,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	t.Run("find process instances by IncludeChildProcesses not filled out", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
+			State: new(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
@@ -677,7 +689,7 @@ func TestGetProcessInstancesBadRequest(t *testing.T) {
 	t.Run("GetProcessInstances with invalid state would return a BadRequest", func(t *testing.T) {
 		var resp *zenclient.GetProcessInstancesResponse
 		resp, _ = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			State: (*zenclient.GetProcessInstancesParamsState)(ptr.To("invalid-state")),
+			State: (*zenclient.GetProcessInstancesParamsState)(new("invalid-state")),
 		})
 
 		assert.Nil(t, resp.JSON200)

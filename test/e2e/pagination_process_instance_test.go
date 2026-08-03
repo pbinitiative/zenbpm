@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -28,8 +27,8 @@ func TestProcessInstancePagination(t *testing.T) {
 			resp, err := app.restClient.GetProcessInstancesWithResponse(t.Context(),
 				&zenclient.GetProcessInstancesParams{
 					BpmnProcessId: &bpmnProcessId,
-					Page:          ptr.To(int32(page)),
-					Size:          ptr.To(int32(size)),
+					Page:          new(int32(page)),
+					Size:          new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())

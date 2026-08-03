@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -325,8 +324,8 @@ func completeJob(t testing.TB, jobKey int64, variables map[string]any) {
 func historyElementIds(t testing.TB, processInstanceKey int64) []string {
 	t.Helper()
 	resp, err := app.restClient.GetHistoryWithResponse(t.Context(), processInstanceKey, &zenclient.GetHistoryParams{
-		Page: ptr.To(int32(1)),
-		Size: ptr.To(int32(-1)),
+		Page: new(int32(1)),
+		Size: new(int32(-1)),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.JSON200)

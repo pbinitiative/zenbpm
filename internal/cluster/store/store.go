@@ -18,7 +18,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rsync"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v10/tcp"
 	pb "google.golang.org/protobuf/proto"
 )
@@ -318,8 +317,8 @@ func (s *Store) addNewNode(node raft.Server) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(node.ID)),
-		Addr:   ptr.To(string(node.Address)),
+		NodeId: new(string(node.ID)),
+		Addr:   new(string(node.Address)),
 		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -342,7 +341,7 @@ func (s *Store) shutdownNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(nodeId)),
+		NodeId: new(string(nodeId)),
 		State:  proto.NodeState_NODE_STATE_SHUTDOWN.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -360,7 +359,7 @@ func (s *Store) resumeNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(nodeId)),
+		NodeId: new(string(nodeId)),
 		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -397,8 +396,8 @@ func (s *Store) selfLeaderChange(leader bool) error {
 
 	s.logger.Info("this node is now leader")
 	err := s.WriteNodeChange(&proto.NodeChange{
-		NodeId:   ptr.To(s.raftID),
-		Addr:     ptr.To(s.Addr()),
+		NodeId:   new(s.raftID),
+		Addr:     new(s.Addr()),
 		State:    proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:     proto.Role_ROLE_TYPE_LEADER.Enum(),
 		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),

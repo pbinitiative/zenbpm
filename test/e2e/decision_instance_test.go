@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +15,7 @@ func TestDecisionInstance(t *testing.T) {
 	_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
-		DmnResourceDefinitionId: ptr.To("example_canAutoLiquidate"),
+		DmnResourceDefinitionId: new("example_canAutoLiquidate"),
 	})
 	assert.NoError(t, err)
 	if len(definitions) > 0 {
@@ -79,11 +78,11 @@ func TestDecisionInstances(t *testing.T) {
 	t.Run("deploy dmn resource definition", func(t *testing.T) {
 		_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 		assert.NoError(t, err)
-		resDefId1Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName1"), ptr.To("resDefId1"))
+		resDefId1Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", new("resDefName1"), new("resDefId1"))
 		assert.NoError(t, err)
-		redDefId2Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName2"), ptr.To("resDefId2"))
+		redDefId2Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", new("resDefName2"), new("resDefId2"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName3"), ptr.To("resDefId3"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", new("resDefName3"), new("resDefId3"))
 		assert.NoError(t, err)
 	})
 
@@ -91,7 +90,7 @@ func TestDecisionInstances(t *testing.T) {
 		result, err := evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
-			ptr.To("resDefId1"),
+			new("resDefId1"),
 			"resDefId1Rule",
 			nil,
 			map[string]any{
@@ -105,7 +104,7 @@ func TestDecisionInstances(t *testing.T) {
 
 		var decisionInstanceRes *zenclient.GetDecisionInstancesResponse
 		decisionInstanceRes, err = app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
-			DmnResourceDefinitionKey: ptr.To(resDefId1Key),
+			DmnResourceDefinitionKey: new(resDefId1Key),
 		})
 		assert.NoError(t, err)
 		decisionInstancePartitionPage := decisionInstanceRes.JSON200
@@ -121,7 +120,7 @@ func TestDecisionInstances(t *testing.T) {
 		result, err := evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
-			ptr.To("resDefId2"),
+			new("resDefId2"),
 			"resDefId2Rule",
 			nil,
 			map[string]any{
@@ -132,7 +131,7 @@ func TestDecisionInstances(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
-			ptr.To("resDefId2"),
+			new("resDefId2"),
 			"resDefId2Rule",
 			nil,
 			map[string]any{
@@ -148,11 +147,11 @@ func TestDecisionInstances(t *testing.T) {
 		future := time.Now().AddDate(0, 0, 1)
 		var decisionInstanceRes *zenclient.GetDecisionInstancesResponse
 		decisionInstanceRes, err = app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
-			DmnResourceDefinitionId: ptr.To("resDefId2"),
-			EvaluatedFrom:           ptr.To(past),
-			EvaluatedTo:             ptr.To(future),
-			SortBy:                  ptr.To(zenclient.GetDecisionInstancesParamsSortByEvaluatedAt),
-			SortOrder:               ptr.To(zenclient.GetDecisionInstancesParamsSortOrderDesc),
+			DmnResourceDefinitionId: new("resDefId2"),
+			EvaluatedFrom:           new(past),
+			EvaluatedTo:             new(future),
+			SortBy:                  new(zenclient.GetDecisionInstancesParamsSortByEvaluatedAt),
+			SortOrder:               new(zenclient.GetDecisionInstancesParamsSortOrderDesc),
 		})
 		assert.NoError(t, err)
 		decisionInstancePartitionPage := decisionInstanceRes.JSON200
@@ -204,7 +203,7 @@ func TestDecisionInstanceLinkedToProcessInstance(t *testing.T) {
 func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 	t.Run("invalid sortBy returns 400 BAD_REQUEST", func(t *testing.T) {
 		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
-			SortBy: (*zenclient.GetDecisionInstancesParamsSortBy)(ptr.To("invalid-sort-by")),
+			SortBy: (*zenclient.GetDecisionInstancesParamsSortBy)(new("invalid-sort-by")),
 		})
 		assert.NoError(t, err)
 		assert.Nil(t, resp.JSON200)
@@ -215,7 +214,7 @@ func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 
 	t.Run("invalid sortOrder returns 400 BAD_REQUEST", func(t *testing.T) {
 		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
-			SortOrder: (*zenclient.GetDecisionInstancesParamsSortOrder)(ptr.To("invalid-sort-order")),
+			SortOrder: (*zenclient.GetDecisionInstancesParamsSortOrder)(new("invalid-sort-order")),
 		})
 		assert.NoError(t, err)
 		assert.Nil(t, resp.JSON200)

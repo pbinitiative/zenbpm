@@ -5,7 +5,6 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 var (
@@ -92,8 +91,8 @@ func Join(new error, original *ZenError) *ZenError {
 
 func (zenError *ZenError) ToProtoError() *proto.ErrorResult {
 	return &proto.ErrorResult{
-		Code:    (*uint32)(ptr.To(zenError.Code)),
-		Message: ptr.To(zenError.err.Error()),
+		Code:    (*uint32)(new(zenError.Code)),
+		Message: new(zenError.err.Error()),
 	}
 }
 

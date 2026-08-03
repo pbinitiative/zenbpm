@@ -26,7 +26,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rstore "github.com/rqlite/rqlite/v10/store"
 	"github.com/rqlite/rqlite/v10/tcp"
 )
@@ -153,8 +152,8 @@ func (c *Controller) assignPartition(ctx context.Context, partitionId uint32, no
 	}
 	c.logger.Info(fmt.Sprintf("Assigning partition %d to %s", partitionId, nodeId))
 	err := c.store.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      ptr.To(nodeId),
-		PartitionId: ptr.To(partitionId),
+		NodeId:      new(nodeId),
+		PartitionId: new(partitionId),
 		State:       proto.NodePartitionState_NODE_PARTITION_STATE_JOINING.Enum(),
 		Role:        proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
 	})
@@ -267,8 +266,8 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
 		Request: &proto.Command_NodePartitionChange{
 			NodePartitionChange: &proto.NodePartitionChange{
-				NodeId:      ptr.To(c.store.ID()),
-				PartitionId: ptr.To(partitionId),
+				NodeId:      new(c.store.ID()),
+				PartitionId: new(partitionId),
 				State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING.Enum(),
 				Role:        c.store.Role().Enum(),
 			},
@@ -378,8 +377,8 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	}
 	partitionChangeCmd := &proto.Command_NodePartitionChange{
 		NodePartitionChange: &proto.NodePartitionChange{
-			NodeId:      ptr.To(c.store.ID()),
-			PartitionId: ptr.To(partitionId),
+			NodeId:      new(c.store.ID()),
+			PartitionId: new(partitionId),
 			State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
 			Role:        partitionNode.Role().Enum(),
 		},

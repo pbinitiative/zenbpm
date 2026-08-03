@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func TestGetProcessInstanceMessageSubscriptions(t *testing.T) {
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(t.Context(), instance.Key, &zenclient.GetProcessInstanceMessageSubscriptionsParams{
-			Size: ptr.To(int32(100)),
+			Size: new(int32(100)),
 		})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
@@ -80,7 +79,7 @@ func TestMessageSubscriptionsPagination(t *testing.T) {
 			require.EventuallyWithT(t, func(collect *assert.CollectT) {
 				resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 					t.Context(), instanceKey,
-					&zenclient.GetProcessInstanceMessageSubscriptionsParams{Size: ptr.To(int32(100))})
+					&zenclient.GetProcessInstanceMessageSubscriptionsParams{Size: new(int32(100))})
 				assert.NoError(collect, err)
 				assert.NotNil(collect, resp.JSON200)
 				assert.Equal(collect, 3, resp.JSON200.TotalCount)
@@ -92,8 +91,8 @@ func TestMessageSubscriptionsPagination(t *testing.T) {
 			resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 				t.Context(), instanceKey,
 				&zenclient.GetProcessInstanceMessageSubscriptionsParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.NotNil(t, resp.JSON200)
@@ -126,7 +125,7 @@ func TestMessageSubscriptionsStateFilter(t *testing.T) {
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 			t.Context(), instance.Key,
-			&zenclient.GetProcessInstanceMessageSubscriptionsParams{Size: ptr.To(int32(100))})
+			&zenclient.GetProcessInstanceMessageSubscriptionsParams{Size: new(int32(100))})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
 		assert.Equal(collect, 3, resp.JSON200.TotalCount)
@@ -136,8 +135,8 @@ func TestMessageSubscriptionsStateFilter(t *testing.T) {
 		resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 			t.Context(), instance.Key,
 			&zenclient.GetProcessInstanceMessageSubscriptionsParams{
-				State: ptr.To(zenclient.EventSubscriptionStateActive),
-				Size:  ptr.To(int32(100)),
+				State: new(zenclient.EventSubscriptionStateActive),
+				Size:  new(int32(100)),
 			})
 		require.NoError(t, err)
 		require.NotNil(t, resp.JSON200)
@@ -148,7 +147,7 @@ func TestMessageSubscriptionsStateFilter(t *testing.T) {
 		resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 			t.Context(), instance.Key,
 			&zenclient.GetProcessInstanceMessageSubscriptionsParams{
-				State: ptr.To(zenclient.EventSubscriptionStateCompleted),
+				State: new(zenclient.EventSubscriptionStateCompleted),
 			})
 		require.NoError(t, err)
 		require.NotNil(t, resp.JSON200)
@@ -162,7 +161,7 @@ func TestMessageSubscriptionsInvalidState(t *testing.T) {
 	resp, err := app.restClient.GetProcessInstanceMessageSubscriptionsWithResponse(
 		t.Context(), 1,
 		&zenclient.GetProcessInstanceMessageSubscriptionsParams{
-			State: ptr.To(zenclient.EventSubscriptionStateCompensated),
+			State: new(zenclient.EventSubscriptionStateCompensated),
 		})
 	require.NoError(t, err)
 	assert.Equal(t, 400, resp.StatusCode())
@@ -178,7 +177,7 @@ func TestGetProcessInstanceTimerSubscriptions(t *testing.T) {
 	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(t.Context(), instance.Key, &zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: ptr.To(int32(100))})
+		resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(t.Context(), instance.Key, &zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: new(int32(100))})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
 		assert.Equal(collect, 1, resp.JSON200.TotalCount)
@@ -215,7 +214,7 @@ func TestTimerSubscriptionsPagination(t *testing.T) {
 			require.EventuallyWithT(t, func(collect *assert.CollectT) {
 				resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 					t.Context(), instanceKey,
-					&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: ptr.To(int32(100))})
+					&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: new(int32(100))})
 				assert.NoError(collect, err)
 				assert.NotNil(collect, resp.JSON200)
 				assert.Equal(collect, 3, resp.JSON200.TotalCount)
@@ -227,8 +226,8 @@ func TestTimerSubscriptionsPagination(t *testing.T) {
 			resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 				t.Context(), instanceKey,
 				&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.NotNil(t, resp.JSON200)
@@ -254,7 +253,7 @@ func TestTimerSubscriptionsInvalidState(t *testing.T) {
 	resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 		t.Context(), 1,
 		&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-			State: ptr.To(zenclient.EventSubscriptionStateCompensated),
+			State: new(zenclient.EventSubscriptionStateCompensated),
 		})
 	require.NoError(t, err)
 	assert.Equal(t, 400, resp.StatusCode())
@@ -270,7 +269,7 @@ func TestGetProcessInstanceErrorSubscriptions(t *testing.T) {
 	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		resp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(t.Context(), instance.Key, &zenclient.GetProcessInstanceErrorSubscriptionsParams{Size: ptr.To(int32(100))})
+		resp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(t.Context(), instance.Key, &zenclient.GetProcessInstanceErrorSubscriptionsParams{Size: new(int32(100))})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
 		assert.Equal(collect, 1, resp.JSON200.TotalCount)
@@ -294,7 +293,7 @@ func TestErrorSubscriptionsInvalidState(t *testing.T) {
 	resp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(
 		t.Context(), 1,
 		&zenclient.GetProcessInstanceErrorSubscriptionsParams{
-			State: ptr.To(zenclient.EventSubscriptionStateCompleted),
+			State: new(zenclient.EventSubscriptionStateCompleted),
 		})
 	require.NoError(t, err)
 	assert.Equal(t, 400, resp.StatusCode())
@@ -314,7 +313,7 @@ func TestTimerSubscriptionsStateFilter(t *testing.T) {
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 				t.Context(), instance.Key,
-				&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: ptr.To(int32(100))})
+				&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: new(int32(100))})
 			assert.NoError(collect, err)
 			assert.NotNil(collect, resp.JSON200)
 			assert.Equal(collect, 1, resp.JSON200.TotalCount)
@@ -328,7 +327,7 @@ func TestTimerSubscriptionsStateFilter(t *testing.T) {
 		activeResp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 			t.Context(), instance.Key,
 			&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-				State: ptr.To(zenclient.EventSubscriptionStateActive),
+				State: new(zenclient.EventSubscriptionStateActive),
 			})
 		require.NoError(t, err)
 		require.NotNil(t, activeResp.JSON200)
@@ -339,8 +338,8 @@ func TestTimerSubscriptionsStateFilter(t *testing.T) {
 			resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 				t.Context(), instance.Key,
 				&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-					State: ptr.To(zenclient.EventSubscriptionStateWithdrawn),
-					Size:  ptr.To(int32(100)),
+					State: new(zenclient.EventSubscriptionStateWithdrawn),
+					Size:  new(int32(100)),
 				})
 			assert.NoError(collect, err)
 			if !assert.NotNil(collect, resp.JSON200) {
@@ -366,7 +365,7 @@ func TestTimerSubscriptionsStateFilter(t *testing.T) {
 		activeResp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 			t.Context(), instance.Key,
 			&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-				State: ptr.To(zenclient.EventSubscriptionStateActive),
+				State: new(zenclient.EventSubscriptionStateActive),
 			})
 		require.NoError(t, err)
 		require.NotNil(t, activeResp.JSON200)
@@ -376,8 +375,8 @@ func TestTimerSubscriptionsStateFilter(t *testing.T) {
 			resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 				t.Context(), instance.Key,
 				&zenclient.GetProcessInstanceTimerSubscriptionsParams{
-					State: ptr.To(zenclient.EventSubscriptionStateCompleted),
-					Size:  ptr.To(int32(100)),
+					State: new(zenclient.EventSubscriptionStateCompleted),
+					Size:  new(int32(100)),
 				})
 			assert.NoError(collect, err)
 			if !assert.NotNil(collect, resp.JSON200) {
@@ -402,7 +401,7 @@ func TestErrorSubscriptionsStateFilter(t *testing.T) {
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		resp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(
 			t.Context(), instance.Key,
-			&zenclient.GetProcessInstanceErrorSubscriptionsParams{Size: ptr.To(int32(100))})
+			&zenclient.GetProcessInstanceErrorSubscriptionsParams{Size: new(int32(100))})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
 		assert.Equal(collect, 1, resp.JSON200.TotalCount)
@@ -411,8 +410,8 @@ func TestErrorSubscriptionsStateFilter(t *testing.T) {
 	activeResp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(
 		t.Context(), instance.Key,
 		&zenclient.GetProcessInstanceErrorSubscriptionsParams{
-			State: ptr.To(zenclient.EventSubscriptionStateActive),
-			Size:  ptr.To(int32(100)),
+			State: new(zenclient.EventSubscriptionStateActive),
+			Size:  new(int32(100)),
 		})
 	require.NoError(t, err)
 	require.NotNil(t, activeResp.JSON200)
@@ -429,7 +428,7 @@ func TestErrorSubscriptionsStateFilter(t *testing.T) {
 	postCancelResp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(
 		t.Context(), instance.Key,
 		&zenclient.GetProcessInstanceErrorSubscriptionsParams{
-			State: ptr.To(zenclient.EventSubscriptionStateActive),
+			State: new(zenclient.EventSubscriptionStateActive),
 		})
 	require.NoError(t, err)
 	require.NotNil(t, postCancelResp.JSON200)
@@ -440,8 +439,8 @@ func TestErrorSubscriptionsStateFilter(t *testing.T) {
 		resp, err := app.restClient.GetProcessInstanceErrorSubscriptionsWithResponse(
 			t.Context(), instance.Key,
 			&zenclient.GetProcessInstanceErrorSubscriptionsParams{
-				State: ptr.To(zenclient.EventSubscriptionStateWithdrawn),
-				Size:  ptr.To(int32(100)),
+				State: new(zenclient.EventSubscriptionStateWithdrawn),
+				Size:  new(int32(100)),
 			})
 		assert.NoError(collect, err)
 		if !assert.NotNil(collect, resp.JSON200) {
@@ -466,7 +465,7 @@ func TestEventSubscriptionsEmptyResults(t *testing.T) {
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		resp, err := app.restClient.GetProcessInstanceTimerSubscriptionsWithResponse(
 			t.Context(), instance.Key,
-			&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: ptr.To(int32(100))})
+			&zenclient.GetProcessInstanceTimerSubscriptionsParams{Size: new(int32(100))})
 		assert.NoError(collect, err)
 		assert.NotNil(collect, resp.JSON200)
 		assert.Equal(collect, 1, resp.JSON200.TotalCount)

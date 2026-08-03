@@ -30,7 +30,7 @@ func TestJobAssignPersistsAfterCompletion(t *testing.T) {
 
 	jobs, err := getJobs(t, zenclient.GetJobsParams{
 		ProcessInstanceKey: &instance.Key,
-		State:              ptr.To(zenclient.JobStateActive),
+		State:              new(zenclient.JobStateActive),
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs.Partitions[0].Items, "expected at least one active job")

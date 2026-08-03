@@ -464,11 +464,7 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 	safego.Go("partition-observer", zpn.logger, func() {
 		defer close(doneCh)
 		defer ticker.Stop()
-		// lastObservedLeaderId tracks the previously observed leader so the
-		// initial election after node start and repeated observations of the
-		// same leader are not counted as leader changes (which would let
-		// rolling restarts trip the RaftLeaderFlapping alert)
-		var lastObservedLeaderId string
+		var lastObservedLeaderID string
 		for {
 			select {
 			case <-ticker.C:
@@ -516,14 +512,14 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 						}
 					}
 				case raft.LeaderObservation:
-					newLeaderId := string(signal.LeaderID)
-					if zpn.metrics.leaderChanges != nil && shouldRecordLeaderChange(lastObservedLeaderId, newLeaderId) {
+					newLeaderID := string(signal.LeaderID)
+					if zpn.metrics.leaderChanges != nil && shouldRecordLeaderChange(lastObservedLeaderID, newLeaderID) {
 						zpn.metrics.leaderChanges.Add(context.Background(), 1, metric.WithAttributes(
 							attribute.Int64("partition", int64(zpn.PartitionId)),
 						))
 					}
-					if newLeaderId != "" {
-						lastObservedLeaderId = newLeaderId
+					if newLeaderID != "" {
+						lastObservedLeaderID = newLeaderID
 					}
 					if zpn.stateChangeCallbacks.LeaderChange == nil {
 						break
@@ -625,9 +621,6 @@ func (zpn *ZenPartitionNode) dbSizeBytes() (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to glob sqlite files: %w", err)
 	}
-	// the "db.sqlite" base name is an internal rqlite convention; fail loudly
-	// instead of silently reporting 0 if a future rqlite upgrade renames it,
-	// which would blind the RqliteDbSizeLarge / RqliteDbGrowthPrediction alerts
 	if len(matches) == 0 {
 		return 0, fmt.Errorf("no sqlite database files matching %q found in %s", "db.sqlite*", zpn.config.DataPath)
 	}
@@ -636,8 +629,11 @@ func (zpn *ZenPartitionNode) dbSizeBytes() (int64, error) {
 	for _, match := range matches {
 		info, err := os.Stat(match)
 		if err != nil {
-			zpn.logger.Debug("Failed to stat sqlite file for db size metric", "file", match, "err", err)
-			continue
+			if os.IsNotExist(err) {
+				zpn.logger.Debug("sqlite file disappeared before stat during db size metric collection", "file", match)
+				continue
+			}
+			return 0, fmt.Errorf("failed to stat sqlite file %s for db size metric: %w", match, err)
 		}
 		if !info.Mode().IsRegular() {
 			continue

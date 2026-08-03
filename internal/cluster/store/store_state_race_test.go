@@ -8,7 +8,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 )
 
-func TestClusterStateConcurrentWithFSMApply(t *testing.T) {
+func TestClusterStateConcurrentWithFSMApply(_ *testing.T) {
 	s := &Store{
 		state: state.Cluster{
 			Config:     state.ClusterConfig{DesiredPartitions: 1},
@@ -24,7 +24,7 @@ func TestClusterStateConcurrentWithFSMApply(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-start
-		for i := 0; i < 10_000; i++ {
+		for i := range 10_000 {
 			nodeID := "node-1"
 			partitionID := uint32(i % 2)
 			partitionState := proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED
@@ -38,7 +38,7 @@ func TestClusterStateConcurrentWithFSMApply(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-start
-		for i := 0; i < 10_000; i++ {
+		for range 10_000 {
 			cs := s.ClusterState()
 			_ = len(cs.Nodes)
 			_ = len(cs.Partitions)

@@ -139,11 +139,12 @@ func (engine *Engine) createInternalTask(
 					},
 				)
 			}
-			batch.SaveJob(ctx, job)
 		}
-		// record job outcome metrics based on the final state so that internal
-		// jobs contribute to the same failure-rate and lifetime series as
-		// external ones (and completions are not counted for failed output mappings)
+		if job.State == runtime.ActivityStateCompleted {
+			if err := batch.SaveJob(ctx, job); err != nil {
+				return runtime.ActivityStateFailed, fmt.Errorf("failed to save terminal state of internal job %d: %w", job.Key, err)
+			}
+		}
 		switch job.State {
 		case runtime.ActivityStateCompleted:
 			if engine.metrics != nil && engine.metrics.JobsCompleted != nil {

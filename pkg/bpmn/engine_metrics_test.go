@@ -103,6 +103,11 @@ func TestInternalFailedJobRecordsFailureAndLifetime(t *testing.T) {
 	assert.Equal(t, int64(1), counterValue(t, reader, "jobs_failed"))
 	assert.Equal(t, int64(0), counterValue(t, reader, "jobs_completed"))
 	assert.Equal(t, uint64(1), histogramCount(t, reader, "job_lifetime"))
+
+	// a failed internal job must not be persisted: the batch is replaced by a
+	// token incident and ResolveIncident re-runs the token, recreating the job.
+	// A leftover Failed job would be picked up as pending and stall the retry.
+	assert.Empty(t, store.Jobs)
 }
 
 func TestMessagePublicationFailureRecordsProcessDuration(t *testing.T) {

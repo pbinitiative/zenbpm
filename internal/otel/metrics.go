@@ -54,11 +54,6 @@ func SetupOtel(conf config.Tracing) (*Otel, error) {
 		return nil, err
 	}
 	otel.SetMeterProvider(o.meterProvider)
-	// NOTE: Go runtime metrics (go_goroutines, go_memstats_*, ...) are exported
-	// by the prometheus client_golang default collectors that promhttp serves on
-	// /system/metrics; the OTel contrib runtime instrumentation is intentionally
-	// not started because it would only add a second, differently-named set of
-	// runtime metrics that no dashboard or alert consumes.
 	if conf.Enabled {
 		o.tracerprovider, err = setupTraceProvider(conf)
 		if err != nil {

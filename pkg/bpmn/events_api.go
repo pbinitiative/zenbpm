@@ -15,8 +15,6 @@ import (
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
 	message, err := engine.persistence.FindMessageSubscriptionByName(ctx, name, correlationKey, runtime.ActivityStateActive)
 	if err != nil {
-		// Keep untrusted API input out of metric labels to avoid unbounded
-		// cardinality, but retain the requested name in logs for diagnosis.
 		engine.logger.Warn("failed to find active message subscription", "messageName", name, "err", err)
 		engine.recordMessageCorrelationFailure(ctx, "unknown", "subscription_not_found")
 		return errors.Join(newEngineErrorf("failed to find active message subscription with name: %s", name), err)
@@ -125,8 +123,6 @@ func handleMessagePublicationError(ctx context.Context, batch *EngineBatch, mess
 	if flushErr != nil {
 		return errors.Join(newEngineErrorf("failed to flush and "+fmtMsg, args...), flushErr)
 	}
-	// the instance reached a terminal (failed) state outside RunProcessInstance,
-	// so record the end-of-instance metrics here
 	batch.engine.recordProcessInstanceEnd(ctx, instance)
 	return errors.Join(newEngineErrorf(fmtMsg, args...), err)
 }

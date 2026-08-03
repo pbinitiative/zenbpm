@@ -86,9 +86,6 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	// Raft does not run Restore concurrently with Apply or Snapshot, but
-	// external readers such as the asynchronous metrics callback may still
-	// call ClusterState, so protect the state replacement.
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
 	f.store.state = snapshot.ClusterState
@@ -101,10 +98,6 @@ type FsmStore interface {
 }
 
 func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
-	// FsmApplyNodeChange reads the state through Store.ClusterState (which takes
-	// the read lock), so compute the new state first and only take the write
-	// lock for the swap. Raft applies log entries serially, so no concurrent
-	// FSM write can interleave between the read and the swap.
 	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand)
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()

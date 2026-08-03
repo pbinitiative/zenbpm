@@ -113,6 +113,7 @@ Distributed tracing settings using OpenTelemetry.
 | `name`           | string   | `TRACING_APP_NAME`            | `ZenBPM` | Application name for tracing                      |
 | `transferHeaders`| []string | `TRACING_TRANSFER_HEADERS`    | —        | HTTP headers to propagate through trace context   |
 | `endpoint`       | string   | `OTEL_EXPORTER_OTLP_ENDPOINT` | —        | OTLP exporter endpoint (e.g., for Jaeger/Tempo)   |
+| `samplerRatio`   | float64  | `TRACING_SAMPLER_RATIO`       | `1.0`    | Fraction of new traces sampled (0.0 - 1.0); child spans follow their parent's sampling decision |
 
 ---
 

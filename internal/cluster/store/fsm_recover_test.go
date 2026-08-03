@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 )
 
 func TestApplyRecoversObserverPanic(t *testing.T) {
-	var logBuf bytes.Buffer
+	var logBuf synchronizedBuffer
 	logger := hclog.New(&hclog.LoggerOptions{
 		Output: &logBuf,
 		Level:  hclog.Error,
@@ -31,7 +32,7 @@ func TestApplyRecoversObserverPanic(t *testing.T) {
 			Partitions: map[uint32]state.Partition{},
 			Nodes:      map[string]state.Node{},
 		},
-		appliedTarget: rsync.NewReadyTarget[uint64](),
+		appliedTarget:              rsync.NewReadyTarget[uint64](),
 		clusterStateChangeObserver: func(ctx context.Context) {},
 	}
 
@@ -66,6 +67,23 @@ func TestApplyRecoversObserverPanic(t *testing.T) {
 	}
 
 	assert.Eventually(t, func() bool {
-		return bytes.Contains(logBuf.Bytes(), []byte("cluster-state-change-observer"))
+		return logBuf.Contains([]byte("cluster-state-change-observer"))
 	}, time.Second, 10*time.Millisecond, "panic should be recovered and logged by safego.Go")
+}
+
+type synchronizedBuffer struct {
+	mu sync.RWMutex
+	b  bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *synchronizedBuffer) Contains(value []byte) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return bytes.Contains(b.b.Bytes(), value)
 }

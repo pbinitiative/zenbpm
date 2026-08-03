@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/internal/log"
-	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -56,9 +54,11 @@ func SetupOtel(conf config.Tracing) (*Otel, error) {
 		return nil, err
 	}
 	otel.SetMeterProvider(o.meterProvider)
-	if err := runtime.Start(runtime.WithMeterProvider(o.meterProvider)); err != nil {
-		log.Error("failed to start runtime metrics instrumentation: %s", err)
-	}
+	// NOTE: Go runtime metrics (go_goroutines, go_memstats_*, ...) are exported
+	// by the prometheus client_golang default collectors that promhttp serves on
+	// /system/metrics; the OTel contrib runtime instrumentation is intentionally
+	// not started because it would only add a second, differently-named set of
+	// runtime metrics that no dashboard or alert consumes.
 	if conf.Enabled {
 		o.tracerprovider, err = setupTraceProvider(conf)
 		if err != nil {

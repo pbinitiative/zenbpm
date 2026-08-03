@@ -57,6 +57,7 @@ func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine.evaluationDuration, err = meter.Float64Histogram("dmn_evaluation_duration",
 		metric.WithUnit("ms"),
 		metric.WithDescription("Duration of DMN decision evaluations, milliseconds"),
+		metric.WithExplicitBucketBoundaries(otelPkg.LatencyBucketsMs()...),
 	)
 	if err != nil {
 		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluation_duration instrument", "err", err)

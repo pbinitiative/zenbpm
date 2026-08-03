@@ -10,7 +10,7 @@ ZenBPM exposes metrics via a Prometheus endpoint, distributed traces via OTLP
 | `GET /system/metrics` | Prometheus metrics scrape endpoint |
 | `GET /system/status` | Verbose diagnostic status: full cluster state. Always returns **200** (legacy contract, kept stable for existing consumers) |
 | `GET /system/health/live` | Liveness probe. Returns 200 whenever the process is up. Does **not** check raft state, so a leaderless node is not restarted in a loop |
-| `GET /system/health/ready` | Readiness probe. Returns **503** until: the main cluster has a raft leader, the desired number of partitions exists, every partition has a leader, this node is registered in the cluster state, and all partitions owned by this node are initialized |
+| `GET /system/health/ready` | Node readiness probe. Returns **503** until the main cluster has a raft leader, this node is registered in the cluster state, and all partitions owned by this node are initialized. Cluster-wide partition health is reported by metrics/alerts so one degraded partition does not remove every node from a load balancer |
 
 Health responses have the shape:
 
@@ -31,8 +31,7 @@ Health responses have the shape:
   exec/query statements.
 - The W3C `TraceContext` + `Baggage` propagators are registered globally.
   gRPC (public and node-to-node) is **not yet instrumented** — cross-partition
-  proxied requests currently start separate traces (tracked as tasks T1/T2 in
-  the observability task list).
+  proxied requests currently start separate traces.
 - Span attributes use the `zenbpm.` namespace (e.g. `zenbpm.process.instance_key`,
   `zenbpm.job.key`, `zenbpm.decision.id`). Span (operation) names are stable —
   e.g. DMN evaluations use `dmn.evaluate-decision` with the decision id carried
@@ -88,7 +87,7 @@ histograms a `_milliseconds` suffix).
 | `process_instances_active` | gauge | `partition` | Active process instances. Exported by every replica — deduplicate with `max by(partition)` |
 | `partition_raft_has_leader` | gauge 0/1 | `partition` | Partition raft group has a leader (local raft view; see `partition_has_leader` for the replicated cluster-state view) |
 | `partition_node_is_leader` | gauge 0/1 | `partition` | This node leads the partition raft group |
-| `partition_leader_changes_total` | counter | `partition` | New-leader elections observed by this node (leadership-loss observations are not counted) |
+| `partition_leader_changes_total` | counter | `partition` | Leader changes observed by this node (the first election after node start, repeated observations of the same leader and leadership-loss observations are not counted) |
 | `rqlite_db_size_bytes` | gauge | `partition` | SQLite files size on disk (db + WAL/SHM) |
 | `rqlite_exec_duration_milliseconds` | histogram | `partition`, `outcome` | Raft-replicated write duration |
 | `rqlite_query_duration_milliseconds` | histogram | `partition`, `outcome` | Read query duration |
@@ -105,7 +104,9 @@ histograms a `_milliseconds` suffix).
 - `request_total`, `request_uri_total`, `request_body_size`, `response_body_size`,
   `request_duration_milliseconds` — REST server. `request_uri_total` carries
   `path`, `method` and `status` labels.
-- Go runtime metrics (`go_*`) — via `go.opentelemetry.io/contrib/instrumentation/runtime`.
+- Go runtime metrics (`go_*`, `process_*`) — exported by the Prometheus
+  `client_golang` default collectors that the `/system/metrics` promhttp
+  handler serves.
 
 ## Alerting
 

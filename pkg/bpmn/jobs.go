@@ -140,7 +140,21 @@ func (engine *Engine) createInternalTask(
 				)
 			}
 			batch.SaveJob(ctx, job)
-			engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+		}
+		// record job outcome metrics based on the final state so that internal
+		// jobs contribute to the same failure-rate and lifetime series as
+		// external ones (and completions are not counted for failed output mappings)
+		switch job.State {
+		case runtime.ActivityStateCompleted:
+			if engine.metrics != nil && engine.metrics.JobsCompleted != nil {
+				engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "completed")
+		case runtime.ActivityStateFailed:
+			if engine.metrics != nil && engine.metrics.JobsFailed != nil {
+				engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "failed")
 		}
 	}
 

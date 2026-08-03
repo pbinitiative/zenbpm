@@ -67,7 +67,7 @@
       "id": 3,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
-        { "expr": "sum by(partition) (increase(partition_leader_changes_total[5m]))", "legendFormat": "partition {{partition}}", "refId": "A" }
+        { "expr": "max by(partition) (increase(partition_leader_changes_total[5m]))", "legendFormat": "partition {{partition}}", "refId": "A" }
       ],
       "title": "Leader changes (5m)",
       "type": "timeseries"

@@ -122,8 +122,8 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 			writeHealthResponse(w, restLogger, true, nil)
 		})
-		// readiness probe: 503 until the cluster has a leader, every partition
-		// has a leader and all partitions owned by this node are initialized.
+		// readiness probe: 503 until the cluster has a leader, this node is
+		// registered and all partitions owned by this node are initialized.
 		r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
 			healthy, reasons := node.Health()
 			writeHealthResponse(w, restLogger, healthy, reasons)

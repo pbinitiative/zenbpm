@@ -34,6 +34,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	metricsPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/rqlite/rqlite/v10/store"
@@ -150,13 +151,15 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	meter := otel.GetMeterProvider().Meter("partition-rqlite")
 	db.execDuration, err = meter.Float64Histogram("rqlite_exec_duration",
 		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of rqlite write statements, milliseconds"))
+		metric.WithDescription("Duration of rqlite write statements, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
 	if err != nil {
 		logger.Error("Failed to create rqlite_exec_duration instrument", "err", err)
 	}
 	db.queryDuration, err = meter.Float64Histogram("rqlite_query_duration",
 		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of rqlite read queries, milliseconds"))
+		metric.WithDescription("Duration of rqlite read queries, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
 	if err != nil {
 		logger.Error("Failed to create rqlite_query_duration instrument", "err", err)
 	}

@@ -319,17 +319,7 @@ mainLoop:
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		engine.exportEndProcessEvent(*process, instance)
-		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
-		))
-		if engine.metrics != nil && engine.metrics.ProcessInstanceDuration != nil {
-			if createdAt := instance.ProcessInstance().CreatedAt; !createdAt.IsZero() {
-				engine.metrics.ProcessInstanceDuration.Record(ctx, float64(time.Since(createdAt))/float64(time.Millisecond), metric.WithAttributes(
-					attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
-					attribute.String("state", instance.ProcessInstance().State.String()),
-				))
-			}
-		}
+		engine.recordProcessInstanceEnd(ctx, instance)
 	}
 
 	if runErr != nil {
@@ -337,6 +327,28 @@ mainLoop:
 	}
 
 	return nil
+}
+
+// recordProcessInstanceEnd increments the ended-processes counter and records
+// the instance duration histogram. It is shared by RunProcessInstance and the
+// failure paths that persist a terminal instance state outside of it (e.g.
+// message publication failures), so every terminal transition is measured.
+func (engine *Engine) recordProcessInstanceEnd(ctx context.Context, instance runtime.ProcessInstance) {
+	if engine == nil || engine.metrics == nil {
+		return
+	}
+	pi := instance.ProcessInstance()
+	if engine.metrics.ProcessesEnded != nil {
+		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("bpmn_process_id", pi.Definition.BpmnProcessId),
+		))
+	}
+	if engine.metrics.ProcessInstanceDuration != nil && !pi.CreatedAt.IsZero() {
+		engine.metrics.ProcessInstanceDuration.Record(ctx, float64(time.Since(pi.CreatedAt))/float64(time.Millisecond), metric.WithAttributes(
+			attribute.String("bpmn_process_id", pi.Definition.BpmnProcessId),
+			attribute.String("state", pi.State.String()),
+		))
+	}
 }
 
 func endErrorSpan(tokenSpan trace.Span, err error) {

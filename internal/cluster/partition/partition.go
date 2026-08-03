@@ -464,6 +464,11 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 	safego.Go("partition-observer", zpn.logger, func() {
 		defer close(doneCh)
 		defer ticker.Stop()
+		// lastObservedLeaderId tracks the previously observed leader so the
+		// initial election after node start and repeated observations of the
+		// same leader are not counted as leader changes (which would let
+		// rolling restarts trip the RaftLeaderFlapping alert)
+		var lastObservedLeaderId string
 		for {
 			select {
 			case <-ticker.C:
@@ -511,10 +516,14 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 						}
 					}
 				case raft.LeaderObservation:
-					if zpn.metrics.leaderChanges != nil && signal.LeaderID != "" {
+					newLeaderId := string(signal.LeaderID)
+					if zpn.metrics.leaderChanges != nil && shouldRecordLeaderChange(lastObservedLeaderId, newLeaderId) {
 						zpn.metrics.leaderChanges.Add(context.Background(), 1, metric.WithAttributes(
 							attribute.Int64("partition", int64(zpn.PartitionId)),
 						))
+					}
+					if newLeaderId != "" {
+						lastObservedLeaderId = newLeaderId
 					}
 					if zpn.stateChangeCallbacks.LeaderChange == nil {
 						break
@@ -543,6 +552,10 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 	return closeCh, doneCh
 }
 
+func shouldRecordLeaderChange(previousLeaderID, newLeaderID string) bool {
+	return previousLeaderID != "" && newLeaderID != "" && previousLeaderID != newLeaderID
+}
+
 func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	ctx := context.Background()
 
@@ -564,7 +577,7 @@ func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	}
 	if zpn.metrics.dbSize != nil {
 		if size, err := zpn.dbSizeBytes(); err != nil {
-			zpn.logger.Debug("Failed to compute rqlite db size", "partition", zpn.PartitionId, "err", err)
+			zpn.logger.Warn("Failed to compute rqlite db size", "partition", zpn.PartitionId, "err", err)
 		} else {
 			zpn.metrics.dbSize.Record(ctx, size, partitionAttr)
 		}
@@ -612,14 +625,28 @@ func (zpn *ZenPartitionNode) dbSizeBytes() (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to glob sqlite files: %w", err)
 	}
+	// the "db.sqlite" base name is an internal rqlite convention; fail loudly
+	// instead of silently reporting 0 if a future rqlite upgrade renames it,
+	// which would blind the RqliteDbSizeLarge / RqliteDbGrowthPrediction alerts
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("no sqlite database files matching %q found in %s", "db.sqlite*", zpn.config.DataPath)
+	}
 	var total int64
+	var files int
 	for _, match := range matches {
 		info, err := os.Stat(match)
 		if err != nil {
 			zpn.logger.Debug("Failed to stat sqlite file for db size metric", "file", match, "err", err)
 			continue
 		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		files++
 		total += info.Size()
+	}
+	if files == 0 {
+		return 0, fmt.Errorf("no readable sqlite database files matching %q found in %s", "db.sqlite*", zpn.config.DataPath)
 	}
 	return total, nil
 }

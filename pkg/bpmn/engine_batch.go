@@ -294,13 +294,21 @@ func (engine *Engine) recordTimerMetric(ctx context.Context, timer bpmnruntime.T
 	if engine == nil || engine.metrics == nil {
 		return
 	}
+	// NewMetrics may return a partially initialized struct on error, so each
+	// instrument must be checked individually.
 	switch timer.TimerState {
 	case bpmnruntime.TimerStateCreated:
-		engine.metrics.TimersScheduled.Add(ctx, 1)
+		if engine.metrics.TimersScheduled != nil {
+			engine.metrics.TimersScheduled.Add(ctx, 1)
+		}
 	case bpmnruntime.TimerStateTriggered:
-		engine.metrics.TimersFired.Add(ctx, 1)
+		if engine.metrics.TimersFired != nil {
+			engine.metrics.TimersFired.Add(ctx, 1)
+		}
 	case bpmnruntime.TimerStateCancelled:
-		engine.metrics.TimersCancelled.Add(ctx, 1)
+		if engine.metrics.TimersCancelled != nil {
+			engine.metrics.TimersCancelled.Add(ctx, 1)
+		}
 	}
 }
 

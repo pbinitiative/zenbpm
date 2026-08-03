@@ -1872,13 +1872,11 @@ func (node *ZenNode) GetStatus() state.Cluster {
 	return node.store.ClusterState()
 }
 
-// Health evaluates the readiness of this node in the cluster. It returns
-// false together with the list of reasons when:
-//   - the main Zen cluster has no elected raft leader,
-//   - fewer partitions exist in the cluster state than desired,
-//   - any partition has no leader registered in the cluster state,
-//   - this node is not (yet) present in the cluster state,
-//   - this node owns a partition that is not in the Initialized state.
+// Health evaluates the readiness of this node in the cluster. Cluster-wide
+// partition health is deliberately excluded: making every node unready when a
+// remote partition is degraded would remove the entire cluster from a load
+// balancer. Cluster-wide deficits and leader loss are exposed by metrics and
+// alerts instead.
 func (node *ZenNode) Health() (bool, []string) {
 	if node.store == nil {
 		return false, []string{"cluster store is not initialized"}
@@ -1888,16 +1886,13 @@ func (node *ZenNode) Health() (bool, []string) {
 		reasons = append(reasons, "no cluster leader elected")
 	}
 	cs := node.store.ClusterState()
-	if desired := cs.Config.DesiredPartitions; int64(len(cs.Partitions)) < int64(desired) {
-		reasons = append(reasons, fmt.Sprintf("cluster has %d of %d desired partitions", len(cs.Partitions), desired))
-	}
+	reasons = append(reasons, nodeReadinessReasons(cs, node.store.NodeID())...)
+	return len(reasons) == 0, reasons
+}
+
+func nodeReadinessReasons(cs state.Cluster, nodeID string) []string {
 	partitionReasons := make([]string, 0)
-	for id, partition := range cs.Partitions {
-		if partition.LeaderId == "" {
-			partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d has no leader", id))
-		}
-	}
-	if self, err := cs.GetNode(node.store.NodeID()); err != nil {
+	if self, err := cs.GetNode(nodeID); err != nil {
 		partitionReasons = append(partitionReasons, "node is not registered in the cluster state")
 	} else {
 		for id, partition := range self.Partitions {
@@ -1907,8 +1902,7 @@ func (node *ZenNode) Health() (bool, []string) {
 		}
 	}
 	sort.Strings(partitionReasons)
-	reasons = append(reasons, partitionReasons...)
-	return len(reasons) == 0, reasons
+	return partitionReasons
 }
 
 func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {

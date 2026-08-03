@@ -579,7 +579,18 @@ func (engine *Engine) recordEventSubprocessSubscriptionIncident(
 		ResolvedAt:         nil,
 		// No execution token exists yet for this event subprocess start event; leave zero-value.
 	}
-	return batch.SaveIncident(ctx, incident)
+	if err := batch.SaveIncident(ctx, incident); err != nil {
+		return err
+	}
+	// EngineBatch.SaveIncident records the incident metric itself; raw
+	// storage.Batch callers (e.g. instance creation) would otherwise bypass
+	// the incidents_created counter.
+	if _, viaEngineBatch := batch.(*EngineBatch); !viaEngineBatch {
+		batch.AddPostFlushAction(ctx, func() {
+			engine.recordIncidentMetric(ctx, incident)
+		})
+	}
+	return nil
 }
 
 /*
@@ -683,11 +694,17 @@ func (engine *Engine) createTimerStartEventTimers(
 			startEvent.GetId(), processDefinitionKey, err)
 	}
 	saved := *timer
+	// EngineBatch.SaveTimer already registers the lifecycle metric as a
+	// post-flush action; only record it here for raw storage.Batch callers
+	// (definition-level timer start events), otherwise event-subprocess paths
+	// that reach this function with an *EngineBatch would count each
+	// scheduled timer twice.
+	_, viaEngineBatch := batch.(*EngineBatch)
 	batch.AddPostFlushAction(ctx, func() {
 		engine.timerManager.registerTimer(saved)
-		// definition-level timers are saved through a raw storage.Batch and
-		// bypass EngineBatch.SaveTimer, so record the lifecycle metric here
-		engine.recordTimerMetric(ctx, saved)
+		if !viaEngineBatch {
+			engine.recordTimerMetric(ctx, saved)
+		}
 	})
 	return nil
 }

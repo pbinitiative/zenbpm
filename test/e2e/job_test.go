@@ -3,7 +3,6 @@ package e2e
 import (
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
@@ -62,15 +61,15 @@ func TestRestApiJob(t *testing.T) {
 	assert.NotEmpty(t, instance2.Key)
 
 	t.Run("test filter by state", func(t *testing.T) {
-		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: ptr.To("input-task-1")})
+		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: new("input-task-1")})
 		assert.NoError(t, err)
 
 		items := jobs.JSON200.Partitions[0].Items
 		assert.Len(t, items, 2)
 
 		jobs, err = app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
-			JobType: ptr.To("input-task-1"),
-			State:   ptr.To(zenclient.JobStateActive),
+			JobType: new("input-task-1"),
+			State:   new(zenclient.JobStateActive),
 		})
 		assert.NoError(t, err)
 
@@ -82,16 +81,16 @@ func TestRestApiJob(t *testing.T) {
 
 	t.Run("test sorting by key", func(t *testing.T) {
 		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
-			SortBy:    ptr.To(zenclient.GetJobsParamsSortByKey),
-			SortOrder: ptr.To(zenclient.GetJobsParamsSortOrderAsc),
+			SortBy:    new(zenclient.GetJobsParamsSortByKey),
+			SortOrder: new(zenclient.GetJobsParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		items := jobs.JSON200.Partitions[0].Items
 		assert.True(t, items[0].Key < items[1].Key)
 
 		jobs, err = app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
-			SortBy:    ptr.To(zenclient.GetJobsParamsSortByKey),
-			SortOrder: ptr.To(zenclient.GetJobsParamsSortOrderDesc),
+			SortBy:    new(zenclient.GetJobsParamsSortByKey),
+			SortOrder: new(zenclient.GetJobsParamsSortOrderDesc),
 		})
 		assert.NoError(t, err)
 		items = jobs.JSON200.Partitions[0].Items
@@ -99,7 +98,7 @@ func TestRestApiJob(t *testing.T) {
 	})
 
 	t.Run("test getting job by key - ok", func(t *testing.T) {
-		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: ptr.To("input-task-1")})
+		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: new("input-task-1")})
 		assert.NoError(t, err)
 		assert.Equal(t, 200, jobs.StatusCode())
 		assert.NotEmpty(t, jobs.JSON200)
@@ -119,7 +118,7 @@ func TestRestApiJob(t *testing.T) {
 func TestRestApiJobBadRequestResponse(t *testing.T) {
 	t.Run("test BadRequest response", func(t *testing.T) {
 		response, _ := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
-			State: (*zenclient.JobState)(ptr.To("non-existing-state")),
+			State: (*zenclient.JobState)(new("non-existing-state")),
 		})
 		assert.Nil(t, response.JSON200)
 		assert.NotNil(t, response.JSON400)

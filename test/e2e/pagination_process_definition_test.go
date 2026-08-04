@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +19,8 @@ func TestProcessDefinitionPagination(t *testing.T) {
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {
 			resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
 				&zenclient.GetProcessDefinitionsParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())

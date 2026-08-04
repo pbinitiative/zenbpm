@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,8 +22,8 @@ func TestProcessDefinitionStatisticsPagination(t *testing.T) {
 			resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 				&zenclient.GetProcessDefinitionStatisticsParams{
 					BpmnProcessDefinitionKeyIn: &keys,
-					Page:                       ptr.To(int32(page)),
-					Size:                       ptr.To(int32(size)),
+					Page:                       new(int32(page)),
+					Size:                       new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -67,8 +66,8 @@ func TestProcessDefinitionStatisticsEmptyKeyFilter(t *testing.T) {
 	resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 		&zenclient.GetProcessDefinitionStatisticsParams{
 			BpmnProcessDefinitionKeyIn: &[]int64{}, // empty array — must not filter out everything
-			Page:                       ptr.To(int32(1)),
-			Size:                       ptr.To(int32(1)),
+			Page:                       new(int32(1)),
+			Size:                       new(int32(1)),
 		})
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode())

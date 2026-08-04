@@ -13,7 +13,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
@@ -222,7 +221,7 @@ func (s *jobServer) distributeJobs() {
 			// non blocked stream or use a pool of GRPC connections to handle jobs
 			err := nodeStream.stream.Send(&proto.SubscribeJobResponse{
 				JobType:  &job.Type,
-				ClientId: ptr.To(string(clientID)),
+				ClientId: new(string(clientID)),
 				Job: &proto.InternalJob{
 					Key:            &job.Key,
 					InstanceKey:    &job.ProcessInstanceKey,

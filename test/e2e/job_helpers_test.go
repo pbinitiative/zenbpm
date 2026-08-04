@@ -118,7 +118,7 @@ func assertProcessInstanceHasNoActiveJobByElementId(t testing.TB, processInstanc
 }
 
 func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {
-	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: ptr.To(zenclient.JobStateActive)})
+	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: new(zenclient.JobStateActive)})
 }
 
 func getJobs(t testing.TB, params zenclient.GetJobsParams) (zenclient.JobPartitionPage, error) {

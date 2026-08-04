@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,7 +141,7 @@ func TestIncidentStateFilter(t *testing.T) {
 func getProcessInstanceIncidentsByState(t testing.TB, processInstanceKey int64, state string) ([]zenclient.Incident, error) {
 
 	r, err := app.restClient.GetIncidentsWithResponse(t.Context(), processInstanceKey, &zenclient.GetIncidentsParams{
-		State: ptr.To(zenclient.GetIncidentsParamsState(state)),
+		State: new(zenclient.GetIncidentsParamsState(state)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)

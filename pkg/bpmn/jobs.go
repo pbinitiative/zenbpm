@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -51,7 +50,7 @@ func (engine *Engine) createInternalTask(
 		if !ok {
 			assigneeStr = fmt.Sprintf("%v", assigneeResult)
 		}
-		job.Assignee = ptr.To(assigneeStr)
+		job.Assignee = new(assigneeStr)
 	}
 
 	err := batch.SaveJob(ctx, job)

@@ -184,7 +184,7 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 			), nil
 		}
 	} else {
-		request.Params.SortOrder = ptr.To(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
+		request.Params.SortOrder = new(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -254,7 +254,7 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 			Key:                     definition.GetKey(),
 			Version:                 int(definition.GetVersion()),
 		},
-		DmnData: ptr.To(string(definition.GetDefinition())),
+		DmnData: new(string(definition.GetDefinition())),
 	}, nil
 }
 
@@ -403,10 +403,10 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 
 	var evaluatedFrom, evaluatedTo *int64
 	if request.Params.EvaluatedFrom != nil {
-		evaluatedFrom = ptr.To(request.Params.EvaluatedFrom.UnixMilli())
+		evaluatedFrom = new(request.Params.EvaluatedFrom.UnixMilli())
 	}
 	if request.Params.EvaluatedTo != nil {
-		evaluatedTo = ptr.To(request.Params.EvaluatedTo.UnixMilli())
+		evaluatedTo = new(request.Params.EvaluatedTo.UnixMilli())
 	}
 	var sortByColumn *string
 	if request.Params.SortBy != nil {
@@ -429,7 +429,7 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 			), nil
 		}
 	} else {
-		request.Params.SortOrder = ptr.To(public.GetDecisionInstancesParamsSortOrderDesc)
+		request.Params.SortOrder = new(public.GetDecisionInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByColumn)
 
@@ -473,7 +473,7 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		decisionInstancesPage.Partitions[i] = public.PartitionDecisionInstances{
 			Items:     make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
 			Partition: int(partitionInstances.GetPartitionId()),
-			Count:     ptr.To(len(partitionInstances.GetDecisionInstances())),
+			Count:     new(len(partitionInstances.GetDecisionInstances())),
 		}
 		count += len(partitionInstances.GetDecisionInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
@@ -694,7 +694,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 			Key:             p.GetKey(),
 			Version:         int(p.GetVersion()),
 			BpmnProcessId:   p.GetProcessId(),
-			BpmnProcessName: ptr.To(p.GetProcessName()),
+			BpmnProcessName: new(p.GetProcessName()),
 		}
 		items[i] = processDefinitionSimple
 	}
@@ -734,7 +734,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 			Key:           definition.GetKey(),
 			Version:       int(definition.GetVersion()),
 		},
-		BpmnData: ptr.To(string(definition.GetDefinition())),
+		BpmnData: new(string(definition.GetDefinition())),
 	}, nil
 }
 
@@ -914,7 +914,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 				Key:           stat.GetKey(),
 				Version:       int(stat.GetVersion()),
 				BpmnProcessId: stat.GetBpmnProcessId(),
-				Name:          ptr.To(stat.GetBpmnProcessName()),
+				Name:          new(stat.GetBpmnProcessName()),
 				InstanceCounts: public.InstanceCounts{
 					Total:        int(stat.InstanceCounts.GetTotal()),
 					Active:       int(stat.InstanceCounts.GetActive()),
@@ -1064,13 +1064,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetProcessInstancesParamsStateActive:
-			state = ptr.To(int64(runtime.ActivityStateActive))
+			state = new(int64(runtime.ActivityStateActive))
 		case public.GetProcessInstancesParamsStateCompleted:
-			state = ptr.To(int64(runtime.ActivityStateCompleted))
+			state = new(int64(runtime.ActivityStateCompleted))
 		case public.GetProcessInstancesParamsStateTerminated:
-			state = ptr.To(int64(runtime.ActivityStateTerminated))
+			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetProcessInstancesParamsStateFailed:
-			state = ptr.To(int64(runtime.ActivityStateFailed))
+			state = new(int64(runtime.ActivityStateFailed))
 		default:
 			supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
 			return public.GetProcessInstances400JSONResponse(
@@ -1079,10 +1079,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		}
 	}
 	if request.Params.CreatedFrom != nil {
-		createdFrom = ptr.To(request.Params.CreatedFrom.UnixMilli())
+		createdFrom = new(request.Params.CreatedFrom.UnixMilli())
 	}
 	if request.Params.CreatedTo != nil {
-		createdTo = ptr.To(request.Params.CreatedTo.UnixMilli())
+		createdTo = new(request.Params.CreatedTo.UnixMilli())
 	}
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
@@ -1105,7 +1105,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			), nil
 		}
 	} else {
-		request.Params.SortOrder = ptr.To(public.GetProcessInstancesParamsSortOrderDesc)
+		request.Params.SortOrder = new(public.GetProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -1185,7 +1185,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = new(instance.GetParentInstanceKey())
 			}
 		}
 	}
@@ -1228,7 +1228,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 
 	var parentProcessInstanceKey *int64
 	if pKey := instance.GetParentInstanceKey(); pKey != 0 {
-		parentProcessInstanceKey = ptr.To(pKey)
+		parentProcessInstanceKey = new(pKey)
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(instance.GetState()))
@@ -1270,13 +1270,13 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetChildProcessInstancesParamsStateActive:
-			state = ptr.To(int64(runtime.ActivityStateActive))
+			state = new(int64(runtime.ActivityStateActive))
 		case public.GetChildProcessInstancesParamsStateCompleted:
-			state = ptr.To(int64(runtime.ActivityStateCompleted))
+			state = new(int64(runtime.ActivityStateCompleted))
 		case public.GetChildProcessInstancesParamsStateTerminated:
-			state = ptr.To(int64(runtime.ActivityStateTerminated))
+			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetChildProcessInstancesParamsStateFailed:
-			state = ptr.To(int64(runtime.ActivityStateFailed))
+			state = new(int64(runtime.ActivityStateFailed))
 		default:
 			return public.GetChildProcessInstances400JSONResponse{
 				Code:    "TODO",
@@ -1307,7 +1307,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 			}, nil
 		}
 	} else {
-		request.Params.SortOrder = ptr.To(public.GetChildProcessInstancesParamsSortOrderDesc)
+		request.Params.SortOrder = new(public.GetChildProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -1380,7 +1380,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = new(instance.GetParentInstanceKey())
 			}
 		}
 	}
@@ -1809,11 +1809,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	if request.Params.State != nil {
 		switch *request.Params.State {
 		case public.JobStateActive:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = new(runtime.ActivityStateActive)
 		case public.JobStateCompleted:
-			reqState = ptr.To(runtime.ActivityStateCompleted)
+			reqState = new(runtime.ActivityStateCompleted)
 		case public.JobStateTerminated:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = new(runtime.ActivityStateActive)
 		default:
 			supportedStates := [...]public.JobState{public.JobStateActive, public.JobStateCompleted, public.JobStateTerminated}
 			return public.GetJobs400JSONResponse(
@@ -2126,7 +2126,7 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			CreatedAt:          time.UnixMilli(incident.GetCreatedAt()),
 			ResolvedAt: func() *time.Time {
 				if incident.ResolvedAt != nil {
-					return ptr.To(time.UnixMilli(incident.GetResolvedAt()))
+					return new(time.UnixMilli(incident.GetResolvedAt()))
 				}
 				return nil
 			}(),
@@ -2314,7 +2314,7 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 		responseEvaluatedDecisions = append(responseEvaluatedDecisions, public.EvaluatedDecision{
 			DecisionId:   &evaluatedDecision.DecisionId,
 			DecisionName: &evaluatedDecision.DecisionName,
-			DecisionType: ptr.To(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
+			DecisionType: new(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
 			Inputs:       &responseEvaluatedInputs,
 			MatchedRules: &responseMatchedRules,
 			Outputs:      nil, // TODO What should be here? Total matchedRules outputs?

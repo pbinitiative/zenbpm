@@ -15,7 +15,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
 
@@ -124,7 +123,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -137,7 +136,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to complete job: %s", err)),
+						Message: new(fmt.Sprintf("Failed to complete job: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -151,7 +150,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -164,7 +163,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
+						Message: new(fmt.Sprintf("Failed to fail job: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -206,7 +205,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					Key:            &job.Key,
 					InstanceKey:    &job.InstanceKey,
 					InputVariables: job.InputVariables,
-					Type:           ptr.To(string(job.Type)),
+					Type:           new(string(job.Type)),
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
 				},

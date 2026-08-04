@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -32,8 +31,8 @@ func TestChildProcessesPagination(t *testing.T) {
 			resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 				subInstanceKey,
 				&zenclient.GetChildProcessInstancesParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -133,7 +132,7 @@ func waitForAllChildInstances(t *testing.T, parentKey int64, childCount int, sub
 		if *subInstanceKey == 0 {
 			resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 				parentKey, &zenclient.GetChildProcessInstancesParams{
-					Size: ptr.To(int32(10)),
+					Size: new(int32(10)),
 				})
 			if err != nil || resp.JSON200 == nil {
 				return false
@@ -152,7 +151,7 @@ func waitForAllChildInstances(t *testing.T, parentKey int64, childCount int, sub
 		}
 		resp2, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 			*subInstanceKey, &zenclient.GetChildProcessInstancesParams{
-				Size: ptr.To(int32(100)),
+				Size: new(int32(100)),
 			})
 		if err != nil || resp2.JSON200 == nil {
 			return false

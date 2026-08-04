@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -22,8 +21,8 @@ func TestDmnResourceDefinitionsPagination(t *testing.T) {
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {
 			resp, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(),
 				&zenclient.GetDmnResourceDefinitionsParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -68,8 +67,8 @@ func TestDecisionInstancesPagination(t *testing.T) {
 				&zenclient.GetDecisionInstancesParams{
 					DmnResourceDefinitionKey: &dmnKey,
 					EvaluatedFrom:            &st,
-					Page:                     ptr.To(int32(page)),
-					Size:                     ptr.To(int32(size)),
+					Page:                     new(int32(page)),
+					Size:                     new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -103,8 +102,8 @@ func createManyDmnResourceDefinitions(t *testing.T, count int) {
 		uniqueId := fmt.Sprintf("pagination-dmn-%d-%d", time.Now().UnixNano(), i)
 		_, err := deployDmnResourceDefinitionWithNewNameAndId(t,
 			"bulk-evaluation-test/can-autoliquidate-rule.dmn",
-			ptr.To(fmt.Sprintf("pagination-dmn-name-%d", i)),
-			ptr.To(uniqueId),
+			new(fmt.Sprintf("pagination-dmn-name-%d", i)),
+			new(uniqueId),
 		)
 		require.NoError(t, err)
 	}
@@ -116,8 +115,8 @@ func deployDmnAndSeed(t *testing.T) (int64, string, time.Time) {
 	uniqueId := fmt.Sprintf("pagination-decision-%d", time.Now().UnixNano())
 	key, err := deployDmnResourceDefinitionWithNewNameAndId(t,
 		"bulk-evaluation-test/can-autoliquidate-rule.dmn",
-		ptr.To(fmt.Sprintf("pagination-decision-name-%d", time.Now().UnixNano())),
-		ptr.To(uniqueId),
+		new(fmt.Sprintf("pagination-decision-name-%d", time.Now().UnixNano())),
+		new(uniqueId),
 	)
 	require.NoError(t, err)
 
@@ -132,7 +131,7 @@ func createDecisionInstances(t *testing.T, uniqueId, decisionId string, count in
 		_, err := evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
-			ptr.To(uniqueId),
+			new(uniqueId),
 			decisionId,
 			nil,
 			map[string]any{
@@ -153,7 +152,7 @@ func waitForDecisionInstances(t *testing.T, dmnKey int64, seedTime time.Time, re
 			&zenclient.GetDecisionInstancesParams{
 				DmnResourceDefinitionKey: &dmnKey,
 				EvaluatedFrom:            &st,
-				Size:                     ptr.To(int32(100)),
+				Size:                     new(int32(100)),
 			})
 		if err != nil || resp.JSON200 == nil {
 			return false

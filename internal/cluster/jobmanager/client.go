@@ -15,7 +15,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -256,7 +255,7 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	if subFound {
 		err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
-			ClientId: ptr.To(string(clientID)),
+			ClientId: new(string(clientID)),
 		})
 		if err != nil {
 			c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
@@ -268,9 +267,9 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  ptr.To(string(jobType)),
+		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
-		ClientId: ptr.To(string(clientID)),
+		ClientId: new(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to subscribe client %s to jobType %s: %w", clientID, jobType, err)
@@ -289,9 +288,9 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 		return fmt.Errorf("failed to marshal variables for job completion: %w", err)
 	}
 	_, err = lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
-		Key:       ptr.To(jobKey),
+		Key:       new(jobKey),
 		Variables: vars,
-		ClientId:  ptr.To(string(clientID)),
+		ClientId:  new(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d from client: %w", jobKey, err)
@@ -323,9 +322,9 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  ptr.To(string(jobType)),
+		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),
-		ClientId: ptr.To(string(clientID)),
+		ClientId: new(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to unsubscribe client %s from jobType %s: %w", clientID, jobType, err)

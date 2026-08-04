@@ -18,7 +18,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -391,7 +390,7 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 			return &proto.CompleteJobResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
-					Message: ptr.To(errMsg.Error()),
+					Message: new(errMsg.Error()),
 				},
 			}, errMsg
 		}
@@ -402,7 +401,7 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 		return &proto.CompleteJobResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(errMsg.Error()),
+				Message: new(errMsg.Error()),
 			},
 		}, errMsg
 	}

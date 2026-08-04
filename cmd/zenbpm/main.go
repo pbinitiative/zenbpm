@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/grpc"
@@ -16,12 +17,14 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest"
 )
 
-var version string = "dev"
-
 func main() {
 	profile.InitProfile()
 	log.Init()
-	log.Info("Starting ZenBPM version %s", version)
+	buildInfo, err := buildinfo.Current()
+	if err != nil {
+		log.Warn("Failed to resolve build info: %s", err)
+	}
+	log.Info("Starting ZenBPM version %s", buildInfo.Version)
 
 	appContext, ctxCancel := context.WithCancel(context.Background())
 
@@ -41,7 +44,7 @@ func main() {
 	}
 
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf)
+	svr := rest.NewServer(zenNode, conf, buildInfo)
 	svr.Start()
 
 	// Start ZenBpm GRPC API

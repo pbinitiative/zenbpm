@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
@@ -42,19 +43,22 @@ const (
 
 type Server struct {
 	sync.RWMutex
-	node   *cluster.ZenNode
-	addr   string
-	server *http.Server
+	node      *cluster.ZenNode
+	addr      string
+	server    *http.Server
+	buildInfo buildinfo.Info
 }
 
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
+// NewServer creates the public HTTP server with the supplied build metadata.
+func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.Info) *Server {
 	r := chi.NewRouter()
 	s := Server{
-		node: node,
-		addr: conf.HttpServer.Addr,
+		node:      node,
+		addr:      conf.HttpServer.Addr,
+		buildInfo: buildInfo,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           r,
@@ -103,8 +107,8 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
 		// (raw cluster state, always 200) for existing consumers; readiness
 		// semantics live exclusively on /system/health/ready below.
-		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-			body, err := json.MarshalIndent(node.GetStatus(), "", " ")
+		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
+			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus()), "", " ")
 			if err != nil {
 				restLogger.Error("failed to marshal status", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)

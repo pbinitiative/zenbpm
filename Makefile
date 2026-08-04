@@ -27,6 +27,8 @@ REVIVE ?= $(LOCALBIN)/revive
 PATH := $(LOCALBIN):$(PATH)
 
 PACKAGE_NAME ?= github.com/pbinitiative/zenbpm
+BUILD_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+LOCAL_DOCKER_IMAGE ?= zenbpm:local
 ## Tool Versions
 SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 33.4
@@ -263,19 +265,19 @@ codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written 
 run: ## Start this project locally with dev configuration
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "-X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT)" cmd/zenbpm/*.go
 
 .PHONY: run1
 run1: ## Start 1st node
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node1.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "-X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT)" cmd/zenbpm/*.go
 
 .PHONY: run2
 run2: ## Start 2nd node
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "-X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT)" cmd/zenbpm/*.go
 
 
 .PHONY: start-monitoring
@@ -407,7 +409,15 @@ test-dmntest:
 
 .PHONY: build
 build: generate ## Build the project
-	go build -o zenbpm cmd/zenbpm/main.go
+	go build -ldflags "-X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT)" -o zenbpm cmd/zenbpm/main.go
+
+.PHONY: docker-build-local
+docker-build-local: ## Build the local Docker image with build metadata
+	@docker build \
+		--build-arg BUILD_COMMIT="$(BUILD_COMMIT)" \
+		--file Dockerfile.local \
+		--tag "$(LOCAL_DOCKER_IMAGE)" \
+		.
 
 .PHONY: release-dry-run
 release-dry-run:

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -38,6 +39,8 @@ func (m testMainWithCleanup) Run() int {
 }
 
 type ClusterStatus struct {
+	Version       string `json:"version"`
+	Commit        string `json:"commit"`
 	ClusterConfig struct {
 		DesiredPartitions int64 `json:"desiredPartitions"`
 	} `json:"clusterConfig"`
@@ -82,7 +85,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf)
+	buildInfo, err := buildinfo.Current()
+	if err != nil {
+		log.Warn("Failed to resolve build info: %s", err)
+	}
+	svr := rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
 
 	// Create rest client

@@ -32,4 +32,5 @@ docs/docusaurus/
 dist/
 .release-env
 .gocache
+.gomodcache
 .cache/

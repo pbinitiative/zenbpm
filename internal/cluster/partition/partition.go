@@ -2,11 +2,13 @@ package partition
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,14 @@ import (
 
 const (
 	observerChanLen = 100
+
+	// raftLogFileName / snapshotsDirName mirror the (unexported) names rqlite
+	// uses inside the partition data directory. They are only read to derive
+	// storage metrics; a rename upstream degrades the metric to 0/-1 rather
+	// than breaking the partition.
+	raftLogFileName          = "raft.db"
+	snapshotsDirName         = "wsnapshots"
+	snapshotMetadataFileName = "meta.json"
 )
 
 type ZenPartitionNode struct {
@@ -71,6 +81,12 @@ type ZenPartitionNode struct {
 	stopOnce sync.Once
 	stopErr  error
 
+	// Snapshot observation state is only touched by updatePartitionMetrics,
+	// which runs on the single partition observer goroutine.
+	snapshotBaselineInitialized bool
+	lastSnapshotName            string
+	lastSnapshotObservedAt      time.Time
+
 	stateChangeCallbacks PartitionChangesCallbacks
 }
 
@@ -100,6 +116,18 @@ func (zpn *ZenPartitionNode) createMetrics() {
 	if err != nil {
 		zpn.logger.Error("Failed to register meter for leaderChanges", "err", err)
 	}
+	zpn.metrics.raftLogSize, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_raft_log_size", metric.WithUnit("By"), metric.WithDescription("Size of the partition raft log (bbolt) files on disk, bytes"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for raftLogSize", "err", err)
+	}
+	zpn.metrics.snapshotAge, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_snapshot_age", metric.WithUnit("s"), metric.WithDescription("Seconds since the newest partition raft snapshot was written; -1 when no snapshot exists yet"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for snapshotAge", "err", err)
+	}
+	zpn.metrics.snapshotObservationAge, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_snapshot_observation_age", metric.WithUnit("s"), metric.WithDescription("Seconds since this process observed a new completed partition raft snapshot; -1 until one is observed after startup"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for snapshotObservationAge", "err", err)
+	}
 }
 
 type PartitionChangesCallbacks struct {
@@ -121,6 +149,12 @@ type partitionMetrics struct {
 	dbSize metric.Int64Gauge
 	// leaderChanges counts partition raft leader changes observed by this node
 	leaderChanges metric.Int64Counter
+	// raftLogSize reports the size of the partition raft log files on disk, in bytes
+	raftLogSize metric.Int64Gauge
+	// snapshotAge reports the age of the newest partition raft snapshot, in seconds
+	snapshotAge metric.Int64Gauge
+	// snapshotObservationAge reports the time since this process observed a new completed snapshot
+	snapshotObservationAge metric.Int64Gauge
 }
 
 const (
@@ -578,6 +612,7 @@ func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 			zpn.metrics.dbSize.Record(ctx, size, partitionAttr)
 		}
 	}
+	zpn.updateRaftStorageMetrics(ctx, partitionAttr)
 
 	g, gCtx := errgroup.WithContext(ctx)
 
@@ -645,6 +680,188 @@ func (zpn *ZenPartitionNode) dbSizeBytes() (int64, error) {
 		return 0, fmt.Errorf("no readable sqlite database files matching %q found in %s", "db.sqlite*", zpn.config.DataPath)
 	}
 	return total, nil
+}
+
+// updateRaftStorageMetrics reports the on-disk raft log size, the age of the
+// newest raft snapshot and the time since this process observed a new snapshot.
+// All three are derived from the files rqlite maintains in the partition data
+// directory, which is far cheaper than the full store.Stats() call.
+func (zpn *ZenPartitionNode) updateRaftStorageMetrics(ctx context.Context, partitionAttr metric.RecordOption) {
+	zpn.recordRaftLogSize(ctx, partitionAttr)
+	if zpn.metrics.snapshotAge == nil && zpn.metrics.snapshotObservationAge == nil {
+		return
+	}
+	name, modTime, err := zpn.newestSnapshot()
+	if err != nil {
+		zpn.logger.Warn("Failed to inspect rqlite snapshots", "partition", zpn.PartitionId, "err", err)
+		return
+	}
+	zpn.observeSnapshotName(name)
+	zpn.recordSnapshotAges(ctx, partitionAttr, name, modTime)
+}
+
+func (zpn *ZenPartitionNode) recordRaftLogSize(ctx context.Context, partitionAttr metric.RecordOption) {
+	if zpn.metrics.raftLogSize == nil {
+		return
+	}
+	size, err := zpn.raftLogSizeBytes()
+	if err != nil {
+		zpn.logger.Warn("Failed to compute rqlite raft log size", "partition", zpn.PartitionId, "err", err)
+		return
+	}
+	zpn.metrics.raftLogSize.Record(ctx, size, partitionAttr)
+}
+
+func (zpn *ZenPartitionNode) recordSnapshotAges(ctx context.Context, partitionAttr metric.RecordOption, name string, modTime time.Time) {
+	if zpn.metrics.snapshotAge != nil {
+		age := int64(-1)
+		if name != "" {
+			age = int64(time.Since(modTime).Seconds())
+		}
+		zpn.metrics.snapshotAge.Record(ctx, age, partitionAttr)
+	}
+	if zpn.metrics.snapshotObservationAge != nil {
+		age := int64(-1)
+		if !zpn.lastSnapshotObservedAt.IsZero() {
+			age = int64(time.Since(zpn.lastSnapshotObservedAt).Seconds())
+		}
+		zpn.metrics.snapshotObservationAge.Record(ctx, age, partitionAttr)
+	}
+}
+
+// observeSnapshotName establishes a startup baseline before recording changes,
+// so a snapshot restored from disk is not reported as newly observed.
+func (zpn *ZenPartitionNode) observeSnapshotName(name string) {
+	if !zpn.snapshotBaselineInitialized {
+		zpn.snapshotBaselineInitialized = true
+		zpn.lastSnapshotName = name
+		return
+	}
+	if name != "" && name != zpn.lastSnapshotName {
+		zpn.lastSnapshotName = name
+		zpn.lastSnapshotObservedAt = time.Now()
+	}
+}
+
+// raftLogSizeBytes returns the on-disk size of the partition raft log (bbolt)
+// files in the rqlite data directory.
+func (zpn *ZenPartitionNode) raftLogSizeBytes() (int64, error) {
+	if zpn.config == nil || zpn.config.DataPath == "" {
+		return 0, fmt.Errorf("no data path configured")
+	}
+	info, err := os.Stat(filepath.Join(zpn.config.DataPath, raftLogFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// the log store is created on open; report 0 until then instead of
+			// spamming warnings during startup
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to stat raft log file for size metric: %w", err)
+	}
+	return info.Size(), nil
+}
+
+// newestSnapshot returns the name and modification time of the most recently
+// written raft snapshot of this partition. Both are zero values when the node
+// has not snapshotted yet, which is not an error.
+func (zpn *ZenPartitionNode) newestSnapshot() (string, time.Time, error) {
+	dir, entries, err := zpn.snapshotEntries()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	var newestName string
+	var newestMod time.Time
+	for _, entry := range entries {
+		modTime, completed, err := completedSnapshotModTime(dir, entry)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		if completed && (newestName == "" || modTime.After(newestMod)) {
+			newestName = entry.Name()
+			newestMod = modTime
+		}
+	}
+	return newestName, newestMod, nil
+}
+
+func (zpn *ZenPartitionNode) snapshotEntries() (string, []os.DirEntry, error) {
+	if zpn.config == nil || zpn.config.DataPath == "" {
+		return "", nil, fmt.Errorf("no data path configured")
+	}
+	dir := filepath.Join(zpn.config.DataPath, snapshotsDirName)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return dir, nil, nil
+		}
+		return "", nil, fmt.Errorf("failed to read snapshot directory %s: %w", dir, err)
+	}
+	return dir, entries, nil
+}
+
+func completedSnapshotModTime(dir string, entry os.DirEntry) (time.Time, bool, error) {
+	if !entry.IsDir() || !isSnapshotID(entry.Name()) {
+		return time.Time{}, false, nil
+	}
+	validMetadata, err := validSnapshotMetadata(filepath.Join(dir, entry.Name(), snapshotMetadataFileName), entry.Name())
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if !validMetadata {
+		return time.Time{}, false, nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The snapshot was reaped between ReadDir and Info.
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, fmt.Errorf("failed to stat snapshot %s: %w", entry.Name(), err)
+	}
+	return info.ModTime(), true, nil
+}
+
+func validSnapshotMetadata(path, expectedID string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to open snapshot metadata %s: %w", path, err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return false, fmt.Errorf("failed to stat snapshot metadata %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	var metadata raft.SnapshotMeta
+	if err := json.NewDecoder(file).Decode(&metadata); err != nil {
+		return false, fmt.Errorf("failed to decode snapshot metadata %s: %w", path, err)
+	}
+	return metadata.ID == expectedID, nil
+}
+
+// isSnapshotID recognizes rqlite's completed snapshot directory names:
+// <raft-term>-<raft-index>-<creation-time-unix-milliseconds>.
+func isSnapshotID(name string) bool {
+	parts := strings.Split(name, "-")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		if _, err := strconv.ParseUint(part, 10, 64); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.CredentialsStore, error) {

@@ -71,6 +71,7 @@ func (s *Store) Open() (retErr error) {
 	})
 	s.raft.RegisterObserver(s.observer)
 
+	s.startedAt = time.Now()
 	s.observerClose, s.observerDone = s.observe()
 	return nil
 }

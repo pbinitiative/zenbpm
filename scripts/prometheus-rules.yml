@@ -118,12 +118,12 @@ groups:
         expr: |
           node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
             /
-          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.10
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.20
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Less than 10% disk space left on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          summary: "Less than 20% disk space left on {{ $labels.instance }} ({{ $labels.mountpoint }})"
           description: "Raft log, snapshots and the rqlite database will fail once the disk is full."
 
       # A-T7: CPU / memory

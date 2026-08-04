@@ -74,7 +74,12 @@ histograms a `_milliseconds` suffix).
 | Metric | Type | Attributes | Description |
 | ------ | ---- | ---------- | ----------- |
 | `cluster_has_leader` | gauge 0/1 | — | Main cluster has an elected leader |
+| `cluster_leader_info` | gauge (always 1) | `leader_id`, `leader_addr` | Identity of the current main cluster leader. The series is absent while there is no leader |
 | `node_is_leader` | gauge 0/1 | — | This node is the main cluster leader |
+| `cluster_node_up` | gauge 0/1 | `node_id`, `node_addr` | Cluster member is in the started state. Read from the replicated cluster state, so **every node emits a series per member** — deduplicate with `max by(node_id, node_addr)` |
+| `cluster_node_role` | gauge 0/1 | `node_id`, `node_addr` | Cluster member is the leader (1) or a follower (0). Also replicated — deduplicate the same way |
+| `node_uptime_seconds` | gauge | `node_id`, `node_addr` | Seconds since the local node opened its cluster store. Only emitted for the node itself |
+| `raft_last_contact_milliseconds` | gauge | `node_id`, `node_addr` | Time since the local node last heard from the raft leader; `0` on the leader, `-1` when there has never been contact |
 | `partition_has_leader` | gauge 0/1 | `partition` | Partition leader registered in cluster state (replicated view; see `partition_raft_has_leader` for the local raft view) |
 | `cluster_partitions` / `cluster_desired_partitions` | gauge | — | Actual vs. configured partition count; feeds the `PartitionDeficit` alert (missing partitions emit no `partition_has_leader` series, so a count comparison is required) |
 | `raft_term`, `raft_last_log_index`, `raft_applied_index`, `raft_fsm_pending` | gauge | — | Raft internals of the main cluster |
@@ -89,6 +94,9 @@ histograms a `_milliseconds` suffix).
 | `partition_node_is_leader` | gauge 0/1 | `partition` | This node leads the partition raft group |
 | `partition_leader_changes_total` | counter | `partition` | Leader changes observed by this node (the first election after node start, repeated observations of the same leader and leadership-loss observations are not counted) |
 | `rqlite_db_size_bytes` | gauge | `partition` | SQLite files size on disk (db + WAL/SHM) |
+| `rqlite_raft_log_size_bytes` | gauge | `partition` | Physical size of the partition's bbolt raft-log file. bbolt reuses freed pages after logical log truncation, so this file does not normally shrink |
+| `rqlite_snapshot_age_seconds` | gauge | `partition` | Age of the newest completed partition raft snapshot; `-1` until the first snapshot exists |
+| `rqlite_snapshot_observation_age_seconds` | gauge | `partition` | Time since this process observed a new completed snapshot; `-1` until a snapshot is created after process startup |
 | `rqlite_exec_duration_milliseconds` | histogram | `partition`, `outcome` | Raft-replicated write duration |
 | `rqlite_query_duration_milliseconds` | histogram | `partition`, `outcome` | Read query duration |
 
@@ -119,7 +127,7 @@ placeholder webhook receiver). Key alerts:
   probing a single node's health URL. `PartitionDeficit` covers partitions that
   were never created (absent series cannot fire `NoPartitionLeader`).
 - **TargetDown, HighErrorRate, RestLatencyDegradation, RqliteExecLatencyDegradation**
-- **RqliteDbSizeLarge, RqliteDbGrowthPrediction, DiskSpaceLow, HighCPU, HighMemory**
+- **RqliteDbSizeLarge, RqliteDbGrowthPrediction, DiskSpaceLow** (fires below 20% free space), **HighCPU, HighMemory**
 - **ThroughputDrop, RaftLeaderFlapping, GoroutineLeak**
 - **IncidentCreated, HighJobFailureRate, JobBacklogGrowing, StuckProcessInstances, NoJobDistribution**
 
@@ -128,9 +136,12 @@ placeholder webhook receiver). Key alerts:
 Provisioned automatically from `scripts/grafana_provisioning/dashboards/zenbpm/`:
 
 - `main.json` — processes, jobs, distribution, request duration
-- `cluster.json` — leadership, partition deficit, raft health, leader changes
+- `cluster.json` — leader identity, partition leaders/deficit, cluster member
+  table (role, status, uptime, leader latency), raft health, leader changes
 - `incidents.json` — incidents, job failures, message correlation, timers, DMN
-- `storage.json` — rqlite DB size/growth, read/write latency percentiles, disk
+- `storage.json` — rqlite DB size/growth, physical raft log size, time since the
+  last completed snapshot and since this process observed a new snapshot,
+  read/write latency percentiles, disk
 - `latency.json` — business latency percentiles and throughput
 - `host.json` — node_exporter CPU/memory/disk/network
 - `go.json` — Go runtime

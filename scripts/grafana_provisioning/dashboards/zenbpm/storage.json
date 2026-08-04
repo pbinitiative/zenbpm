@@ -7,8 +7,89 @@
   "panels": [
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Time since the newest completed raft snapshot of each partition was written. An old snapshot can be normal on an idle partition; investigate it together with write activity and raft state. rqlite_snapshot_age_seconds is exported per replica and deduplicated with max by(partition); -1 is reported until the first completed snapshot exists.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [ { "type": "value", "options": { "-1": { "text": "no completed snapshot yet", "color": "yellow", "index": 0 } } } ],
+          "unit": "dtdurations",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "max by(partition) (rqlite_snapshot_age_seconds)", "instant": true, "legendFormat": "partition {{partition}}", "refId": "A" }
+      ],
+      "title": "Time since last snapshot",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Physical on-disk size of the partition raft log (bbolt), useful for capacity monitoring. Logical raft truncation frees pages for reuse inside bbolt but does not normally shrink this file, so file-size changes do not directly indicate snapshot or compaction success. Exported per replica, deduplicated with max by(partition).",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "unit": "bytes",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2000000000 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "max by(partition) (rqlite_raft_log_size_bytes)", "instant": true, "legendFormat": "partition {{partition}}", "refId": "A" }
+      ],
+      "title": "Raft log size on disk",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Time since this process observed a new completed raft snapshot on the partition. The first scan after startup establishes a baseline and is not counted as a new observation; -1 means no new snapshot has been observed since startup.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [ { "type": "value", "options": { "-1": { "text": "not observed since startup", "color": "yellow", "index": 0 } } } ],
+          "unit": "dtdurations",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "max by(partition) (rqlite_snapshot_observation_age_seconds)", "instant": true, "legendFormat": "partition {{partition}}", "refId": "A" }
+      ],
+      "title": "Time since new snapshot observed",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "bytes" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 1,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
@@ -19,8 +100,21 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Physical bbolt raft-log file size over time for capacity monitoring. bbolt normally reuses pages freed by logical raft truncation instead of shrinking the file, so this series does not directly show compaction events.",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rqlite_raft_log_size_bytes", "legendFormat": "partition {{partition}} {{instance}}", "refId": "A" }
+      ],
+      "title": "Raft log size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "binBps" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
       "id": 2,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
@@ -32,7 +126,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
       "id": 3,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
@@ -46,7 +140,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
       "id": 4,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
@@ -60,7 +154,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
       "id": 5,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
@@ -73,7 +167,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "bytes" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
       "id": 6,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [

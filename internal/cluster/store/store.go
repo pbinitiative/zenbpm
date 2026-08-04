@@ -67,6 +67,11 @@ type Store struct {
 	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
 
+	// startedAt is the time this store was successfully opened. It backs the
+	// node_uptime_seconds gauge and is only written by Open before the store is
+	// marked as open, so metric callbacks never observe a partially built value.
+	startedAt time.Time
+
 	// metricsRegistration is the otel observable-callback registration created
 	// by RegisterMetrics; released in Close via unregisterMetrics
 	metricsRegistration metric.Registration

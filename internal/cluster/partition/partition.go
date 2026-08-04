@@ -765,15 +765,20 @@ func (zpn *ZenPartitionNode) raftLogSizeBytes() (int64, error) {
 // written raft snapshot of this partition. Both are zero values when the node
 // has not snapshotted yet, which is not an error.
 func (zpn *ZenPartitionNode) newestSnapshot() (string, time.Time, error) {
-	dir, entries, err := zpn.snapshotEntries()
+	root, entries, err := zpn.snapshotEntries()
 	if err != nil {
 		return "", time.Time{}, err
 	}
+	if root == nil {
+		// the snapshot directory does not exist yet
+		return "", time.Time{}, nil
+	}
+	defer func() { _ = root.Close() }()
 
 	var newestName string
 	var newestMod time.Time
 	for _, entry := range entries {
-		modTime, completed, err := completedSnapshotModTime(dir, entry)
+		modTime, completed, err := completedSnapshotModTime(root, entry)
 		if err != nil {
 			return "", time.Time{}, err
 		}
@@ -785,26 +790,40 @@ func (zpn *ZenPartitionNode) newestSnapshot() (string, time.Time, error) {
 	return newestName, newestMod, nil
 }
 
-func (zpn *ZenPartitionNode) snapshotEntries() (string, []os.DirEntry, error) {
+// snapshotEntries lists the partition snapshot directory and opens it as an
+// os.Root. Snapshot metadata is then read through that root, so a symlinked
+// entry inside the directory cannot redirect the read somewhere else, and the
+// directory stays pinned even if it is moved while it is being scanned.
+// A nil root reports that the directory does not exist yet, which is not an
+// error: rqlite creates it together with the first snapshot.
+func (zpn *ZenPartitionNode) snapshotEntries() (*os.Root, []os.DirEntry, error) {
 	if zpn.config == nil || zpn.config.DataPath == "" {
-		return "", nil, fmt.Errorf("no data path configured")
+		return nil, nil, fmt.Errorf("no data path configured")
 	}
 	dir := filepath.Join(zpn.config.DataPath, snapshotsDirName)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return dir, nil, nil
+			return nil, nil, nil
 		}
-		return "", nil, fmt.Errorf("failed to read snapshot directory %s: %w", dir, err)
+		return nil, nil, fmt.Errorf("failed to read snapshot directory %s: %w", dir, err)
 	}
-	return dir, entries, nil
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// reaped between the listing and this call
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("failed to open snapshot directory %s: %w", dir, err)
+	}
+	return root, entries, nil
 }
 
-func completedSnapshotModTime(dir string, entry os.DirEntry) (time.Time, bool, error) {
+func completedSnapshotModTime(root *os.Root, entry os.DirEntry) (time.Time, bool, error) {
 	if !entry.IsDir() || !isSnapshotID(entry.Name()) {
 		return time.Time{}, false, nil
 	}
-	validMetadata, err := validSnapshotMetadata(filepath.Join(dir, entry.Name(), snapshotMetadataFileName), entry.Name())
+	validMetadata, err := validSnapshotMetadata(root, entry.Name())
 	if err != nil {
 		return time.Time{}, false, err
 	}
@@ -822,28 +841,38 @@ func completedSnapshotModTime(dir string, entry os.DirEntry) (time.Time, bool, e
 	return info.ModTime(), true, nil
 }
 
-func validSnapshotMetadata(path, expectedID string) (bool, error) {
-	file, err := os.Open(path)
+// validSnapshotMetadata reports whether the snapshot directory holds rqlite
+// metadata identifying it as the completed snapshot of that name. The metadata
+// is read relative to root, which confines the read to the snapshot directory.
+func validSnapshotMetadata(root *os.Root, snapshotID string) (bool, error) {
+	path := filepath.Join(snapshotID, snapshotMetadataFileName)
+	// Lstat, not Stat: rqlite always writes meta.json as a regular file, so a
+	// symlink is treated as an incomplete snapshot instead of being followed.
+	info, err := root.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to stat snapshot metadata %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+
+	file, err := root.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to open snapshot metadata %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
-	info, err := file.Stat()
-	if err != nil {
-		return false, fmt.Errorf("failed to stat snapshot metadata %s: %w", path, err)
-	}
-	if !info.Mode().IsRegular() {
-		return false, nil
-	}
 	var metadata raft.SnapshotMeta
 	if err := json.NewDecoder(file).Decode(&metadata); err != nil {
 		return false, fmt.Errorf("failed to decode snapshot metadata %s: %w", path, err)
 	}
-	return metadata.ID == expectedID, nil
+	return metadata.ID == snapshotID, nil
 }
 
 // isSnapshotID recognizes rqlite's completed snapshot directory names:

@@ -124,6 +124,28 @@ func TestNewestSnapshotIgnoresHousekeepingAndIncompleteEntries(t *testing.T) {
 	assert.WithinDuration(t, completedAt, modTime, time.Second)
 }
 
+func TestNewestSnapshotIgnoresMetadataSymlinkedOutsideSnapshotDirectory(t *testing.T) {
+	dataPath := t.TempDir()
+	completedAt := time.Now().Add(-time.Hour)
+	completed := writeSnapshot(t, dataPath, "2-31-1785351717976", completedAt)
+
+	// A newer entry whose meta.json points outside the snapshot directory must
+	// never be read: reads are confined to the snapshot directory, so the entry
+	// counts as incomplete and the older valid snapshot stays the newest one.
+	outside := filepath.Join(dataPath, "outside-meta.json")
+	require.NoError(t, os.WriteFile(outside, []byte(`{"ID":"2-99-1785351799999"}`), 0o600))
+	escaping := filepath.Join(dataPath, snapshotsDirName, "2-99-1785351799999")
+	require.NoError(t, os.MkdirAll(escaping, 0o750))
+	require.NoError(t, os.Symlink(outside, filepath.Join(escaping, snapshotMetadataFileName)))
+	zpn := &ZenPartitionNode{config: &config.RqLite{DataPath: dataPath}}
+
+	name, modTime, err := zpn.newestSnapshot()
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Base(completed), name)
+	assert.WithinDuration(t, completedAt, modTime, time.Second)
+}
+
 func TestUpdateRaftStorageMetricsRecordsSizeAndSnapshotAge(t *testing.T) {
 	dataPath := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dataPath, raftLogFileName), []byte("raft-log"), 0o600))

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
@@ -147,6 +148,7 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 	continueTimer = true
 	defer func() {
 		if r := recover(); r != nil {
+			errortracking.CapturePanic(tm.ctx, r, "timer.manager")
 			tm.logger.Error(fmt.Sprintf("timerManager panic recovered: %v\n%s", r, debug.Stack()))
 		}
 	}()

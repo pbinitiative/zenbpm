@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime/debug"
 
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -35,6 +36,7 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 }
 
 func handlePanic(ctx context.Context, method string, r any) error {
+	errortracking.CapturePanic(ctx, r, "grpc.handler")
 	log.Errorf(ctx, "panic recovered in gRPC handler %s: %v\n%s", method, r, debug.Stack())
 	return status.Error(codes.Internal, recoveryErrorMessage)
 }

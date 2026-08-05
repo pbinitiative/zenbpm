@@ -207,7 +207,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return nil
 	}
 	ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", updatedParentToken.ElementId), trace.WithAttributes(
-		attribute.String(otelPkg.AttributeElementId, updatedParentToken.ElementId),
+		attribute.String(otelPkg.AttributeElementID, updatedParentToken.ElementId),
 		attribute.Int64(otelPkg.AttributeElementKey, updatedParentToken.ElementInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, updatedParentToken.Key),
 	))
@@ -338,7 +338,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 		return nil
 	}
 	ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", updatedParentToken.ElementId), trace.WithAttributes(
-		attribute.String(otelPkg.AttributeElementId, updatedParentToken.ElementId),
+		attribute.String(otelPkg.AttributeElementID, updatedParentToken.ElementId),
 		attribute.Int64(otelPkg.AttributeElementKey, updatedParentToken.ElementInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, updatedParentToken.Key),
 	))

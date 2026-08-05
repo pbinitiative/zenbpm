@@ -272,6 +272,10 @@ func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context,
 			if err := batch.SaveTimer(ctx, current); err != nil {
 				return fmt.Errorf("failed to update timer state for timer %d: %w", current.Key, err)
 			}
+			consumed := current
+			batch.AddPostFlushAction(ctx, func() {
+				engine.recordTimerMetric(ctx, consumed)
+			})
 			return nil
 		},
 	})

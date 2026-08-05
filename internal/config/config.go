@@ -94,6 +94,9 @@ type Tracing struct {
 	Name            string   `yaml:"name" json:"name" env:"TRACING_APP_NAME" env-default:"ZenBPM"` // application identifier
 	TransferHeaders []string `yaml:"transferHeaders" json:"transferHeaders" env:"TRACING_TRANSFER_HEADERS"`
 	Endpoint        string   `yaml:"endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	// SamplerRatio controls the fraction of new traces that get sampled (0.0 - 1.0).
+	// Child spans follow the sampling decision of their parent (ParentBased sampler).
+	SamplerRatio float64 `yaml:"samplerRatio" json:"samplerRatio" env:"TRACING_SAMPLER_RATIO" env-default:"1.0"`
 }
 
 type Persistence struct {

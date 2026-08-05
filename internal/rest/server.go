@@ -1,3 +1,5 @@
+// Package rest exposes the public REST API of a ZenBPM node, including the
+// OpenAPI-generated endpoints, Prometheus metrics and health probes.
 package rest
 
 import (
@@ -98,18 +100,67 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	// register system endpoints
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
+		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
+		// (raw cluster state, always 200) for existing consumers; readiness
+		// semantics live exclusively on /system/health/ready below.
 		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(200)
-			_, err := w.Write(state)
+			body, err := json.MarshalIndent(node.GetStatus(), "", " ")
 			if err != nil {
+				restLogger.Error("failed to marshal status", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write(body); err != nil {
 				restLogger.Error("failed to write status", "error", err)
 				return
 			}
 		})
+		// liveness probe: reports only that the process is up. It deliberately does not check raft state
+		// so that a leaderless node is not restarted in a loop by an orchestrator.
+		r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+			writeHealthResponse(w, restLogger, true, nil)
+		})
+		// readiness probe: 503 until the cluster has a leader, this node is
+		// registered and all partitions owned by this node are initialized.
+		r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
+			healthy, reasons := node.Health()
+			writeHealthResponse(w, restLogger, healthy, reasons)
+		})
 	})
 	return &s
+}
+
+// writeHealthResponse writes a minimal health payload with 200/503 semantics
+// usable by kubernetes probes and load balancers.
+func writeHealthResponse(w http.ResponseWriter, logger *slog.Logger, healthy bool, reasons []string) {
+	if reasons == nil {
+		reasons = []string{}
+	}
+	resp := struct {
+		Status  string   `json:"status"`
+		Reasons []string `json:"reasons"`
+	}{
+		Status:  "UP",
+		Reasons: reasons,
+	}
+	code := http.StatusOK
+	if !healthy {
+		resp.Status = "DOWN"
+		code = http.StatusServiceUnavailable
+	}
+	body, err := json.Marshal(resp)
+	if err != nil {
+		logger.Error("failed to marshal health response", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if _, err := w.Write(body); err != nil {
+		logger.Error("failed to write health response", "error", err)
+	}
 }
 
 func (s *Server) Start() net.Listener {

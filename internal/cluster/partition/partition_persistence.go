@@ -34,12 +34,14 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	metricsPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/rqlite/rqlite/v10/store"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -59,6 +61,10 @@ type DB struct {
 	cleanupCancel          context.CancelFunc
 	cleanupDone            chan struct{}
 	cleanupStopOnce        sync.Once
+	// execDuration measures the duration of rqlite write statements, in ms
+	execDuration metric.Float64Histogram
+	// queryDuration measures the duration of rqlite read queries, in ms
+	queryDuration metric.Float64Histogram
 }
 
 const (
@@ -141,6 +147,22 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	}
 	queries := sql.New(db)
 	db.Queries = queries
+
+	meter := otel.GetMeterProvider().Meter("partition-rqlite")
+	db.execDuration, err = meter.Float64Histogram("rqlite_exec_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of rqlite write statements, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
+	if err != nil {
+		logger.Error("Failed to create rqlite_exec_duration instrument", "err", err)
+	}
+	db.queryDuration, err = meter.Float64Histogram("rqlite_query_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of rqlite read queries, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
+	if err != nil {
+		logger.Error("Failed to create rqlite_query_duration instrument", "err", err)
+	}
 
 	if opts.startDataCleanup {
 		cleanupCtx, cancel := context.WithCancel(context.Background())
@@ -403,12 +425,26 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 	return r.rowsAffected, nil
 }
 
-func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+// ExecContext executes a single write SQL statement against the partition
+// rqlite store. It records an "rqlite-exec" trace span and the execution
+// duration metric labeled with the partition and outcome.
+func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) (_ ssql.Result, retErr error) {
+	start := time.Now()
 	ctx, execSpan := rq.tracer.Start(ctx, "rqlite-exec", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeExec, sql),
 		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
 	))
 	defer func() {
+		if rq.execDuration != nil {
+			outcome := "success"
+			if retErr != nil {
+				outcome = "error"
+			}
+			rq.execDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.Int64("partition", int64(rq.Partition)),
+				attribute.String("outcome", outcome),
+			))
+		}
 		execSpan.End()
 	}()
 	stmt, err := rq.generateStatement(sql, args...)
@@ -444,12 +480,26 @@ func (rq *DB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error
 	return nil, errors.New("PrepareContext not supported by rqlite")
 }
 
-func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+// QueryContext executes a read SQL query against the partition rqlite store.
+// It records an "rqlite-query" trace span and the query duration metric
+// labeled with the partition and outcome.
+func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (_ *sql.Rows, retErr error) {
+	start := time.Now()
 	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeQuery, query),
 		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
 	))
 	defer func() {
+		if rq.queryDuration != nil {
+			outcome := "success"
+			if retErr != nil {
+				outcome = "error"
+			}
+			rq.queryDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.Int64("partition", int64(rq.Partition)),
+				attribute.String("outcome", outcome),
+			))
+		}
 		querySpan.End()
 	}()
 	results, err := rq.queryDatabase(ctx, query, args...)

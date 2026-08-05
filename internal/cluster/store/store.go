@@ -19,6 +19,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rsync"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"go.opentelemetry.io/otel/metric"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -39,8 +40,10 @@ type Store struct {
 	bootstrapped    bool
 	notifyingNodes  map[string]raft.Server
 
-	// mutext used by fsm to lock state changes
-	stateMu sync.Mutex
+	// stateMu guards access to state: the fsm takes the write lock when it
+	// replaces state, every reader (including async metric callbacks) must
+	// take the read lock
+	stateMu sync.RWMutex
 	boltDB  *raftboltdb.BoltStore
 
 	layer  *tcp.Layer
@@ -62,6 +65,15 @@ type Store struct {
 
 	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
+
+	// startedAt is the time this store was successfully opened. It backs the
+	// node_uptime_seconds gauge and is only written by Open before the store is
+	// marked as open, so metric callbacks never observe a partially built value.
+	startedAt time.Time
+
+	// metricsRegistration is the otel observable-callback registration created
+	// by RegisterMetrics; released in Close via unregisterMetrics
+	metricsRegistration metric.Registration
 }
 
 type Config struct {
@@ -108,7 +120,7 @@ func DefaultConfig(c config.Cluster) Config {
 func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *Store {
 	s := &Store{
 		cfg:             c,
-		stateMu:         sync.Mutex{},
+		stateMu:         sync.RWMutex{},
 		boltDB:          &raftboltdb.BoltStore{},
 		raft:            &raft.Raft{},
 		logger:          hclog.Default().Named("zenbpm-store"),
@@ -140,7 +152,12 @@ func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *
 	return s
 }
 
+// ClusterState returns a deep copy of the replicated cluster state. It takes
+// the state read lock so it is safe to call concurrently with FSM applies
+// (e.g. from the async otel metrics callback registered in RegisterMetrics).
 func (s *Store) ClusterState() state.Cluster {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
 	return *s.state.DeepCopy()
 }
 
@@ -203,6 +220,7 @@ func (s *Store) Nodes() ([]state.Node, error) {
 	}
 
 	rs := f.Configuration().Servers
+	cs := s.ClusterState()
 	nodes := make([]state.Node, len(rs))
 	for i := range rs {
 		nodes[i] = state.Node{
@@ -210,7 +228,7 @@ func (s *Store) Nodes() ([]state.Node, error) {
 			Addr:     string(rs[i].Address),
 			Suffrage: rs[i].Suffrage,
 		}
-		node, err := s.state.GetNode(string(rs[i].ID))
+		node, err := cs.GetNode(string(rs[i].ID))
 		if err != nil {
 			if errors.Is(err, zenerr.ErrNodeNotFound) {
 				// TODO: decide if we need full node info here or just raft.Server
@@ -414,6 +432,8 @@ func (s *Store) PartitionLeaderWithID(partition uint32) (string, string) {
 	if !s.open.Load() {
 		return "", ""
 	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
 	partitionInfo, ok := s.state.Partitions[partition]
 	if !ok {
 		return "", ""

@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	metrics "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -35,6 +36,19 @@ func SetupOtel(conf config.Tracing) (*Otel, error) {
 	o := Otel{}
 	var err error
 
+	// fail fast on invalid sampler configuration even when tracing is disabled,
+	// so a latent misconfiguration does not explode on the day tracing is enabled
+	if err := validateSamplerRatio(conf.SamplerRatio); err != nil {
+		return nil, err
+	}
+
+	// register W3C trace context + baggage propagators globally so that any
+	// instrumentation relying on the global propagator (HTTP, gRPC) joins traces
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
 	o.meterProvider, err = setupMeterProvider(conf.Name)
 	if err != nil {
 		return nil, err
@@ -42,10 +56,11 @@ func SetupOtel(conf config.Tracing) (*Otel, error) {
 	otel.SetMeterProvider(o.meterProvider)
 	if conf.Enabled {
 		o.tracerprovider, err = setupTraceProvider(conf)
-		otel.SetTracerProvider(o.tracerprovider)
 		if err != nil {
+			o.Stop(context.Background())
 			return nil, fmt.Errorf("failed to set up tracer: %w", err)
 		}
+		otel.SetTracerProvider(o.tracerprovider)
 	}
 
 	return &o, nil

@@ -1,0 +1,266 @@
+# Prometheus alerting rules for ZenBPM.
+# Mounted into the Prometheus container by `make start-monitoring`
+# (see Makefile) and referenced from scripts/prometheus.yml.
+#
+# Metric name notes (OpenTelemetry -> Prometheus exporter):
+#   counters get a `_total` suffix, `ms` histograms get `_milliseconds_bucket`.
+
+groups:
+  # ──────────────────────────────────────────────────────────────────────
+  # Technical alerts
+  # ──────────────────────────────────────────────────────────────────────
+  - name: zenbpm-technical
+    rules:
+      # A-T1: raft leadership
+      - alert: NoClusterLeader
+        expr: max(cluster_has_leader) == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZenBPM main cluster has no elected raft leader"
+          description: "No node reports an elected leader for the main Zen cluster for more than 30s. Writes and cluster coordination are unavailable."
+
+      - alert: NoPartitionLeader
+        expr: max by(partition) (partition_has_leader) == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZenBPM partition {{ $labels.partition }} has no leader"
+          description: "Partition {{ $labels.partition }} has no leader registered in the cluster state for more than 30s. Process execution on this partition is stalled."
+
+      # partition_has_leader only emits series for partitions that already exist
+      # in the cluster state, so NoPartitionLeader alone is blind to partitions
+      # that were never created (bootstrap/controller failure). This alert covers
+      # that gap using the explicit count gauges exported by every node.
+      - alert: PartitionDeficit
+        expr: max(cluster_partitions) < max(cluster_desired_partitions)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZenBPM cluster has fewer partitions than desired"
+          description: "The cluster state contains {{ with query \"max(cluster_partitions)\" }}{{ . | first | value }}{{ end }} of the desired {{ with query \"max(cluster_desired_partitions)\" }}{{ . | first | value }}{{ end }} partitions. Work routed to missing partitions cannot execute."
+
+      # A-T2: scrape target down
+      - alert: TargetDown
+        expr: up{job="zenbpm"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZenBPM instance {{ $labels.instance }} is down"
+          description: "Prometheus has been unable to scrape {{ $labels.instance }} for more than 1 minute."
+
+      # A-T3: REST error rate
+      # NOTE: the REST middleware exports the HTTP status under the `status`
+      # label (internal/rest/middleware/otel.go). clamp_min protects the ratio
+      # from a zero denominator when there is no traffic.
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(request_uri_total{status=~"5.."}[5m]))
+              /
+            clamp_min(sum(rate(request_uri_total[5m])), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZenBPM REST 5xx error ratio above 5%"
+          description: "More than 5% of REST requests returned a 5xx status over the last 5 minutes."
+
+      # A-T4: latency degradation
+      - alert: RestLatencyDegradation
+        expr: |
+          histogram_quantile(0.99,
+            sum by(le) (rate(request_duration_milliseconds_bucket[5m]))) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ZenBPM REST p99 latency above 1s"
+          description: "The p99 REST request duration has been above 1s for 10 minutes."
+
+      - alert: RqliteExecLatencyDegradation
+        expr: |
+          histogram_quantile(0.99,
+            sum by(le, partition) (rate(rqlite_exec_duration_milliseconds_bucket[5m]))) > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "rqlite write p99 latency above 500ms on partition {{ $labels.partition }}"
+          description: "Raft-replicated writes are slow; check disk I/O, network between partition nodes and write batching."
+
+      # A-T5: rqlite db size
+      - alert: RqliteDbSizeLarge
+        expr: rqlite_db_size_bytes > 5e9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "rqlite database of partition {{ $labels.partition }} exceeds 5GB"
+          description: "Check instance history TTL / data cleanup configuration before the disk fills up."
+
+      - alert: RqliteDbGrowthPrediction
+        expr: predict_linear(rqlite_db_size_bytes[6h], 24 * 3600) > 10e9
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "rqlite database of partition {{ $labels.partition }} predicted to exceed 10GB within 24h"
+          description: "Current growth rate would exceed 10GB within a day. Investigate runaway process instances or missing history cleanup."
+
+      # A-T6: disk space
+      - alert: DiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+            /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Less than 20% disk space left on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Raft log, snapshots and the rqlite database will fail once the disk is full."
+
+      # A-T7: CPU / memory
+      - alert: HighCPU
+        expr: |
+          1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage above 90% on {{ $labels.instance }}"
+          description: "Sustained high CPU can cause raft heartbeat misses and leader flapping."
+
+      - alert: HighMemory
+        expr: |
+          1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage above 90% on {{ $labels.instance }}"
+          description: "The host is close to memory exhaustion; the ZenBPM process may be OOM-killed."
+
+      # A-T8: throughput drop
+      - alert: ThroughputDrop
+        expr: |
+          sum(rate(processes_started_total[10m]))
+            <
+          0.2 * sum(rate(processes_started_total[10m] offset 1h))
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Process start throughput dropped by more than 80%"
+          description: "Instances started per second dropped more than 80% compared to one hour ago. Check upstream callers and cluster health."
+
+      # A-T9: raft instability
+      - alert: RaftLeaderFlapping
+        expr: increase(partition_leader_changes_total[10m]) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 3 leader changes in 10m on partition {{ $labels.partition }}"
+          description: "Frequent leader elections indicate network instability or resource starvation."
+
+      # A-T10: goroutine leak
+      # Uses go_goroutines from the prometheus client_golang collector, which
+      # is always exported by the /system/metrics promhttp handler.
+      - alert: GoroutineLeak
+        expr: |
+          go_goroutines > 1000
+            and
+          delta(go_goroutines[1h]) > 500
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Goroutine count is growing on {{ $labels.instance }}"
+          description: "Goroutines have grown by more than 500 in the last hour; possible goroutine leak."
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Business alerts
+  # ──────────────────────────────────────────────────────────────────────
+  - name: zenbpm-business
+    rules:
+      # A-B1: incidents
+      # NOTE: deliberately non-paging (warning): incidents are a
+      # business-as-usual signal in a busy BPMN system. Route "warning" to a
+      # low-urgency receiver in alertmanager.yml; use HighJobFailureRate for
+      # paging-worthy systemic failures.
+      - alert: IncidentCreated
+        expr: increase(incidents_created_total[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "BPMN incident(s) created (element {{ $labels.element_id }})"
+          description: "{{ $value }} incident(s) were raised in the last 5 minutes. Inspect /v1 incidents API or the incidents dashboard."
+
+      # A-B2: job failures
+      - alert: HighJobFailureRate
+        expr: |
+          (
+            sum(rate(jobs_failed_total[10m]))
+              /
+            clamp_min(sum(rate(jobs_created_total[10m])), 1e-9)
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 10% of jobs are failing"
+          description: "Job failure ratio exceeded 10% over the last 10 minutes. Check worker health and incident list."
+
+      # A-B3: job backlog
+      # NOTE: every replica of a partition exports jobs_waiting for its local
+      # copy of the data, so the series must be deduplicated with max by()
+      # instead of summed — sum would multiply the backlog by the replication
+      # factor and fire false alerts.
+      - alert: JobBacklogGrowing
+        expr: max by(partition) (jobs_waiting) > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Job backlog above 1000 on partition {{ $labels.partition }}"
+          description: "Jobs are waiting longer than expected; workers may be down, too slow or not subscribed."
+
+      # A-B4: stuck process instances
+      # NOTE: processes_completed_total counts *ended* instances (completed or
+      # failed), so this alert only fires when instances neither complete nor
+      # fail while the active count keeps growing.
+      # process_instances_active is exported by every partition replica, so
+      # replicas are deduplicated with max by(partition) before summing.
+      - alert: StuckProcessInstances
+        expr: |
+          sum(max by(partition) (process_instances_active)) > 0
+            and
+          sum(rate(processes_completed_total[15m])) == 0
+            and
+          delta(sum(max by(partition) (process_instances_active))[15m:1m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Active process instances are accumulating while none complete"
+          description: "The number of active instances keeps growing while completion rate is zero. Engine or downstream systems may be stuck."
+
+      # A-B5: job distribution broken
+      # jobs_waiting is exported per replica; max by(partition) deduplicates
+      - alert: NoJobDistribution
+        expr: |
+          sum(rate(jobs_distributed_total[10m])) == 0
+            and
+          sum(max by(partition) (jobs_waiting)) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jobs are waiting but none are being distributed to workers"
+          description: "The job streaming pipeline is broken: no partition leader for the job server, no connected workers, or a gRPC issue."

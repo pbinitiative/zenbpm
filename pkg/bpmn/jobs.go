@@ -138,8 +138,23 @@ func (engine *Engine) createInternalTask(
 					},
 				)
 			}
-			batch.SaveJob(ctx, job)
-			engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+		}
+		if job.State == runtime.ActivityStateCompleted {
+			if err := batch.SaveJob(ctx, job); err != nil {
+				return runtime.ActivityStateFailed, fmt.Errorf("failed to save terminal state of internal job %d: %w", job.Key, err)
+			}
+		}
+		switch job.State {
+		case runtime.ActivityStateCompleted:
+			if engine.metrics != nil && engine.metrics.JobsCompleted != nil {
+				engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "completed")
+		case runtime.ActivityStateFailed:
+			if engine.metrics != nil && engine.metrics.JobsFailed != nil {
+				engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "failed")
 		}
 	}
 

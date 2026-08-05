@@ -232,13 +232,22 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:      &job.CreatedAt,
 				},
 			})
-			JobsDistributed.Add(context.Background(), 1, metric.WithAttributes(
-				attribute.String("type", job.Type),
-				attribute.String("client", string(clientID)),
-			))
 			if err != nil {
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
+			}
+			JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
+				attribute.String("type", job.Type),
+				attribute.String("client", string(clientID)),
+			))
+			if JobActivationLatency != nil && job.CreatedAt > 0 {
+				latencyMs := float64(time.Now().UnixMilli() - job.CreatedAt)
+				if latencyMs < 0 {
+					latencyMs = 0
+				}
+				JobActivationLatency.Record(s.ctx, latencyMs, metric.WithAttributes(
+					attribute.String("type", job.Type),
+				))
 			}
 		}
 	}

@@ -8,11 +8,15 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
 	message, err := engine.persistence.FindMessageSubscriptionByName(ctx, name, correlationKey, runtime.ActivityStateActive)
 	if err != nil {
+		engine.logger.Warn("failed to find active message subscription", "messageName", name, "err", err)
+		engine.recordMessageCorrelationFailure(ctx, "unknown", "subscription_not_found")
 		return errors.Join(newEngineErrorf("failed to find active message subscription with name: %s", name), err)
 	}
 	return engine.PublishMessage(ctx, message, variables)
@@ -21,13 +25,41 @@ func (engine *Engine) PublishMessageByName(ctx context.Context, name string, cor
 func (engine *Engine) PublishMessageByKey(ctx context.Context, subscriptionKey int64, variables map[string]any) error {
 	message, err := engine.persistence.FindMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
+		engine.recordMessageCorrelationFailure(ctx, "unknown", "subscription_not_found")
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", subscriptionKey), err)
 	}
 	return engine.PublishMessage(ctx, message, variables)
 }
 
+// recordMessageCorrelationFailure increments the failed message correlation
+// counter. Only bounded values (names of deployed subscriptions or "unknown")
+// may be passed as name to keep metric cardinality under control.
+func (engine *Engine) recordMessageCorrelationFailure(ctx context.Context, name string, reason string) {
+	if engine.metrics == nil || engine.metrics.MessageCorrelationFailed == nil {
+		return
+	}
+	engine.metrics.MessageCorrelationFailed.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("message_name", name),
+		attribute.String("reason", reason),
+	))
+}
+
 // PublishMessage publishes a message given by subscription key and also adds variables to the process instance, which fetches this event
 func (engine *Engine) PublishMessage(ctx context.Context, message runtime.MessageSubscription, variables map[string]interface{}) (retErr error) {
+	defer func() {
+		if engine.metrics == nil {
+			return
+		}
+		// bounded cardinality: the name comes from a persisted subscription, i.e. from a deployed process definition
+		name := message.MessageSubscription().Name
+		if retErr != nil {
+			engine.recordMessageCorrelationFailure(ctx, name, "publish_failed")
+			return
+		}
+		if engine.metrics.MessagesCorrelated != nil {
+			engine.metrics.MessagesCorrelated.Add(ctx, 1, metric.WithAttributes(attribute.String("message_name", name)))
+		}
+	}()
 	switch message := message.(type) {
 	case *runtime.DefinitionMessageSubscription:
 		err := engine.publishMessageOnInstanceCreation(ctx, message, variables)
@@ -91,6 +123,7 @@ func handleMessagePublicationError(ctx context.Context, batch *EngineBatch, mess
 	if flushErr != nil {
 		return errors.Join(newEngineErrorf("failed to flush and "+fmtMsg, args...), flushErr)
 	}
+	batch.engine.recordProcessInstanceEnd(ctx, instance)
 	return errors.Join(newEngineErrorf(fmtMsg, args...), err)
 }
 

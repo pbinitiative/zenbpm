@@ -392,7 +392,7 @@ func (engine *Engine) createInstance(
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
@@ -482,7 +482,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", instance.ProcessInstance().Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
@@ -579,7 +579,15 @@ func (engine *Engine) recordEventSubprocessSubscriptionIncident(
 		ResolvedAt:         nil,
 		// No execution token exists yet for this event subprocess start event; leave zero-value.
 	}
-	return batch.SaveIncident(ctx, incident)
+	if err := batch.SaveIncident(ctx, incident); err != nil {
+		return err
+	}
+	if _, viaEngineBatch := batch.(*EngineBatch); !viaEngineBatch {
+		batch.AddPostFlushAction(ctx, func() {
+			engine.recordIncidentMetric(ctx, incident)
+		})
+	}
+	return nil
 }
 
 /*
@@ -683,8 +691,12 @@ func (engine *Engine) createTimerStartEventTimers(
 			startEvent.GetId(), processDefinitionKey, err)
 	}
 	saved := *timer
+	_, viaEngineBatch := batch.(*EngineBatch)
 	batch.AddPostFlushAction(ctx, func() {
 		engine.timerManager.registerTimer(saved)
+		if !viaEngineBatch {
+			engine.recordTimerMetric(ctx, saved)
+		}
 	})
 	return nil
 }

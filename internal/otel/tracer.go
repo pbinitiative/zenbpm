@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -14,7 +15,24 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
+// validateSamplerRatio checks that the configured trace sampler ratio is a
+// finite number within [0, 1]. It is validated regardless of whether tracing
+// is enabled so that a latent misconfiguration fails fast at startup instead
+// of on the day tracing gets switched on.
+func validateSamplerRatio(ratio float64) error {
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0 || ratio > 1 {
+		return fmt.Errorf("tracing sampler ratio must be between 0 and 1, got %v", ratio)
+	}
+	return nil
+}
+
 func setupTraceProvider(conf config.Tracing) (*trace.TracerProvider, error) {
+	// sample new traces at the configured ratio; child spans follow their parent decision.
+	// An explicit 0 disables root sampling; out-of-range values are a configuration error.
+	// Validated before any exporter/resource setup to avoid avoidable work on bad config.
+	if err := validateSamplerRatio(conf.SamplerRatio); err != nil {
+		return nil, err
+	}
 	endpoint := conf.Endpoint
 	endpoint = strings.TrimPrefix(endpoint, "https://")
 	endpoint = strings.TrimPrefix(endpoint, "http://")
@@ -46,10 +64,11 @@ func setupTraceProvider(conf config.Tracing) (*trace.TracerProvider, error) {
 	}
 
 	tracerprovider := trace.NewTracerProvider(
+		trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(conf.SamplerRatio))),
 		trace.WithBatcher(
 			exporter,
 			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
-			trace.WithBatchTimeout(trace.DefaultScheduleDelay*time.Millisecond),
+			trace.WithBatchTimeout(5*time.Second),
 		),
 		trace.WithResource(res),
 	)

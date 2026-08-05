@@ -1,0 +1,250 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Identity of the current main Zen cluster raft leader: node id in green, its raft address in white. cluster_leader_info is an always-1 gauge whose attributes carry the identity, so the series disappears entirely while there is no leader and the panel falls back to NO LEADER.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "NO LEADER",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "name",
+        "text": { "titleSize": 22, "valueSize": 22 },
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "max by(leader_id, leader_addr) (cluster_leader_info)", "instant": true, "legendFormat": "{{leader_id}}", "refId": "A" },
+        { "expr": "max by(leader_id, leader_addr) (cluster_leader_info)", "instant": true, "legendFormat": "{{leader_addr}}", "refId": "B" }
+      ],
+      "title": "Main cluster leader",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Partitions that have a leader registered in the cluster state, against the total number of partitions present. partition_has_leader is exported by every node, so replicas are deduplicated with max by(partition) before summing. The captions are rendered with custom `suffix:` units so they appear after the number — the stat panel always draws a field *name* before the value.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "decimals": 0,
+          "noValue": "0",
+          "unit": "suffix:partition(s) with leader from",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "unit", "value": "suffix:total" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "sum(max by(partition) (partition_has_leader))", "instant": true, "legendFormat": "partition(s) with leader", "refId": "A" },
+        { "expr": "max(cluster_partitions)", "instant": true, "legendFormat": "total", "refId": "B" }
+      ],
+      "title": "Partition leaders",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Partitions that cannot execute work: partitions missing from the cluster state entirely (desired minus existing, e.g. after a bootstrap failure) plus existing partitions without a registered leader. Mirrors the PartitionDeficit / NoPartitionLeader alerts. The caption is a custom `suffix:` unit so it is rendered after the number.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "decimals": 0,
+          "noValue": "0",
+          "unit": "suffix:partitions without leader",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "expr": "(max(cluster_desired_partitions) - max(cluster_partitions)) + (sum(max by(partition) (partition_has_leader == bool 0)) or vector(0))",
+          "instant": true,
+          "legendFormat": "partitions without leader",
+          "refId": "A"
+        }
+      ],
+      "title": "Partition deficit",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "max by(partition) (increase(partition_leader_changes_total[5m]))", "legendFormat": "partition {{partition}}", "refId": "A" }
+      ],
+      "title": "Leader changes (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "raft_last_log_index - raft_applied_index", "legendFormat": "{{instance}} apply lag", "refId": "A" },
+        { "expr": "raft_fsm_pending", "legendFormat": "{{instance}} fsm pending", "refId": "B" }
+      ],
+      "title": "Raft log apply lag / FSM backlog",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "raft_term", "legendFormat": "{{instance}} term", "refId": "A" }
+      ],
+      "title": "Raft term",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "description": "Members of the main Zen cluster. Role and status come from the replicated cluster state (every node exports a series per member, deduplicated with max by(node_id, node_addr)); uptime and leader latency are exported by each node about itself, so blanks in those columns mean that member is not being scraped. Latency is the 5m average time since the last contact with the raft leader (0 on the leader itself).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null } ] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Role" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [ { "type": "value", "options": { "1": { "text": "Leader", "index": 0 }, "0": { "text": "Follower", "index": 1 } } } ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [ { "type": "value", "options": { "1": { "text": "Healthy", "color": "green", "index": 0 }, "0": { "text": "Unhealthy", "color": "red", "index": 1 } } } ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "noValue", "value": "Unknown" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Uptime" },
+            "properties": [ { "id": "unit", "value": "dtdurations" }, { "id": "decimals", "value": 0 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Latency (avg)" },
+            "properties": [ { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 0 } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 6,
+      "options": { "footer": { "show": false }, "showHeader": true },
+      "targets": [
+        { "expr": "max by(node_id, node_addr) (cluster_node_role)", "format": "table", "instant": true, "refId": "A" },
+        { "expr": "max by(node_id, node_addr) (cluster_node_up)", "format": "table", "instant": true, "refId": "B" },
+        { "expr": "max by(node_id, node_addr) (node_uptime_seconds)", "format": "table", "instant": true, "refId": "C" },
+        { "expr": "avg by(node_id, node_addr) (avg_over_time(raft_last_contact_milliseconds[5m]))", "format": "table", "instant": true, "refId": "D" }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "node_id", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "node_addr 2": true,
+              "node_addr 3": true,
+              "node_addr 4": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "node_id": "Node",
+              "node_addr": "Address",
+              "node_addr 1": "Address",
+              "Value #A": "Role",
+              "Value #B": "Status",
+              "Value #C": "Uptime",
+              "Value #D": "Latency (avg)"
+            }
+          }
+        }
+      ],
+      "title": "Cluster members",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "up{job=\"zenbpm\"}", "legendFormat": "{{instance}} up", "refId": "A" }
+      ],
+      "title": "Scrape targets up",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["zenbpm", "cluster"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "ZenBPM Cluster Health",
+  "uid": "zenbpm-cluster",
+  "version": 1
+}

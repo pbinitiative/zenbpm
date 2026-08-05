@@ -74,8 +74,8 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	f.store.stateMu.Lock()
-	defer f.store.stateMu.Unlock()
+	f.store.stateMu.RLock()
+	defer f.store.stateMu.RUnlock()
 
 	return &fsmSnapshot{ClusterState: *f.store.state.DeepCopy()}, nil
 }
@@ -86,8 +86,8 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	// Set the state from the snapshot, no lock required according to
-	// Hashicorp docs.
+	f.store.stateMu.Lock()
+	defer f.store.stateMu.Unlock()
 	f.store.state = snapshot.ClusterState
 	return nil
 }
@@ -98,17 +98,17 @@ type FsmStore interface {
 }
 
 func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
+	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand)
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand)
 	f.store.state = changedState
 	return nil
 }
 
 func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionChange) interface{} {
+	changedState := FsmApplyPartitionChange(f.store, partitionChangeCommand)
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	changedState := FsmApplyPartitionChange(f.store, partitionChangeCommand)
 	f.store.state = changedState
 	return nil
 }

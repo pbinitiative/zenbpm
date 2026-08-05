@@ -11,6 +11,7 @@ import (
 	"hash/fnv"
 	"net"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -112,6 +113,9 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	)
 	if err = node.store.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
+	}
+	if err = node.store.RegisterMetrics(); err != nil {
+		node.logger.Error("Failed to register cluster store metrics", "err", err)
 	}
 
 	node.client = client.NewClientManager(node.store)
@@ -1866,6 +1870,39 @@ func (node *ZenNode) GetStatus() state.Cluster {
 		return state.Cluster{}
 	}
 	return node.store.ClusterState()
+}
+
+// Health evaluates the readiness of this node in the cluster. Cluster-wide
+// partition health is deliberately excluded: making every node unready when a
+// remote partition is degraded would remove the entire cluster from a load
+// balancer. Cluster-wide deficits and leader loss are exposed by metrics and
+// alerts instead.
+func (node *ZenNode) Health() (bool, []string) {
+	if node.store == nil {
+		return false, []string{"cluster store is not initialized"}
+	}
+	reasons := make([]string, 0)
+	if !node.store.HasLeader() {
+		reasons = append(reasons, "no cluster leader elected")
+	}
+	cs := node.store.ClusterState()
+	reasons = append(reasons, nodeReadinessReasons(cs, node.store.NodeID())...)
+	return len(reasons) == 0, reasons
+}
+
+func nodeReadinessReasons(cs state.Cluster, nodeID string) []string {
+	partitionReasons := make([]string, 0)
+	if self, err := cs.GetNode(nodeID); err != nil {
+		partitionReasons = append(partitionReasons, "node is not registered in the cluster state")
+	} else {
+		for id, partition := range self.Partitions {
+			if partition.State != state.NodePartitionStateInitialized {
+				partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d on this node is in state %s", id, partition.State))
+			}
+		}
+	}
+	sort.Strings(partitionReasons)
+	return partitionReasons
 }
 
 func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {

@@ -125,12 +125,12 @@ func TestLiteralExpressionMultilineQuotedString(t *testing.T) {
 	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "multiline", "literal-expression.dmn"))
 	assert.NoError(t, err)
 
-	metadata, decisions, err := dmnEngine.SaveDmnResourceDefinition(nil, definition, xmldata, dmnEngine.generateKey())
+	metadata, decisions, err := dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
 	assert.Len(t, decisions, 1)
 
-	result, err := dmnEngine.FindAndEvaluateDRD(nil, "latest", metadata.Id+"."+decisions[0].Id, "", nil)
+	result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "latest", metadata.Id+"."+decisions[0].Id, "", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "Hello,\nWorld!", result.DecisionOutput)
 }
@@ -141,13 +141,13 @@ func TestDecisionTableMultilineOutput(t *testing.T) {
 	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "multiline", "decision-table-output.dmn"))
 	assert.NoError(t, err)
 
-	metadata, decisions, err := dmnEngine.SaveDmnResourceDefinition(nil, definition, xmldata, dmnEngine.generateKey())
+	metadata, decisions, err := dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
 	assert.Len(t, decisions, 1)
 
 	input := map[string]interface{}{"code": "A1"}
-	result, err := dmnEngine.FindAndEvaluateDRD(nil, "latest", metadata.Id+"."+decisions[0].Id, "", input)
+	result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "latest", metadata.Id+"."+decisions[0].Id, "", input)
 	assert.NoError(t, err)
 	output, ok := result.DecisionOutput.(map[string]interface{})
 	assert.True(t, ok)

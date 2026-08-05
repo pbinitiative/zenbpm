@@ -52,17 +52,18 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 			if err != nil {
 				return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 			}
+
 			// The start helpers only report Completed for an empty input collection. No
 			// multi-instance instance is created in that case, so the parent continuation
 			// that normally completes this history row never runs.
-			outputCollectionName := element.GetMultiInstance().LoopCharacteristics.OutputCollectionName
+			outputVariables := emptyMultiInstanceOutputVariables(element)
 			if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 				Key:                currentToken.ElementInstanceKey,
 				ProcessInstanceKey: instance.ProcessInstance().Key,
 				ElementId:          element.GetId(),
 				ElementType:        string(element.GetType()),
 				ExecutionTokenKey:  currentToken.Key,
-				OutputVariables:    map[string]any{outputCollectionName: []interface{}{}},
+				OutputVariables:    outputVariables,
 				CompletedAt:        new(time.Now()),
 			}); err != nil {
 				return nil, fmt.Errorf("failed to complete %s history %d: %w", element.GetType(), activity.GetKey(), err)
@@ -202,7 +203,8 @@ func (engine *Engine) startParallelMultiInstance(
 	}
 
 	if len(inputCollection) == 0 {
-		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		outputVariables := emptyMultiInstanceOutputVariables(element)
+		instance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 		return runtime.ActivityStateCompleted, nil
 	}
 
@@ -280,7 +282,8 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 	}
 
 	if len(inputCollection) == 0 {
-		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		outputVariables := emptyMultiInstanceOutputVariables(element)
+		instance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 		return runtime.ActivityStateCompleted, nil
 	}
 
@@ -364,11 +367,11 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
 	}
 
-	outputCollection, err := engine.collectMultiInstanceOutputCollection(ctx, instance.ProcessInstance().Key, parentElement, parentInstance.ProcessInstance().Key)
+	outputVariables, err := engine.collectMultiInstanceOutputVariables(ctx, instance.ProcessInstance().Key, parentElement, parentInstance.ProcessInstance().Key)
 	if err != nil {
 		return err
 	}
-	parentInstance.ProcessInstance().VariableHolder.SetLocalVariable(parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName, outputCollection)
+	parentInstance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 
 	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
 	if err != nil {
@@ -397,7 +400,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		ElementId:          parentElement.GetId(),
 		ElementType:        string(parentElement.GetType()),
 		ExecutionTokenKey:  updatedParentToken.Key,
-		OutputVariables:    map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		OutputVariables:    outputVariables,
 		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
@@ -416,12 +419,17 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	return nil
 }
 
-func (engine *Engine) collectMultiInstanceOutputCollection(
+func (engine *Engine) collectMultiInstanceOutputVariables(
 	ctx context.Context,
 	multiInstanceProcessKey int64,
 	parentElement bpmn20.Activity,
 	parentProcessInstanceKey int64,
-) ([]interface{}, error) {
+) (map[string]any, error) {
+	outputCollectionName := parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName
+	if outputCollectionName == "" {
+		return nil, nil
+	}
+
 	elementInstances, err := engine.persistence.GetFlowElementInstancesByProcessInstanceKey(ctx, multiInstanceProcessKey, false)
 
 	if err != nil {
@@ -444,7 +452,21 @@ func (engine *Engine) collectMultiInstanceOutputCollection(
 		outputCollection = append(outputCollection, evaluatedOutput)
 	}
 
-	return outputCollection, nil
+	return multiInstanceOutputVariables(outputCollectionName, outputCollection), nil
+}
+
+func multiInstanceOutputVariables(outputCollectionName string, outputCollection []interface{}) map[string]any {
+	if outputCollectionName == "" {
+		return nil
+	}
+	return map[string]any{outputCollectionName: outputCollection}
+}
+
+func emptyMultiInstanceOutputVariables(element bpmn20.Activity) map[string]any {
+	return multiInstanceOutputVariables(
+		element.GetMultiInstance().LoopCharacteristics.OutputCollectionName,
+		[]interface{}{},
+	)
 }
 
 func (engine *Engine) buildActivityOutputEvaluationScope(elementInstance runtime.FlowElementInstance, element bpmn20.Activity) (map[string]any, error) {

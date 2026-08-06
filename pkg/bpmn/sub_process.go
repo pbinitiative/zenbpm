@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -15,6 +16,34 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func (engine *Engine) resolveChildBusinessKey(parentBusinessKey, expression *string, variables map[string]interface{}) (*string, error) {
+	if expression == nil {
+		if parentBusinessKey == nil {
+			return nil, nil
+		}
+		inheritedBusinessKey := *parentBusinessKey
+		return &inheritedBusinessKey, nil
+	}
+	trimmedExpression := strings.TrimSpace(*expression)
+	if trimmedExpression == "" {
+		emptyBusinessKey := ""
+		return &emptyBusinessKey, nil
+	}
+	if (trimmedExpression)[0] != '=' {
+		return nil, fmt.Errorf("business key expression must start with '='")
+	}
+
+	result, err := engine.evaluateExpression(*expression, variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate business key expression: %w", err)
+	}
+	businessKey, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("business key expression must evaluate to a string, got %T", result)
+	}
+	return &businessKey, nil
+}
 
 func (engine *Engine) createCallActivity(
 	ctx context.Context,
@@ -28,6 +57,14 @@ func (engine *Engine) createCallActivity(
 	flowElementInput := callActivityVarHolder.ExecutionScopeSnapshot()
 	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
+	}
+	businessKey, err := engine.resolveChildBusinessKey(
+		instance.ProcessInstance().BusinessKey,
+		element.GetBusinessKey(),
+		callActivityVarHolder.ExecutionScopeSnapshot(),
+	)
+	if err != nil {
+		return runtime.ActivityStateFailed, err
 	}
 	batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
@@ -55,9 +92,7 @@ func (engine *Engine) createCallActivity(
 		&runtime.CallActivityInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, businessKey),
 		})
 	if err != nil {
 		return runtime.ActivityStateFailed, err
@@ -87,6 +122,14 @@ func (engine *Engine) createSubProcess(
 	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
+	}
+	businessKey, err := engine.resolveChildBusinessKey(
+		instance.ProcessInstance().BusinessKey,
+		element.GetBusinessKey(),
+		subProcessVariableHolder.ExecutionScopeSnapshot(),
+	)
+	if err != nil {
+		return runtime.ActivityStateFailed, err
 	}
 
 	batch.SaveFlowElementInstance(ctx,
@@ -118,9 +161,7 @@ func (engine *Engine) createSubProcess(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.Id,
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, businessKey),
 		},
 	)
 	if err != nil {

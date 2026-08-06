@@ -204,7 +204,11 @@ func (engine *Engine) activateErrorEventSubprocess(
 		}
 	}
 
-	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, batch, instance, match.startEvent, errorVariables, omitTokenKeys...)
+	propagatedVariables, businessKey, err := engine.resolveEventSubprocessActivationData(instance, match.subProcess, match.startEvent, errorVariables)
+	if err != nil {
+		return nil, nil, err
+	}
+	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, batch, instance, match.startEvent, propagatedVariables, omitTokenKeys...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,7 +216,7 @@ func (engine *Engine) activateErrorEventSubprocess(
 		return nil, nil, nil
 	}
 
-	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, batch, instance, match.subProcess, match.startEvent, variableHolder, tokens)
+	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, batch, instance, match.subProcess, match.startEvent, variableHolder, businessKey, tokens)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -292,6 +296,8 @@ func (engine *Engine) activateErrorEventSubprocessInParentScope(
 	batch *EngineBatch,
 	parentScope *errorEventContext,
 	match *errorEventSubprocessMatch,
+	propagatedVariables map[string]any,
+	businessKey *string,
 ) error {
 	instance := match.instance
 
@@ -304,10 +310,7 @@ func (engine *Engine) activateErrorEventSubprocessInParentScope(
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(match.startEvent.GetOutputMapping(), nil, engine.evaluateExpression)
-	if err != nil {
-		return fmt.Errorf("failed to propagate error variables to scope %d: %w", instance.ProcessInstance().Key, err)
-	}
+	instance.ProcessInstance().VariableHolder.SetLocalVariables(propagatedVariables)
 	for k, v := range propagatedVariables {
 		variableHolder.SetLocalVariable(k, v)
 	}
@@ -323,7 +326,7 @@ func (engine *Engine) activateErrorEventSubprocessInParentScope(
 		return nil
 	}
 
-	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, batch, instance, match.subProcess, match.startEvent, variableHolder, tokens)
+	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, batch, instance, match.subProcess, match.startEvent, variableHolder, businessKey, tokens)
 	if err != nil {
 		return err
 	}

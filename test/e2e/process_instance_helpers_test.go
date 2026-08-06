@@ -147,6 +147,23 @@ func createProcessInstanceWithVariables(t testing.TB, definitionKey int64, varia
 	return instance
 }
 
+func createProcessInstanceWithVariablesAndBusinessKey(t testing.TB, definitionKey int64, businessKey *string, variables map[string]any) zenclient.ProcessInstance {
+
+	t.Helper()
+	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+		BpmnProcessId:        nil,
+		BusinessKey:          businessKey,
+		HistoryTimeToLive:    nil,
+		ProcessDefinitionKey: &definitionKey,
+		Variables:            &variables,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
+
+	return *resp.JSON201
+}
+
 func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
 	t.Helper()
 

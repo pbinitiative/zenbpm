@@ -217,6 +217,9 @@ func deployDmn(t testing.TB, relPath string) *zenclient.CreateDmnResourceDefinit
 
 func startProcess(t testing.TB, bpmnProcessId string, variables map[string]any) zenclient.ProcessInstance {
 	t.Helper()
+	if variables == nil {
+		variables = map[string]any{}
+	}
 	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(),
 		zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId: &bpmnProcessId,
@@ -312,6 +315,9 @@ func getInstanceJobs(t testing.TB, key int64) []zenclient.Job {
 
 func completeJob(t testing.TB, jobKey int64, variables map[string]any) {
 	t.Helper()
+	if variables == nil {
+		variables = map[string]any{}
+	}
 	resp, err := app.restClient.CompleteJobWithResponse(t.Context(), jobKey,
 		zenclient.CompleteJobJSONRequestBody{Variables: &variables})
 	require.NoError(t, err)
@@ -323,18 +329,25 @@ func completeJob(t testing.TB, jobKey int64, variables map[string]any) {
 
 func historyElementIds(t testing.TB, processInstanceKey int64) []string {
 	t.Helper()
-	resp, err := app.restClient.GetHistoryWithResponse(t.Context(), processInstanceKey, &zenclient.GetHistoryParams{
-		Page: new(int32(1)),
-		Size: new(int32(-1)),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	if resp.JSON200.Items == nil {
-		return nil
-	}
-	ids := make([]string, 0, len(*resp.JSON200.Items))
-	for _, h := range *resp.JSON200.Items {
-		ids = append(ids, h.ElementId)
+	// The OpenAPI spec bounds size to 1..100, so page through the history until all items are collected.
+	const pageSize int32 = 100
+	var ids []string
+	for page := int32(1); ; page++ {
+		resp, err := app.restClient.GetHistoryWithResponse(t.Context(), processInstanceKey, &zenclient.GetHistoryParams{
+			Page: new(page),
+			Size: new(pageSize),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+		if resp.JSON200.Items == nil {
+			break
+		}
+		for _, h := range *resp.JSON200.Items {
+			ids = append(ids, h.ElementId)
+		}
+		if len(ids) >= resp.JSON200.TotalCount || resp.JSON200.Count < int(pageSize) {
+			break
+		}
 	}
 	return ids
 }

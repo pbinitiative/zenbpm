@@ -34,7 +34,7 @@ func xmlBodyDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ open
 	return string(data), nil
 }
 
-// OpenApiValidator returns a middleware that validates incoming requests
+// OpenAPIValidator returns a middleware that validates incoming requests
 // (path, query, headers and body) against the provided OpenAPI 3 spec.
 //
 // pathPrefix is the router mount point of the API (e.g. "/v1"); it is
@@ -44,7 +44,7 @@ func xmlBodyDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ open
 // and never reach the handlers. Request bodies are limited before the
 // validator buffers them. Server (Host) validation is disabled because the
 // spec `servers` entry only documents a sample deployment URL.
-func OpenApiValidator(spec *openapi3.T, pathPrefix string, maxRequestBodyBytes int64) func(next http.Handler) http.Handler {
+func OpenAPIValidator(spec *openapi3.T, pathPrefix string, maxRequestBodyBytes int64) func(next http.Handler) http.Handler {
 	if maxRequestBodyBytes <= 0 {
 		panic("maxRequestBodyBytes must be greater than zero")
 	}

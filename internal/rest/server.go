@@ -90,7 +90,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 			// load it is a programming error that must be caught at startup.
 			panic(fmt.Errorf("failed to load embedded OpenAPI spec: %w", err))
 		}
-		r.Use(middleware.OpenApiValidator(spec, "/v1", conf.HttpServer.MaxRequestBodyBytes))
+		r.Use(middleware.OpenAPIValidator(spec, "/v1", conf.HttpServer.MaxRequestBodyBytes))
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, nil, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {

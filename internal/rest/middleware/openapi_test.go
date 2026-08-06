@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenApiValidatorPassesValidRequest(t *testing.T) {
+func TestOpenAPIValidatorPassesValidRequest(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/process-instances",
@@ -27,7 +27,7 @@ func TestOpenApiValidatorPassesValidRequest(t *testing.T) {
 	assert.True(t, next.called, "next handler should be called for a valid request")
 }
 
-func TestOpenApiValidatorPreservesBodyForNextHandler(t *testing.T) {
+func TestOpenAPIValidatorPreservesBodyForNextHandler(t *testing.T) {
 	body := `{"processDefinitionKey": 4503599627370498}`
 	handler, next := newValidatedHandler(t)
 
@@ -41,7 +41,7 @@ func TestOpenApiValidatorPreservesBodyForNextHandler(t *testing.T) {
 	assert.JSONEq(t, body, next.body, "request body must remain readable after validation")
 }
 
-func TestOpenApiValidatorRejectsInvalidBodyType(t *testing.T) {
+func TestOpenAPIValidatorRejectsInvalidBodyType(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/process-instances",
@@ -56,7 +56,7 @@ func TestOpenApiValidatorRejectsInvalidBodyType(t *testing.T) {
 	assertErrorPayload(t, rec, "BAD_REQUEST")
 }
 
-func TestOpenApiValidatorRejectsMissingRequiredBody(t *testing.T) {
+func TestOpenAPIValidatorRejectsMissingRequiredBody(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/process-instances", nil)
@@ -70,7 +70,7 @@ func TestOpenApiValidatorRejectsMissingRequiredBody(t *testing.T) {
 	assertErrorPayload(t, rec, "BAD_REQUEST")
 }
 
-func TestOpenApiValidatorRejectsUnknownRoute(t *testing.T) {
+func TestOpenAPIValidatorRejectsUnknownRoute(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/does-not-exist", nil)
@@ -83,7 +83,7 @@ func TestOpenApiValidatorRejectsUnknownRoute(t *testing.T) {
 	assertErrorPayload(t, rec, "NOT_FOUND")
 }
 
-func TestOpenApiValidatorRejectsInvalidQueryParam(t *testing.T) {
+func TestOpenAPIValidatorRejectsInvalidQueryParam(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/process-instances?page=abc", nil)
@@ -96,7 +96,7 @@ func TestOpenApiValidatorRejectsInvalidQueryParam(t *testing.T) {
 	assertErrorPayload(t, rec, "BAD_REQUEST")
 }
 
-func TestOpenApiValidatorPassesXmlBody(t *testing.T) {
+func TestOpenAPIValidatorPassesXmlBody(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/dmn-resource-definitions",
@@ -111,7 +111,7 @@ func TestOpenApiValidatorPassesXmlBody(t *testing.T) {
 	assert.Contains(t, next.body, "<definitions>", "XML body must remain readable after validation")
 }
 
-func TestOpenApiValidatorRejectsUnsupportedMethod(t *testing.T) {
+func TestOpenAPIValidatorRejectsUnsupportedMethod(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodDelete, "/v1/dmn-resource-definitions", nil)
@@ -124,7 +124,7 @@ func TestOpenApiValidatorRejectsUnsupportedMethod(t *testing.T) {
 	assertErrorPayload(t, rec, "METHOD_NOT_ALLOWED")
 }
 
-func TestOpenApiValidatorRejectsUnsupportedMediaType(t *testing.T) {
+func TestOpenAPIValidatorRejectsUnsupportedMediaType(t *testing.T) {
 	handler, next := newValidatedHandler(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/process-instances", strings.NewReader(`{}`))
@@ -138,7 +138,7 @@ func TestOpenApiValidatorRejectsUnsupportedMediaType(t *testing.T) {
 	assertErrorPayload(t, rec, "UNSUPPORTED_MEDIA_TYPE")
 }
 
-func TestOpenApiValidatorAllowsBodyAtLimit(t *testing.T) {
+func TestOpenAPIValidatorAllowsBodyAtLimit(t *testing.T) {
 	body := `{"processDefinitionKey": 4503599627370498}`
 	handler, next := newValidatedHandlerWithLimit(t, int64(len(body)))
 
@@ -152,7 +152,7 @@ func TestOpenApiValidatorAllowsBodyAtLimit(t *testing.T) {
 	assert.True(t, next.called)
 }
 
-func TestOpenApiValidatorRejectsOversizedBodyWithContentLength(t *testing.T) {
+func TestOpenAPIValidatorRejectsOversizedBodyWithContentLength(t *testing.T) {
 	body := `{"processDefinitionKey": 4503599627370498}`
 	handler, next := newValidatedHandlerWithLimit(t, int64(len(body)-1))
 
@@ -167,7 +167,7 @@ func TestOpenApiValidatorRejectsOversizedBodyWithContentLength(t *testing.T) {
 	assertErrorPayload(t, rec, "PAYLOAD_TOO_LARGE")
 }
 
-func TestOpenApiValidatorRejectsOversizedChunkedBody(t *testing.T) {
+func TestOpenAPIValidatorRejectsOversizedChunkedBody(t *testing.T) {
 	body := `{"processDefinitionKey": 4503599627370498}`
 	handler, next := newValidatedHandlerWithLimit(t, int64(len(body)-1))
 
@@ -220,7 +220,7 @@ func newValidatedHandlerWithLimit(t *testing.T, maxRequestBodyBytes int64) (http
 	spec, err := public.GetSpec()
 	require.NoError(t, err)
 	next := &spyHandler{}
-	return OpenApiValidator(spec, "/v1", maxRequestBodyBytes)(next), next
+	return OpenAPIValidator(spec, "/v1", maxRequestBodyBytes)(next), next
 }
 
 // assertErrorPayload verifies the response carries the shared public.Error

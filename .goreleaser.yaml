@@ -9,6 +9,7 @@ before:
   hooks:
     - apt-get update
     - apt-get install unzip # install unzip for the docker image
+    - make validate-version-sync
     - make generate
 
 builds:
@@ -23,7 +24,11 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/pbinitiative/zenbpm/internal/buildinfo.version={{.Version}} -X github.com/pbinitiative/zenbpm/internal/buildinfo.commit={{.FullCommit}}
+      - >-
+        -s -w
+        -X github.com/pbinitiative/zenbpm/internal/buildinfo.commit={{.FullCommit}}
+        -X github.com/pbinitiative/zenbpm/internal/buildinfo.branch={{ envOrDefault "BUILD_BRANCH" .Branch }}
+        -X github.com/pbinitiative/zenbpm/internal/buildinfo.buildTime={{.Date}}
     overrides:
       - goos: linux
         goarch: amd64
@@ -90,7 +95,7 @@ dockers_v2:
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.name": "{{.ProjectName}}"
       "org.opencontainers.image.revision": "{{.FullCommit}}"
-      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.version": "{{.Env.APP_VERSION}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
 
 changelog:

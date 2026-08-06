@@ -10,17 +10,20 @@ import (
 )
 
 func TestSystemStatus(t *testing.T) {
-	t.Run("returns build metadata", systemStatusReturnsBuildMetadata)
-}
+	t.Run("returns build metadata", func(t *testing.T) {
+		response, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
+		require.NoError(t, err)
 
-func systemStatusReturnsBuildMetadata(t *testing.T) {
-	response, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
-	require.NoError(t, err)
-
-	status := ClusterStatus{}
-	require.NoError(t, json.Unmarshal(response, &status))
-	buildInfo, err := buildinfo.Current()
-	require.NoError(t, err)
-	assert.Equal(t, buildInfo.Version, status.Version)
-	assert.Equal(t, buildInfo.Commit, status.Commit)
+		status := ClusterStatus{}
+		require.NoError(t, json.Unmarshal(response, &status))
+		buildInfo := buildinfo.Current()
+		expectedCommitID := buildInfo.Commit
+		if len(expectedCommitID) > 12 {
+			expectedCommitID = expectedCommitID[:12]
+		}
+		assert.Equal(t, buildInfo.Branch, status.Git.Branch)
+		assert.Equal(t, expectedCommitID, status.Git.CommitID)
+		assert.Equal(t, buildInfo.Version, status.Build.Version)
+		assert.Equal(t, buildInfo.BuildTime, status.Build.Time)
+	})
 }

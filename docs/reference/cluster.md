@@ -36,22 +36,28 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
-The REST response includes the application version and the source Git revision associated with the build:
+The REST response includes build metadata:
 
 ```json
 {
-  "version": "1.5.0",
-  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "git": {
+    "branch": "main",
+    "commitId": "0123456789ab"
+  },
+  "build": {
+    "version": "v1.5.0",
+    "time": "2026-08-07T12:13:14Z"
+  },
   "clusterConfig": {},
   "partitions": {},
   "nodes": {}
 }
 ```
 
-Release builds inject the application version, while local builds intentionally
-fall back to the embedded OpenAPI version. CI/CD builds inject the source Git
-revision; local builds obtain the source revision from Git or Go build metadata.
-The `commit` field identifies the checkout's base revision.
+The application version is stored in the repository's root `VERSION` file. During
+the build, it is compared without the `v` prefix against `openapi/api.yaml`
+`info.version`. Release, Makefile, and local Docker builds inject the source
+commit, branch, and build time into the binary.
 
 ## Partition clusters
 

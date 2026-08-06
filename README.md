@@ -71,7 +71,7 @@ make docker-build-local
 docker run --rm zenbpm:local
 ```
 
-The Make target injects the current Git commit into the image.
+The application version is stored in [`VERSION`](VERSION). During the build, it is compared without the `v` prefix against `openapi/api.yaml` `info.version`.
 
 ## Architecture
 

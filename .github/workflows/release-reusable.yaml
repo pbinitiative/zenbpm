@@ -52,7 +52,15 @@ jobs:
         with:
           ref: ${{ inputs.checkout-ref }}
           submodules: 'true'
-      - run: git fetch --prune --unshallow
+          fetch-depth: 0
+      - name: resolve build branch
+        env:
+          REPOSITORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          branch=$(scripts/ci/resolve-build-branch.sh)
+          echo "BUILD_BRANCH=$branch" >> "$GITHUB_ENV"
+      - name: validate version sync
+        run: scripts/ci/validate-version-sync.sh
       - name: setup dependencies
         uses: actions/setup-go@v5
       - name: cache goreleaser go cache

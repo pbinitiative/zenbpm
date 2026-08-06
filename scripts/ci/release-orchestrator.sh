@@ -3,7 +3,7 @@ set -euo pipefail
 
 require_env() {
   local name=$1
-  if ! [[ -v $name ]] || [ -z "${!name}" ]; then
+  if [ -z "${!name:-}" ]; then
     echo "$name is required" >&2
     exit 1
   fi
@@ -40,43 +40,16 @@ github_remote() {
   printf 'https://x-access-token:%s@github.com/%s/%s.git' "$GH_TOKEN" "$ORG" "$repo"
 }
 
-openapi_version() {
-  awk '
-    /^info:[[:space:]]*$/ { in_info = 1; next }
-    in_info && /^[^[:space:]]/ { in_info = 0 }
-    in_info && /^[[:space:]]+version:[[:space:]]*/ {
-      value = $0
-      sub(/^[[:space:]]+version:[[:space:]]*/, "", value)
-      gsub(/^['"'"']|['"'"']$/, "", value)
-      print value
-      found = 1
-      exit
-    }
-    END { if (!found) exit 1 }
-  ' openapi/api.yaml
-}
-
-validate_openapi_version() {
-  require_env VERSION
-  local actual
-  local expected
-  expected=$(plain_version)
-  if ! actual=$(openapi_version); then
-    echo "openapi/api.yaml info.version was not found" >&2
-    exit 1
-  fi
-  if [ "$actual" != "$expected" ]; then
-    echo "OpenAPI version mismatch: expected $expected, got $actual" >&2
-    exit 1
-  fi
-}
-
-bump_backend_openapi_version() {
+bump_backend_versions() {
   require_env VERSION
   require_env BACKEND_REPO
   require_env RELEASE_BRANCH
   local version
+  # Release tags may carry a prerelease suffix (v1.5.0-rc1); the tracked versions never do.
   version=$(plain_version)
+  version=${version%%-*}
+
+  printf 'v%s\n' "$version" > VERSION
 
   awk -v new_version="$version" '
     /^info:[[:space:]]*$/ { in_info = 1; print; next }
@@ -91,12 +64,12 @@ bump_backend_openapi_version() {
   mv openapi/api.yaml.tmp openapi/api.yaml
 
   configure_git
-  if git diff --quiet -- openapi/api.yaml; then
-    echo "OpenAPI version is already $version."
+  if git diff --quiet -- VERSION openapi/api.yaml; then
+    echo "Backend versions are already $version."
     return 0
   fi
-  git add openapi/api.yaml
-  git commit -m "chore: bump OpenAPI version to $version"
+  git add VERSION openapi/api.yaml
+  git commit -m "chore: bump release version to $version"
   git push "$(github_remote "$BACKEND_REPO")" HEAD:"$RELEASE_BRANCH"
 }
 
@@ -290,8 +263,7 @@ notify_discord() {
 
 case "${1:-}" in
   export-release-vars) export_release_vars ;;
-  validate-openapi-version) validate_openapi_version ;;
-  bump-backend-openapi-version) bump_backend_openapi_version ;;
+  bump-backend-versions) bump_backend_versions ;;
   ensure-release-pr) ensure_release_pr ;;
   validate-version-format) validate_version_format ;;
   validate-tags) validate_tags ;;

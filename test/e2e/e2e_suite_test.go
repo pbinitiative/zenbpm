@@ -39,8 +39,8 @@ func (m testMainWithCleanup) Run() int {
 }
 
 type ClusterStatus struct {
-	Version       string `json:"version"`
-	Commit        string `json:"commit"`
+	Git           systemStatusGit   `json:"git"`
+	Build         systemStatusBuild `json:"build"`
 	ClusterConfig struct {
 		DesiredPartitions int64 `json:"desiredPartitions"`
 	} `json:"clusterConfig"`
@@ -60,6 +60,16 @@ type ClusterStatus struct {
 		ID       int64  `json:"id"`
 		LeaderID string `json:"leaderId"`
 	} `json:"partitions"`
+}
+
+type systemStatusGit struct {
+	Branch   string `json:"branch"`
+	CommitID string `json:"commitId"`
+}
+
+type systemStatusBuild struct {
+	Version string `json:"version"`
+	Time    string `json:"time"`
 }
 
 func TestMain(m *testing.M) {
@@ -85,10 +95,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	// Start the public API
-	buildInfo, err := buildinfo.Current()
-	if err != nil {
-		log.Warn("Failed to resolve build info: %s", err)
-	}
+	buildInfo := buildinfo.Current()
 	svr := rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
 

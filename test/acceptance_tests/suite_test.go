@@ -64,10 +64,7 @@ func runTests(m *testing.M) int {
 	}
 	defer func() { _ = zenNode.Stop() }()
 
-	buildInfo, err := buildinfo.Current()
-	if err != nil {
-		log.Warn("Failed to resolve build info: %s", err)
-	}
+	buildInfo := buildinfo.Current()
 	svr := rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
 	defer svr.Stop(appContext)

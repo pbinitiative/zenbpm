@@ -121,7 +121,34 @@ func TestOpenAPIValidatorRejectsUnsupportedMethod(t *testing.T) {
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 	assert.False(t, next.called)
+	assert.Equal(t, "GET, POST", rec.Header().Get("Allow"))
 	assertErrorPayload(t, rec, "METHOD_NOT_ALLOWED")
+}
+
+func TestOpenAPIValidatorSetsAllowHeaderForTemplatedPath(t *testing.T) {
+	handler, next := newValidatedHandler(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/process-instances/4503599627370498", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.False(t, next.called)
+	assert.Contains(t, rec.Header().Get("Allow"), http.MethodGet,
+		"Allow must be derived from the templated spec path")
+}
+
+func TestOpenAPIValidatorOmitsAllowHeaderForUnknownRoute(t *testing.T) {
+	handler, _ := newValidatedHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/does-not-exist", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Empty(t, rec.Header().Get("Allow"))
 }
 
 func TestOpenAPIValidatorRejectsUnsupportedMediaType(t *testing.T) {

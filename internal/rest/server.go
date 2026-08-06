@@ -70,6 +70,11 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 	// mode). It stays off by default because capturing buffers every
 	// request/response body in memory even when it never gets logged.
 	r.Use(chimiddleware.RequestID)
+	// The body limit has to precede the logger: with body capture enabled the
+	// logger tees every request body into memory, so the cap must already be
+	// in place by the time it wraps r.Body. Oversized requests are rejected
+	// downstream (OpenAPIValidator) so the 413 still gets logged.
+	r.Use(middleware.RequestBodyLimit(conf.HttpServer.MaxRequestBodyBytes))
 	r.Use(middleware.Logger(restLogger, &middleware.LoggingOpts{
 		Mode:            middleware.LogMode(conf.HttpServer.LogMode),
 		WithReferer:     true,

@@ -32,7 +32,7 @@ func createMessageEndEventProcessInstance(
 	response, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 		BusinessKey:          &businessKey,
 		ProcessDefinitionKey: &definitionKey,
-		Variables:            &variables,
+		Variables:            varsPtr(variables),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())

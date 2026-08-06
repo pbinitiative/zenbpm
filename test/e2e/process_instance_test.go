@@ -273,8 +273,8 @@ func TestActiveElementInstances(t *testing.T) {
 
 func TestCreatedAt(t *testing.T) {
 	var instance1, instance2 zenclient.ProcessInstance
-	definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
-	assert.NoError(t, err)
+	var err error
+	definition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-input-output.bpmn")
 
 	t.Run("create process instance1", func(t *testing.T) {
 		instance1, err = createProcessInstance(t, &definition.Key, map[string]any{
@@ -348,8 +348,8 @@ func TestCreatedAt(t *testing.T) {
 }
 
 func TestBpmnProcessId(t *testing.T) {
-	serviceTaskIODefinition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
-	simpleCountLoopDefinition, _ := deployGetUniqueDefinition(t, "simple-count-loop.bpmn")
+	serviceTaskIODefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-input-output.bpmn")
+	simpleCountLoopDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple-count-loop.bpmn")
 
 	t.Run("create process instance1 for service-task-input-output.bpmn", func(t *testing.T) {
 		instance1, err := createProcessInstance(t, &serviceTaskIODefinition.Key, map[string]any{
@@ -379,8 +379,8 @@ func TestBpmnProcessId(t *testing.T) {
 }
 
 func TestState(t *testing.T) {
-	validDefinition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
-	invalidDefinition, _ := deployGetUniqueDefinition(t, "service-task-invalid-input.bpmn")
+	validDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-input-output.bpmn")
+	invalidDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-invalid-input.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
 		activeInstance, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
@@ -458,16 +458,13 @@ func TestState(t *testing.T) {
 func TestIncludeChildProcesses(t *testing.T) {
 	cleanProcessInstances(t)
 
-	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
+	multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
+
+	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity-simple.bpmn")
+	_, err := deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
-	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
-	assert.NoError(t, err)
-	_, err = deployDefinition(t, "simple_task.bpmn")
-	assert.NoError(t, err)
-
-	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
-	assert.NoError(t, err)
+	subprocessDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_sub_process_task.bpmn")
 
 	t.Run("create process instances", func(t *testing.T) {
 		instance1, err := createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
@@ -534,16 +531,13 @@ func TestIncludeChildProcesses(t *testing.T) {
 func TestFindChildProcesses(t *testing.T) {
 	cleanProcessInstances(t)
 
-	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
+	multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
+
+	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity-simple.bpmn")
+	_, err := deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
-	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
-	assert.NoError(t, err)
-	_, err = deployDefinition(t, "simple_task.bpmn")
-	assert.NoError(t, err)
-
-	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
-	assert.NoError(t, err)
+	subprocessDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_sub_process_task.bpmn")
 
 	var instance1Key int64
 	var instance2Key int64
@@ -604,7 +598,7 @@ func TestFindChildProcesses(t *testing.T) {
 
 func TestUpdateProcessInstanceVariables(t *testing.T) {
 	var processInstanceKey int64
-	definition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+	definition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-input-output.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
 		instance, err := createProcessInstance(t, &definition.Key, map[string]any{
@@ -631,7 +625,7 @@ func TestUpdateProcessInstanceVariables(t *testing.T) {
 
 func TestDeleteProcessInstanceVariable(t *testing.T) {
 	var processInstanceKey int64
-	definition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+	definition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/service-task-input-output.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
 		instance, err := createProcessInstance(t, &definition.Key, map[string]any{
@@ -695,7 +689,8 @@ func TestGetProcessInstancesBadRequest(t *testing.T) {
 		assert.Nil(t, resp.JSON200)
 		assert.NotNil(t, resp.JSON400)
 		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
-		assert.Equal(t, "unexpected GetProcessInstancesRequest.state: invalid-state, supported: [active completed terminated failed]", resp.JSON400.Message)
+		assert.Contains(t, resp.JSON400.Message, `parameter "state" in query has an error`)
+		assert.Contains(t, resp.JSON400.Message, "value is not one of the allowed values")
 	})
 }
 

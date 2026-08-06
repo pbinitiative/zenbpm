@@ -84,7 +84,7 @@ func publishMessageStartEvent(t testing.TB, messageName string, variables map[st
 	response, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
 		CorrelationKey: nil,
 		MessageName:    messageName,
-		Variables:      &variables,
+		Variables:      varsPtr(variables),
 	})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, response.StatusCode())

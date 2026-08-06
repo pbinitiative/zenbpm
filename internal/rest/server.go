@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +83,14 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 	r.Use(middleware.Opentelemetry(conf))
 	r.Use(middleware.StripEmptyQueryParams())
 	r.Route("/v1", func(r chi.Router) {
+		// validate incoming requests against the embedded OpenAPI spec
+		spec, err := public.GetSpec()
+		if err != nil {
+			// the spec is embedded at compile time by oapi-codegen; failing to
+			// load it is a programming error that must be caught at startup.
+			panic(fmt.Errorf("failed to load embedded OpenAPI spec: %w", err))
+		}
+		r.Use(middleware.OpenApiValidator(spec, "/v1", conf.HttpServer.MaxRequestBodyBytes))
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, nil, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -219,26 +226,9 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
-			public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetDmnResourceDefinitionsParamsSortBy{public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
-				public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId}
-			return public.GetDmnResourceDefinitions400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetDmnResourceDefinitionsParamsSortOrder{public.GetDmnResourceDefinitionsParamsSortOrderAsc, public.GetDmnResourceDefinitionsParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetDmnResourceDefinitions400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
+	if request.Params.SortOrder == nil {
 		request.Params.SortOrder = new(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
@@ -466,24 +456,9 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 	var sortByColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt:
-			sortByColumn = &s
-		default:
-			supportedSortBy := []public.GetDecisionInstancesParamsSortBy{public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt}
-			return public.GetDecisionInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetDecisionInstancesParamsSortOrder{public.GetDecisionInstancesParamsSortOrderAsc, public.GetDecisionInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetDecisionInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
+	if request.Params.SortOrder == nil {
 		request.Params.SortOrder = new(public.GetDecisionInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByColumn)
@@ -715,10 +690,6 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessDefinitions400JSONResponse(paginationErr.ToApiError()), nil
-	}
-
 	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 
 	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
@@ -911,10 +882,6 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessDefinitionStatistics400JSONResponse(paginationErr.ToApiError()), nil
-	}
 
 	onlyLatest := false
 	if request.Params.OnlyLatest != nil {
@@ -1115,8 +1082,6 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
-		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
-		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetProcessInstancesParamsStateActive:
 			state = new(int64(runtime.ActivityStateActive))
@@ -1126,11 +1091,6 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetProcessInstancesParamsStateFailed:
 			state = new(int64(runtime.ActivityStateFailed))
-		default:
-			supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
-			), nil
 		}
 	}
 	if request.Params.CreatedFrom != nil {
@@ -1142,24 +1102,9 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId}
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.GetProcessInstancesParamsSortOrderAsc, public.GetProcessInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
+	if request.Params.SortOrder == nil {
 		request.Params.SortOrder = new(public.GetProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
@@ -1320,9 +1265,6 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 
 	var state *int64
 	if request.Params.State != nil {
-		supportedStates := [...]public.GetChildProcessInstancesParamsState{public.GetChildProcessInstancesParamsStateActive, public.GetChildProcessInstancesParamsStateCompleted, public.GetChildProcessInstancesParamsStateTerminated, public.GetChildProcessInstancesParamsStateFailed}
-		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
-		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetChildProcessInstancesParamsStateActive:
 			state = new(int64(runtime.ActivityStateActive))
@@ -1332,36 +1274,14 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetChildProcessInstancesParamsStateFailed:
 			state = new(int64(runtime.ActivityStateFailed))
-		default:
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates),
-			}, nil
 		}
 	}
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetChildProcessInstancesParamsSortBy{public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState}
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
-			}, nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetChildProcessInstancesParamsSortOrder{public.GetChildProcessInstancesParamsSortOrderAsc, public.GetChildProcessInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
-			}, nil
-		}
-	} else {
+	if request.Params.SortOrder == nil {
 		request.Params.SortOrder = new(public.GetChildProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
@@ -2303,7 +2223,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 	}, nil
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {
+func writeError(w http.ResponseWriter, _ *http.Request, status int, resp interface{}) {
 	w.WriteHeader(status)
 	body, err := json.Marshal(resp)
 	if err != nil {

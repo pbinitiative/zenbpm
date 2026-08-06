@@ -255,10 +255,9 @@ func TestGetDmnResourceDefinitionsBadRequests(t *testing.T) {
 		assert.Nil(t, dmnResourceDefinitions.JSON200)
 		assert.NotNil(t, dmnResourceDefinitions.JSON400)
 		assert.Equal(t, "BAD_REQUEST", dmnResourceDefinitions.JSON400.Code)
-		assert.Equal(t,
-			"unexpected GetDmnResourceDefinitionsRequest.SortBy: unsupportedSortColumn, supported: [key version dmnDefinitionName dmnResourceDefinitionId]",
-			dmnResourceDefinitions.JSON400.Message,
-		)
+		// rejected by the OpenAPI request validation middleware
+		assert.Contains(t, dmnResourceDefinitions.JSON400.Message, `parameter "sortBy" in query has an error`)
+		assert.Contains(t, dmnResourceDefinitions.JSON400.Message, "value is not one of the allowed values")
 	})
 	t.Run("GetDmnResourceDefinitions. Provide wrong sortOrder, expect Bad Request", func(t *testing.T) {
 		dmnResourceDefinitions, _ := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
@@ -267,10 +266,8 @@ func TestGetDmnResourceDefinitionsBadRequests(t *testing.T) {
 		assert.Nil(t, dmnResourceDefinitions.JSON200)
 		assert.NotNil(t, dmnResourceDefinitions.JSON400)
 		assert.Equal(t, "BAD_REQUEST", dmnResourceDefinitions.JSON400.Code)
-		assert.Equal(t,
-			"unexpected GetDmnResourceDefinitionsRequest.SortOrder: unsupportedSortOrder, supported: [asc desc]",
-			dmnResourceDefinitions.JSON400.Message,
-		)
+		assert.Contains(t, dmnResourceDefinitions.JSON400.Message, `parameter "sortOrder" in query has an error`)
+		assert.Contains(t, dmnResourceDefinitions.JSON400.Message, "value is not one of the allowed values")
 	})
 }
 

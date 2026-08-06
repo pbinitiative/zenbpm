@@ -71,7 +71,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "page must be >= 1, got 0")
+		require.Contains(t, resp.JSON400.Message, `parameter "page" in query has an error`)
 	})
 
 	t.Run("negative size", func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got -5")
+		require.Contains(t, resp.JSON400.Message, `parameter "size" in query has an error`)
 	})
 
 	t.Run("oversized size", func(t *testing.T) {
@@ -105,8 +105,7 @@ func deployChildProcessDefinitions(t *testing.T) zenclient.ProcessDefinitionSimp
 	_, err := deployGetDefinition(t, "multi_instance_call_activity_process.bpmn", "Multi_Instance_Call_Activity_Process")
 	require.NoError(t, err)
 
-	def, err := deployGetUniqueDefinition(t, "pagination-test-parallel-call-activity.bpmn")
-	require.NoError(t, err)
+	def := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/pagination-test-parallel-call-activity.bpmn")
 	require.NotZero(t, def.Key)
 	return def
 }

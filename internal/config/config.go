@@ -58,7 +58,7 @@ type ClusterRaft struct {
 	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_RAFT_BOOTSTRAP_EXPECT" env-default:"1"`
 	// Maximum time for bootstrap process
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"CLUSTER_RAFT_EXPECT_BOOTSTRAP_TIMEOUT" env-default:"10s"`
-	// Bootstrap              bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`
+	// Bootstrap bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`
 }
 
 type GrpcServer struct {
@@ -68,6 +68,8 @@ type GrpcServer struct {
 type HttpServer struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
+	// MaxRequestBodyBytes bounds request buffering by the OpenAPI validator.
+	MaxRequestBodyBytes int64 `yaml:"maxRequestBodyBytes" json:"maxRequestBodyBytes" env:"REST_API_MAX_REQUEST_BODY_BYTES" env-default:"10485760"`
 	// LogMode controls request logging: "errors" (default, status >= 400 only),
 	// "all" (every request) or "off" (no request logging).
 	LogMode string `yaml:"logMode" json:"logMode" env:"REST_API_LOG_MODE" env-default:"errors"`
@@ -132,6 +134,9 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("invalid httpServer.logMode %q, supported: %s, %s, %s",
 			c.HttpServer.LogMode, LogModeErrors, LogModeAll, LogModeOff)
+	}
+	if c.HttpServer.MaxRequestBodyBytes <= 0 {
+		return fmt.Errorf("httpServer.maxRequestBodyBytes must be greater than zero, got %d", c.HttpServer.MaxRequestBodyBytes)
 	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv

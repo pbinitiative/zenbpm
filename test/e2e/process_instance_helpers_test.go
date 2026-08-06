@@ -123,7 +123,7 @@ func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables 
 		BusinessKey:          nil,
 		HistoryTimeToLive:    nil,
 		ProcessDefinitionKey: processDefinitionKey,
-		Variables:            &variables,
+		Variables:            varsPtr(variables),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
@@ -167,55 +167,37 @@ func createProcessInstanceWithVariablesAndBusinessKey(t testing.TB, definitionKe
 func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
 	t.Helper()
 
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d", key)).
-		DoOk()
+	resp, err := app.restClient.GetProcessInstanceWithResponse(t.Context(), key)
 	if err != nil {
 		return zenclient.ProcessInstance{}, fmt.Errorf("failed to read process instance: %w", err)
 	}
-	instance := zenclient.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return zenclient.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
+	if resp.StatusCode() != http.StatusOK {
+		return zenclient.ProcessInstance{}, fmt.Errorf("failed to read process instance: %s", resp.Status())
 	}
-	return instance, nil
+	if resp.JSON200 == nil {
+		return zenclient.ProcessInstance{}, fmt.Errorf("failed to read process instance: empty response body")
+	}
+	return *resp.JSON200, nil
 }
 
 func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, error) {
 	t.Helper()
 
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d&includeChildProcesses=true", key)).
-		DoOk()
+	includeChildProcesses := true
+	resp, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+		ParentProcessInstanceKey: &key,
+		IncludeChildProcesses:    &includeChildProcesses,
+	})
 	if err != nil {
 		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)
 	}
-	page := zenclient.ProcessInstancePage{}
-
-	err = json.Unmarshal(resp, &page)
-	if err != nil {
-		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
+	if resp.StatusCode() != http.StatusOK {
+		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %s", resp.Status())
 	}
-	return page, nil
-}
-
-func assertChildProcessInstancesCount(t testing.TB, parentProcessInstanceKey int64, expectedCount int) {
-	t.Helper()
-
-	require.Eventually(t, func() bool {
-		page, err := getChildInstances(t, parentProcessInstanceKey)
-
-		if err != nil {
-			return false
-		}
-
-		if len(page.Partitions) == 0 || len(page.Partitions[0].Items) != expectedCount {
-			return false
-		}
-
-		return true
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should create a child process instances", parentProcessInstanceKey)
+	if resp.JSON200 == nil {
+		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: empty response body")
+	}
+	return *resp.JSON200, nil
 }
 
 func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64, childIndex int) zenclient.ProcessInstancesSimple {
@@ -237,15 +219,16 @@ func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64, c
 }
 
 func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d/incidents", key)).
-		DoOk()
+	resp, err := app.restClient.GetIncidentsWithResponse(t.Context(), key, &zenclient.GetIncidentsParams{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to read process instance incidents: %w", err)
 	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("failed to read process instance incidents: %s", resp.Status())
+	}
 	incidentPage := public.IncidentPage{}
 
-	err = json.Unmarshal(resp, &incidentPage)
+	err = json.Unmarshal(resp.Body, &incidentPage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)
 	}
@@ -573,4 +556,15 @@ func assertFlowElementInputVariablesAt(t testing.TB, processInstanceKey int64, e
 		"expected at least %d flow element instance(s) for %s on process instance %d, got %d", iteration+1, elementId, processInstanceKey, len(instances))
 	require.Equalf(t, expected, instances[iteration].InputVariables,
 		"input variables of iteration %d on element %s mismatch", iteration, elementId)
+}
+
+// varsPtr returns a pointer to vars suitable for optional `variables` request
+// fields. A nil map is replaced with an empty map so the client never
+// serializes `"variables": null`, which the OpenAPI spec rejects (the field
+// is a non-nullable object).
+func varsPtr(vars map[string]any) *map[string]any {
+	if vars == nil {
+		vars = map[string]any{}
+	}
+	return &vars
 }

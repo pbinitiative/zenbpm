@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -63,7 +64,11 @@ func runTests(m *testing.M) int {
 	}
 	defer func() { _ = zenNode.Stop() }()
 
-	svr := rest.NewServer(zenNode, conf)
+	buildInfo, err := buildinfo.Current()
+	if err != nil {
+		log.Warn("Failed to resolve build info: %s", err)
+	}
+	svr := rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
 	defer svr.Stop(appContext)
 

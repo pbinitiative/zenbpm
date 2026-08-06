@@ -36,6 +36,23 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
+The REST response includes the application version and the source Git revision associated with the build:
+
+```json
+{
+  "version": "1.5.0",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "clusterConfig": {},
+  "partitions": {},
+  "nodes": {}
+}
+```
+
+Release builds inject the application version, while local builds intentionally
+fall back to the embedded OpenAPI version. CI/CD builds inject the source Git
+revision; local builds obtain the source revision from Git or Go build metadata.
+The `commit` field identifies the checkout's base revision.
+
 ## Partition clusters
 
 Partition clusters are smaller [RqLite](https://rqlite.io/) clusters created for data storage of each partition.

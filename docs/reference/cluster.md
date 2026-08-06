@@ -36,7 +36,7 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
-The REST response includes the application version and the Git commit used to build the binary:
+The REST response includes the application version and the source Git revision associated with the build:
 
 ```json
 {
@@ -48,9 +48,10 @@ The REST response includes the application version and the Git commit used to bu
 }
 ```
 
-Release builds inject the application version. Local builds fall back to the
-embedded OpenAPI version. The commit is injected during release builds or read
-from Go build metadata.
+Release builds inject the application version, while local builds intentionally
+fall back to the embedded OpenAPI version. CI/CD builds inject the source Git
+revision; local builds obtain the source revision from Git or Go build metadata.
+The `commit` field identifies the checkout's base revision.
 
 ## Partition clusters
 

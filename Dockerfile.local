@@ -1,6 +1,7 @@
 FROM golang:1.26 AS builder
 
 ARG BUILD_COMMIT=unknown
+ARG BUILD_VERSION
 
 WORKDIR /build
 
@@ -13,7 +14,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN make build BUILD_COMMIT="${BUILD_COMMIT}"
+RUN make build BUILD_VERSION="${BUILD_VERSION}" BUILD_COMMIT="${BUILD_COMMIT}"
 
 FROM ubuntu:noble-20260410
 

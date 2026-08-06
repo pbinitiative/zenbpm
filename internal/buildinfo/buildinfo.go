@@ -67,13 +67,13 @@ func resolveVersion(injectedVersion string, specJSON []byte, specErr error) (str
 func currentCommit() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return commit
+		return resolveCommit(commit, nil)
 	}
 	return resolveCommit(commit, info.Settings)
 }
 
 func resolveCommit(injectedCommit string, settings []debug.BuildSetting) string {
-	if injectedCommit != unknownCommit {
+	if injectedCommit != "" && injectedCommit != unknownCommit {
 		return injectedCommit
 	}
 	for _, setting := range settings {

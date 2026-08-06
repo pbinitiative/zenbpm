@@ -54,6 +54,20 @@ func TestBuildInfo(t *testing.T) {
 		assert.Equal(t, "019fcc9239db744b9bd0c0544f71af3a", actual)
 	})
 
+	t.Run("uses the Go VCS revision when an empty commit was injected", func(t *testing.T) {
+		settings := []debug.BuildSetting{{Key: "vcs.revision", Value: "019fcc9239db744b9bd0c0544f71af3a"}}
+
+		actual := resolveCommit("", settings)
+
+		assert.Equal(t, "019fcc9239db744b9bd0c0544f71af3a", actual)
+	})
+
+	t.Run("normalizes an empty commit to unknown when build metadata has no revision", func(t *testing.T) {
+		actual := resolveCommit("", nil)
+
+		assert.Equal(t, unknownCommit, actual)
+	})
+
 	t.Run("returns unknown when build metadata has no revision", func(t *testing.T) {
 		actual := resolveCommit(unknownCommit, []debug.BuildSetting{{Key: "vcs.modified", Value: "true"}})
 

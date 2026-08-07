@@ -73,9 +73,12 @@ install_trivy() {
 build_scan_image() {
   require_release_tag
 
+  local build_commit
+  build_commit=$(git rev-parse HEAD 2>/dev/null || printf 'unknown')
+
   mkdir -p linux/amd64
   CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-s -w" \
+    -ldflags "-s -w -X github.com/pbinitiative/zenbpm/internal/buildinfo.commit=${build_commit}" \
     -o linux/amd64/zenbpm \
     ./cmd/zenbpm
 

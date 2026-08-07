@@ -20,10 +20,7 @@ import (
 func main() {
 	profile.InitProfile()
 	log.Init()
-	buildInfo, err := buildinfo.Current()
-	if err != nil {
-		log.Warn("Failed to resolve build info: %s", err)
-	}
+	buildInfo := buildinfo.Current()
 	log.Info("Starting ZenBPM version %s", buildInfo.Version)
 
 	appContext, ctxCancel := context.WithCancel(context.Background())

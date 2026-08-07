@@ -27,13 +27,14 @@ REVIVE ?= $(LOCALBIN)/revive
 PATH := $(LOCALBIN):$(PATH)
 
 PACKAGE_NAME ?= github.com/pbinitiative/zenbpm
-BUILD_VERSION ?=
 BUILD_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_BRANCH ?= $(or $(shell git branch --show-current 2>/dev/null),unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+APP_VERSION ?= $(shell tr -d '\r\n' < VERSION)
 LOCAL_DOCKER_IMAGE ?= zenbpm:local
-BUILD_LDFLAGS = -X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT)
-ifneq ($(strip $(BUILD_VERSION)),)
-BUILD_LDFLAGS += -X $(PACKAGE_NAME)/internal/buildinfo.version=$(BUILD_VERSION)
-endif
+BUILD_LDFLAGS = -X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT) \
+	-X $(PACKAGE_NAME)/internal/buildinfo.branch=$(BUILD_BRANCH) \
+	-X $(PACKAGE_NAME)/internal/buildinfo.buildTime=$(BUILD_TIME)
 ## Tool Versions
 SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 33.4
@@ -141,6 +142,9 @@ PROTOC_OS:=$(OS)
 PROTOC_ARCH:=-$(ARCH)
 ifeq ("$(ARCH)", "amd64")
 	PROTOC_ARCH=-x86_64
+endif
+ifeq ("$(ARCH)", "arm64")
+	PROTOC_ARCH=-aarch_64
 endif
 ifeq ("$(OS)", "darwin")
 	PROTOC_OS:=osx
@@ -412,33 +416,44 @@ test-dmntest:
 
 ##@ Build
 
+.PHONY: validate-version-sync
+validate-version-sync: ## Validate that VERSION matches the OpenAPI version
+	@scripts/ci/validate-version-sync.sh
+
 .PHONY: build
-build: generate ## Build the project
+build: validate-version-sync generate ## Build the project
 	go build -ldflags "$(BUILD_LDFLAGS)" -o zenbpm cmd/zenbpm/main.go
 
 .PHONY: docker-build-local
 docker-build-local: ## Build the local Docker image with build metadata
 	@docker build \
-		--build-arg BUILD_VERSION="$(BUILD_VERSION)" \
 		--build-arg BUILD_COMMIT="$(BUILD_COMMIT)" \
+		--build-arg BUILD_BRANCH="$(BUILD_BRANCH)" \
+		--build-arg BUILD_TIME="$(BUILD_TIME)" \
 		--file Dockerfile.local \
 		--tag "$(LOCAL_DOCKER_IMAGE)" \
 		.
 
 .PHONY: release-dry-run
-release-dry-run:
+release-dry-run: validate-version-sync
 	@docker run \
 		--rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish
 
 .PHONY: release-dev
-release-dev:
+release-dev: validate-version-sync
 	@if [ -z "$${RELEASE_TAG:-}" ]; then \
 		echo "\033[91mRELEASE_TAG is required for dev release\033[0m";\
+		exit 1;\
+	fi
+	@if [ -z "$(BUILD_BRANCH)" ] || [ "$(BUILD_BRANCH)" = "unknown" ]; then \
+		echo "\033[91mBUILD_BRANCH is required for dev release\033[0m";\
 		exit 1;\
 	fi
 	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
@@ -457,6 +472,8 @@ release-dev:
 		-e GOMODCACHE=/go/pkg/mod \
 		-e IMAGE_NAME \
 		-e RELEASE_TAG \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
 		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
 		-e GORELEASER_RELEASE_DISABLE=true \
 		-e GORELEASER_DOCKER_LATEST=false \
@@ -465,9 +482,13 @@ release-dev:
 		release --clean --skip=validate
 
 .PHONY: release
-release:
+release: validate-version-sync
 	@if [ ! -f ".release-env" ]; then \
 		echo "\033[91m.release-env is required for release\033[0m";\
+		exit 1;\
+	fi
+	@if [ -z "$(BUILD_BRANCH)" ] || [ "$(BUILD_BRANCH)" = "unknown" ]; then \
+		echo "\033[91mBUILD_BRANCH is required for release\033[0m";\
 		exit 1;\
 	fi
 	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
@@ -478,6 +499,8 @@ release:
 		-e DOCKER_BUILDKIT=1 \
 		-e GOCACHE=/root/.cache/go-build \
 		-e GOMODCACHE=/go/pkg/mod \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
 		-e GORELEASER_RELEASE_DISABLE=false \
 		-e GORELEASER_DOCKER_LATEST=true \
 		-v /var/run/docker.sock:/var/run/docker.sock \

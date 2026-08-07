@@ -11,31 +11,41 @@ import (
 )
 
 func TestNewSystemStatusResponse(t *testing.T) {
-	t.Run("includes build metadata and cluster state", systemStatusResponseIncludesBuildMetadataAndClusterState)
-}
-
-func systemStatusResponseIncludesBuildMetadataAndClusterState(t *testing.T) {
-	response := newSystemStatusResponse(
-		buildinfo.Info{
-			Version: "1.5.0",
-			Commit:  "0123456789abcdef0123456789abcdef01234567",
-		},
-		state.Cluster{
-			Config: state.ClusterConfig{DesiredPartitions: 3},
-			Partitions: map[uint32]state.Partition{
-				1: {Id: 1, LeaderId: "node-1"},
+	t.Run("separates git and build metadata and includes cluster state", func(t *testing.T) {
+		response := newSystemStatusResponse(
+			buildinfo.Info{
+				Version:   "v1.5.0",
+				Commit:    "0123456789abcdef0123456789abcdef01234567",
+				Branch:    "main",
+				BuildTime: "2026-08-07T12:13:14Z",
 			},
-			Nodes: map[string]state.Node{},
-		},
-	)
+			state.Cluster{
+				Config: state.ClusterConfig{DesiredPartitions: 3},
+				Partitions: map[uint32]state.Partition{
+					1: {Id: 1, LeaderId: "node-1"},
+				},
+				Nodes: map[string]state.Node{},
+			},
+		)
 
-	encoded, err := json.Marshal(response)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{
-		"version": "1.5.0",
-		"commit": "0123456789abcdef0123456789abcdef01234567",
-		"clusterConfig": {"desiredPartitions": 3},
-		"partitions": {"1": {"id": 1, "leaderId": "node-1"}},
-		"nodes": {}
-	}`, string(encoded))
+		encoded, err := json.Marshal(response)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{
+			"git": {
+				"branch": "main",
+				"commitId": "0123456789ab"
+			},
+			"build": {
+				"version": "v1.5.0",
+				"time": "2026-08-07T12:13:14Z"
+			},
+			"clusterConfig": {"desiredPartitions": 3},
+			"partitions": {"1": {"id": 1, "leaderId": "node-1"}},
+			"nodes": {}
+		}`, string(encoded))
+	})
+
+	t.Run("preserves a commit ID that is already short", func(t *testing.T) {
+		assert.Equal(t, "unknown", shortCommitID("unknown"))
+	})
 }

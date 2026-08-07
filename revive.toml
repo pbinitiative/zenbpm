@@ -1,0 +1,7 @@
+enableDefaultRules = true
+
+[rule.exported]
+arguments = [
+    "disable-checks-on-methods",
+    "disable-checks-on-functions",
+]

@@ -57,8 +57,8 @@ func TestCallActivityMessageBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenCount(t, instance.Key, "end_event_main", 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "call_activity", zenclient.EventSubscriptionStateActive, 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "call_activity", zenclient.EventSubscriptionStateTerminated, 1)
-		assertExactProcessInstanceHistory(t, childInstance.Key, callActivityMessageBoundaryChildHistoryBeforeCompletion)
-		assertExactProcessInstanceHistory(t, instance.Key, callActivityMessageBoundaryParentHistoryAfterMessage)
+		assertExactCompletedProcessInstanceHistory(t, childInstance.Key, callActivityMessageBoundaryChildHistoryBeforeCompletion)
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, callActivityMessageBoundaryParentHistoryAfterMessage)
 	})
 
 	t.Run("Non-interrupting boundary message keeps the child active and completes both paths", func(t *testing.T) {

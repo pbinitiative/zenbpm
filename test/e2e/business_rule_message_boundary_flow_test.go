@@ -37,7 +37,7 @@ func TestBusinessRuleMessageBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenCount(t, instance.Key, "end_event_main", 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "business_rule", zenclient.EventSubscriptionStateActive, 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "business_rule", zenclient.EventSubscriptionStateTerminated, 1)
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"start_event",
 			"flow_to_business_rule",
 			"business_rule",

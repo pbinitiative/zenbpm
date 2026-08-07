@@ -304,6 +304,9 @@ func (engine *Engine) activateErrorEventSubprocessInParentScope(
 	if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch, parentScope.token.Key); err != nil {
 		return fmt.Errorf("failed to interrupt scope %d for error event subprocess: %w", instance.ProcessInstance().Key, err)
 	}
+	if err := completeExistingFlowElementInstance(ctx, batch, parentScope.token); err != nil {
+		return err
+	}
 	parentScope.token.State = runtime.TokenStateCanceled
 	if err := batch.SaveToken(ctx, parentScope.token); err != nil {
 		return fmt.Errorf("failed to cancel catching scope token %d: %w", parentScope.token.Key, err)

@@ -46,12 +46,12 @@ func TestParallelMultiInstanceMessageBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenCount(t, instance.Key, "end_event_main", 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "service_task", zenclient.EventSubscriptionStateActive, 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "service_task", zenclient.EventSubscriptionStateTerminated, 1)
-		assertExactProcessInstanceHistory(t, multiInstanceProcess.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, multiInstanceProcess.Key, []string{
 			"service_task",
 			"service_task",
 			"service_task",
 		})
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"start_event",
 			"flow_to_service_task",
 			"service_task",

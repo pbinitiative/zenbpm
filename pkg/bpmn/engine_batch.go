@@ -254,6 +254,10 @@ func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, histo
 	return b.b.UpdateOutputFlowElementInstance(ctx, historyItem)
 }
 
+func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
+}
+
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	if err := b.b.SaveIncident(ctx, incident); err != nil {
 		return err

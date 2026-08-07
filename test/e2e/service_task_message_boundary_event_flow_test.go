@@ -31,7 +31,7 @@ func TestMessageBoundaryEventFlow(t *testing.T) {
 		response, err := publishMessageWithResponse(t, messageName, correlationKey, &map[string]any{"payload": "duplicate-boundary"})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, response.StatusCode())
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"StartEvent_1",
 			"Flow_17cg00h",
 			"service_task",
@@ -69,7 +69,7 @@ func TestMessageBoundaryEventFlow(t *testing.T) {
 		response, err := publishMessageWithResponse(t, messageBName, correlationKeyB, &map[string]any{})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, response.StatusCode())
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"StartEvent_1",
 			"Flow_17cg00h",
 			"service_task",
@@ -107,7 +107,7 @@ func TestMessageBoundaryEventFlow(t *testing.T) {
 		response, err := publishMessageWithResponse(t, messageAName, correlationKeyA, &map[string]any{})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, response.StatusCode())
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"StartEvent_1",
 			"Flow_17cg00h",
 			"service_task",

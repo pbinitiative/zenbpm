@@ -41,7 +41,7 @@ func TestBusinessRuleErrorBoundaryFlow(t *testing.T) {
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Catch-all error boundary catches any code and completes handled path", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestBusinessRuleErrorBoundaryFlow(t *testing.T) {
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Non-matching error boundary keeps activity waiting and creates incident", func(t *testing.T) {
@@ -103,6 +103,6 @@ func TestBusinessRuleErrorBoundaryFlow(t *testing.T) {
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 2)
-		assertExactProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, businessRuleErrorBoundaryHistoryAfterHandledFailure)
 	})
 }

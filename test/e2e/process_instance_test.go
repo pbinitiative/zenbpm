@@ -104,6 +104,12 @@ func TestCancelProcessInstance(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateTerminated, fetchedInstance.State)
+
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
+			"StartEvent_1",
+			"Flow_1pv0o34",
+			"service-task-1",
+		})
 	})
 }
 

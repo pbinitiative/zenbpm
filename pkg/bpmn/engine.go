@@ -256,6 +256,9 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
 		}
+		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+			return nil, err
+		}
 		token.State = runtime.TokenStateCanceled
 		err = batch.SaveToken(ctx, token)
 		if err != nil {
@@ -329,6 +332,9 @@ func (engine *Engine) terminateExecutionToken(
 		}
 	}
 
+	if err := completeExistingFlowElementInstance(ctx, batch, activeToken); err != nil {
+		return err
+	}
 	activeToken.State = runtime.TokenStateCanceled
 	err = batch.SaveToken(ctx, activeToken)
 	if err != nil {
@@ -990,6 +996,17 @@ func (engine *Engine) completeFlowElementInstance(
 		ExecutionTokenKey:  token.Key,
 		CompletedAt:        new(time.Now()),
 	})
+}
+
+func completeExistingFlowElementInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	token runtime.ExecutionToken,
+) error {
+	if err := batch.CompleteFlowElementInstance(ctx, token.ElementInstanceKey, time.Now()); err != nil {
+		return fmt.Errorf("failed to complete flow element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
+	}
+	return nil
 }
 
 func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {

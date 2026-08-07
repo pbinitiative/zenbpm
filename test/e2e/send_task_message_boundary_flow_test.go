@@ -37,7 +37,7 @@ func TestSendTaskMessageBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenCount(t, instance.Key, "end_event_main", 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "send_task", zenclient.EventSubscriptionStateActive, 0)
 		assertMessageSubscriptionStateCount(t, instance.Key, "send_task", zenclient.EventSubscriptionStateTerminated, 1)
-		assertExactProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"start_event",
 			"flow_to_send_task",
 			"send_task",

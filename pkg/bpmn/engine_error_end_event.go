@@ -279,6 +279,9 @@ func (engine *Engine) terminateEndErrorPropagatingScope(ctx context.Context, bat
 		return fmt.Errorf("failed to terminate propagating error scope on process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
+	if err := completeExistingFlowElementInstance(ctx, batch, propagatingToken); err != nil {
+		return err
+	}
 	propagatingToken.State = runtime.TokenStateCanceled
 	if err := batch.SaveToken(ctx, propagatingToken); err != nil {
 		return fmt.Errorf("failed to save canceled propagating token %d: %w", propagatingToken.Key, err)

@@ -10,6 +10,7 @@ import (
 )
 
 type Querier interface {
+	CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
 	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)

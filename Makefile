@@ -244,7 +244,7 @@ errcheck: $(ERRCHECK) ## Run errcheck and write text, SARIF, and HTML reports.
 revive: $(REVIVE) ## Run revive and write JSON, SARIF, and HTML reports.
 	@mkdir -p $(REVIVE_REPORT_DIR)
 	@set +e; \
-	$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
+	$(REVIVE) -config revive.toml -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
 	status=$$?; \
 	set -e; \
 	if [ $$status -ne 0 ] && [ ! -s $(REVIVE_JSON_REPORT) ]; then \

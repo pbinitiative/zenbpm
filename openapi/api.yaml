@@ -2825,7 +2825,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "`#/components/schemas/Error`"
+            $ref: "#/components/schemas/Error"
           example:
             code: "METHOD_NOT_ALLOWED"
             message: "method not allowed"

@@ -162,12 +162,21 @@ func cleanProcessInstances(t *testing.T) {
 	cancelInstancesInState(t, "active")
 }
 
+// cancelInstancesInStateMaxPages bounds the number of paging iterations
+// cancelInstancesInState will perform. It exists so a stuck cancellation
+// (e.g. a repeatedly failing CancelProcessInstance call, or eventual
+// consistency causing an instance to keep reading as active) turns into a
+// failed test instead of a hung CI job.
+const cancelInstancesInStateMaxPages = 50
+
 // cancelInstancesInState pages through the process instances in the given
 // state (the spec bounds page size to 1..100) and cancels every default-type
-// instance until none are left.
+// instance until none are left. It is bounded by
+// cancelInstancesInStateMaxPages to guarantee termination even if a page
+// keeps yielding instances that never leave the queried state.
 func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) {
 	t.Helper()
-	for {
+	for range cancelInstancesInStateMaxPages {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
 			State: &instanceState,
 			Size:  new(int32(100)),
@@ -176,21 +185,36 @@ func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInst
 		if processInstances == nil || processInstances.JSON200 == nil || len(processInstances.JSON200.Partitions) == 0 {
 			return
 		}
+		items := processInstances.JSON200.Partitions[0].Items
 		cancelled := 0
-		for i := range processInstances.JSON200.Partitions[0].Items {
-			if processInstances.JSON200.Partitions[0].Items[i].ProcessType != zenclient.ProcessInstanceProcessType("default") {
+		for i := range items {
+			if items[i].ProcessType != ("default") {
 				continue
 			}
-			resp, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstances.JSON200.Partitions[0].Items[i].Key)
-			assert.NoError(t, err)
-			assert.Nil(t, resp.JSON400)
-			assert.Nil(t, resp.JSON500)
-			assert.Nil(t, resp.JSON502)
+			cancelProcessInstanceOrFail(t, items[i].Key, instanceState)
 			cancelled++
 		}
 		if cancelled == 0 {
-			assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
+			assert.Equal(t, 0, len(items))
 			return
 		}
+	}
+	t.Fatalf("cancelInstancesInState did not converge after %d pages for state %s", cancelInstancesInStateMaxPages, instanceState)
+}
+
+// cancelProcessInstanceOrFail cancels a single process instance and stops the
+// test immediately (t.Fatalf) if the call errors or returns a non-2xx
+// response, rather than letting the caller keep retrying against the same
+// failing instance indefinitely.
+func cancelProcessInstanceOrFail(t *testing.T, key int64, instanceState zenclient.GetProcessInstancesParamsState) {
+	t.Helper()
+	resp, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), key)
+	if !assert.NoError(t, err) || !assert.NotNil(t, resp) {
+		t.Fatalf("failed to cancel process instance %v in state %s", key, instanceState)
+	}
+	if !assert.Nil(t, resp.JSON400) ||
+		!assert.Nil(t, resp.JSON500) ||
+		!assert.Nil(t, resp.JSON502) {
+		t.Fatalf("failed to cancel process instance %v in state %s", key, instanceState)
 	}
 }

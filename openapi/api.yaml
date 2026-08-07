@@ -2817,10 +2817,15 @@ components:
   responses:
     MethodNotAllowed:
       description: The HTTP method is not allowed for the requested path.
+      headers:
+        Allow:
+          description: Allowed HTTP methods for the requested path.
+          schema:
+            type: string
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error"
+            $ref: "`#/components/schemas/Error`"
           example:
             code: "METHOD_NOT_ALLOWED"
             message: "method not allowed"

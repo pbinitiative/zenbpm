@@ -181,8 +181,13 @@ func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInst
 			State: &instanceState,
 			Size:  new(int32(100)),
 		})
-		assert.NoError(t, err)
-		if processInstances == nil || processInstances.JSON200 == nil || len(processInstances.JSON200.Partitions) == 0 {
+		if !assert.NoError(t, err) || !assert.NotNil(t, processInstances) {
+			t.Fatalf("failed to list process instances in state %s", instanceState)
+		}
+		if processInstances.StatusCode() != http.StatusOK || processInstances.JSON200 == nil {
+			t.Fatalf("failed to list process instances in state %s: status %s", instanceState, processInstances.Status())
+		}
+		if len(processInstances.JSON200.Partitions) == 0 {
 			return
 		}
 		items := processInstances.JSON200.Partitions[0].Items
@@ -214,7 +219,8 @@ func cancelProcessInstanceOrFail(t *testing.T, key int64, instanceState zenclien
 	}
 	if !assert.Nil(t, resp.JSON400) ||
 		!assert.Nil(t, resp.JSON500) ||
-		!assert.Nil(t, resp.JSON502) {
-		t.Fatalf("failed to cancel process instance %v in state %s", key, instanceState)
+		!assert.Nil(t, resp.JSON502) ||
+		!assert.Equal(t, http.StatusNoContent, resp.StatusCode()) {
+		t.Fatalf("failed to cancel process instance %v in state %s: status %s", key, instanceState, resp.Status())
 	}
 }

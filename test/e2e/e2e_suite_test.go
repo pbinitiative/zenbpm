@@ -177,39 +177,35 @@ const cancelInstancesInStateMaxPages = 50
 func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) {
 	t.Helper()
 	for range cancelInstancesInStateMaxPages {
-		processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-			State: &instanceState,
-			Size:  new(int32(100)),
-		})
-		if !assert.NoError(t, err) || !assert.NotNil(t, processInstances) {
-			t.Fatalf("failed to list process instances in state %s", instanceState)
-		}
-		if processInstances.StatusCode() != http.StatusOK || processInstances.JSON200 == nil {
-			t.Fatalf("failed to list process instances in state %s: status %s", instanceState, processInstances.Status())
-		}
-		if len(processInstances.JSON200.Partitions) == 0 {
+		items := listProcessInstancesInStateOrFail(t, instanceState)
+		if len(items) == 0 {
 			return
 		}
-		items := processInstances.JSON200.Partitions[0].Items
 		cancelled := 0
 		for i := range items {
-			if items[i].ProcessType != ("default") {
+			if items[i].ProcessType != "default" {
 				continue
 			}
 			cancelProcessInstanceOrFail(t, items[i].Key, instanceState)
 			cancelled++
 		}
 		if cancelled == 0 {
-			assert.Equal(t, 0, len(items))
+			// Only non-default instances (e.g. subprocesses, multi-instance
+			// children) are left on this page; there is nothing more for us
+			// to cancel directly.
 			return
 		}
 	}
 	t.Fatalf("cancelInstancesInState did not converge after %d pages for state %s", cancelInstancesInStateMaxPages, instanceState)
 }
 
-// cancelProcessInstanceOrFail cancels a single process instance and stops the
-// test immediately (t.Fatalf) if the call errors or returns a non-2xx
-// response, rather than letting the caller keep retrying against the same
+// cancelProcessInstanceOrFail cancels a single process instance. A 404
+// (instance not found) or 409 (instance not in cancellable state) is treated
+// as "already gone": these are normal races during cleanup, because an
+// instance listed as active may finish or terminate on its own (timers,
+// message events, receive tasks) before the cancel reaches it. Any other
+// non-204 response or a transport error stops the test immediately
+// (t.Fatalf), rather than letting the caller keep retrying against the same
 // failing instance indefinitely.
 func cancelProcessInstanceOrFail(t *testing.T, key int64, instanceState zenclient.GetProcessInstancesParamsState) {
 	t.Helper()
@@ -217,10 +213,35 @@ func cancelProcessInstanceOrFail(t *testing.T, key int64, instanceState zenclien
 	if !assert.NoError(t, err) || !assert.NotNil(t, resp) {
 		t.Fatalf("failed to cancel process instance %v in state %s", key, instanceState)
 	}
-	if !assert.Nil(t, resp.JSON400) ||
-		!assert.Nil(t, resp.JSON500) ||
-		!assert.Nil(t, resp.JSON502) ||
-		!assert.Equal(t, http.StatusNoContent, resp.StatusCode()) {
+	switch resp.StatusCode() {
+	case http.StatusNoContent:
+		// cancelled
+	case http.StatusNotFound, http.StatusConflict:
+		// instance already finished or is no longer cancellable; treat as gone
+	default:
 		t.Fatalf("failed to cancel process instance %v in state %s: status %s", key, instanceState, resp.Status())
 	}
+}
+
+// listProcessInstancesInStateOrFail fetches one page (max 100 items, the spec
+// bound) of process instances in the given state and fails the test on any
+// transport or non-200 error. Returns nil when there are no partitions with
+// instances left.
+func listProcessInstancesInStateOrFail(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) []zenclient.ProcessInstancesSimple {
+	t.Helper()
+	pageSize := int32(100)
+	processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+		State: &instanceState,
+		Size:  &pageSize,
+	})
+	if !assert.NoError(t, err) || !assert.NotNil(t, processInstances) {
+		t.Fatalf("failed to list process instances in state %s", instanceState)
+	}
+	if processInstances.StatusCode() != http.StatusOK || processInstances.JSON200 == nil {
+		t.Fatalf("failed to list process instances in state %s: status %s", instanceState, processInstances.Status())
+	}
+	if len(processInstances.JSON200.Partitions) == 0 {
+		return nil
+	}
+	return processInstances.JSON200.Partitions[0].Items
 }

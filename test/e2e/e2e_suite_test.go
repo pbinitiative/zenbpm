@@ -171,13 +171,23 @@ const cancelInstancesInStateMaxPages = 50
 
 // cancelInstancesInState pages through the process instances in the given
 // state (the spec bounds page size to 1..100) and cancels every default-type
-// instance until none are left. It is bounded by
+// instance until none are left. Listing has no server-side filter on
+// processType, and the default sort order (created_at DESC) puts child
+// instances (subprocesses, multi-instance children - created after their
+// parents) ahead of their parents. So a page can be entirely non-default
+// instances; when that happens we advance to the next page instead of
+// bailing out, otherwise a parent buried behind 100+ children would never
+// get cancelled. Whenever something *is* cancelled on a page we reset back
+// to page 1, since cancelled instances drop out of the "active"/"failed"
+// result set and shift subsequent pages. It is bounded by
 // cancelInstancesInStateMaxPages to guarantee termination even if a page
 // keeps yielding instances that never leave the queried state.
 func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) {
 	t.Helper()
+	const pageSize = int32(100)
+	page := int32(1)
 	for range cancelInstancesInStateMaxPages {
-		items := listProcessInstancesInStateOrFail(t, instanceState)
+		items := listProcessInstancesInStateOrFail(t, instanceState, page, pageSize)
 		if len(items) == 0 {
 			return
 		}
@@ -190,11 +200,18 @@ func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInst
 			cancelled++
 		}
 		if cancelled == 0 {
-			// Only non-default instances (e.g. subprocesses, multi-instance
-			// children) are left on this page; there is nothing more for us
-			// to cancel directly.
-			return
+			if int32(len(items)) < pageSize {
+				// Whole remainder of the result set is non-default; nothing
+				// left for us to cancel directly.
+				return
+			}
+			// A full page of non-default instances; look past them.
+			page++
+			continue
 		}
+		// Cancelled instances drop out of the result set, shifting later
+		// pages back; restart from page 1 to avoid skipping instances.
+		page = 1
 	}
 	t.Fatalf("cancelInstancesInState did not converge after %d pages for state %s", cancelInstancesInStateMaxPages, instanceState)
 }
@@ -223,16 +240,15 @@ func cancelProcessInstanceOrFail(t *testing.T, key int64, instanceState zenclien
 	}
 }
 
-// listProcessInstancesInStateOrFail fetches one page (max 100 items, the spec
-// bound) of process instances in the given state and fails the test on any
-// transport or non-200 error. Returns nil when there are no partitions with
-// instances left.
-func listProcessInstancesInStateOrFail(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) []zenclient.ProcessInstancesSimple {
+// listProcessInstancesInStateOrFail fetches one page of process instances in
+// the given state and fails the test on any transport or non-200 error.
+// Returns nil when there are no partitions with instances left.
+func listProcessInstancesInStateOrFail(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState, page int32, size int32) []zenclient.ProcessInstancesSimple {
 	t.Helper()
-	pageSize := int32(100)
 	processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
 		State: &instanceState,
-		Size:  &pageSize,
+		Page:  &page,
+		Size:  &size,
 	})
 	if !assert.NoError(t, err) || !assert.NotNil(t, processInstances) {
 		t.Fatalf("failed to list process instances in state %s", instanceState)

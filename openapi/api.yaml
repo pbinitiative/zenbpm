@@ -96,6 +96,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
     get:
       operationId: getDmnResourceDefinitions
@@ -189,6 +195,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /dmn-resource-definitions/{dmnResourceDefinitionKey}:
     get:
@@ -247,6 +255,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /decision-definitions/{decisionId}/evaluate:
     post:
@@ -284,6 +294,7 @@ paths:
                   type: string
                 variables:
                   type: object
+                  nullable: true
             example:
               bindingType: "latest"
               variables:
@@ -358,6 +369,12 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to redirect request to responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /decision-instances:
     get:
@@ -481,6 +498,8 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to collect data from responsible nodes"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /decision-instances/{decisionInstanceKey}:
     get:
@@ -563,6 +582,8 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to collect data from responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-definitions:
     post:
@@ -582,7 +603,7 @@ paths:
                 resource:
                   type: string
                   format: binary
-                  description: BPMN process definition file (.bpmn format only, max 4MB)
+                  description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
             encoding:
               resource:
                 contentType: application/octet-stream
@@ -645,6 +666,12 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to redirect request to responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
     get:
       operationId: getProcessDefinitions
       summary: Get list of process definitions
@@ -733,6 +760,8 @@ paths:
               example:
                 code: "INTERNAL_SERVER_ERROR"
                 message: "An unexpected error occurred while retrieving process definitions"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-definitions/{processDefinitionKey}:
     get:
@@ -793,6 +822,8 @@ paths:
               example:
                 code: "INTERNAL_SERVER_ERROR"
                 message: "An unexpected error occurred while retrieving the process definition"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-definitions/{processDefinitionKey}/statistics:
     get:
@@ -869,6 +900,8 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to redirect request to responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-definitions/statistics:
     get:
@@ -996,6 +1029,8 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to redirect request to responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances:
     post:
@@ -1019,6 +1054,7 @@ paths:
                   description: Start the process instance using latest bpmn process definition identified by bpmnProcessId.
                 variables:
                   type: object
+                  nullable: true
                 historyTimeToLive:
                   type: string
                   description: Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
@@ -1072,6 +1108,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
     get:
       summary: Get list of running process instances
       operationId: getProcessInstances
@@ -1112,6 +1154,7 @@ paths:
             type: integer
             format: int32
             minimum: 1
+            maximum: 100
             default: 10
           description: Number of items per page
           example: 10
@@ -1221,6 +1264,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}:
     get:
@@ -1273,6 +1318,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/variables:
     patch:
@@ -1338,6 +1385,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /process-instances/{processInstanceKey}/variables/{variableName}:
     delete:
@@ -1392,6 +1445,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/child-processes:
     get:
@@ -1422,6 +1477,7 @@ paths:
             type: integer
             format: int32
             minimum: 1
+            maximum: 100
             default: 10
           description: Number of items per page
           example: 10
@@ -1500,6 +1556,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/cancel:
     post:
@@ -1548,6 +1606,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/jobs:
     get:
@@ -1636,6 +1696,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/history:
     get:
@@ -1727,6 +1789,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/incidents:
     get:
@@ -1817,6 +1881,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/event-subscriptions/messages:
     get:
@@ -1836,11 +1902,16 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 1
+            default: 1
         - name: size
           in: query
           schema:
             type: integer
             format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
         - name: state
           in: query
           schema:
@@ -1870,6 +1941,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/event-subscriptions/timers:
     get:
@@ -1889,11 +1962,16 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 1
+            default: 1
         - name: size
           in: query
           schema:
             type: integer
             format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
         - name: state
           in: query
           schema:
@@ -1923,6 +2001,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/event-subscriptions/errors:
     get:
@@ -1942,11 +2022,16 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 1
+            default: 1
         - name: size
           in: query
           schema:
             type: integer
             format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
         - name: state
           in: query
           schema:
@@ -1976,6 +2061,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /process-instances/{processInstanceKey}/statistics:
     get:
@@ -2035,6 +2122,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /jobs:
     get:
@@ -2154,6 +2243,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /jobs/{jobKey}:
     get:
@@ -2207,6 +2298,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /jobs/{jobKey}/assign:
     post:
@@ -2262,6 +2355,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /jobs/{jobKey}/complete:
     post:
@@ -2286,6 +2385,7 @@ paths:
               properties:
                 variables:
                   type: object
+                  nullable: true
             example:
               variables:
                 result: "success"
@@ -2318,6 +2418,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /jobs/{jobKey}/fail:
     post:
@@ -2345,6 +2451,7 @@ paths:
                   description: The error code against which an error catch event is matched.
                 variables:
                   type: object
+                  nullable: true
             example:
               errorCode: "123-456-789"
               variables:
@@ -2376,6 +2483,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /messages:
     post:
@@ -2398,6 +2511,7 @@ paths:
                   type: string
                 variables:
                   type: object
+                  nullable: true
             example:
               correlationKey: "011-235-813"
               messageName: "payment-received"
@@ -2445,6 +2559,12 @@ paths:
               example:
                 code: "CLUSTER_ERROR"
                 message: "Failed to redirect request to responsible node"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /incidents/{incidentKey}/resolve:
     post:
@@ -2487,6 +2607,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /modify/start-process-instance:
     post:
@@ -2510,6 +2632,7 @@ paths:
                   format: int64
                 variables:
                   type: object
+                  nullable: true
                 startingElementIds:
                   type: array
                   description: Allows for a start at chosen element id
@@ -2553,6 +2676,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /modify/process-instance:
     post:
@@ -2575,6 +2704,7 @@ paths:
                   format: int64
                 variables:
                   type: object
+                  nullable: true
                   description: Sets process instance variables.
                 elementInstancesToStart:
                   type: array
@@ -2624,6 +2754,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /tests/{nodeId}/start-pprof-server:
     post:
@@ -2648,6 +2784,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /tests/{nodeId}/stop-pprof-server:
     post:
@@ -2672,8 +2810,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
 components:
+  responses:
+    MethodNotAllowed:
+      description: The HTTP method is not allowed for the requested path.
+      headers:
+        Allow:
+          description: Allowed HTTP methods for the requested path.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "METHOD_NOT_ALLOWED"
+            message: "method not allowed"
+    PayloadTooLarge:
+      description: The request body exceeds the configured size limit (httpServer.maxRequestBodyBytes, 10 MiB by default).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "PAYLOAD_TOO_LARGE"
+            message: "http: request body too large"
+    UnsupportedMediaType:
+      description: The request body content type is not supported by the operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "UNSUPPORTED_MEDIA_TYPE"
+            message: "unsupported content type"
   schemas:
     DecisionInstancePartitionPage:
       type: object

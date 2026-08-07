@@ -123,9 +123,7 @@ func TestRestApiJobBadRequestResponse(t *testing.T) {
 		assert.Nil(t, response.JSON200)
 		assert.NotNil(t, response.JSON400)
 		assert.Equal(t, "BAD_REQUEST", response.JSON400.Code)
-		assert.Equal(t,
-			"unexpected GetJobsRequest state: non-existing-state, supported: [active completed terminated]",
-			response.JSON400.Message,
-		)
+		assert.Contains(t, response.JSON400.Message, `parameter "state" in query has an error`)
+		assert.Contains(t, response.JSON400.Message, "value is not one of the allowed values")
 	})
 }

@@ -209,7 +209,8 @@ func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 		assert.Nil(t, resp.JSON200)
 		assert.NotNil(t, resp.JSON400)
 		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
-		assert.Contains(t, resp.JSON400.Message, "unexpected GetDecisionInstancesRequest.SortBy")
+		assert.Contains(t, resp.JSON400.Message, `parameter "sortBy" in query has an error`)
+		assert.Contains(t, resp.JSON400.Message, "value is not one of the allowed values")
 	})
 
 	t.Run("invalid sortOrder returns 400 BAD_REQUEST", func(t *testing.T) {
@@ -220,7 +221,8 @@ func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 		assert.Nil(t, resp.JSON200)
 		assert.NotNil(t, resp.JSON400)
 		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
-		assert.Contains(t, resp.JSON400.Message, "unexpected GetDecisionInstancesRequest.SortOrder")
+		assert.Contains(t, resp.JSON400.Message, `parameter "sortOrder" in query has an error`)
+		assert.Contains(t, resp.JSON400.Message, "value is not one of the allowed values")
 	})
 }
 

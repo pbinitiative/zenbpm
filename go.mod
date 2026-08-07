@@ -19,6 +19,7 @@ require (
 	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/navsmb/datetime v0.2.0
+	github.com/oapi-codegen/nethttp-middleware v1.2.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rqlite/rqlite/v10 v10.2.7
@@ -80,10 +81,10 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/jsonpointer v0.22.5 // indirect
-	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
+	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.6.0 // indirect

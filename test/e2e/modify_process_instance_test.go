@@ -141,6 +141,7 @@ func TestStartProcessInstanceOnElementsWithResponse404Response(t *testing.T) {
 		response, _ := app.restClient.StartProcessInstanceOnElementsWithResponse(t.Context(),
 			zenclient.StartProcessInstanceOnElementsJSONRequestBody{
 				ProcessDefinitionKey: nonExistingProcessDefinitionKey,
+				StartingElementIds:   []string{"non-existing-element"},
 			})
 		assert.NotNil(t, response.JSON404)
 		assert.Equal(t, "NOT_FOUND", response.JSON404.Code)

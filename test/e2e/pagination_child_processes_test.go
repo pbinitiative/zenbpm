@@ -95,7 +95,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got 101")
+		require.Contains(t, resp.JSON400.Message, `parameter "size" in query has an error`)
 	})
 }
 

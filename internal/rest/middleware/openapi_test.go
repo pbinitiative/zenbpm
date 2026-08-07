@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -217,7 +218,27 @@ func TestErrorCodeForStatus(t *testing.T) {
 	assert.Equal(t, "METHOD_NOT_ALLOWED", errorCodeForStatus(http.StatusMethodNotAllowed))
 	assert.Equal(t, "UNSUPPORTED_MEDIA_TYPE", errorCodeForStatus(http.StatusUnsupportedMediaType))
 	assert.Equal(t, "PAYLOAD_TOO_LARGE", errorCodeForStatus(http.StatusRequestEntityTooLarge))
-	assert.Equal(t, "ERROR", errorCodeForStatus(http.StatusTeapot))
+	assert.Equal(t, "TECHNICAL_ERROR", errorCodeForStatus(http.StatusTeapot))
+}
+
+func TestAllowedMethodsIndexPrefersLiteralOverTemplatedPath(t *testing.T) {
+	// "/jobs/search" and "/jobs/{jobKey}" both match the request path
+	// "/jobs/search"; the literal path must win regardless of the map
+	// iteration order of spec.Paths.
+	spec := &openapi3.T{Paths: openapi3.NewPaths(
+		openapi3.WithPath("/jobs/{jobKey}", &openapi3.PathItem{
+			Get: &openapi3.Operation{},
+		}),
+		openapi3.WithPath("/jobs/search", &openapi3.PathItem{
+			Post: &openapi3.Operation{},
+		}),
+	)}
+
+	index := newAllowedMethodsIndex(spec, "/v1")
+
+	assert.Equal(t, "POST", index.find("/v1/jobs/search"),
+		"literal spec path must take precedence over the templated one")
+	assert.Equal(t, "GET", index.find("/v1/jobs/4503599627370498"))
 }
 
 // spyHandler records whether it was called and captures the request body.
@@ -242,12 +263,15 @@ func newValidatedHandler(t *testing.T) (http.Handler, *spyHandler) {
 	return newValidatedHandlerWithLimit(t, 1024*1024)
 }
 
+// newValidatedHandlerWithLimit chains RequestBodyLimit and OpenAPIValidator
+// the same way the production router does: the limit middleware owns the
+// body cap, the validator turns the resulting MaxBytesError into a 413.
 func newValidatedHandlerWithLimit(t *testing.T, maxRequestBodyBytes int64) (http.Handler, *spyHandler) {
 	t.Helper()
 	spec, err := public.GetSpec()
 	require.NoError(t, err)
 	next := &spyHandler{}
-	return OpenAPIValidator(spec, "/v1", maxRequestBodyBytes)(next), next
+	return RequestBodyLimit(maxRequestBodyBytes)(OpenAPIValidator(spec, "/v1")(next)), next
 }
 
 // assertErrorPayload verifies the response carries the shared public.Error

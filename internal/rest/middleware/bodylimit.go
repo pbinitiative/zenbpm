@@ -1,13 +1,10 @@
-// Package middleware provides HTTP middleware used by the REST server, such
-// as request body size limiting, CORS handling, request logging, OpenAPI
-// request/response validation, panic recovery, OpenTelemetry instrumentation,
-// and query parameter parsing.
 package middleware
 
 import "net/http"
 
 // RequestBodyLimit bounds how many request body bytes any downstream
-// middleware or handler is able to read.
+// middleware or handler is able to read. It is the single owner of the
+// request body size limit.
 //
 // It has to be registered before every middleware that buffers request bodies
 // (Logger with body capture, the OpenAPI validator, …). Those layers copy

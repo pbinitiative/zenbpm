@@ -123,7 +123,7 @@ func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables 
 		BusinessKey:          nil,
 		HistoryTimeToLive:    nil,
 		ProcessDefinitionKey: processDefinitionKey,
-		Variables:            varsPtr(variables),
+		Variables:            &variables,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
@@ -556,15 +556,4 @@ func assertFlowElementInputVariablesAt(t testing.TB, processInstanceKey int64, e
 		"expected at least %d flow element instance(s) for %s on process instance %d, got %d", iteration+1, elementId, processInstanceKey, len(instances))
 	require.Equalf(t, expected, instances[iteration].InputVariables,
 		"input variables of iteration %d on element %s mismatch", iteration, elementId)
-}
-
-// varsPtr returns a pointer to vars suitable for optional `variables` request
-// fields. A nil map is replaced with an empty map so the client never
-// serializes `"variables": null`, which the OpenAPI spec rejects (the field
-// is a non-nullable object).
-func varsPtr(vars map[string]any) *map[string]any {
-	if vars == nil {
-		vars = map[string]any{}
-	}
-	return &vars
 }

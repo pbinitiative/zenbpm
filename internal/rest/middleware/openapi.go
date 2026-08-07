@@ -9,23 +9,28 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
 
-func init() {
-	// kin-openapi has no built-in decoder for application/xml, so without this
-	// registration every XML request body (e.g. DMN resource deployment) is
-	// rejected by the validator. The spec models XML bodies as plain strings
-	// (type: string, format: xml), so the raw payload is returned as-is and
-	// structural XML validation stays with the handlers/engine.
+// registerXMLBodyDecoder installs the application/xml decoder into
+// kin-openapi's global decoder registry exactly once.
+//
+// kin-openapi has no built-in decoder for application/xml, so without this
+// registration every XML request body (e.g. DMN resource deployment) is
+// rejected by the validator. The spec models XML bodies as plain strings
+// (type: string, format: xml), so the raw payload is returned as-is and
+// structural XML validation stays with the handlers/engine.
+var registerXMLBodyDecoder = sync.OnceFunc(func() {
 	openapi3filter.RegisterBodyDecoder("application/xml", xmlBodyDecoder)
-}
+})
 
 // xmlBodyDecoder decodes an application/xml request body into a raw string so
 // it can be validated against the `type: string` schema declared in the spec.
@@ -44,17 +49,17 @@ func xmlBodyDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ open
 // stripped from the request path before matching against the spec paths.
 //
 // Validation failures are answered with the shared public.Error JSON shape
-// and never reach the handlers. Request bodies are limited before the
-// validator buffers them. Server (Host) validation is disabled because the
-// spec `servers` entry only documents a sample deployment URL.
-func OpenAPIValidator(spec *openapi3.T, pathPrefix string, maxRequestBodyBytes int64) func(next http.Handler) http.Handler {
-	if maxRequestBodyBytes <= 0 {
-		panic("maxRequestBodyBytes must be greater than zero")
-	}
+// and never reach the handlers. Bounding the request body size is owned by
+// RequestBodyLimit, which must be registered upstream; when the validator
+// hits that limit while buffering the body it answers with 413. Server
+// (Host) validation is disabled because the spec `servers` entry only
+// documents a sample deployment URL.
+func OpenAPIValidator(spec *openapi3.T, pathPrefix string) func(next http.Handler) http.Handler {
+	registerXMLBodyDecoder()
 	// built before the validator: OapiRequestValidatorWithOptions clears
 	// spec.Servers, but spec.Paths (the only part read here) is left intact.
 	allowedMethods := newAllowedMethodsIndex(spec, pathPrefix)
-	validator := nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &nethttpmiddleware.Options{
+	return nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &nethttpmiddleware.Options{
 		DoNotValidateServers: true,
 		Prefix:               pathPrefix,
 		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, opts nethttpmiddleware.ErrorHandlerOpts) {
@@ -70,19 +75,6 @@ func OpenAPIValidator(spec *openapi3.T, pathPrefix string, maxRequestBodyBytes i
 			writeValidationError(w, status, err)
 		},
 	})
-	return func(next http.Handler) http.Handler {
-		validated := validator(next)
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.ContentLength > maxRequestBodyBytes {
-				writeValidationError(w, http.StatusRequestEntityTooLarge, &http.MaxBytesError{Limit: maxRequestBodyBytes})
-				return
-			}
-			if r.Body != nil {
-				r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-			}
-			validated.ServeHTTP(w, r)
-		})
-	}
 }
 
 func validationStatusCode(err error, suggestedStatus int) int {
@@ -129,21 +121,17 @@ func writeValidationError(w http.ResponseWriter, status int, err error) {
 func errorCodeForStatus(status int) string {
 	switch status {
 	case http.StatusBadRequest:
-		return "BAD_REQUEST"
-	case http.StatusUnauthorized:
-		return "UNAUTHORIZED"
-	case http.StatusForbidden:
-		return "FORBIDDEN"
+		return zenerr.BadRequestCode.ToString()
 	case http.StatusNotFound:
-		return "NOT_FOUND"
+		return zenerr.NotFoundCode.ToString()
 	case http.StatusMethodNotAllowed:
-		return "METHOD_NOT_ALLOWED"
+		return zenerr.MethodNotAllowedCode.ToString()
 	case http.StatusUnsupportedMediaType:
-		return "UNSUPPORTED_MEDIA_TYPE"
+		return zenerr.UnsupportedMediaTypeCode.ToString()
 	case http.StatusRequestEntityTooLarge:
-		return "PAYLOAD_TOO_LARGE"
+		return zenerr.PayloadTooLargeCode.ToString()
 	default:
-		return "ERROR"
+		return zenerr.TechnicalErrorCode.ToString()
 	}
 }
 

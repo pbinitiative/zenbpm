@@ -158,13 +158,26 @@ func TestMain(m *testing.M) {
 }
 
 func cleanProcessInstances(t *testing.T) {
-	processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: new(zenclient.GetProcessInstancesParamsState("failed")),
-		Size:  new(int32(5000)),
-	})
-	assert.NoError(t, err)
-	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
-		for i, _ := range processInstances.JSON200.Partitions[0].Items {
+	cancelInstancesInState(t, "failed")
+	cancelInstancesInState(t, "active")
+}
+
+// cancelInstancesInState pages through the process instances in the given
+// state (the spec bounds page size to 1..100) and cancels every default-type
+// instance until none are left.
+func cancelInstancesInState(t *testing.T, instanceState zenclient.GetProcessInstancesParamsState) {
+	t.Helper()
+	for {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+			State: &instanceState,
+			Size:  new(int32(100)),
+		})
+		assert.NoError(t, err)
+		if processInstances == nil || processInstances.JSON200 == nil || len(processInstances.JSON200.Partitions) == 0 {
+			return
+		}
+		cancelled := 0
+		for i := range processInstances.JSON200.Partitions[0].Items {
 			if processInstances.JSON200.Partitions[0].Items[i].ProcessType != zenclient.ProcessInstanceProcessType("default") {
 				continue
 			}
@@ -173,38 +186,11 @@ func cleanProcessInstances(t *testing.T) {
 			assert.Nil(t, resp.JSON400)
 			assert.Nil(t, resp.JSON500)
 			assert.Nil(t, resp.JSON502)
+			cancelled++
+		}
+		if cancelled == 0 {
+			assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
+			return
 		}
 	}
-
-	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: new(zenclient.GetProcessInstancesParamsState("failed")),
-		Size:  new(int32(5000)),
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
-
-	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: new(zenclient.GetProcessInstancesParamsState("active")),
-		Size:  new(int32(5000)),
-	})
-	assert.NoError(t, err)
-	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
-		for i, _ := range processInstances.JSON200.Partitions[0].Items {
-			if processInstances.JSON200.Partitions[0].Items[i].ProcessType != zenclient.ProcessInstanceProcessType("default") {
-				continue
-			}
-			resp, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), processInstances.JSON200.Partitions[0].Items[i].Key)
-			assert.Nil(t, resp.JSON400)
-			assert.Nil(t, resp.JSON500)
-			assert.Nil(t, resp.JSON502)
-			assert.NoError(t, err)
-		}
-	}
-	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
-		State: new(zenclient.GetProcessInstancesParamsState("active")),
-		Size:  new(int32(5000)),
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
-
 }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -37,7 +38,6 @@ import (
 const (
 	PaginationDefaultPage int32 = 1
 	PaginationDefaultSize int32 = 10
-	PaginationMaxSize     int32 = 100
 )
 
 type Server struct {
@@ -95,7 +95,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 			// load it is a programming error that must be caught at startup.
 			panic(fmt.Errorf("failed to load embedded OpenAPI spec: %w", err))
 		}
-		r.Use(middleware.OpenAPIValidator(spec, "/v1", conf.HttpServer.MaxRequestBodyBytes))
+		r.Use(middleware.OpenAPIValidator(spec, "/v1"))
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, nil, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -1096,6 +1096,11 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetProcessInstancesParamsStateFailed:
 			state = new(int64(runtime.ActivityStateFailed))
+		default:
+			// unreachable while the OpenAPI validator enforces the state enum;
+			// guards against the spec and this switch drifting apart.
+			return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(
+				fmt.Errorf("unhandled process instance state %q: OpenAPI spec and handler are out of sync", *request.Params.State)).ToApiError()), nil
 		}
 	}
 	if request.Params.CreatedFrom != nil {
@@ -1264,9 +1269,6 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 
 func (s *Server) GetChildProcessInstances(ctx context.Context, request public.GetChildProcessInstancesRequestObject) (public.GetChildProcessInstancesResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetChildProcessInstances400JSONResponse(paginationErr.ToApiError()), nil
-	}
 
 	var state *int64
 	if request.Params.State != nil {
@@ -1279,6 +1281,11 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetChildProcessInstancesParamsStateFailed:
 			state = new(int64(runtime.ActivityStateFailed))
+		default:
+			// unreachable while the OpenAPI validator enforces the state enum;
+			// guards against the spec and this switch drifting apart.
+			return public.GetChildProcessInstances500JSONResponse(zenerr.TechnicalError(
+				fmt.Errorf("unhandled process instance state %q: OpenAPI spec and handler are out of sync", *request.Params.State)).ToApiError()), nil
 		}
 	}
 	var sortByDbColumn *string
@@ -1592,10 +1599,8 @@ func validateEventSubscriptionState(state *public.EventSubscriptionState, allowe
 	if state == nil {
 		return nil
 	}
-	for _, a := range allowed {
-		if *state == a {
-			return nil
-		}
+	if slices.Contains(allowed, *state) {
+		return nil
 	}
 	validValues := make([]string, len(allowed))
 	for i, a := range allowed {
@@ -1607,9 +1612,6 @@ func validateEventSubscriptionState(state *public.EventSubscriptionState, allowe
 
 func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, request public.GetProcessInstanceMessageSubscriptionsRequestObject) (public.GetProcessInstanceMessageSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateTerminated},
 		"message"); stateErr != nil {
@@ -1672,9 +1674,6 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 
 func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, request public.GetProcessInstanceTimerSubscriptionsRequestObject) (public.GetProcessInstanceTimerSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceTimerSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateWithdrawn},
 		"timer"); stateErr != nil {
@@ -1729,9 +1728,6 @@ func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, reque
 
 func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, request public.GetProcessInstanceErrorSubscriptionsRequestObject) (public.GetProcessInstanceErrorSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceErrorSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateWithdrawn},
 		"error"); stateErr != nil {
@@ -2247,16 +2243,6 @@ func defaultPagination(page **int32, size **int32) {
 		s := PaginationDefaultSize
 		*size = &s
 	}
-}
-
-func validatePagination(page, size int32) *zenerr.ZenError {
-	if page < 1 {
-		return zenerr.BadRequest(fmt.Errorf("page must be >= 1, got %d", page))
-	}
-	if size < 1 || size > PaginationMaxSize {
-		return zenerr.BadRequest(fmt.Errorf("size must be between 1 and %d, got %d", PaginationMaxSize, size))
-	}
-	return nil
 }
 
 func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {

@@ -35,6 +35,9 @@ const (
 	NotFoundCode
 	BadRequestCode
 	ConflictCode
+	MethodNotAllowedCode
+	UnsupportedMediaTypeCode
+	PayloadTooLargeCode
 )
 
 func (zenErrorCode ZenErrorCode) ToString() string {
@@ -51,6 +54,12 @@ func (zenErrorCode ZenErrorCode) ToString() string {
 		return "BAD_REQUEST"
 	case ConflictCode:
 		return "CONFLICT"
+	case MethodNotAllowedCode:
+		return "METHOD_NOT_ALLOWED"
+	case UnsupportedMediaTypeCode:
+		return "UNSUPPORTED_MEDIA_TYPE"
+	case PayloadTooLargeCode:
+		return "PAYLOAD_TOO_LARGE"
 	default:
 		return "UNKNOWN_ERROR"
 	}

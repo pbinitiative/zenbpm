@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -62,7 +63,11 @@ func TestHttpServerMaxRequestBodyBytesValidation(t *testing.T) {
 	c := Config{}
 	c.HttpServer.LogMode = LogModeErrors
 
-	if err := c.validate(); err == nil {
-		t.Error("expected validation error for non-positive request body limit")
+	err := c.validate()
+	if err == nil {
+		t.Fatal("expected validation error for non-positive request body limit")
+	}
+	if !strings.Contains(err.Error(), "httpServer.maxRequestBodyBytes must be greater than zero") {
+		t.Errorf("expected request body limit validation error, got: %v", err)
 	}
 }

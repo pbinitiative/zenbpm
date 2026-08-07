@@ -103,7 +103,7 @@ func evaluateDecision(t testing.TB, bindingType zenclient.EvaluateDecisionJSONBo
 	req := zenclient.EvaluateDecisionJSONRequestBody{
 		BindingType:             bindingType,
 		DmnResourceDefinitionId: dmnResourceDefinitionId,
-		Variables:               varsPtr(variables),
+		Variables:               &variables,
 		VersionTag:              versionTag,
 	}
 	resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), decisionId, req)

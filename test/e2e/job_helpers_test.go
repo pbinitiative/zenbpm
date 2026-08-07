@@ -138,7 +138,7 @@ func getJobs(t testing.TB, params zenclient.GetJobsParams) (zenclient.JobPartiti
 
 func completeJob(t testing.TB, jobKey int64, vars map[string]any) error {
 	response, err := app.restClient.CompleteJobWithResponse(t.Context(), jobKey, zenclient.CompleteJobJSONRequestBody{
-		Variables: varsPtr(vars),
+		Variables: &vars,
 	})
 	assert.NoError(t, err)
 	if response.StatusCode() != 201 {

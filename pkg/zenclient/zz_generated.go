@@ -1197,6 +1197,15 @@ type TimerSubscriptionPage struct {
 // SortOrder defines model for sortOrder.
 type SortOrder string
 
+// MethodNotAllowed defines model for MethodNotAllowed.
+type MethodNotAllowed = Error
+
+// PayloadTooLarge defines model for PayloadTooLarge.
+type PayloadTooLarge = Error
+
+// UnsupportedMediaType defines model for UnsupportedMediaType.
+type UnsupportedMediaType = Error
+
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
@@ -1392,7 +1401,7 @@ type GetProcessDefinitionsParamsSortOrder string
 
 // CreateProcessDefinitionMultipartBody defines parameters for CreateProcessDefinition.
 type CreateProcessDefinitionMultipartBody struct {
-	// Resource BPMN process definition file (.bpmn format only, max 4MB)
+	// Resource BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
 	Resource openapi_types.File `json:"resource"`
 }
 
@@ -4911,6 +4920,9 @@ type EvaluateDecisionResponse struct {
 	JSON200      *EvaluatedDRDResult
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -4944,6 +4956,7 @@ type GetDecisionInstancesResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *DecisionInstancePartitionPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -4977,6 +4990,7 @@ type GetDecisionInstanceResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *DecisionInstanceDetail
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5010,6 +5024,7 @@ type GetDmnResourceDefinitionsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *DmnResourceDefinitionsPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5048,6 +5063,9 @@ type CreateDmnResourceDefinitionResponse struct {
 		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 	}
 	JSON400 *Error
+	JSON405 *MethodNotAllowed
+	JSON413 *PayloadTooLarge
+	JSON415 *UnsupportedMediaType
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -5082,6 +5100,7 @@ type GetDmnResourceDefinitionResponse struct {
 	JSON200      *DmnResourceDefinitionDetail
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5115,6 +5134,7 @@ type ResolveIncidentResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5148,6 +5168,7 @@ type GetJobsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *JobPartitionPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5181,6 +5202,7 @@ type GetJobResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *Job
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5214,6 +5236,9 @@ type AssignJobResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5247,6 +5272,9 @@ type CompleteJobResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5280,6 +5308,9 @@ type FailJobResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5313,6 +5344,9 @@ type PublishMessageResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5350,6 +5384,9 @@ type ModifyProcessInstanceResponse struct {
 	}
 	JSON400 *Error
 	JSON404 *Error
+	JSON405 *MethodNotAllowed
+	JSON413 *PayloadTooLarge
+	JSON415 *UnsupportedMediaType
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -5384,6 +5421,9 @@ type StartProcessInstanceOnElementsResponse struct {
 	JSON201      *ProcessInstance
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5417,6 +5457,7 @@ type GetProcessDefinitionsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionsPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 }
 
@@ -5454,6 +5495,9 @@ type CreateProcessDefinitionResponse struct {
 		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 	}
 	JSON400 *Error
+	JSON405 *MethodNotAllowed
+	JSON413 *PayloadTooLarge
+	JSON415 *UnsupportedMediaType
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -5487,6 +5531,7 @@ type GetProcessDefinitionStatisticsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionStatisticsPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5521,6 +5566,7 @@ type GetProcessDefinitionResponse struct {
 	JSON200      *ProcessDefinitionDetail
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 }
 
@@ -5554,6 +5600,7 @@ type GetProcessDefinitionElementStatisticsResponse struct {
 	JSON200      *ElementStatisticsPartitions
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5587,6 +5634,7 @@ type GetProcessInstancesResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessInstancePage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5621,6 +5669,9 @@ type CreateProcessInstanceResponse struct {
 	JSON201      *ProcessInstance
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5654,6 +5705,7 @@ type GetProcessInstanceResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessInstance
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5687,6 +5739,7 @@ type CancelProcessInstanceResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON409      *Error
 	JSON500      *Error
 	JSON502      *Error
@@ -5721,6 +5774,7 @@ type GetChildProcessInstancesResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessInstancePage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5754,6 +5808,7 @@ type GetProcessInstanceErrorSubscriptionsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ErrorSubscriptionPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5787,6 +5842,7 @@ type GetProcessInstanceMessageSubscriptionsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *MessageSubscriptionPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5820,6 +5876,7 @@ type GetProcessInstanceTimerSubscriptionsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *TimerSubscriptionPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5853,6 +5910,7 @@ type GetHistoryResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *FlowElementHistoryPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5886,6 +5944,7 @@ type GetIncidentsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *IncidentPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5919,6 +5978,7 @@ type GetProcessInstanceJobsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *JobPage
 	JSON400      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5953,6 +6013,7 @@ type GetProcessInstanceElementStatisticsResponse struct {
 	JSON200      *ElementStatisticsPartitions
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5986,7 +6047,10 @@ type UpdateProcessInstanceVariablesResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON409      *Error
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -6020,6 +6084,7 @@ type DeleteProcessInstanceVariableResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *Error
 	JSON404      *Error
+	JSON405      *MethodNotAllowed
 	JSON409      *Error
 	JSON500      *Error
 	JSON502      *Error
@@ -6052,6 +6117,7 @@ func (r DeleteProcessInstanceVariableResponse) ContentType() string {
 type TestStartPprofServerResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 }
 
@@ -6082,6 +6148,7 @@ func (r TestStartPprofServerResponse) ContentType() string {
 type TestStopPprofServerResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON405      *MethodNotAllowed
 	JSON500      *Error
 }
 
@@ -6540,6 +6607,27 @@ func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionRespons
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6586,6 +6674,13 @@ func ParseGetDecisionInstancesResponse(rsp *http.Response) (*GetDecisionInstance
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -6634,6 +6729,13 @@ func ParseGetDecisionInstanceResponse(rsp *http.Response) (*GetDecisionInstanceR
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6680,6 +6782,13 @@ func ParseGetDmnResourceDefinitionsResponse(rsp *http.Response) (*GetDmnResource
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -6739,6 +6848,27 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6793,6 +6923,13 @@ func ParseGetDmnResourceDefinitionResponse(rsp *http.Response) (*GetDmnResourceD
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6839,6 +6976,13 @@ func ParseResolveIncidentResponse(rsp *http.Response) (*ResolveIncidentResponse,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -6887,6 +7031,13 @@ func ParseGetJobsResponse(rsp *http.Response) (*GetJobsResponse, error) {
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6933,6 +7084,13 @@ func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -6981,6 +7139,27 @@ func ParseAssignJobResponse(rsp *http.Response) (*AssignJobResponse, error) {
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7027,6 +7206,27 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7075,6 +7275,27 @@ func ParseFailJobResponse(rsp *http.Response) (*FailJobResponse, error) {
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7121,6 +7342,27 @@ func ParsePublishMessageResponse(rsp *http.Response) (*PublishMessageResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7179,6 +7421,27 @@ func ParseModifyProcessInstanceResponse(rsp *http.Response) (*ModifyProcessInsta
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7233,6 +7496,27 @@ func ParseStartProcessInstanceOnElementsResponse(rsp *http.Response) (*StartProc
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7279,6 +7563,13 @@ func ParseGetProcessDefinitionsResponse(rsp *http.Response) (*GetProcessDefiniti
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7331,6 +7622,27 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7377,6 +7689,13 @@ func ParseGetProcessDefinitionStatisticsResponse(rsp *http.Response) (*GetProces
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7432,6 +7751,13 @@ func ParseGetProcessDefinitionResponse(rsp *http.Response) (*GetProcessDefinitio
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7479,6 +7805,13 @@ func ParseGetProcessDefinitionElementStatisticsResponse(rsp *http.Response) (*Ge
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7525,6 +7858,13 @@ func ParseGetProcessInstancesResponse(rsp *http.Response) (*GetProcessInstancesR
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7580,6 +7920,27 @@ func ParseCreateProcessInstanceResponse(rsp *http.Response) (*CreateProcessInsta
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7627,6 +7988,13 @@ func ParseGetProcessInstanceResponse(rsp *http.Response) (*GetProcessInstanceRes
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7673,6 +8041,13 @@ func ParseCancelProcessInstanceResponse(rsp *http.Response) (*CancelProcessInsta
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
@@ -7728,6 +8103,13 @@ func ParseGetChildProcessInstancesResponse(rsp *http.Response) (*GetChildProcess
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7774,6 +8156,13 @@ func ParseGetProcessInstanceErrorSubscriptionsResponse(rsp *http.Response) (*Get
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7822,6 +8211,13 @@ func ParseGetProcessInstanceMessageSubscriptionsResponse(rsp *http.Response) (*G
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7868,6 +8264,13 @@ func ParseGetProcessInstanceTimerSubscriptionsResponse(rsp *http.Response) (*Get
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -7916,6 +8319,13 @@ func ParseGetHistoryResponse(rsp *http.Response) (*GetHistoryResponse, error) {
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7963,6 +8373,13 @@ func ParseGetIncidentsResponse(rsp *http.Response) (*GetIncidentsResponse, error
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8009,6 +8426,13 @@ func ParseGetProcessInstanceJobsResponse(rsp *http.Response) (*GetProcessInstanc
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -8064,6 +8488,13 @@ func ParseGetProcessInstanceElementStatisticsResponse(rsp *http.Response) (*GetP
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8111,12 +8542,33 @@ func ParseUpdateProcessInstanceVariablesResponse(rsp *http.Response) (*UpdatePro
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -8165,6 +8617,13 @@ func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProc
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8205,6 +8664,13 @@ func ParseTestStartPprofServerResponse(rsp *http.Response) (*TestStartPprofServe
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8231,6 +8697,13 @@ func ParseTestStopPprofServerResponse(rsp *http.Response) (*TestStopPprofServerR
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

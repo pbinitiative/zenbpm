@@ -387,31 +387,31 @@ func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partit
 // startPartitionEngine runs the database schema migrations and starts the BPMN
 // engine for the partition. The partition must not be reported as INITIALIZED
 // (and the node must not report readiness) until this completes successfully.
-func (c *Controller) startPartitionEngine(ctx context.Context, partitionId uint32, partitionNode *partition.ZenPartitionNode) error {
+func (c *Controller) startPartitionEngine(ctx context.Context, partitionID uint32, partitionNode *partition.ZenPartitionNode) error {
 	engine, err := c.createEngine(ctx, partitionNode.DB, partitionNode.FeelRuntime, partitionNode.JsRuntime)
 	if err != nil {
-		return fmt.Errorf("failed to create engine for partition %d: %w", partitionId, err)
+		return fmt.Errorf("failed to create engine for partition %d: %w", partitionID, err)
 	}
 	if err := engine.Start(ctx); err != nil {
 		engine.Stop()
-		return fmt.Errorf("failed to start engine for partition %d: %w", partitionId, err)
+		return fmt.Errorf("failed to start engine for partition %d: %w", partitionID, err)
 	}
 	partitionNode.Engine = engine
-	c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionId))
+	c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionID))
 	return nil
 }
 
 // scheduleInitializingRetry re-runs the partition initializing handler after a
 // delay so a failed engine initialization (e.g. failed schema migrations) is
 // retried instead of leaving the partition stuck in INITIALIZING forever.
-func (c *Controller) scheduleInitializingRetry(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+func (c *Controller) scheduleInitializingRetry(ctx context.Context, partitionID uint32, leaderClient zenproto.ZenServiceClient) {
 	c.scheduleRetry(ctx, "partition-initializing-retry", c.partitionsMu.Lock, c.partitionsMu.Unlock, func() {
-		c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
+		c.handlePartitionStateInitializing(ctx, partitionID, leaderClient)
 	})
 }
 
-func partitionLeaderInitialized(clusterState state.Cluster, partitionId uint32) bool {
-	partitionState, ok := clusterState.Partitions[partitionId]
+func partitionLeaderInitialized(clusterState state.Cluster, partitionID uint32) bool {
+	partitionState, ok := clusterState.Partitions[partitionID]
 	if !ok || partitionState.LeaderId == "" {
 		return false
 	}
@@ -419,7 +419,7 @@ func partitionLeaderInitialized(clusterState state.Cluster, partitionId uint32) 
 	if err != nil {
 		return false
 	}
-	leaderPartition, ok := leader.Partitions[partitionId]
+	leaderPartition, ok := leader.Partitions[partitionID]
 	return ok && leaderPartition.State == state.NodePartitionStateInitialized
 }
 

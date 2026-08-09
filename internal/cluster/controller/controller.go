@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -47,7 +47,10 @@ type Controller struct {
 	shutdownCh              chan struct{}
 	shutdownOnce            sync.Once
 	backgroundWg            sync.WaitGroup
+	retryDelay              time.Duration
 }
+
+const defaultRetryDelay = 5 * time.Second
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 	c := Controller{
@@ -58,6 +61,7 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
 		shutdownCh:              make(chan struct{}),
+		retryDelay:              defaultRetryDelay,
 	}
 	return &c, nil
 }
@@ -215,9 +219,9 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 			c.partitionsMu.Unlock()
 		case state.NodePartitionStateInitializing:
 			// we are currently in the process of joining partition group
-			c.partitionsMu.RLock()
+			c.partitionsMu.Lock()
 			c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
-			c.partitionsMu.RUnlock()
+			c.partitionsMu.Unlock()
 		case state.NodePartitionStateInitialized:
 			// we are successfully joined in partition group
 			c.partitionsMu.Lock()
@@ -312,30 +316,7 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	if !ok {
 		// TODO: add timestamps or something into the state so that this is not necessary
 		// if we dont receive another state change in time rerun the joining procedure
-		c.backgroundWg.Add(1)
-		safego.Go("partition-join-retry", c.logger, func() {
-			defer c.backgroundWg.Done()
-
-			retryTimer := time.NewTimer(5 * time.Second)
-			defer retryTimer.Stop()
-			select {
-			case <-retryTimer.C:
-			case <-ctx.Done():
-				return
-			case <-c.shutdownCh:
-				return
-			}
-
-			// Keep the same lock order as ClusterStateChangeNotification and
-			// Stop. If shutdown has already begun, do not start a new partition.
-			c.clusterChangesMu.RLock()
-			defer c.clusterChangesMu.RUnlock()
-			if !c.handleClusterChanges {
-				return
-			}
-
-			c.partitionsMu.Lock()
-			defer c.partitionsMu.Unlock()
+		c.scheduleRetry(ctx, "partition-join-retry", c.partitionsMu.Lock, c.partitionsMu.Unlock, func() {
 			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
 		})
 
@@ -352,28 +333,28 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 		return
 	}
 
-	if partitionNode.FeelRuntime == nil && partitionNode.IsLeader(ctx) {
+	isLeader := partitionNode.IsLeader(ctx)
+	if partitionNode.FeelRuntime == nil && isLeader {
 		partitionNode.FeelRuntime = feel.NewFeelinRuntime(c.Config.Script.Feel.MaxVmPoolSize, c.Config.Script.Feel.MinVmPoolSize)
 
 	}
 
-	if partitionNode.JsRuntime == nil && partitionNode.IsLeader(ctx) {
+	if partitionNode.JsRuntime == nil && isLeader {
 		partitionNode.JsRuntime = js.NewJsRuntime(c.Config.Script.Js.MaxVmPoolSize, c.Config.Script.Js.MinVmPoolSize)
 	}
 
-	if partitionNode.Engine == nil && partitionNode.IsLeader(ctx) {
-		engine, err := c.createEngine(ctx, c.partitions[partitionId].DB, partitionNode.FeelRuntime, partitionNode.JsRuntime)
-		if err != nil {
-			c.logger.Error(fmt.Sprintf("failed to create engine for partition %d", partitionId), "err", err.Error())
-			// TODO: do something when this fails
+	if isLeader && partitionNode.Engine == nil {
+		if err := c.startPartitionEngine(ctx, partitionId, partitionNode); err != nil {
+			c.logger.Error(fmt.Sprintf("Failed to initialize engine for partition %d, keeping partition in state %s", partitionId, state.NodePartitionStateInitializing), "err", err)
+			c.scheduleInitializingRetry(ctx, partitionId, leaderClient)
+			return
 		}
-		partitionNode.Engine = engine
-		err = partitionNode.Engine.Start(ctx)
-		if err != nil {
-			c.logger.Error(fmt.Sprintf("failed to start engine for partition %d", partitionId), "err", err.Error())
-			// TODO: do something when this fails
-		}
-		c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionId))
+	}
+	if !isLeader && !partitionLeaderInitialized(c.store.ClusterState(), partitionId) {
+		// A follower can serve and proxy requests only after the partition leader
+		// has initialized the shared schema and started its engine. The leader's
+		// state transition will trigger another cluster-state notification.
+		return
 	}
 	partitionChangeCmd := &proto.Command_NodePartitionChange{
 		NodePartitionChange: &proto.NodePartitionChange{
@@ -403,6 +384,81 @@ func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partit
 	}
 }
 
+// startPartitionEngine runs the database schema migrations and starts the BPMN
+// engine for the partition. The partition must not be reported as INITIALIZED
+// (and the node must not report readiness) until this completes successfully.
+func (c *Controller) startPartitionEngine(ctx context.Context, partitionId uint32, partitionNode *partition.ZenPartitionNode) error {
+	engine, err := c.createEngine(ctx, partitionNode.DB, partitionNode.FeelRuntime, partitionNode.JsRuntime)
+	if err != nil {
+		return fmt.Errorf("failed to create engine for partition %d: %w", partitionId, err)
+	}
+	if err := engine.Start(ctx); err != nil {
+		engine.Stop()
+		return fmt.Errorf("failed to start engine for partition %d: %w", partitionId, err)
+	}
+	partitionNode.Engine = engine
+	c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionId))
+	return nil
+}
+
+// scheduleInitializingRetry re-runs the partition initializing handler after a
+// delay so a failed engine initialization (e.g. failed schema migrations) is
+// retried instead of leaving the partition stuck in INITIALIZING forever.
+func (c *Controller) scheduleInitializingRetry(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+	c.scheduleRetry(ctx, "partition-initializing-retry", c.partitionsMu.Lock, c.partitionsMu.Unlock, func() {
+		c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
+	})
+}
+
+func partitionLeaderInitialized(clusterState state.Cluster, partitionId uint32) bool {
+	partitionState, ok := clusterState.Partitions[partitionId]
+	if !ok || partitionState.LeaderId == "" {
+		return false
+	}
+	leader, err := clusterState.GetNode(partitionState.LeaderId)
+	if err != nil {
+		return false
+	}
+	leaderPartition, ok := leader.Partitions[partitionId]
+	return ok && leaderPartition.State == state.NodePartitionStateInitialized
+}
+
+// scheduleRetry runs action in a background goroutine after a fixed delay,
+// bailing out early if ctx is cancelled or the controller is shutting down.
+// Once the delay elapses it re-checks handleClusterChanges (under the same
+// lock order used by ClusterStateChangeNotification and Stop) so a retry
+// never starts after shutdown has begun, then acquires the partitions lock
+// (via the provided lock/unlock pair, allowing callers to choose a read or
+// write lock) before invoking action.
+func (c *Controller) scheduleRetry(ctx context.Context, name string, lockPartitions func(), unlockPartitions func(), action func()) {
+	c.backgroundWg.Add(1)
+	safego.Go(name, c.logger, func() {
+		defer c.backgroundWg.Done()
+
+		retryTimer := time.NewTimer(c.retryDelay)
+		defer retryTimer.Stop()
+		select {
+		case <-retryTimer.C:
+		case <-ctx.Done():
+			return
+		case <-c.shutdownCh:
+			return
+		}
+
+		// Keep the same lock order as ClusterStateChangeNotification and
+		// Stop. If shutdown has already begun, do not start a new retry.
+		c.clusterChangesMu.RLock()
+		defer c.clusterChangesMu.RUnlock()
+		if !c.handleClusterChanges {
+			return
+		}
+
+		lockPartitions()
+		defer unlockPartitions()
+		action()
+	})
+}
+
 func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRuntime script.FeelRuntime, jsRuntime script.JsRuntime) (*bpmn.Engine, error) {
 	err := db.RunMigrations(ctx)
 	if err != nil {
@@ -425,7 +481,7 @@ func definitionSubscriptionPartition(clusterState state.Cluster, processId strin
 	for partitionId := range clusterState.Partitions {
 		partitionIds = append(partitionIds, partitionId)
 	}
-	sort.Slice(partitionIds, func(i, j int) bool { return partitionIds[i] < partitionIds[j] })
+	slices.Sort(partitionIds)
 	if len(partitionIds) == 0 {
 		return 0
 	}

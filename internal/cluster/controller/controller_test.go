@@ -3,6 +3,10 @@ package controller
 import (
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/rqlite/rqlite/v10/tcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,36 +111,63 @@ func TestControllerStopCancelsPendingPartitionJoinRetry(t *testing.T) {
 	assert.Less(t, time.Since(startedAt), time.Second)
 }
 
-func TestControllerCanStartNewPartitions(t *testing.T) {
-	mux, ln, err := network.NewNodeMux("")
-	assert.NoError(t, err)
-	go func() {
-		err = mux.Serve()
-		assert.NoError(t, err)
-	}()
-
-	addr := ln.Addr().String()
-	_, port, err := net.SplitHostPort(addr)
-	assert.NoError(t, err)
-
-	tStore := &ControllerTestStore{
-		id:   "test-node-1",
-		addr: fmt.Sprintf("127.0.0.1:%s", port),
-		clusterState: state.Cluster{
-			Config: state.ClusterConfig{
-				DesiredPartitions: 1,
-			},
-			Partitions: map[uint32]state.Partition{},
-			Nodes:      map[string]state.Node{},
+func TestPartitionLeaderInitialized(t *testing.T) {
+	tests := []struct {
+		name         string
+		clusterState state.Cluster
+		initialized  bool
+	}{
+		{
+			name:         "partition is missing",
+			clusterState: state.Cluster{},
 		},
-		leader: true,
+		{
+			name: "leader is missing",
+			clusterState: state.Cluster{
+				Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "leader"}},
+			},
+		},
+		{
+			name: "leader partition is initializing",
+			clusterState: state.Cluster{
+				Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "leader"}},
+				Nodes: map[string]state.Node{
+					"leader": {
+						Id: "leader",
+						Partitions: map[uint32]state.NodePartition{
+							1: {Id: 1, State: state.NodePartitionStateInitializing, Role: state.RoleLeader},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "leader partition is initialized",
+			clusterState: state.Cluster{
+				Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "leader"}},
+				Nodes: map[string]state.Node{
+					"leader": {
+						Id: "leader",
+						Partitions: map[uint32]state.NodePartition{
+							1: {Id: 1, State: state.NodePartitionStateInitialized, Role: state.RoleLeader},
+						},
+					},
+				},
+			},
+			initialized: true,
+		},
 	}
-	srvLn := network.NewZenBpmClusterListener(mux)
-	srv := server.New(srvLn, tStore, nil, nil)
-	err = srv.Open()
-	assert.NoError(t, err)
 
-	clientMgr := client.NewClientManager(tStore)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.initialized, partitionLeaderInitialized(tt.clusterState, 1))
+		})
+	}
+}
+
+func TestControllerCanStartNewPartitions(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+
 	controller, err := NewController(mux, config.Cluster{
 		NodeId: tStore.id,
 		Addr:   tStore.addr,
@@ -153,17 +185,19 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 
 	err = controller.Start(tStore, clientMgr)
 	assert.NoError(t, err)
-	defer controller.Stop()
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
 
 	// add node to the cluster state
-	tStore.clusterState.Nodes[tStore.id] = state.Node{
+	tStore.setNode(state.Node{
 		Id:         tStore.id,
 		Addr:       tStore.addr,
 		Suffrage:   raft.Voter,
 		State:      state.NodeStateStarted,
 		Role:       state.RoleLeader,
 		Partitions: map[uint32]state.NodePartition{},
-	}
+	})
 
 	controller.ClusterStateChangeNotification(t.Context())
 	// verify that controller updated state so that new partition needs to be created by a node
@@ -181,7 +215,7 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 	}, 100*time.Millisecond, 5*time.Second, "Failed to verify that partition was started. State was: %s", controller.store.ClusterState().Nodes[tStore.id].Partitions[1].State)
 
 	// update desired partition count
-	tStore.clusterState.Config.DesiredPartitions = 2
+	tStore.setDesiredPartitions(2)
 
 	controller.ClusterStateChangeNotification(t.Context())
 	// verify that new partition was created
@@ -193,6 +227,59 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Second, "Failed to verify that second partition was started. State was: %s", controller.store.ClusterState().Nodes[tStore.id].Partitions[2].State)
+}
+
+func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+
+	migrationDir := writeBrokenMigrationFixture(t)
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft: config.ClusterRaft{
+			Dir:                    t.TempDir(),
+			JoinAttempts:           2,
+			JoinInterval:           100 * time.Millisecond,
+			JoinAddresses:          []string{tStore.addr},
+			BootstrapExpect:        1,
+			BootstrapExpectTimeout: 1 * time.Second,
+		},
+		Persistence: config.Persistence{
+			Migration: config.Migration{Dir: migrationDir},
+		},
+	})
+	require.NoError(t, err)
+	controller.retryDelay = 25 * time.Millisecond
+
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
+
+	tStore.setNode(state.Node{
+		Id:         tStore.id,
+		Addr:       tStore.addr,
+		Suffrage:   raft.Voter,
+		State:      state.NodeStateStarted,
+		Role:       state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{},
+	})
+
+	controller.ClusterStateChangeNotification(t.Context())
+
+	s := controller.store.ClusterState()
+	require.Equal(t, state.NodePartitionStateInitializing, s.Nodes[tStore.id].Partitions[1].State)
+	assert.Never(t, func() bool {
+		s := controller.store.ClusterState()
+		return s.Nodes[tStore.id].Partitions[1].State == state.NodePartitionStateInitialized
+	}, 100*time.Millisecond, 10*time.Millisecond, "partition must not be reported as initialized when schema migrations fail")
+
+	repairBrokenMigrationFixture(t, migrationDir)
+	require.Eventually(t, func() bool {
+		s := controller.store.ClusterState()
+		return s.Nodes[tStore.id].Partitions[1].State == state.NodePartitionStateInitialized
+	}, 5*time.Second, 20*time.Millisecond, "partition was not initialized after repairing the migration")
 }
 
 type countingControllerTestStore struct {
@@ -210,6 +297,7 @@ func (c *countingControllerTestStore) IsLeader() bool {
 }
 
 type ControllerTestStore struct {
+	mu           sync.RWMutex
 	id           string
 	addr         string
 	clusterState state.Cluster
@@ -223,7 +311,9 @@ func (c *ControllerTestStore) Addr() string {
 
 // ClusterState implements ControlledStore.
 func (c *ControllerTestStore) ClusterState() state.Cluster {
-	return c.clusterState
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return *c.clusterState.DeepCopy()
 }
 
 // ID implements ControlledStore.
@@ -272,14 +362,45 @@ func (c *ControllerTestStore) Notify(nr *zenproto.NotifyRequest) error {
 
 // WriteNodeChange implements server.StoreService.
 func (c *ControllerTestStore) WriteNodeChange(change *proto.NodeChange) error {
-	c.clusterState = store.FsmApplyNodeChange(c, change)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	tStore := controllerTestFsmStore{clusterState: *c.clusterState.DeepCopy(), leaderID: c.id}
+	c.clusterState = store.FsmApplyNodeChange(tStore, change)
 	return nil
 }
 
 // WritePartitionChange implements ControlledStore.
 func (c *ControllerTestStore) WritePartitionChange(change *proto.NodePartitionChange) error {
-	c.clusterState = store.FsmApplyPartitionChange(c, change)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	tStore := controllerTestFsmStore{clusterState: *c.clusterState.DeepCopy(), leaderID: c.id}
+	c.clusterState = store.FsmApplyPartitionChange(tStore, change)
 	return nil
+}
+
+type controllerTestFsmStore struct {
+	clusterState state.Cluster
+	leaderID     string
+}
+
+func (s controllerTestFsmStore) ClusterState() state.Cluster {
+	return s.clusterState
+}
+
+func (s controllerTestFsmStore) LeaderID() (string, error) {
+	return s.leaderID, nil
+}
+
+func (c *ControllerTestStore) setNode(node state.Node) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clusterState.Nodes[node.Id] = node
+}
+
+func (c *ControllerTestStore) setDesiredPartitions(desired uint32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clusterState.Config.DesiredPartitions = desired
 }
 
 func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout time.Duration, msgAndArgs ...any) {
@@ -303,4 +424,67 @@ func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout ti
 			}
 		}
 	}
+}
+
+// setupControllerTestCluster starts a node mux and a ControllerTestStore
+// backed test server, returning the store and a client manager wired to it.
+func setupControllerTestCluster(t *testing.T) (*ControllerTestStore, *client.ClientManager, *tcp.Mux) {
+	t.Helper()
+	mux, ln, err := network.NewNodeMux("")
+	require.NoError(t, err)
+	go func() {
+		err := mux.Serve()
+		assert.NoError(t, err)
+	}()
+
+	addr := ln.Addr().String()
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+
+	tStore := &ControllerTestStore{
+		id:   "test-node-1",
+		addr: fmt.Sprintf("127.0.0.1:%s", port),
+		clusterState: state.Cluster{
+			Config: state.ClusterConfig{
+				DesiredPartitions: 1,
+			},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
+		},
+		leader: true,
+	}
+	srvLn := network.NewZenBpmClusterListener(mux)
+	srv := server.New(srvLn, tStore, nil, nil)
+	require.NoError(t, srv.Open())
+
+	clientMgr := client.NewClientManager(tStore)
+	return tStore, clientMgr, mux
+}
+
+// writeBrokenMigrationFixture copies the production migrations and appends a
+// broken final migration, so that RunMigrations fails after creating the full
+// schema needed by Engine.Start.
+func writeBrokenMigrationFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	_, currentFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	sourceDir := filepath.Join(filepath.Dir(currentFile), "..", "..", "sql", "migrations")
+	entries, err := os.ReadDir(sourceDir)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(sourceDir, entry.Name()))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, entry.Name()), content, 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("THIS IS NOT VALID SQL;"), 0o600))
+	return dir
+}
+
+func repairBrokenMigrationFixture(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("SELECT 1;"), 0o600))
 }

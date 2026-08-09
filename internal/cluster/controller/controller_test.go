@@ -430,10 +430,6 @@ func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout ti
 // backed test server, returning the store and a client manager wired to it.
 func setupControllerTestCluster(t *testing.T) (*ControllerTestStore, *client.ClientManager, *tcp.Mux) {
 	t.Helper()
-	// network.NewNodeMux already starts serving the mux in a background
-	// goroutine. Controller.Stop does not own this listener, so make sure
-	// it's closed once the test finishes to avoid leaking the listener and
-	// its serving goroutine.
 	mux, ln, err := network.NewNodeMux("")
 	require.NoError(t, err)
 	t.Cleanup(func() {

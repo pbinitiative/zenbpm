@@ -20,7 +20,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
-	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/safego"
@@ -48,11 +47,23 @@ type Controller struct {
 	shutdownOnce            sync.Once
 	backgroundWg            sync.WaitGroup
 	retryDelay              time.Duration
+	partitionOps            sync.Map
+	retryMu                 sync.Mutex
+	retryScheduled          map[uint32]bool
+	retryAttempts           map[uint32]uint
+	initializationFailures  map[uint32]uint
+	lifecycleCtx            context.Context
+	lifecycleCancel         context.CancelFunc
 }
 
-const defaultRetryDelay = 5 * time.Second
+const (
+	defaultRetryDelay         = 5 * time.Second
+	maxRetryDelay             = 15 * time.Minute
+	maxInitializationAttempts = 8
+)
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 	c := Controller{
 		Config:                  conf,
 		mux:                     mux,
@@ -62,6 +73,11 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		clusterStateChangeHooks: []func(context.Context){},
 		shutdownCh:              make(chan struct{}),
 		retryDelay:              defaultRetryDelay,
+		retryScheduled:          make(map[uint32]bool),
+		retryAttempts:           make(map[uint32]uint),
+		initializationFailures:  make(map[uint32]uint),
+		lifecycleCtx:            lifecycleCtx,
+		lifecycleCancel:         lifecycleCancel,
 	}
 	return &c, nil
 }
@@ -94,7 +110,7 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 	c.handleClusterChanges = true
 	c.clusterChangesMu.Unlock()
 	// TODO: start engines for assigned partitions
-	c.ClusterStateChangeNotification(context.Background())
+	c.ClusterStateChangeNotification(c.lifecycleCtx)
 	return nil
 }
 
@@ -203,40 +219,26 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
 		return
 	}
-	leaderClient, err := c.client.ClusterLeader()
-	if err != nil {
-		c.logger.Error("Failed to get cluster leader client.")
-		return
-	}
 	for partitionId, partition := range currentNode.Partitions {
+		partitionOp := c.partitionOperationMutex(partitionId)
+		partitionOp.Lock()
 		c.logger.Debug(fmt.Sprintf("Handling partition %d state %s", partitionId, partition.State))
 		switch partition.State {
 		case state.NodePartitionStateError:
+			c.handlePartitionStateError(partitionId)
 		case state.NodePartitionStateJoining:
-			// this node needs to start the joining partition group logic
-			c.partitionsMu.Lock()
-			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
-			c.partitionsMu.Unlock()
+			c.handlePartitionStateJoining(ctx, partitionId)
 		case state.NodePartitionStateInitializing:
-			// we are currently in the process of joining partition group
-			c.partitionsMu.Lock()
-			c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
-			c.partitionsMu.Unlock()
+			c.handlePartitionStateInitializing(partitionId)
 		case state.NodePartitionStateInitialized:
-			// we are successfully joined in partition group
-			c.partitionsMu.Lock()
-			c.handlePartitionStateInitialized(ctx, partitionId, leaderClient)
-			c.partitionsMu.Unlock()
+			c.handlePartitionStateInitialized(ctx, partitionId)
 		case state.NodePartitionStateLeaving:
-			// we need to leave partition group
-			c.partitionsMu.Lock()
 			c.handlePartitionStateLeaving(ctx, partitionId)
-			c.partitionsMu.Unlock()
 		default:
 			c.logger.Error("encountered unexpected partition state, skipping partition",
 				"partitionId", partitionId, "state", partition.State)
-			continue
 		}
+		partitionOp.Unlock()
 	}
 	// TODO:
 	// regardless of the leader/follower status node needs to:
@@ -247,7 +249,7 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 	//  - check if it lost its leadership of any partition and needs to stop the engine (this should be preceded by previous error logs from the engine not being able to store changes)
 }
 
-func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionId uint32) {
 	if ctx.Err() != nil {
 		c.logger.Debug("Skipping handlePartitionStateJoining due to expired context")
 		return
@@ -256,7 +258,9 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if node, err := c.store.ClusterState().GetNode(c.store.ID()); err == nil {
 		if partition, ok := node.Partitions[partitionId]; ok {
 			// if we dont have running partition node we need to initialize it again
+			c.partitionsMu.RLock()
 			_, runningOk := c.partitions[partitionId]
+			c.partitionsMu.RUnlock()
 			if runningOk && (partition.State == state.NodePartitionStateInitializing ||
 				partition.State == state.NodePartitionStateInitialized) {
 				return
@@ -264,26 +268,17 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 		}
 	}
 	// change the state
-	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err := leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
-		Request: &proto.Command_NodePartitionChange{
-			NodePartitionChange: &proto.NodePartitionChange{
-				NodeId:      new(c.store.ID()),
-				PartitionId: new(partitionId),
-				State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING.Enum(),
-				Role:        c.store.Role().Enum(),
-			},
-		},
-	})
-	if err != nil {
+	if err := c.reportPartitionState(partitionId, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_UNKNOWN); err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionId, err))
+		c.schedulePartitionRetry(partitionId, "partition-initializing-state-retry")
+		return
 	}
 	partitionConf := c.persistenceConfig
+	rqLiteConf := *partitionConf.RqLite
+	partitionConf.RqLite = &rqLiteConf
 	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
 	partitionConf.RqLite.DataPath = filepath.Join(c.Config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
-	partitionNode, err := partition.StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, c.client, partitionId, partition.PartitionChangesCallbacks{
+	partitionNode, err := partition.StartZenPartitionNode(c.lifecycleCtx, c.mux, partitionConf, c.client, partitionId, partition.PartitionChangesCallbacks{
 		AddNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)
 		},
@@ -304,83 +299,136 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
+		c.schedulePartitionRetry(partitionId, "partition-join-retry")
 		return
 	}
+	c.partitionsMu.Lock()
 	c.partitions[partitionId] = partitionNode
+	c.partitionsMu.Unlock()
 
-	c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
+	c.handlePartitionStateInitializing(partitionId)
 }
 
-func (c *Controller) handlePartitionStateInitializing(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
-	partitionNode, ok := c.partitions[partitionId]
-	if !ok {
-		// TODO: add timestamps or something into the state so that this is not necessary
-		// if we dont receive another state change in time rerun the joining procedure
-		c.scheduleRetry(ctx, "partition-join-retry", c.partitionsMu.Lock, c.partitionsMu.Unlock, func() {
-			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
-		})
-
-		// partition might still be running joining operation
+func (c *Controller) handlePartitionStateInitializing(partitionId uint32) {
+	if c.lifecycleCtx.Err() != nil {
 		return
 	}
-	_, err := partitionNode.WaitForLeader(1 * time.Minute)
+	c.partitionsMu.RLock()
+	partitionNode, ok := c.partitions[partitionId]
+	c.partitionsMu.RUnlock()
+	if !ok {
+		c.schedulePartitionRetry(partitionId, "partition-join-retry")
+		return
+	}
+	_, err := c.waitForPartitionLeader(c.lifecycleCtx, partitionNode, time.Minute)
 	if errors.Is(err, rstore.ErrWaitForLeaderTimeout) {
 		c.logger.Info(fmt.Sprintf("Timeout waiting for leader of partition %d.", partitionId))
+		c.schedulePartitionRetry(partitionId, "partition-leader-retry")
 		return
 	}
-	if ctx.Err() != nil {
-		c.logger.Debug(fmt.Sprintf("Skipping handlePartitionStateInitializing due to expired context: %s", ctx.Err()))
+	if err != nil {
+		c.logger.Debug(fmt.Sprintf("Stopped waiting for leader of partition %d: %s", partitionId, err))
+		return
+	}
+	if c.lifecycleCtx.Err() != nil {
+		c.logger.Debug(fmt.Sprintf("Skipping handlePartitionStateInitializing due to expired context: %s", c.lifecycleCtx.Err()))
 		return
 	}
 
-	isLeader := partitionNode.IsLeader(ctx)
+	isLeader := partitionNode.IsLeader(c.lifecycleCtx)
 	if partitionNode.FeelRuntime == nil && isLeader {
+		c.partitionsMu.Lock()
 		partitionNode.FeelRuntime = feel.NewFeelinRuntime(c.Config.Script.Feel.MaxVmPoolSize, c.Config.Script.Feel.MinVmPoolSize)
-
+		c.partitionsMu.Unlock()
 	}
 
 	if partitionNode.JsRuntime == nil && isLeader {
+		c.partitionsMu.Lock()
 		partitionNode.JsRuntime = js.NewJsRuntime(c.Config.Script.Js.MaxVmPoolSize, c.Config.Script.Js.MinVmPoolSize)
+		c.partitionsMu.Unlock()
 	}
 
 	if isLeader && partitionNode.Engine == nil {
-		if err := c.startPartitionEngine(ctx, partitionId, partitionNode); err != nil {
+		if err := c.startPartitionEngine(c.lifecycleCtx, partitionId, partitionNode); err != nil {
 			c.logger.Error(fmt.Sprintf("Failed to initialize engine for partition %d, keeping partition in state %s", partitionId, state.NodePartitionStateInitializing), "err", err)
-			c.scheduleInitializingRetry(ctx, partitionId, leaderClient)
+			c.recordInitializationFailure(partitionId, proto.Role_ROLE_TYPE_LEADER)
 			return
 		}
 	}
+	if currentIsLeader := partitionNode.IsLeader(c.lifecycleCtx); currentIsLeader != isLeader {
+		if !currentIsLeader {
+			c.partitionsMu.Lock()
+			engine := partitionNode.Engine
+			partitionNode.Engine = nil
+			c.partitionsMu.Unlock()
+			if engine != nil {
+				engine.Stop()
+			}
+		}
+		c.schedulePartitionRetry(partitionId, "partition-role-change-retry")
+		return
+	}
 	if !isLeader && !partitionLeaderInitialized(c.store.ClusterState(), partitionId) {
-		// A follower can serve and proxy requests only after the partition leader
-		// has initialized the shared schema and started its engine. The leader's
-		// state transition will trigger another cluster-state notification.
+		c.schedulePartitionRetry(partitionId, "partition-leader-initialization-retry")
 		return
 	}
-	partitionChangeCmd := &proto.Command_NodePartitionChange{
-		NodePartitionChange: &proto.NodePartitionChange{
-			NodeId:      new(c.store.ID()),
-			PartitionId: new(partitionId),
-			State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
-			Role:        partitionNode.Role().Enum(),
-		},
+	if !isLeader {
+		ready, schemaErr := partitionNode.DB.SchemaReady(c.lifecycleCtx)
+		if schemaErr != nil || !ready {
+			c.logger.Debug("Follower schema is not ready", "partitionId", partitionId, "err", schemaErr)
+			c.schedulePartitionRetry(partitionId, "partition-follower-schema-retry")
+			return
+		}
 	}
-	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type:    proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
-		Request: partitionChangeCmd,
-	})
-	if err != nil {
+	role := proto.Role_ROLE_TYPE_FOLLOWER
+	if isLeader {
+		role = proto.Role_ROLE_TYPE_LEADER
+	}
+	if err := c.reportPartitionState(partitionId, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED, role); err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to update state of the partition to INITIALIZED %d: %s", partitionId, err))
+		c.schedulePartitionRetry(partitionId, "partition-initialized-state-retry")
 		return
+	}
+	c.resetPartitionRetry(partitionId)
+}
+
+func (c *Controller) handlePartitionStateError(partitionID uint32) {
+	c.retryMu.Lock()
+	failedInThisProcess := c.initializationFailures[partitionID] > 0
+	c.retryMu.Unlock()
+	if failedInThisProcess {
+		return
+	}
+	if err := c.reportPartitionState(partitionID, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_UNKNOWN); err != nil {
+		c.logger.Warn("Failed to retry errored partition after restart", "partitionId", partitionID, "err", err)
+		c.schedulePartitionRetry(partitionID, "partition-error-recovery-retry")
 	}
 }
 
-func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
-	if _, ok := c.partitions[partitionId]; !ok {
+func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partitionId uint32) {
+	c.partitionsMu.RLock()
+	partitionNode, ok := c.partitions[partitionId]
+	c.partitionsMu.RUnlock()
+	if !ok {
 		// we restarted the node and it needs to re-initialize its partition state
-		c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
+		c.handlePartitionStateJoining(ctx, partitionId)
 		return
+	}
+	isLeader := partitionNode.IsLeader(ctx)
+	if !isLeader && partitionNode.Engine != nil {
+		c.partitionsMu.Lock()
+		engine := partitionNode.Engine
+		partitionNode.Engine = nil
+		c.partitionsMu.Unlock()
+		engine.Stop()
+		c.logger.Info("Stopped engine after partition leadership loss", "partitionId", partitionId)
+		return
+	}
+	if isLeader && partitionNode.Engine == nil {
+		if err := c.reportPartitionState(partitionId, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_LEADER); err != nil {
+			c.logger.Warn("Failed to reinitialize newly elected partition leader", "partitionId", partitionId, "err", err)
+			c.schedulePartitionRetry(partitionId, "partition-leader-engine-retry")
+		}
 	}
 }
 
@@ -396,67 +444,121 @@ func (c *Controller) startPartitionEngine(ctx context.Context, partitionID uint3
 		engine.Stop()
 		return fmt.Errorf("failed to start engine for partition %d: %w", partitionID, err)
 	}
+	c.partitionsMu.Lock()
 	partitionNode.Engine = engine
+	c.partitionsMu.Unlock()
 	c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionID))
 	return nil
 }
 
-// scheduleInitializingRetry re-runs the partition initializing handler after a
-// delay so a failed engine initialization (e.g. failed schema migrations) is
-// retried instead of leaving the partition stuck in INITIALIZING forever.
-func (c *Controller) scheduleInitializingRetry(ctx context.Context, partitionID uint32, leaderClient zenproto.ZenServiceClient) {
-	c.scheduleRetry(ctx, "partition-initializing-retry", c.partitionsMu.Lock, c.partitionsMu.Unlock, func() {
-		c.handlePartitionStateInitializing(ctx, partitionID, leaderClient)
-	})
-}
-
 func partitionLeaderInitialized(clusterState state.Cluster, partitionID uint32) bool {
-	partitionState, ok := clusterState.Partitions[partitionID]
-	if !ok || partitionState.LeaderId == "" {
-		return false
-	}
-	leader, err := clusterState.GetNode(partitionState.LeaderId)
-	if err != nil {
-		return false
-	}
-	leaderPartition, ok := leader.Partitions[partitionID]
-	return ok && leaderPartition.State == state.NodePartitionStateInitialized
+	return clusterState.PartitionLeaderInitialized(partitionID)
 }
 
-// scheduleRetry runs action in a background goroutine after a fixed delay,
-// bailing out early if ctx is cancelled or the controller is shutting down.
-// Once the delay elapses it re-checks handleClusterChanges (under the same
-// lock order used by ClusterStateChangeNotification and Stop) so a retry
-// never starts after shutdown has begun, then acquires the partitions lock
-// (via the provided lock/unlock pair, allowing callers to choose a read or
-// write lock) before invoking action.
-func (c *Controller) scheduleRetry(ctx context.Context, name string, lockPartitions func(), unlockPartitions func(), action func()) {
+func (c *Controller) schedulePartitionRetry(partitionID uint32, name string) {
+	c.retryMu.Lock()
+	if c.lifecycleCtx.Err() != nil || c.retryScheduled[partitionID] {
+		c.retryMu.Unlock()
+		return
+	}
+	c.retryScheduled[partitionID] = true
+	c.retryAttempts[partitionID]++
+	attempt := c.retryAttempts[partitionID]
+	delay := c.retryDelay
+	for i := uint(1); i < attempt && delay < maxRetryDelay; i++ {
+		delay *= 2
+		if delay > maxRetryDelay {
+			delay = maxRetryDelay
+		}
+	}
 	c.backgroundWg.Add(1)
+	c.retryMu.Unlock()
+
 	safego.Go(name, c.logger, func() {
 		defer c.backgroundWg.Done()
-
-		retryTimer := time.NewTimer(c.retryDelay)
+		retryTimer := time.NewTimer(delay)
 		defer retryTimer.Stop()
 		select {
 		case <-retryTimer.C:
-		case <-ctx.Done():
-			return
 		case <-c.shutdownCh:
 			return
 		}
-
-		// Keep the same lock order as ClusterStateChangeNotification and
-		// Stop. If shutdown has already begun, do not start a new retry.
-		c.clusterChangesMu.RLock()
-		defer c.clusterChangesMu.RUnlock()
-		if !c.handleClusterChanges {
-			return
-		}
-
-		lockPartitions()
-		defer unlockPartitions()
-		action()
+		c.retryMu.Lock()
+		c.retryScheduled[partitionID] = false
+		c.retryMu.Unlock()
+		c.ClusterStateChangeNotification(c.lifecycleCtx)
 	})
+}
+
+func (c *Controller) resetPartitionRetry(partitionID uint32) {
+	c.retryMu.Lock()
+	delete(c.retryAttempts, partitionID)
+	delete(c.initializationFailures, partitionID)
+	c.retryMu.Unlock()
+}
+
+func (c *Controller) recordInitializationFailure(partitionID uint32, role proto.Role) {
+	c.retryMu.Lock()
+	c.initializationFailures[partitionID]++
+	failures := c.initializationFailures[partitionID]
+	c.retryMu.Unlock()
+	if failures < maxInitializationAttempts {
+		c.schedulePartitionRetry(partitionID, "partition-initializing-retry")
+		return
+	}
+	if err := c.reportPartitionState(partitionID, proto.NodePartitionState_NODE_PARTITION_STATE_ERROR, role); err != nil {
+		c.logger.Warn("Failed to mark persistently broken partition as ERROR", "partitionId", partitionID, "err", err)
+		c.schedulePartitionRetry(partitionID, "partition-error-state-retry")
+	}
+}
+
+func (c *Controller) partitionOperationMutex(partitionID uint32) *sync.Mutex {
+	mutex, _ := c.partitionOps.LoadOrStore(partitionID, &sync.Mutex{})
+	return mutex.(*sync.Mutex)
+}
+
+func (c *Controller) reportPartitionState(partitionID uint32, partitionState proto.NodePartitionState, role proto.Role) error {
+	leaderClient, err := c.client.ClusterLeader()
+	if err != nil {
+		return fmt.Errorf("failed to get cluster leader client: %w", err)
+	}
+	ctxClient, cancel := context.WithTimeout(c.lifecycleCtx, 5*time.Second)
+	defer cancel()
+	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
+		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+		Request: &proto.Command_NodePartitionChange{NodePartitionChange: &proto.NodePartitionChange{
+			NodeId: new(c.store.ID()), PartitionId: new(partitionID), State: partitionState.Enum(), Role: role.Enum(),
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to report partition state: %w", err)
+	}
+	return nil
+}
+
+func (c *Controller) waitForPartitionLeader(ctx context.Context, partitionNode *partition.ZenPartitionNode, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return "", rstore.ErrWaitForLeaderTimeout
+		}
+		wait := min(remaining, time.Second)
+		leaderID, err := partitionNode.WaitForLeader(wait)
+		if err == nil {
+			return leaderID, nil
+		}
+		if !errors.Is(err, rstore.ErrWaitForLeaderTimeout) {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-c.lifecycleCtx.Done():
+			return "", c.lifecycleCtx.Err()
+		default:
+		}
+	}
 }
 
 func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRuntime script.FeelRuntime, jsRuntime script.JsRuntime) (*bpmn.Engine, error) {
@@ -492,7 +594,12 @@ func definitionSubscriptionPartition(clusterState state.Cluster, processId strin
 }
 
 func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {
+	c.partitionsMu.Lock()
 	toLeave, ok := c.partitions[partitionId]
+	if ok {
+		delete(c.partitions, partitionId)
+	}
+	c.partitionsMu.Unlock()
 	if !ok {
 		c.logger.Warn(fmt.Sprintf("Failed to find partition to leave: %d", partitionId))
 		return
@@ -500,7 +607,6 @@ func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 	if err := toLeave.Stop(); err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to stop partition %d: %s", partitionId, err))
 	}
-	delete(c.partitions, partitionId)
 	// TODO: verify that partition leader removes the node from the state after it gets removed from the cluster
 }
 
@@ -513,7 +619,25 @@ func (c *Controller) partitionRemoveNode(id string, partitionId uint32) error {
 }
 
 func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
-	return fmt.Errorf("partitionLeaderChange is not implemented")
+	var nodeID string
+	for id := range c.store.ClusterState().Nodes {
+		if fmt.Sprintf("zen-%s-partition-%d", id, partitionId) == string(s) {
+			nodeID = id
+			break
+		}
+	}
+	if nodeID == "" {
+		return fmt.Errorf("failed to resolve partition node %q in cluster state", s)
+	}
+	if nodeID != c.store.ID() {
+		return nil
+	}
+	err := c.reportPartitionState(partitionId, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_LEADER)
+	if err != nil {
+		c.schedulePartitionRetry(partitionId, "partition-leader-change-retry")
+		return fmt.Errorf("failed to publish new leader of partition %d: %w", partitionId, err)
+	}
+	return nil
 }
 
 func (c *Controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
@@ -525,14 +649,15 @@ func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) erro
 }
 
 func (c *Controller) Stop() error {
+	c.lifecycleCancel()
+	c.shutdownOnce.Do(func() {
+		close(c.shutdownCh)
+	})
 	// The store keeps dispatching cluster state change notifications until it is
 	// closed. Wait for any in-flight notification and prevent subsequent ones
 	// from starting another partition after the map has been drained.
 	c.clusterChangesMu.Lock()
 	c.handleClusterChanges = false
-	c.shutdownOnce.Do(func() {
-		close(c.shutdownCh)
-	})
 
 	// Take the partitions out of the map under the lock and stop them outside of
 	// both controller locks. The handlers can no longer find them and partition
@@ -546,8 +671,11 @@ func (c *Controller) Stop() error {
 	c.partitionsMu.Unlock()
 	c.clusterChangesMu.Unlock()
 
-	// Retry goroutines are registered while holding clusterChangesMu for read,
-	// so no new Add can race with this Wait after the write lock above.
+	// Retry registration checks lifecycleCtx and increments the WaitGroup while
+	// holding retryMu. Crossing the mutex after cancellation ensures no Add can
+	// race with Wait, including retries requested by partition observers.
+	c.retryMu.Lock()
+	c.retryMu.Unlock()
 	c.backgroundWg.Wait()
 
 	var joinErr error
@@ -567,6 +695,8 @@ func (c *Controller) NotifyShutdown() error {
 }
 
 func (c *Controller) IsPartitionLeader(ctx context.Context, partition uint32) bool {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
 	p, ok := c.partitions[partition]
 	if !ok {
 		return false
@@ -575,8 +705,10 @@ func (c *Controller) IsPartitionLeader(ctx context.Context, partition uint32) bo
 }
 
 func (c *Controller) IsAnyPartitionLeader(ctx context.Context) bool {
-	for partitionId := range c.partitions {
-		if c.IsPartitionLeader(ctx, partitionId) {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	for _, partitionNode := range c.partitions {
+		if partitionNode.IsLeader(ctx) {
 			return true
 		}
 	}
@@ -584,17 +716,22 @@ func (c *Controller) IsAnyPartitionLeader(ctx context.Context) bool {
 }
 
 func (c *Controller) PartitionEngine(ctx context.Context, partition uint32) *bpmn.Engine {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
 	partitionNode, ok := c.partitions[partition]
-	if !ok {
+	if !ok || !partitionNode.IsLeader(ctx) || !localPartitionInitialized(c.store.ClusterState(), c.store.ID(), partition) {
 		return nil
 	}
 	return partitionNode.Engine
 }
 
 func (c *Controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
 	res := make(map[uint32]*bpmn.Engine, 0)
+	clusterState := c.store.ClusterState()
 	for partition, partitionNode := range c.partitions {
-		if partitionNode.Engine != nil {
+		if partitionNode.Engine != nil && partitionNode.IsLeader(ctx) && localPartitionInitialized(clusterState, c.store.ID(), partition) {
 			res[partition] = partitionNode.Engine
 		}
 	}
@@ -602,19 +739,24 @@ func (c *Controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
 }
 
 func (c *Controller) AllPartitionLeaderDBs(ctx context.Context) []*partition.DB {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	clusterState := c.store.ClusterState()
 	leaderQueries := make([]*partition.DB, 0)
-	for _, partition := range c.partitions {
-		if !partition.IsLeader(ctx) {
+	for partitionID, partitionNode := range c.partitions {
+		if !partitionNode.IsLeader(ctx) || !localPartitionInitialized(clusterState, c.store.ID(), partitionID) {
 			continue
 		}
-		leaderQueries = append(leaderQueries, partition.DB)
+		leaderQueries = append(leaderQueries, partitionNode.DB)
 	}
 	return leaderQueries
 }
 
 func (c *Controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
 	partitionNode, ok := c.partitions[partitionId]
-	if !ok {
+	if !ok || !localPartitionInitialized(c.store.ClusterState(), c.store.ID(), partitionId) {
 		return nil
 	}
 	return partitionNode.DB.Queries
@@ -632,13 +774,25 @@ func (c *Controller) GetPartition(ctx context.Context, partitionId uint32) *part
 func (c *Controller) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
 	c.partitionsMu.RLock()
 	defer c.partitionsMu.RUnlock()
-	for _, node := range c.partitions {
-		if !node.IsLeader(ctx) {
+	clusterState := c.store.ClusterState()
+	for partitionID, node := range c.partitions {
+		if localPartitionInitialized(clusterState, c.store.ID(), partitionID) && !node.IsLeader(ctx) {
 			return node.DB, nil
 		}
 	}
-	for _, node := range c.partitions {
-		return node.DB, nil
+	for partitionID, node := range c.partitions {
+		if localPartitionInitialized(clusterState, c.store.ID(), partitionID) {
+			return node.DB, nil
+		}
 	}
 	return nil, fmt.Errorf("no partition available to get read only database")
+}
+
+func localPartitionInitialized(clusterState state.Cluster, nodeID string, partitionID uint32) bool {
+	node, err := clusterState.GetNode(nodeID)
+	if err != nil {
+		return false
+	}
+	partitionState, ok := node.Partitions[partitionID]
+	return ok && partitionState.State == state.NodePartitionStateInitialized
 }

@@ -13,13 +13,15 @@ import (
 )
 
 func (db *DB) RunMigrations(ctx context.Context) error {
-	if err := ensureMigrationTable(ctx, db); err != nil {
-		return err
-	}
-
 	pendingMigrations, err := loadPendingMigrations(ctx, db)
 	if err != nil {
-		return err
+		if ensureErr := ensureMigrationTable(ctx, db); ensureErr != nil {
+			return ensureErr
+		}
+		pendingMigrations, err = loadPendingMigrations(ctx, db)
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, migration := range pendingMigrations {
@@ -29,6 +31,30 @@ func (db *DB) RunMigrations(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SchemaReady reports whether every configured migration is visible in this
+// node's local rqlite FSM. It performs only local reads, so followers can use it
+// as a catch-up barrier without forwarding writes to the partition leader.
+func (db *DB) SchemaReady(ctx context.Context) (bool, error) {
+	expected, err := sql.GetUpMigrations(db.migrationDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to read migrations: %w", err)
+	}
+	applied, err := db.Queries.GetMigrations(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to read local migration state: %w", err)
+	}
+	appliedNames := make(map[string]struct{}, len(applied))
+	for _, migration := range applied {
+		appliedNames[migration.Name] = struct{}{}
+	}
+	for _, migration := range expected {
+		if _, ok := appliedNames[migration.Filename]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func loadPendingMigrations(ctx context.Context, db *DB) (sql.Migrations, error) {

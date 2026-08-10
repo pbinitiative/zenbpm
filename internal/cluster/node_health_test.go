@@ -44,3 +44,11 @@ func TestNodeReadinessReportsUnregisteredNode(t *testing.T) {
 
 	assert.Equal(t, []string{"node is not registered in the cluster state"}, nodeReadinessReasons(cs, "node-1"))
 }
+
+func TestNodeReadinessReportsNoAssignedPartitions(t *testing.T) {
+	cs := state.Cluster{Nodes: map[string]state.Node{
+		"node-1": {Id: "node-1", Partitions: map[uint32]state.NodePartition{}},
+	}}
+
+	assert.Equal(t, []string{"node has no assigned partitions"}, nodeReadinessReasons(cs, "node-1"))
+}

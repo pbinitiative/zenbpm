@@ -558,7 +558,9 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 					if zpn.stateChangeCallbacks.LeaderChange == nil {
 						break
 					}
-					_ = zpn.stateChangeCallbacks.LeaderChange(signal.LeaderID)
+					if err := zpn.stateChangeCallbacks.LeaderChange(signal.LeaderID); err != nil {
+						zpn.logger.Error("failed to publish partition leader change", "partition", zpn.PartitionId, "leaderId", signal.LeaderID, "err", err)
+					}
 				case raft.PeerObservation:
 					var err error
 					if signal.Removed && zpn.stateChangeCallbacks.ShutdownNode != nil {

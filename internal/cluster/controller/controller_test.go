@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -104,11 +105,53 @@ func TestControllerStopCancelsPendingPartitionJoinRetry(t *testing.T) {
 	require.NoError(t, err)
 	controller.handleClusterChanges = true
 
-	controller.handlePartitionStateInitializing(t.Context(), 1, nil)
+	controller.handlePartitionStateInitializing(1)
 
 	startedAt := time.Now()
 	require.NoError(t, controller.Stop())
 	assert.Less(t, time.Since(startedAt), time.Second)
+}
+
+func TestControllerDeduplicatesPartitionRetries(t *testing.T) {
+	controller, err := NewController(nil, config.Cluster{})
+	require.NoError(t, err)
+	controller.retryDelay = time.Hour
+
+	controller.schedulePartitionRetry(1, "first-retry")
+	controller.schedulePartitionRetry(1, "duplicate-retry")
+
+	controller.retryMu.Lock()
+	assert.True(t, controller.retryScheduled[1])
+	assert.Equal(t, uint(1), controller.retryAttempts[1])
+	controller.retryMu.Unlock()
+	require.NoError(t, controller.Stop())
+}
+
+func TestControllerRetrySurvivesSourceContextCancellation(t *testing.T) {
+	controller, err := NewController(nil, config.Cluster{})
+	require.NoError(t, err)
+	controller.retryDelay = 10 * time.Millisecond
+	controller.logger = hclog.NewNullLogger()
+	controller.handleClusterChanges = true
+	controller.store = &ControllerTestStore{
+		id: "test-node-1",
+		clusterState: state.Cluster{Nodes: map[string]state.Node{
+			"test-node-1": {Id: "test-node-1", Partitions: map[uint32]state.NodePartition{}},
+		}},
+	}
+	controller.client = client.NewClientManager(controller.store.(*ControllerTestStore))
+
+	sourceCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+	controller.schedulePartitionRetry(1, "context-independent-retry")
+
+	require.Eventually(t, func() bool {
+		controller.retryMu.Lock()
+		defer controller.retryMu.Unlock()
+		return !controller.retryScheduled[1]
+	}, time.Second, 5*time.Millisecond)
+	require.Error(t, sourceCtx.Err())
+	require.NoError(t, controller.Stop())
 }
 
 func TestPartitionLeaderInitialized(t *testing.T) {
@@ -280,6 +323,33 @@ func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.
 		s := controller.store.ClusterState()
 		return s.Nodes[tStore.id].Partitions[1].State == state.NodePartitionStateInitialized
 	}, 5*time.Second, 20*time.Millisecond, "partition was not initialized after repairing the migration")
+}
+
+func TestControllerMarksPersistentlyBrokenPartitionAsError(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id, Addr: tStore.addr, Adv: tStore.addr,
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(), JoinAttempts: 2, JoinInterval: 100 * time.Millisecond,
+			JoinAddresses: []string{tStore.addr}, BootstrapExpect: 1, BootstrapExpectTimeout: time.Second,
+		},
+		Persistence: config.Persistence{Migration: config.Migration{Dir: writeBrokenMigrationFixture(t)}},
+	})
+	require.NoError(t, err)
+	controller.retryDelay = time.Millisecond
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() { assert.NoError(t, controller.Stop()) })
+	tStore.setNode(state.Node{
+		Id: tStore.id, Addr: tStore.addr, Suffrage: raft.Voter,
+		State: state.NodeStateStarted, Role: state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{},
+	})
+
+	controller.ClusterStateChangeNotification(t.Context())
+
+	require.Eventually(t, func() bool {
+		return controller.store.ClusterState().Nodes[tStore.id].Partitions[1].State == state.NodePartitionStateError
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 type countingControllerTestStore struct {

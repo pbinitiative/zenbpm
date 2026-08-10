@@ -323,11 +323,11 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 	defer s.clientMu.Unlock()
 	s.nodeMu.RLock()
 	clientsNode, ok := s.nodeSubs[clientsNodeID]
+	s.nodeMu.RUnlock()
 	if !ok {
 		s.logger.Error("Failed to subscribe client. Clients node is not subscribed.")
 		return
 	}
-	s.nodeMu.RUnlock()
 	if _, ok := s.subscriptions[jType]; !ok {
 		s.subscriptions[jType] = map[ClientID]*nodeSub{}
 	}
@@ -338,6 +338,12 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 		}
 	}
 	jobTypeData := s.jobTypes[jType]
+	if _, alreadySubscribed := s.subscriptions[jType][clientID]; alreadySubscribed {
+		// resubscribing the same client (e.g. a replay after a stream was
+		// reopened) must not register it twice in the round robin list
+		s.subscriptions[jType][clientID] = clientsNode
+		return
+	}
 	s.subscriptions[jType][clientID] = clientsNode
 	jobTypeData.clients = append(jobTypeData.clients, clientID)
 	s.jobTypes[jType] = jobTypeData

@@ -24,6 +24,9 @@ type clientSub struct {
 	ctx      context.Context
 	ch       chan Job
 	clientID ClientID
+	// jobTypes the client is subscribed to, kept so the subscriptions can be
+	// replayed to node streams that are opened later.
+	jobTypes map[JobType]struct{}
 }
 
 type clientNodeStream struct {
@@ -42,6 +45,8 @@ type jobClient struct {
 	nodeClientManager *client.ClientManager
 	nodeStreams       []*clientNodeStream
 	nodeMu            *sync.RWMutex
+	// subscribeMu serializes node stream reconciliation
+	subscribeMu sync.Mutex
 	// jobs are streamed in here by a server and distributed to clients
 	jobsChan chan Job
 
@@ -49,10 +54,19 @@ type jobClient struct {
 	ctx    context.Context
 }
 
-func (c *jobClient) updateNodeSubs(ctx context.Context) {
+// updateNodeSubs reconciles the open job streams with the current cluster state.
+// Streams pointing to a node that is no longer the initialized leader of the
+// partition are closed and streams are opened for every partition that does not
+// have one yet. It is safe to call repeatedly: partitions that already have a
+// healthy stream are skipped.
+func (c *jobClient) updateNodeSubs() {
+	// Serialize reconciliations so two concurrent calls cannot open two streams
+	// for the same partition (streams are opened outside of nodeMu).
+	c.subscribeMu.Lock()
+	defer c.subscribeMu.Unlock()
+
 	leaders := map[uint32]string{}
 	s := c.store.ClusterState()
-	partitionsToSubscribe := []uint32{}
 	for _, partition := range s.Partitions {
 		partitionLeader := partition.LeaderId
 		partitionNode, ok := s.Nodes[partitionLeader]
@@ -65,42 +79,30 @@ func (c *jobClient) updateNodeSubs(ctx context.Context) {
 		}
 		leaders[partition.Id] = partition.LeaderId
 	}
+	partitionsToSubscribe := slices.Collect(maps.Keys(leaders))
+	slices.Sort(partitionsToSubscribe)
+
 	c.nodeMu.Lock()
-	leaderIds := slices.Collect(maps.Values(leaders))
 	for i := len(c.nodeStreams) - 1; i >= 0; i-- {
 		stream := c.nodeStreams[i]
-		streamErr := stream.stream.Context().Err()
-		if !slices.Contains(leaderIds, stream.nodeID) || streamErr != nil {
-			// stream node is not among leaders
-			err := stream.stream.CloseSend()
-			if err != nil {
-				c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
-			}
-			c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
-		} else {
-			streamNode := stream.nodeID
-			streamPartition := stream.partition
-			assignedLeader, ok := leaders[streamPartition]
-			if !ok {
-				c.logger.Error("Partition not found among leaders")
-				continue
-			}
-			if assignedLeader != streamNode {
-				err := stream.stream.CloseSend()
-				if err != nil {
-					c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
-				}
-				c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
-				continue
-			}
+		assignedLeader, ok := leaders[stream.partition]
+		if ok && assignedLeader == stream.nodeID && stream.stream.Context().Err() == nil {
+			// the stream still points to the current partition leader
 			partitionsToSubscribe = slices.DeleteFunc(partitionsToSubscribe, func(a uint32) bool {
-				return a == streamPartition
+				return a == stream.partition
 			})
+			continue
 		}
+		// the stream node is not the partition leader anymore or the stream died
+		if err := stream.stream.CloseSend(); err != nil {
+			c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
+		}
+		c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
 	}
 	c.nodeMu.Unlock()
+
 	for _, partition := range partitionsToSubscribe {
-		c.subscribeNodeToPartition(ctx, partition)
+		c.subscribeNodeToPartition(partition)
 	}
 }
 
@@ -120,38 +122,65 @@ func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager
 }
 
 // subscribeNode subscribes current node to all partition leaders
-func (c *jobClient) subscribeNode(ctx context.Context) {
-	clusterState := c.store.ClusterState()
-	for _, partition := range clusterState.Partitions {
-		c.subscribeNodeToPartition(ctx, partition.Id)
-	}
+func (c *jobClient) subscribeNode() {
+	c.updateNodeSubs()
 }
 
-func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint32) {
-	c.nodeMu.Lock()
-	defer c.nodeMu.Unlock()
+// subscribeNodeToPartition opens a job stream to the leader of the partition.
+// The stream is bound to the job client context (not to the context of the
+// cluster state notification that triggered the reconciliation), because the
+// notification context is cancelled as soon as the notification is handled.
+func (c *jobClient) subscribeNodeToPartition(partition uint32) {
 	lClient, nodeID, err := c.nodeClientManager.PartitionLeaderWithID(partition)
 	if err != nil {
-		c.logger.Error(fmt.Sprintf("failed to create client for partition %d leader", partition))
+		c.logger.Error(fmt.Sprintf("failed to create client for partition %d leader", partition), "err", err)
 		return
 	}
 	md := metadata.New(map[string]string{
 		MetadataNodeID: string(c.nodeID),
 	})
-	ctx = metadata.NewOutgoingContext(ctx, md)
-	stream, err := lClient.SubscribeJob(ctx)
+	streamCtx := metadata.NewOutgoingContext(c.ctx, md)
+	stream, err := lClient.SubscribeJob(streamCtx)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("failed to open stream for partition %d leader", partition), "err", err)
 		return
 	}
 	nodeStream := clientNodeStream{
-		stream: stream,
-		nodeID: nodeID,
+		stream:    stream,
+		nodeID:    nodeID,
+		partition: partition,
 	}
+	c.nodeMu.Lock()
 	c.nodeStreams = append(c.nodeStreams, &nodeStream)
+	c.nodeMu.Unlock()
+	// A stream opened after clients already registered (e.g. a partition that
+	// became available later) does not know about their job types yet.
+	c.resendClientSubscriptions(&nodeStream)
 	safego.Go("jobclient-stream-recv", c.logger, func() {
 		c.handleJobStreamRecv(&nodeStream)
 	})
+}
+
+// resendClientSubscriptions replays the job subscriptions of all locally
+// registered clients to a newly opened node stream.
+func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) {
+	c.clientMu.RLock()
+	requests := make([]*proto.SubscribeJobRequest, 0, len(c.clientSubs))
+	for clientID, sub := range c.clientSubs {
+		for jobType := range sub.jobTypes {
+			requests = append(requests, &proto.SubscribeJobRequest{
+				JobType:  new(string(jobType)),
+				Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
+				ClientId: new(string(clientID)),
+			})
+		}
+	}
+	c.clientMu.RUnlock()
+	for _, req := range requests {
+		if err := stream.stream.Send(req); err != nil {
+			c.logger.Error("Failed to resend client job subscription", "nodeID", stream.nodeID, "err", err)
+		}
+	}
 }
 
 func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
@@ -214,7 +243,7 @@ func (c *jobClient) sendJobToClient(job Job) {
 }
 
 func (c *jobClient) startClient() {
-	c.subscribeNode(c.ctx)
+	c.subscribeNode()
 	safego.Go("jobclient-distribute", c.logger, func() {
 		c.distributeToClients()
 	})
@@ -244,6 +273,7 @@ func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv 
 		ctx:      ctx,
 		ch:       clientRcv,
 		clientID: clientID,
+		jobTypes: map[JobType]struct{}{},
 	}
 	return nil
 }
@@ -266,6 +296,11 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 }
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	c.clientMu.Lock()
+	if sub, ok := c.clientSubs[clientID]; ok {
+		sub.jobTypes[jobType] = struct{}{}
+	}
+	c.clientMu.Unlock()
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
@@ -321,6 +356,11 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 }
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	c.clientMu.Lock()
+	if sub, ok := c.clientSubs[clientID]; ok {
+		delete(sub.jobTypes, jobType)
+	}
+	c.clientMu.Unlock()
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),

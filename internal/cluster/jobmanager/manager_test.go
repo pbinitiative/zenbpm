@@ -155,7 +155,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	generatedJobs := generateJobs(6)
 	loader.addJobs(generatedJobs...)
 
-	waitForJobsToBeConsumed(t, generatedJobs, completer)
+	waitForJobsToBeConsumed(t, generatedJobs, completer, 2*time.Second)
 
 	assert.Equal(t, len(generatedJobs), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
 	assert.NotEqual(t, 0, client1Jobs)
@@ -210,7 +210,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	loader.addJobs(generatedJobsBatch2...)
 
-	waitForJobsToBeConsumed(t, generatedJobsBatch2, completer)
+	waitForJobsToBeConsumed(t, generatedJobsBatch2, completer, 2*time.Second)
 
 	assert.Equal(t, len(generatedJobs)+len(generatedJobsBatch2), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
 	assert.NotEqual(t, 0, client1Jobs)
@@ -229,7 +229,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	loader.addJobs(generatedJobsBatch3...)
 
-	waitForJobsToBeConsumed(t, generatedJobsBatch3, completer)
+	waitForJobsToBeConsumed(t, generatedJobsBatch3, completer, 2*time.Second)
 
 	assert.Equal(t, client1JobsOnDisconnect, *client1Jobs, "client 1 should not receive jobs after disconnect")
 	assert.Equal(t, len(generatedJobsBatch3), *client2Jobs-client2JobsOnDisconnect, "client 2 should consume all the jobs from batch 3")
@@ -238,6 +238,79 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return len(jm1.server.jobTypes["test-job"].clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
+}
+
+// TestManagerTroughput is an on demand test to check throughput of the manager
+func TestManagerTroughput(t *testing.T) {
+	t.SkipNow()
+	f, err := os.Create("cpu.pprof")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	mux, nodeLn, err := network.NewNodeMux("")
+	defer nodeLn.Close()
+	assert.NoError(t, err)
+	ln := network.NewZenBpmClusterListener(mux)
+	assert.NoError(t, err)
+
+	testStr := getTestStore(ln)
+	testStr.state.Partitions = make(map[uint32]state.Partition)
+
+	jm1, completer := createServerNode(t, 1, ln, testStr)
+	loader := completer.loader
+	_ = loader
+	assert.Nil(t, jm1.server, "server should not be initialized")
+
+	*testStr = *getTestStore(ln)
+	jm1.OnPartitionRoleChange(t.Context())
+	assert.NotNil(t, jm1.server, "server should be initialized")
+
+	testStr2 := &testStore{
+		state: *testStr.state.DeepCopy(),
+	}
+	testStr2.nodeId = "node-2"
+
+	jm2 := createClientNode(t, testStr2)
+
+	jobsToDistribute := 10000
+	maxClients := 10
+	channels := make([]chan Job, maxClients)
+	jobType := JobType("test-job")
+	// test iterative number of clients
+	for i := range maxClients {
+		client := make(chan Job)
+		channels[i] = client
+		clientID := ClientID(fmt.Sprintf("client-%d", i))
+		err = jm2.AddClient(t.Context(), clientID, client)
+		assert.NoError(t, err)
+		jm2.AddClientJobSub(t.Context(), clientID, jobType)
+
+		go func() {
+			for {
+				job := <-client
+				if job.Key == 0 {
+					return
+				}
+				err := jm2.CompleteJobReq(t.Context(), clientID, job.Key, nil)
+				assert.NoError(t, err)
+			}
+		}()
+		assert.Eventually(t, func() bool {
+			return len(jm1.server.jobTypes["test-job"].clients) == i+1
+		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
+
+		generatedJobs := generateJobs(jobsToDistribute)
+		start := time.Now()
+		loader.addJobs(generatedJobs...)
+		waitForJobsToBeConsumed(t, generatedJobs, completer, 100*time.Second)
+		end := time.Now()
+		fmt.Printf("%d clients took %s\n", i+1, end.Sub(start))
+	}
+	for i := range maxClients {
+		clientID := ClientID(fmt.Sprintf("client-%d", i))
+		jm2.RemoveClient(t.Context(), clientID)
+	}
 }
 
 func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *int {
@@ -257,7 +330,7 @@ func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManage
 	return &counter
 }
 
-func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testCompleter) {
+func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testCompleter, timeout time.Duration) {
 	loader := completer.loader
 	assert.Eventually(t, func() bool {
 		loader.mu.RLock()
@@ -281,7 +354,7 @@ func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testComple
 			}
 		}
 		return true
-	}, 2*time.Second, 100*time.Millisecond)
+	}, timeout, 100*time.Millisecond)
 }
 
 func generateJobs(count int) []sql.Job {
@@ -317,11 +390,20 @@ func getTestStore(ln net.Listener) *testStore {
 					Id:   "node-1",
 					Addr: ln.Addr().String(),
 					Role: state.RoleLeader,
+					// the job client only subscribes to partitions whose leader already finished its local initialization
+					Partitions: map[uint32]state.NodePartition{
+						1: {
+							Id:    1,
+							State: state.NodePartitionStateInitialized,
+							Role:  state.RoleLeader,
+						},
+					},
 				},
 				"node-2": {
-					Id:   "node-2",
-					Addr: "",
-					Role: state.RoleFollower,
+					Id:         "node-2",
+					Addr:       "",
+					Role:       state.RoleFollower,
+					Partitions: map[uint32]state.NodePartition{},
 				},
 			},
 		},
@@ -497,99 +579,4 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	leaderId := partState.LeaderId
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
-}
-
-// TestManagerTroughput is an on demand test to check throughput of the manager
-func TestManagerTroughput(t *testing.T) {
-	t.SkipNow()
-	f, err := os.Create("cpu.pprof")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
-	ln := network.NewZenBpmClusterListener(mux)
-	assert.NoError(t, err)
-
-	testStr := getTestStore(ln)
-	testStr.state.Partitions = make(map[uint32]state.Partition)
-
-	jm1, completer := createServerNode(t, 1, ln, testStr)
-	loader := completer.loader
-	_ = loader
-	assert.Nil(t, jm1.server, "server should not be initialized")
-
-	*testStr = *getTestStore(ln)
-	jm1.OnPartitionRoleChange(t.Context())
-	assert.NotNil(t, jm1.server, "server should be initialized")
-
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
-
-	jm2 := createClientNode(t, testStr2)
-
-	jobsToDistribute := 10000
-	maxClients := 10
-	channels := make([]chan Job, maxClients)
-	jobType := JobType("test-job")
-	// test iterative number of clients
-	for i := range maxClients {
-		client := make(chan Job)
-		channels[i] = client
-		clientID := ClientID(fmt.Sprintf("client-%d", i))
-		err = jm2.AddClient(t.Context(), clientID, client)
-		assert.NoError(t, err)
-		jm2.AddClientJobSub(t.Context(), clientID, jobType)
-
-		go func() {
-			for {
-				job := <-client
-				if job.Key == 0 {
-					return
-				}
-				err := jm2.CompleteJobReq(t.Context(), clientID, job.Key, nil)
-				assert.NoError(t, err)
-			}
-		}()
-		assert.Eventually(t, func() bool {
-			return len(jm1.server.jobTypes["test-job"].clients) == i+1
-		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
-
-		generatedJobs := generateJobs(jobsToDistribute)
-		start := time.Now()
-		loader.addJobs(generatedJobs...)
-		assert.Eventually(t, func() bool {
-			loader.mu.RLock()
-			defer loader.mu.RUnlock()
-			if len(loader.jobsToSend) != 0 {
-				return false
-			}
-			for _, job := range generatedJobs {
-				match := false
-			loadedJobs:
-				for _, completedKey := range completer.completedJobs {
-					if job.Key == completedKey {
-						match = true
-						break loadedJobs
-					}
-				}
-				if !match {
-					fmt.Printf("Job %d not completed\n", job.Key)
-					fmt.Println(completer.completedJobs)
-					return false
-				}
-			}
-			return true
-		}, 100*time.Second, 100*time.Millisecond)
-		end := time.Now()
-		fmt.Printf("%d clients took %s\n", i+1, end.Sub(start))
-	}
-	for i := range maxClients {
-		clientID := ClientID(fmt.Sprintf("client-%d", i))
-		jm2.RemoveClient(t.Context(), clientID)
-	}
 }

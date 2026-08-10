@@ -184,7 +184,7 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 		return fmt.Errorf("failed to marshal NodeChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if f.Error() != nil && f.Response() != nil {
+	if f.Error() != nil {
 		return fmt.Errorf("failed to apply NodeChange message to raft log: %w", f.Error())
 	}
 	return nil
@@ -202,7 +202,7 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 		return fmt.Errorf("failed to marshal NodePartitionChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if f.Error() != nil && f.Response() != nil {
+	if f.Error() != nil {
 		return fmt.Errorf("failed to apply NodePartitionChange message to raft log: %w", f.Error())
 	}
 	return nil

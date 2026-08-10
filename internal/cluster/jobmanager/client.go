@@ -30,9 +30,24 @@ type clientSub struct {
 }
 
 type clientNodeStream struct {
-	stream    grpc.BidiStreamingClient[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
+	stream grpc.BidiStreamingClient[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
+	// sendMu serializes sends on the stream. grpc-go does not support concurrent
+	// SendMsg/CloseSend calls on the same client stream.
+	sendMu    sync.Mutex
 	nodeID    string
 	partition uint32
+}
+
+func (s *clientNodeStream) send(req *proto.SubscribeJobRequest) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return s.stream.Send(req)
+}
+
+func (s *clientNodeStream) closeSend() error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return s.stream.CloseSend()
 }
 
 type jobClient struct {
@@ -94,7 +109,7 @@ func (c *jobClient) updateNodeSubs() {
 			continue
 		}
 		// the stream node is not the partition leader anymore or the stream died
-		if err := stream.stream.CloseSend(); err != nil {
+		if err := stream.closeSend(); err != nil {
 			c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
 		}
 		c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
@@ -150,12 +165,20 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) {
 		nodeID:    nodeID,
 		partition: partition,
 	}
+	// Registering the stream and replaying the current subscriptions happens
+	// under clientMu so that a concurrent subscription change either completes
+	// before the snapshot is taken (and is therefore part of the replay) or is
+	// broadcast after the stream is registered (and is therefore delivered to
+	// it). Otherwise a removed subscription could be replayed after its
+	// UNSUBSCRIBE was already broadcast.
+	c.clientMu.RLock()
 	c.nodeMu.Lock()
 	c.nodeStreams = append(c.nodeStreams, &nodeStream)
 	c.nodeMu.Unlock()
 	// A stream opened after clients already registered (e.g. a partition that
 	// became available later) does not know about their job types yet.
 	c.resendClientSubscriptions(&nodeStream)
+	c.clientMu.RUnlock()
 	safego.Go("jobclient-stream-recv", c.logger, func() {
 		c.handleJobStreamRecv(&nodeStream)
 	})
@@ -163,8 +186,8 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) {
 
 // resendClientSubscriptions replays the job subscriptions of all locally
 // registered clients to a newly opened node stream.
+// The caller must hold clientMu.
 func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) {
-	c.clientMu.RLock()
 	requests := make([]*proto.SubscribeJobRequest, 0, len(c.clientSubs))
 	for clientID, sub := range c.clientSubs {
 		for jobType := range sub.jobTypes {
@@ -175,9 +198,8 @@ func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) {
 			})
 		}
 	}
-	c.clientMu.RUnlock()
 	for _, req := range requests {
-		if err := stream.stream.Send(req); err != nil {
+		if err := stream.send(req); err != nil {
 			c.logger.Error("Failed to resend client job subscription", "nodeID", stream.nodeID, "err", err)
 		}
 	}
@@ -250,12 +272,15 @@ func (c *jobClient) startClient() {
 	c.logger.Info("Started client")
 }
 
+// broadcastToNodes sends the request to all open node streams.
+// The caller must hold clientMu so that subscription changes stay ordered with
+// the subscription replay done for newly opened streams.
 func (c *jobClient) broadcastToNodes(req *proto.SubscribeJobRequest) error {
 	var errJoin error
 	c.nodeMu.RLock()
 	defer c.nodeMu.RUnlock()
 	for _, stream := range c.nodeStreams {
-		err := stream.stream.Send(req)
+		err := stream.send(req)
 		if err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to send request to nodeID %s: %w", stream.nodeID, err))
 		}
@@ -297,10 +322,10 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
 	if sub, ok := c.clientSubs[clientID]; ok {
 		sub.jobTypes[jobType] = struct{}{}
 	}
-	c.clientMu.Unlock()
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
@@ -357,10 +382,10 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
 	if sub, ok := c.clientSubs[clientID]; ok {
 		delete(sub.jobTypes, jobType)
 	}
-	c.clientMu.Unlock()
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),

@@ -580,3 +580,22 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
 }
+
+func TestServerDropsNodeClientsFromRoundRobinOnNodeRemoval(t *testing.T) {
+	server := newJobServer("node-1", nil, nil)
+	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2"}
+
+	server.subscribeClient("node-2", "client-1", "test-job")
+	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
+
+	// stream of node-2 ended
+	server.removeNode("node-2")
+	assert.Empty(t, server.jobTypes["test-job"].clients)
+	assert.Empty(t, server.subscriptions["test-job"])
+
+	// node-2 reconnected and replayed its subscriptions
+	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2"}
+	server.subscribeClient("node-2", "client-1", "test-job")
+	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients,
+		"replayed subscription must not duplicate the client in the round robin list")
+}

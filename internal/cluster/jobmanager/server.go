@@ -308,12 +308,36 @@ func (s *jobServer) removeNode(nodeId NodeId) {
 	s.nodeMu.Unlock()
 	s.clientMu.Lock()
 	for jobType, subs := range s.subscriptions {
+		removed := make(map[ClientID]struct{}, len(subs))
 		for clientID, nodeSub := range subs {
 			if nodeSub.nodeID != nodeId {
 				continue
 			}
 			delete(s.subscriptions[jobType], clientID)
+			removed[clientID] = struct{}{}
 		}
+		if len(removed) == 0 {
+			continue
+		}
+		// clients of the removed node have to be dropped from the round robin
+		// list as well, otherwise a subscription replay after a reconnect would
+		// register them twice
+		jobTypeData, ok := s.jobTypes[jobType]
+		if !ok {
+			continue
+		}
+		jobTypeData.clients = slices.DeleteFunc(jobTypeData.clients, func(clientID ClientID) bool {
+			_, ok := removed[clientID]
+			return ok
+		})
+		if len(jobTypeData.clients) == 0 {
+			delete(s.jobTypes, jobType)
+			continue
+		}
+		if jobTypeData.index >= len(jobTypeData.clients) {
+			jobTypeData.index = 0
+		}
+		s.jobTypes[jobType] = jobTypeData
 	}
 	s.clientMu.Unlock()
 }

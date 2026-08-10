@@ -325,6 +325,50 @@ func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.
 	}, 5*time.Second, 20*time.Millisecond, "partition was not initialized after repairing the migration")
 }
 
+func TestControllerRejoinsPartitionStuckInInitializing(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft: config.ClusterRaft{
+			Dir:                    t.TempDir(),
+			JoinAttempts:           2,
+			JoinInterval:           100 * time.Millisecond,
+			JoinAddresses:          []string{tStore.addr},
+			BootstrapExpect:        1,
+			BootstrapExpectTimeout: 1 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	controller.retryDelay = 25 * time.Millisecond
+
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
+
+	// simulate a restart after INITIALIZING was persisted but the partition node
+	// is not running locally
+	tStore.setNode(state.Node{
+		Id:       tStore.id,
+		Addr:     tStore.addr,
+		Suffrage: raft.Voter,
+		State:    state.NodeStateStarted,
+		Role:     state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{
+			1: {Id: 1, State: state.NodePartitionStateInitializing},
+		},
+	})
+
+	controller.ClusterStateChangeNotification(t.Context())
+
+	require.Eventually(t, func() bool {
+		return controller.store.ClusterState().Nodes[tStore.id].Partitions[1].State == state.NodePartitionStateInitialized
+	}, 10*time.Second, 20*time.Millisecond, "partition stuck in INITIALIZING was never re-joined")
+}
+
 func TestControllerMarksPersistentlyBrokenPartitionAsError(t *testing.T) {
 	tStore, clientMgr, mux := setupControllerTestCluster(t)
 	controller, err := NewController(mux, config.Cluster{

@@ -51,156 +51,183 @@ zen.RegisterWorker(context.Background(), "my-client-id", jobWorker, "my-job-type
 ```
 ## Java Client
 
-The Java client is a lightweight library that wraps the REST and gRPC APIs, providing a type-safe interface for Java applications.
+The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.
 
-The client is available on GitHub: [zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client)
+### Compatibility
 
-There are 2 artefacts available:
-- **zenbpm-client-code:** the core library, can be used independently of Spring Boot and supports old java versions
-- **zenbpm-spring-boot-starter:** a Spring Boot starter that provides auto-configuration for the core library and `@JobWorker("jobName")` method annotation.
+The ZenBPM Java client has been tested on:
 
-### Features
+- Java 17 and Spring Boot 3
+- Java 8 and Spring Boot 2.7
 
-* Spring Boot auto-configuration (drop-in starter)
-* REST client (`ApiClient` + typed APIs generated from OpenAPI)
-* gRPC job workers via `@JobWorker` and ZenbpmJobWorkerManager
-* OpenTelemetry interceptors for REST and spans for gRPC
-* Configurable HTTP/gRPC logging
+The examples below target Java 17 and Spring Boot 3 and intentionally use modern Java syntax.
 
-### Build Java Client
-``mvn clean package``
+### Dependencies
 
-### Getting started
+For a minimal Spring Boot application, use the standard Boot starter together with the ZenBPM starter and a gRPC channel provider:
 
-Add the starter to your application and the core client as needed.
-
-Maven:
 ```xml
-<dependency>
-  <groupId>org.zenbpm</groupId>
-  <artifactId>zenbpm-spring-boot-starter</artifactId>
-  <version>${zenbpm.version}</version>
-</dependency>
-<dependency>
-  <groupId>org.zenbpm</groupId>
-  <artifactId>zenbpm-client-core</artifactId>
-  <version>${zenbpm.version}</version>
-</dependency>
+<parent>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-parent</artifactId>
+  <version>3.5.16</version>
+  <relativePath/>
+</parent>
+
+<properties>
+  <java.version>17</java.version>
+</properties>
+
+<dependencies>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.pbinitiative.zenbpm</groupId>
+    <artifactId>zenbpm-spring-boot-starter</artifactId>
+    <version>1.5.0</version>
+  </dependency>
+  <dependency>
+    <groupId>io.grpc</groupId>
+    <artifactId>grpc-netty-shaded</artifactId>
+    <version>1.78.0</version>
+  </dependency>
+</dependencies>
 ```
 
-Configure connection settings in application.yml 
+Do **not** directly declare `org.pbinitiative.zenbpm:zenbpm-client-core` in a Spring application: `zenbpm-spring-boot-starter` brings `zenbpm-client-core` transitively. Client 1.5.0 supplies the gRPC APIs and stubs but no `ManagedChannel` provider, so `grpc-netty-shaded` is required when using `@JobWorker`; it is not an optional worker transport.
 
-values shown in `zenbpm` section are defaults.
+A non-Spring application may instead declare `org.pbinitiative.zenbpm:zenbpm-client-core:1.5.0` to use the generated REST APIs or gRPC stubs, but it must construct and configure the clients itself. gRPC use still requires a channel provider. `@JobWorker` and its auto-configuration are provided by the Spring Boot starter.
 
-`logging` section configures logging for rest and grpc clients separately.
- - `DEBUG` levels expose headers of calls and responses.
- - `TRACE` level exposes full request and response bodies. **Never use this in production!**
+### Configuration
+
+This tested `application.yml` uses kebab-case Spring properties and environment overrides for the engine endpoints:
+
 ```yaml
 zenbpm:
-  restUrl: http://localhost:8080/v1
-  restLoggingEnabled: true
-  grpcHost: localhost
-  grpcPort: 9090
-  grpcPlaintext: true
-  grpcLoggingEnabled: true
-  jobWorkerEnabled: true
-  otelEnabled: true
-  
-logging:
-  level:
-    root: INFO
-    org.zenbpm.rest: TRACE
-    org.zenbpm.grpc: DEBUG
+  rest-url: ${ZENBPM_REST_URL:http://localhost:8080/v1}
+  rest-logging-enabled: false
+  grpc-host: ${ZENBPM_GRPC_HOST:localhost}
+  grpc-port: ${ZENBPM_GRPC_PORT:9090}
+  # Local development only. Use gRPC TLS and an HTTPS REST URL in other environments.
+  grpc-plaintext: true
+  grpc-logging-enabled: false
+  job-worker-enabled: true
 
+otel:
+  sdk:
+    disabled: true
 ```
 
-### Working examples
+Keep client logging disabled by default, especially when process variables may contain sensitive data. If REST logging is enabled, OkHttp `BASIC` logging at DEBUG emits request/response lines, not headers or bodies; TRACE can expose full HTTP data. gRPC TRACE logging can expose job variables and results.
 
-#### 1) Use REST APIs
-Inject the provided ZenbpmClientService to obtain the ApiClient, then create a typed API.
+### REST: deploy and start
+
+Place the example classes in the same package as, or a child package of, your `@SpringBootApplication` class so Spring discovers them. Replace the example `package` declaration with your application's package when needed.
+
+`ZenbpmClientService` supplies the configured `ApiClient`. Deploy a `java.io.File` with `ProcessDefinitionApi`, then start with a business key and variables in `CreateProcessInstanceRequest`:
 
 ```java
-import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.zenbpm.rest.ZenbpmClientService;
-import org.zenbpm.client.ApiException;
-import org.zenbpm.client.ApiClient;
-import org.zenbpm.client.api.ProcessDefinitionApi;
-import org.zenbpm.client.api.ProcessInstanceApi;
-import org.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+package com.example.zenbpmverification;
 
-import java.util.HashMap;
+import java.io.File;
 import java.util.Map;
 
+import org.pbinitiative.zenbpm.client.ApiClient;
+import org.pbinitiative.zenbpm.client.ApiException;
+import org.pbinitiative.zenbpm.client.api.ProcessDefinitionApi;
+import org.pbinitiative.zenbpm.client.api.ProcessInstanceApi;
+import org.pbinitiative.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+import org.pbinitiative.zenbpm.client.api.dto.ProcessInstance;
+import org.pbinitiative.zenbpm.rest.ZenbpmClientService;
+import org.springframework.stereotype.Service;
+
 @Service
-public class MyService {
-  @Autowired
-  private ZenbpmClientService zenbpm;
+public class ZenbpmRestService {
 
-  public Long deployExampleProcess() throws ApiException {
-    ApiClient apiClient = zenbpm.getApiClient();
-    ProcessDefinitionApi defApi = new ProcessDefinitionApi(apiClient);
+    private final ApiClient apiClient;
+    private final ProcessDefinitionApi processDefinitionApi;
+    private final ProcessInstanceApi processInstanceApi;
 
-    // Example: create a process definition from a BPMN string (adjust to your endpoint contract)
-    String bpmnXml = "<definitions ...>...</definitions>";
-    Long definitionKey = defApi.createProcessDefinition(bpmnXml).getProcessDefinitionKey();
-    return definitionKey;
-  }
+    public ZenbpmRestService(ZenbpmClientService zenbpmClientService) {
+        this.apiClient = zenbpmClientService.getApiClient();
+        this.processDefinitionApi = new ProcessDefinitionApi(apiClient);
+        this.processInstanceApi = new ProcessInstanceApi(apiClient);
+    }
 
-  public void startMyProcess() throws ApiException {
-    ApiClient apiClient = zenbpm.getApiClient();
-    ProcessInstanceApi piApi = new ProcessInstanceApi(apiClient);
+    public long deploy(File bpmnFile) throws ApiException {
+        return processDefinitionApi.createProcessDefinition(bpmnFile).getProcessDefinitionKey();
+    }
 
-    Map<String, Object> vars = new HashMap<>();
-    vars.put("orderId", 12345L);
+    public ProcessInstance start(
+            long processDefinitionKey,
+            String businessKey,
+            Map<String, Object> variables) throws ApiException {
+        CreateProcessInstanceRequest request = new CreateProcessInstanceRequest()
+                .processDefinitionKey(processDefinitionKey)
+                .businessKey(businessKey)
+                .variables(variables);
 
-    CreateProcessInstanceRequest req = new CreateProcessInstanceRequest()
-        .processDefinitionKey(123456L)
-        .variables(vars);
+        return processInstanceApi.createProcessInstance(request);
+    }
 
-    piApi.createProcessInstance(req);
-  }
+    public ProcessInstance get(long processInstanceKey) throws ApiException {
+        return processInstanceApi.getProcessInstance(processInstanceKey);
+    }
 }
 ```
 
-Notes:
-- Available typed APIs include ProcessDefinitionApi, ProcessInstanceApi, JobApi, MessageApi, etc. Construct them with the provided ApiClient.
-- Methods and DTOs come from the generated package `org.zenbpm.client.api` and `org.zenbpm.client.api.dto`.
+### gRPC worker
 
-#### 2) Register a gRPC job worker
-Create a Spring bean with a method annotated by `@JobWorker`. Accepted method signatures:
-- no parameters
-- one parameter of type `org.zenbpm.proto.Zenbpm.WaitingJob`
-- one parameter of type `org.zenbpm.grpc.JobContext`
-- one parameter of type `Map<String, Object>`
-
-Return value can be any object and will be serialized as variables for job completion. Throwing an exception fails the job.
+The worker must be a discovered Spring bean. This example validates that `email` is a nonblank `String` and returns a mock completion:
 
 ```java
-import org.springframework.stereotype.Component;
-import org.zenbpm.grpc.JobWorker;
-import org.zenbpm.grpc.JobContext;
+package com.example.zenbpmverification;
+
 import java.util.Map;
-import java.util.HashMap;
+
+import org.pbinitiative.zenbpm.grpc.JobContext;
+import org.pbinitiative.zenbpm.grpc.JobWorker;
+import org.springframework.stereotype.Component;
 
 @Component
 public class EmailWorker {
-  @JobWorker("send-email")
-  public Map<String, Object> handleJob(JobContext ctx) {
-    Map<String,Object> vars = ctx.getVariables();
-    String to = (String) vars.get("email");
 
-    // send email ...
+    /** Returns a mock confirmation; this worker does not send an actual email. */
+    @JobWorker("send-email")
+    public Map<String, Object> sendEmail(JobContext context) {
+        Object emailValue = context.getVariables().get("email");
+        if (!(emailValue instanceof String email) || email.isBlank()) {
+            throw new IllegalArgumentException("Job variable 'email' must be a nonblank String");
+        }
 
-    Map<String, Object> result = new HashMap<>();
-    result.put("success", true);
-    result.put("message", "Email to " + to + " mocked successfully");
-    return result;
-  }
+        return Map.of(
+                "emailSent", true,
+                "confirmation", "Mock email confirmation for " + email);
+    }
 }
 ```
 
-The gRPC worker manager connects on application start if `zenbpm.jobWorkerEnabled` is true.
+An exception from the method fails the job. The returned map is serialized as job-completion output variables. The worker manager connects only when `zenbpm.job-worker-enabled` is true **and** at least one annotated worker has been discovered.
+
+### Tested flow
+
+The BPMN service task's job type must match the annotation. Declare `xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"` on the BPMN definitions and place the task definition and output mappings inside the service task's extension elements:
+
+```xml
+<bpmn:serviceTask id="SendEmailTask" name="Send email">
+  <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="send-email" retries="3"/>
+    <zenbpm:ioMapping>
+      <zenbpm:output source="=emailSent" target="emailSent"/>
+      <zenbpm:output source="=confirmation" target="confirmation"/>
+    </zeebe:ioMapping>
+  </bpmn:extensionElements>
+</bpmn:serviceTask>
+```
+
+Deploy the BPMN `File` and start the instance through `ZenbpmRestService`, passing `Map.of("email", "customer@example.com")` and a business key. The `EmailWorker` then receives and completes the `send-email` job over gRPC; the mappings copy its `emailSent` and `confirmation` outputs into process variables.
 
 ## Future Clients
 

@@ -2542,6 +2542,17 @@ func (rq *DB) UpdateOutputFlowElementInstance(ctx context.Context, flowElementIn
 	return nil
 }
 
+func (rq *DB) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	return CompleteFlowElementInstanceWith(ctx, rq.Queries, key, completedAt)
+}
+
+func CompleteFlowElementInstanceWith(ctx context.Context, db *sql.Queries, key int64, completedAt time.Time) error {
+	return db.CompleteFlowElementInstance(ctx, sql.CompleteFlowElementInstanceParams{
+		CompletedAt: ssql.NullInt64{Int64: completedAt.UnixMilli(), Valid: true},
+		Key:         key,
+	})
+}
+
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	inputVariablesString, err := json.Marshal(flowElementInstance.InputVariables)
 	if err != nil {
@@ -2863,46 +2874,46 @@ type DBBatch struct {
 	logger           hclog.Logger
 }
 
-func (d *DBBatch) getQueries() *sql.Queries {
-	return d.queries
+func (b *DBBatch) getQueries() *sql.Queries {
+	return b.queries
 }
 
-func (d *DBBatch) getReadDB() *DB {
-	return d.db
+func (b *DBBatch) getReadDB() *DB {
+	return b.db
 }
 
-func (d *DBBatch) getLogger() hclog.Logger {
-	return d.logger
+func (b *DBBatch) getLogger() hclog.Logger {
+	return b.logger
 }
 
-func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
-	stmt, err := rq.db.generateStatement(sql, args...)
+func (b *DBBatch) ExecContext(_ context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+	stmt, err := b.db.generateStatement(sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	rq.stmtToRun = append(rq.stmtToRun, stmt)
+	b.stmtToRun = append(b.stmtToRun, stmt)
 	return rqliteResult{}, nil
 }
 
-func (rq *DBBatch) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {
+func (b *DBBatch) PrepareContext(_ context.Context, _ string) (*ssql.Stmt, error) {
 	return nil, fmt.Errorf("PrepareContext is not supported by RqLiteDBBatch")
 }
 
-func (rq *DBBatch) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (b *DBBatch) QueryContext(_ context.Context, _ string, _ ...interface{}) (*sql.Rows, error) {
 	return nil, fmt.Errorf("QueryContext is not supported by RqLiteDBBatch")
 }
 
-func (rq *DBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (b *DBBatch) QueryRowContext(ctx context.Context, _ string, _ ...interface{}) *sql.Row {
 	// Return a row carrying the error (surfaced on Scan), matching DB.QueryRowContext.
 	return sql.ConstructRow(ctx, []string{}, []string{}, nil, fmt.Errorf("QueryRowContext is not supported by RqLiteDBBatch"))
 }
 
 var _ storage.Batch = &DBBatch{}
 
-func (b *DBBatch) AddPostFlushAction(ctx context.Context, f func()) {
+func (b *DBBatch) AddPostFlushAction(_ context.Context, f func()) {
 	b.postFlushActions = append(b.postFlushActions, f)
 }
-func (b *DBBatch) AddPreFlushAction(ctx context.Context, f func() error) {
+func (b *DBBatch) AddPreFlushAction(_ context.Context, f func() error) {
 	b.preFlushActions = append(b.preFlushActions, f)
 }
 
@@ -3010,17 +3021,6 @@ func (b *DBBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Conte
 	return nil
 }
 
-func KeyFromTokenToNullInt64(t *bpmnruntime.ExecutionToken) ssql.NullInt64 {
-	if t == nil {
-		return ssql.NullInt64{Valid: false}
-	}
-
-	return ssql.NullInt64{
-		Int64: t.Key,
-		Valid: true,
-	}
-}
-
 var _ storage.TokenStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
@@ -3033,6 +3033,10 @@ func (b *DBBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnr
 
 func (b *DBBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
 	return UpdateOutputFlowElementInstanceWith(ctx, b.queries, historyItem)
+}
+
+func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	return CompleteFlowElementInstanceWith(ctx, b.queries, key, completedAt)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

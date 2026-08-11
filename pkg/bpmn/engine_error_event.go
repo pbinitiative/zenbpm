@@ -171,6 +171,9 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := completeExistingFlowElementInstance(ctx, batch, match.scope.token); err != nil {
+		return nil, nil, err
+	}
 
 	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
 	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(match.event.GetOutputMapping(), variables, engine.evaluateExpression)

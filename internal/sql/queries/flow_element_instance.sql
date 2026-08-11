@@ -13,6 +13,11 @@ ON CONFLICT
        output_variables = excluded.output_variables,
        completed_at = COALESCE(flow_element_instance.completed_at, excluded.completed_at);
 
+-- name: CompleteFlowElementInstance :exec
+UPDATE flow_element_instance
+SET completed_at = COALESCE(completed_at, @completed_at)
+WHERE key = @key;
+
 -- name: DeleteFlowElementInstance :exec
 DELETE FROM flow_element_instance
 WHERE process_instance_key IN (sqlc.slice('keys'));

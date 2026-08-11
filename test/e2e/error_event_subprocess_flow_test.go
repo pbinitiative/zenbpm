@@ -33,7 +33,7 @@ func TestErrorEventSubProcessFlow(t *testing.T) {
 
 		assertProcessInstanceTokenState(t, instance.Key, "service-task-error-event-subprocess", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceTokenElements(t, instance.Key, []string{"service-task-error-event-subprocess"}, []string{"should-not-happen-end"})
-		assertProcessInstanceHistory(t, instance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
 			"service-task-error-event-subprocess",
@@ -44,6 +44,25 @@ func TestErrorEventSubProcessFlow(t *testing.T) {
 			"error-start-event",
 			"Flow_error_sub",
 			"handled-end",
+		})
+	})
+
+	t.Run("Propagated error closes the interrupted subprocess scope in history", func(t *testing.T) {
+		instance := deployAndCreateUniqueProcessDefinition(
+			t,
+			"../../pkg/bpmn/test-cases/error_event_subprocess/error-event-subprocess-end-error-propagation.bpmn",
+			nil,
+		)
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, instance.Key)
+		})
+
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
+			"StartEvent_1",
+			"Flow_start_main",
+			"embedded-sub",
 		})
 	})
 

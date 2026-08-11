@@ -11,6 +11,22 @@ import (
 	"strings"
 )
 
+const completeFlowElementInstance = `-- name: CompleteFlowElementInstance :exec
+UPDATE flow_element_instance
+SET completed_at = COALESCE(completed_at, ?1)
+WHERE key = ?2
+`
+
+type CompleteFlowElementInstanceParams struct {
+	CompletedAt sql.NullInt64 `json:"completed_at"`
+	Key         int64         `json:"key"`
+}
+
+func (q *Queries) CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error {
+	_, err := q.db.ExecContext(ctx, completeFlowElementInstance, arg.CompletedAt, arg.Key)
+	return err
+}
+
 const countFlowElementInstances = `-- name: CountFlowElementInstances :one
 SELECT
     count(*)

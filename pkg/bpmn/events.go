@@ -102,6 +102,10 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	}
 
 	if listener.CancellActivity {
+		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+			return nil, err
+		}
+
 		// cancel job
 		jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
 		if err != nil {

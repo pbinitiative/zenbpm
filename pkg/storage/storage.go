@@ -231,6 +231,7 @@ type FlowElementInstanceReader interface {
 type FlowElementInstanceWriter interface {
 	SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 	UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
+	CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error
 }
 
 type IncidentStorageReader interface {

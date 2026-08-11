@@ -210,11 +210,11 @@ func assertCallActivityErrorBoundaryHandledFlow(t testing.TB, parentKey int64, c
 	waitForTwoProcessInstanceStates(t, parentKey, zenclient.ProcessInstanceStateCompleted, childKey, zenclient.ProcessInstanceStateTerminated)
 	assertProcessInstanceTokenState(t, childKey, "id", runtime.TokenStateCanceled)
 	assertProcessInstanceErrorSubscriptionsCountIsZero(t, childKey)
-	assertExactProcessInstanceHistory(t, childKey, callActivityChildErrorBoundaryHistoryAfterHandledFailure)
+	assertExactCompletedProcessInstanceHistory(t, childKey, callActivityChildErrorBoundaryHistoryAfterHandledFailure)
 
 	assertProcessInstanceIsCompleted(t, parentKey, "handled-end")
 	assertProcessInstanceErrorSubscriptionCount(t, parentKey, 0, subscriptionCount)
-	assertExactProcessInstanceHistory(t, parentKey, callActivityParentErrorBoundaryHistoryAfterHandledFailure)
+	assertExactCompletedProcessInstanceHistory(t, parentKey, callActivityParentErrorBoundaryHistoryAfterHandledFailure)
 }
 
 func waitForDirectChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstancesSimple {

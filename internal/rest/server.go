@@ -1023,17 +1023,26 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
-
 	if errInstanceState != nil {
 		return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 	}
 
+	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(process.GetType()))
+	if errInstanceType != nil {
+		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+	}
+
+	bpmnProcessID := process.GetProcessId()
 	return public.CreateProcessInstance201JSONResponse{
+		ActiveElementInstances: []public.ElementInstance{},
 		ProcessInstancesSimple: public.ProcessInstancesSimple{
+			BpmnProcessId:        &bpmnProcessID,
+			BusinessKey:          request.Body.BusinessKey,
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
 			State:                processInstanceState,
+			ProcessType:          processInstanceType,
 			Variables:            processVars,
 		},
 	}, nil

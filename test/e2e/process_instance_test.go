@@ -29,18 +29,23 @@ func TestRestApiProcessInstance(t *testing.T) {
 
 	t.Run("create process instance - by bpmn id", func(t *testing.T) {
 		bpmnProcessId := "usertask-assignee-mapping-process"
+		businessKey := "create-response-business-key"
 		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", bpmnProcessId)
 		assert.NoError(t, err)
 		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId:        &bpmnProcessId,
-			BusinessKey:          nil,
+			BusinessKey:          &businessKey,
 			HistoryTimeToLive:    nil,
 			ProcessDefinitionKey: nil,
 			Variables:            nil,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusCreated, resp.StatusCode())
-		assert.NotNil(t, resp.JSON201)
+		require.NotNil(t, resp.JSON201)
+		assert.Equal(t, zenclient.ProcessInstanceProcessTypeDefault, resp.JSON201.ProcessType)
+		assert.NotNil(t, resp.JSON201.ActiveElementInstances)
+		assert.Equal(t, &bpmnProcessId, resp.JSON201.BpmnProcessId)
+		assert.Equal(t, &businessKey, resp.JSON201.BusinessKey)
 	})
 
 	t.Run("create process instance - with no identification", func(t *testing.T) {

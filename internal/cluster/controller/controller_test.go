@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	zenSql "github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/rqlite/rqlite/v10/tcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,9 +113,8 @@ func TestControllerStopCancelsPendingPartitionJoinRetry(t *testing.T) {
 }
 
 func TestControllerDeduplicatesPartitionRetries(t *testing.T) {
-	controller, err := NewController(nil, config.Cluster{})
+	controller, err := NewController(nil, config.Cluster{PartitionRetryDelay: time.Hour})
 	require.NoError(t, err)
-	controller.retryDelay = time.Hour
 
 	controller.schedulePartitionRetry(1, "first-retry")
 	controller.schedulePartitionRetry(1, "duplicate-retry")
@@ -127,10 +126,23 @@ func TestControllerDeduplicatesPartitionRetries(t *testing.T) {
 	require.NoError(t, controller.Stop())
 }
 
-func TestControllerRetrySurvivesSourceContextCancellation(t *testing.T) {
-	controller, err := NewController(nil, config.Cluster{})
+func TestControllerPartitionPollDoesNotAccumulateFailureBackoff(t *testing.T) {
+	controller, err := NewController(nil, config.Cluster{PartitionRetryDelay: time.Hour})
 	require.NoError(t, err)
-	controller.retryDelay = 10 * time.Millisecond
+	controller.retryAttempts[1] = 7
+
+	controller.schedulePartitionPoll(1, "readiness-poll")
+
+	controller.retryMu.Lock()
+	assert.True(t, controller.retryScheduled[1])
+	assert.NotContains(t, controller.retryAttempts, uint32(1))
+	controller.retryMu.Unlock()
+	require.NoError(t, controller.Stop())
+}
+
+func TestControllerRetrySurvivesSourceContextCancellation(t *testing.T) {
+	controller, err := NewController(nil, config.Cluster{PartitionRetryDelay: 10 * time.Millisecond})
+	require.NoError(t, err)
 	controller.logger = hclog.NewNullLogger()
 	controller.handleClusterChanges = true
 	controller.store = &ControllerTestStore{
@@ -277,9 +289,10 @@ func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.
 
 	migrationDir := writeBrokenMigrationFixture(t)
 	controller, err := NewController(mux, config.Cluster{
-		NodeId: tStore.id,
-		Addr:   tStore.addr,
-		Adv:    tStore.addr,
+		PartitionRetryDelay: 25 * time.Millisecond,
+		NodeId:              tStore.id,
+		Addr:                tStore.addr,
+		Adv:                 tStore.addr,
 		Raft: config.ClusterRaft{
 			Dir:                    t.TempDir(),
 			JoinAttempts:           2,
@@ -293,7 +306,6 @@ func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.
 		},
 	})
 	require.NoError(t, err)
-	controller.retryDelay = 25 * time.Millisecond
 
 	require.NoError(t, controller.Start(tStore, clientMgr))
 	t.Cleanup(func() {
@@ -325,13 +337,97 @@ func TestControllerDoesNotMarkPartitionInitializedWhenMigrationsFail(t *testing.
 	}, 5*time.Second, 20*time.Millisecond, "partition was not initialized after repairing the migration")
 }
 
+func TestControllerFollowerWaitsForLeaderInitialization(t *testing.T) {
+	leaderStore, leaderClient, leaderMux := setupControllerTestCluster(t)
+	leaderController, err := NewController(leaderMux, config.Cluster{
+		NodeId: leaderStore.id, Addr: leaderStore.addr, Adv: leaderStore.addr,
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(), JoinAttempts: 2, JoinInterval: 20 * time.Millisecond,
+			JoinAddresses: []string{leaderStore.addr}, BootstrapExpect: 1, BootstrapExpectTimeout: time.Second,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, leaderController.Start(leaderStore, leaderClient))
+	t.Cleanup(func() { assert.NoError(t, leaderController.Stop()) })
+	leaderStore.setNode(state.Node{
+		Id: leaderStore.id, Addr: leaderStore.addr, Suffrage: raft.Voter,
+		State: state.NodeStateStarted, Role: state.RoleLeader, Partitions: map[uint32]state.NodePartition{},
+	})
+	leaderController.ClusterStateChangeNotification(t.Context())
+	require.Eventually(t, func() bool {
+		return leaderStore.ClusterState().PartitionLeaderInitialized(1)
+	}, 5*time.Second, 20*time.Millisecond)
+
+	followerMux, followerListener, err := network.NewNodeMux("")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, followerListener.Close()) })
+	_, followerPort, err := net.SplitHostPort(followerListener.Addr().String())
+	require.NoError(t, err)
+	followerID := "test-node-2"
+	followerAddr := fmt.Sprintf("127.0.0.1:%s", followerPort)
+	leaderState := leaderStore.ClusterState()
+	leaderState.Nodes[followerID] = state.Node{
+		Id: followerID, Addr: followerAddr, Suffrage: raft.Voter,
+		State: state.NodeStateStarted, Role: state.RoleFollower,
+		Partitions: map[uint32]state.NodePartition{1: {Id: 1, State: state.NodePartitionStateJoining}},
+	}
+	leaderPartition := leaderState.Nodes[leaderStore.id]
+	leaderPartition.Partitions[1] = state.NodePartition{Id: 1, State: state.NodePartitionStateInitializing, Role: state.RoleLeader}
+	leaderState.Nodes[leaderStore.id] = leaderPartition
+	followerStore := &ControllerTestStore{
+		id: followerID, addr: followerAddr, clusterState: leaderState,
+		leaderAddr: leaderStore.addr, leaderID: leaderStore.id,
+	}
+	// The leader's service must know the follower so state reports can be applied.
+	leaderStore.setNode(leaderState.Nodes[followerID])
+	followerClient := client.NewClientManager(followerStore)
+	followerController, err := NewController(followerMux, config.Cluster{
+		PartitionRetryDelay: 200 * time.Millisecond,
+		NodeId:              followerID, Addr: followerAddr, Adv: followerAddr,
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(), JoinAttempts: 5, JoinInterval: 20 * time.Millisecond,
+			JoinAddresses: []string{leaderStore.addr}, BootstrapExpect: 1, BootstrapExpectTimeout: 5 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, followerController.Start(followerStore, followerClient))
+	t.Cleanup(func() { assert.NoError(t, followerController.Stop()) })
+	// State reports are applied by the fake server to leaderStore. Mirror the
+	// replicated state into the fake follower before its scheduled poll runs.
+	replicatedState := leaderStore.ClusterState()
+	replicatedLeader := replicatedState.Nodes[leaderStore.id]
+	replicatedLeader.Partitions[1] = state.NodePartition{Id: 1, State: state.NodePartitionStateInitializing, Role: state.RoleLeader}
+	replicatedState.Nodes[leaderStore.id] = replicatedLeader
+	followerStore.setClusterState(replicatedState)
+
+	require.Eventually(t, func() bool {
+		followerController.partitionsMu.RLock()
+		defer followerController.partitionsMu.RUnlock()
+		partitionNode := followerController.partitions[1]
+		return partitionNode != nil && !partitionNode.IsLeader(t.Context())
+	}, 5*time.Second, 20*time.Millisecond)
+	assert.Never(t, func() bool {
+		return leaderStore.ClusterState().Nodes[followerID].Partitions[1].State == state.NodePartitionStateInitialized
+	}, 100*time.Millisecond, 10*time.Millisecond, "follower initialized before its leader was recorded as initialized")
+
+	readyState := followerStore.ClusterState()
+	readyLeader := readyState.Nodes[leaderStore.id]
+	readyLeader.Partitions[1] = state.NodePartition{Id: 1, State: state.NodePartitionStateInitialized, Role: state.RoleLeader}
+	readyState.Nodes[leaderStore.id] = readyLeader
+	followerStore.setClusterState(readyState)
+	require.Eventually(t, func() bool {
+		return leaderStore.ClusterState().Nodes[followerID].Partitions[1].State == state.NodePartitionStateInitialized
+	}, 5*time.Second, 20*time.Millisecond)
+}
+
 func TestControllerRejoinsPartitionStuckInInitializing(t *testing.T) {
 	tStore, clientMgr, mux := setupControllerTestCluster(t)
 
 	controller, err := NewController(mux, config.Cluster{
-		NodeId: tStore.id,
-		Addr:   tStore.addr,
-		Adv:    tStore.addr,
+		PartitionRetryDelay: 25 * time.Millisecond,
+		NodeId:              tStore.id,
+		Addr:                tStore.addr,
+		Adv:                 tStore.addr,
 		Raft: config.ClusterRaft{
 			Dir:                    t.TempDir(),
 			JoinAttempts:           2,
@@ -342,7 +438,6 @@ func TestControllerRejoinsPartitionStuckInInitializing(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	controller.retryDelay = 25 * time.Millisecond
 
 	require.NoError(t, controller.Start(tStore, clientMgr))
 	t.Cleanup(func() {
@@ -372,7 +467,8 @@ func TestControllerRejoinsPartitionStuckInInitializing(t *testing.T) {
 func TestControllerMarksPersistentlyBrokenPartitionAsError(t *testing.T) {
 	tStore, clientMgr, mux := setupControllerTestCluster(t)
 	controller, err := NewController(mux, config.Cluster{
-		NodeId: tStore.id, Addr: tStore.addr, Adv: tStore.addr,
+		PartitionRetryDelay: time.Millisecond,
+		NodeId:              tStore.id, Addr: tStore.addr, Adv: tStore.addr,
 		Raft: config.ClusterRaft{
 			Dir: t.TempDir(), JoinAttempts: 2, JoinInterval: 100 * time.Millisecond,
 			JoinAddresses: []string{tStore.addr}, BootstrapExpect: 1, BootstrapExpectTimeout: time.Second,
@@ -380,7 +476,6 @@ func TestControllerMarksPersistentlyBrokenPartitionAsError(t *testing.T) {
 		Persistence: config.Persistence{Migration: config.Migration{Dir: writeBrokenMigrationFixture(t)}},
 	})
 	require.NoError(t, err)
-	controller.retryDelay = time.Millisecond
 	require.NoError(t, controller.Start(tStore, clientMgr))
 	t.Cleanup(func() { assert.NoError(t, controller.Stop()) })
 	tStore.setNode(state.Node{
@@ -416,6 +511,8 @@ type ControllerTestStore struct {
 	addr         string
 	clusterState state.Cluster
 	leader       bool
+	leaderAddr   string
+	leaderID     string
 }
 
 // Addr implements ControlledStore.
@@ -442,11 +539,17 @@ func (c *ControllerTestStore) IsLeader() bool {
 
 // LeaderWithID implements client.ClientStore.
 func (c *ControllerTestStore) LeaderWithID() (string, string) {
+	if c.leaderAddr != "" {
+		return c.leaderAddr, c.leaderID
+	}
 	return c.addr, c.id
 }
 
 // PartitionLeaderWithID implements client.ClientStore.
 func (c *ControllerTestStore) PartitionLeaderWithID(partition uint32) (string, string) {
+	if c.leaderAddr != "" {
+		return c.leaderAddr, c.leaderID
+	}
 	return c.addr, c.id
 }
 
@@ -517,6 +620,12 @@ func (c *ControllerTestStore) setDesiredPartitions(desired uint32) {
 	c.clusterState.Config.DesiredPartitions = desired
 }
 
+func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clusterState = clusterState
+}
+
 func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout time.Duration, msgAndArgs ...any) {
 	t.Helper()
 	tck := time.NewTicker(checkPeriod)
@@ -580,18 +689,10 @@ func setupControllerTestCluster(t *testing.T) (*ControllerTestStore, *client.Cli
 func writeBrokenMigrationFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	_, currentFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	sourceDir := filepath.Join(filepath.Dir(currentFile), "..", "..", "sql", "migrations")
-	entries, err := os.ReadDir(sourceDir)
+	migrations, err := zenSql.GetUpMigrations(zenSql.DefaultMigrationsDir)
 	require.NoError(t, err)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(sourceDir, entry.Name()))
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(filepath.Join(dir, entry.Name()), content, 0o600))
+	for _, migration := range migrations {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, migration.Filename), []byte(migration.SQL), 0o600))
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("THIS IS NOT VALID SQL;"), 0o600))
 	return dir

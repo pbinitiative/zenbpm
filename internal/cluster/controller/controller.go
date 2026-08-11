@@ -46,7 +46,6 @@ type Controller struct {
 	shutdownCh              chan struct{}
 	shutdownOnce            sync.Once
 	backgroundWg            sync.WaitGroup
-	retryDelay              time.Duration
 	partitionOps            sync.Map
 	retryMu                 sync.Mutex
 	retryStopped            bool
@@ -64,6 +63,9 @@ const (
 )
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
+	if conf.PartitionRetryDelay <= 0 {
+		conf.PartitionRetryDelay = defaultRetryDelay
+	}
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 	c := Controller{
 		Config:                  conf,
@@ -73,7 +75,6 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
 		shutdownCh:              make(chan struct{}),
-		retryDelay:              defaultRetryDelay,
 		retryScheduled:          make(map[uint32]bool),
 		retryAttempts:           make(map[uint32]uint),
 		initializationFailures:  make(map[uint32]uint),
@@ -379,14 +380,14 @@ func (c *Controller) handlePartitionStateInitializing(partitionID uint32) {
 		return
 	}
 	if !isLeader && !partitionLeaderInitialized(c.store.ClusterState(), partitionID) {
-		c.schedulePartitionRetry(partitionID, "partition-leader-initialization-retry")
+		c.schedulePartitionPoll(partitionID, "partition-leader-initialization-poll")
 		return
 	}
 	if !isLeader {
 		ready, schemaErr := partitionNode.DB.SchemaReady(c.lifecycleCtx)
 		if schemaErr != nil || !ready {
 			c.logger.Debug("Follower schema is not ready", "partitionId", partitionID, "err", schemaErr)
-			c.schedulePartitionRetry(partitionID, "partition-follower-schema-retry")
+			c.schedulePartitionPoll(partitionID, "partition-follower-schema-poll")
 			return
 		}
 	}
@@ -466,20 +467,35 @@ func partitionLeaderInitialized(clusterState state.Cluster, partitionID uint32) 
 }
 
 func (c *Controller) schedulePartitionRetry(partitionID uint32, name string) {
+	c.schedulePartitionRetryAfter(partitionID, name, true)
+}
+
+// schedulePartitionPoll retries a healthy wait condition at a fixed cadence.
+// Waiting for the leader to initialize or for replicated schema state to arrive
+// must not push a follower into the exponential failure backoff.
+func (c *Controller) schedulePartitionPoll(partitionID uint32, name string) {
+	c.schedulePartitionRetryAfter(partitionID, name, false)
+}
+
+func (c *Controller) schedulePartitionRetryAfter(partitionID uint32, name string, backoff bool) {
 	c.retryMu.Lock()
 	if c.retryStopped || c.lifecycleCtx.Err() != nil || c.retryScheduled[partitionID] {
 		c.retryMu.Unlock()
 		return
 	}
 	c.retryScheduled[partitionID] = true
-	c.retryAttempts[partitionID]++
-	attempt := c.retryAttempts[partitionID]
-	delay := c.retryDelay
-	for i := uint(1); i < attempt && delay < maxRetryDelay; i++ {
-		delay *= 2
-		if delay > maxRetryDelay {
-			delay = maxRetryDelay
+	delay := c.Config.PartitionRetryDelay
+	if backoff {
+		c.retryAttempts[partitionID]++
+		attempt := c.retryAttempts[partitionID]
+		for i := uint(1); i < attempt && delay < maxRetryDelay; i++ {
+			delay *= 2
+			if delay > maxRetryDelay {
+				delay = maxRetryDelay
+			}
 		}
+	} else {
+		delete(c.retryAttempts, partitionID)
 	}
 	c.backgroundWg.Add(1)
 	c.retryMu.Unlock()

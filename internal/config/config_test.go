@@ -3,9 +3,32 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
+
+func TestClusterPartitionRetryDelayFromEnv(t *testing.T) {
+	t.Setenv("CLUSTER_PARTITION_RETRY_DELAY", "250ms")
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.PartitionRetryDelay != 250*time.Millisecond {
+		t.Errorf("expected PartitionRetryDelay 250ms, got %s", c.Cluster.PartitionRetryDelay)
+	}
+}
+
+func TestClusterPartitionRetryDelayDefault(t *testing.T) {
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.PartitionRetryDelay != 5*time.Second {
+		t.Errorf("expected default PartitionRetryDelay 5s, got %s", c.Cluster.PartitionRetryDelay)
+	}
+}
 
 func TestHttpServerLogModeFromEnv(t *testing.T) {
 	t.Setenv("REST_API_LOG_MODE", "all")

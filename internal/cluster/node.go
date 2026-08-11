@@ -1895,6 +1895,9 @@ func nodeReadinessReasons(cs state.Cluster, nodeID string) []string {
 	if self, err := cs.GetNode(nodeID); err != nil {
 		partitionReasons = append(partitionReasons, "node is not registered in the cluster state")
 	} else {
+		if len(self.Partitions) == 0 {
+			partitionReasons = append(partitionReasons, "node has no assigned partitions")
+		}
 		for id, partition := range self.Partitions {
 			if partition.State != state.NodePartitionStateInitialized {
 				partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d on this node is in state %s", id, partition.State))

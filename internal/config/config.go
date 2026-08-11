@@ -41,6 +41,8 @@ type Cluster struct {
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 	Script      Script      `yaml:"script" json:"script"`
+	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
+	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
 }
 
 type ClusterRaft struct {

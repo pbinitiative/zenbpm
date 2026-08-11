@@ -79,18 +79,37 @@ func (c Cluster) GetPartitionFollower(partition uint32) (Node, error) {
 		if !hasPartition {
 			continue
 		}
-		if nodePartition.Role == RoleFollower {
+		if nodePartition.Role == RoleFollower && nodePartition.State == NodePartitionStateInitialized {
 			partitionFollower = node
 			break
 		}
 	}
 	var winningNode Node
 	if partitionFollower.Addr == "" {
-		winningNode = c.Nodes[partitionLeaderId]
+		leader, ok := c.Nodes[partitionLeaderId]
+		if !ok || leader.Partitions[partition].State != NodePartitionStateInitialized {
+			return Node{}, fmt.Errorf("partition has no initialized node")
+		}
+		winningNode = leader
 	} else {
 		winningNode = partitionFollower
 	}
 	return winningNode, nil
+}
+
+// PartitionLeaderInitialized reports whether the recorded leader exists and
+// has completed its local partition initialization.
+func (c Cluster) PartitionLeaderInitialized(partitionID uint32) bool {
+	partitionState, ok := c.Partitions[partitionID]
+	if !ok || partitionState.LeaderId == "" {
+		return false
+	}
+	leader, ok := c.Nodes[partitionState.LeaderId]
+	if !ok {
+		return false
+	}
+	leaderPartition, ok := leader.Partitions[partitionID]
+	return ok && leaderPartition.Role == RoleLeader && leaderPartition.State == NodePartitionStateInitialized
 }
 
 // GetLeastStressedPartitionLeader returns leader of partition that has the least instances running

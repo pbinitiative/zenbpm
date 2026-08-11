@@ -178,6 +178,16 @@ func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodeP
 		Role:  state.Role(partitionChangeCommand.GetRole()),
 	}
 	if partitionChangeCommand.GetRole() == proto.Role_ROLE_TYPE_LEADER {
+		partitionID := partitionChangeCommand.GetPartitionId()
+		if previous, exists := currState.Partitions[partitionID]; exists && previous.LeaderId != partitionChangeCommand.GetNodeId() {
+			if previousNode, nodeExists := currState.Nodes[previous.LeaderId]; nodeExists {
+				if previousPartition, partitionExists := previousNode.Partitions[partitionID]; partitionExists {
+					previousPartition.Role = state.RoleFollower
+					previousNode.Partitions[partitionID] = previousPartition
+					currState.Nodes[previous.LeaderId] = previousNode
+				}
+			}
+		}
 		currState.Partitions[partitionChangeCommand.GetPartitionId()] = state.Partition{
 			Id:       partitionChangeCommand.GetPartitionId(),
 			LeaderId: partitionChangeCommand.GetNodeId(),

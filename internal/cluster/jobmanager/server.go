@@ -279,7 +279,7 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 		req, err := stream.stream.Recv()
 		if err == io.EOF || errors.Is(err, context.Canceled) {
 			// read done.
-			s.removeNode(stream.nodeID)
+			s.removeNode(stream)
 			s.logger.Debug("Stream closed", "err", err)
 			return
 		}
@@ -302,15 +302,16 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 	}
 }
 
-func (s *jobServer) removeNode(nodeId NodeId) {
-	s.nodeMu.Lock()
-	delete(s.nodeSubs, nodeId)
-	s.nodeMu.Unlock()
+func (s *jobServer) removeNode(closing *nodeSub) {
+	s.removeNodeSubscription(closing)
+
 	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+
 	for jobType, subs := range s.subscriptions {
 		removed := make(map[ClientID]struct{}, len(subs))
 		for clientID, nodeSub := range subs {
-			if nodeSub.nodeID != nodeId {
+			if nodeSub != closing {
 				continue
 			}
 			delete(s.subscriptions[jobType], clientID)
@@ -339,7 +340,15 @@ func (s *jobServer) removeNode(nodeId NodeId) {
 		}
 		s.jobTypes[jobType] = jobTypeData
 	}
-	s.clientMu.Unlock()
+}
+
+func (s *jobServer) removeNodeSubscription(closing *nodeSub) {
+	s.nodeMu.Lock()
+	defer s.nodeMu.Unlock()
+
+	if current, ok := s.nodeSubs[closing.nodeID]; ok && current == closing {
+		delete(s.nodeSubs, closing.nodeID)
+	}
 }
 
 func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jType JobType) {

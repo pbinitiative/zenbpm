@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,22 @@ func TestClusterPartitionRetryDelayFromEnv(t *testing.T) {
 }
 
 func TestClusterPartitionRetryDelayDefault(t *testing.T) {
+	value, wasSet := os.LookupEnv("CLUSTER_PARTITION_RETRY_DELAY")
+	t.Cleanup(func() {
+		if wasSet {
+			if err := os.Setenv("CLUSTER_PARTITION_RETRY_DELAY", value); err != nil {
+				t.Errorf("failed to restore CLUSTER_PARTITION_RETRY_DELAY: %v", err)
+			}
+			return
+		}
+		if err := os.Unsetenv("CLUSTER_PARTITION_RETRY_DELAY"); err != nil {
+			t.Errorf("failed to unset CLUSTER_PARTITION_RETRY_DELAY during cleanup: %v", err)
+		}
+	})
+	if err := os.Unsetenv("CLUSTER_PARTITION_RETRY_DELAY"); err != nil {
+		t.Fatalf("failed to unset CLUSTER_PARTITION_RETRY_DELAY: %v", err)
+	}
+
 	var c Config
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)

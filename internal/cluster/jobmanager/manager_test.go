@@ -28,6 +28,31 @@ var (
 	gen, _    = snowflake.NewNode(int64(partition))
 )
 
+func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
+	server := newJobServer("node-1", nil, nil)
+	oldStream := &nodeSub{nodeID: "node-2"}
+	server.nodeSubs["node-2"] = oldStream
+
+	server.subscribeClient("node-2", "client-1", "test-job")
+	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
+
+	// node-2 reconnects and replays its subscriptions before the old stream exits
+	replacementStream := &nodeSub{nodeID: "node-2"}
+	server.nodeSubs["node-2"] = replacementStream
+	server.subscribeClient("node-2", "client-1", "test-job")
+	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients,
+		"replayed subscription must not duplicate the client in the round robin list")
+
+	server.removeNode(oldStream)
+	assert.Same(t, replacementStream, server.nodeSubs["node-2"])
+	assert.Same(t, replacementStream, server.subscriptions["test-job"]["client-1"])
+	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
+
+	server.removeNode(replacementStream)
+	assert.Empty(t, server.jobTypes["test-job"].clients)
+	assert.Empty(t, server.subscriptions["test-job"])
+}
+
 func TestManagerHandlesLeaderChanges(t *testing.T) {
 	// leader changes will be handled later
 	t.SkipNow()
@@ -579,23 +604,4 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	leaderId := partState.LeaderId
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
-}
-
-func TestServerDropsNodeClientsFromRoundRobinOnNodeRemoval(t *testing.T) {
-	server := newJobServer("node-1", nil, nil)
-	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2"}
-
-	server.subscribeClient("node-2", "client-1", "test-job")
-	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
-
-	// stream of node-2 ended
-	server.removeNode("node-2")
-	assert.Empty(t, server.jobTypes["test-job"].clients)
-	assert.Empty(t, server.subscriptions["test-job"])
-
-	// node-2 reconnected and replayed its subscriptions
-	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2"}
-	server.subscribeClient("node-2", "client-1", "test-job")
-	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients,
-		"replayed subscription must not duplicate the client in the round robin list")
 }

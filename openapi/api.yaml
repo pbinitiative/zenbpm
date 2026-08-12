@@ -606,7 +606,7 @@ paths:
                   description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
             encoding:
               resource:
-                contentType: application/octet-stream
+                contentType: application/octet-stream, application/xml
       responses:
         201:
           description: Process definition deployed

@@ -129,10 +129,11 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Complete:
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
+				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: new(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -144,10 +145,11 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
+				s.logger.Error("failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: new(fmt.Sprintf("Failed to complete job: %s", err)),
+						Message: new("Failed to complete job"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -160,10 +162,11 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Fail:
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
+				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: new(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -175,10 +178,11 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
+				s.logger.Error("failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: new(fmt.Sprintf("Failed to fail job: %s", err)),
+						Message: new("Failed to process job failure request"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,

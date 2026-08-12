@@ -55,6 +55,59 @@ func TestRecvClientRequestsSanitizesSubscriptionErrors(t *testing.T) {
 	}
 }
 
+func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
+	internalErr := errors.New("node-42 at 10.0.0.1 refused the request")
+	tests := []struct {
+		name      string
+		request   *proto.JobStreamRequest
+		configure func(*jobStreamTestManager)
+		expected  string
+	}{
+		{
+			name:     "invalid complete variables",
+			request:  completeRequest([]byte("{")),
+			expected: "Invalid job variables",
+		},
+		{
+			name:      "completion failure",
+			request:   completeRequest(nil),
+			configure: func(manager *jobStreamTestManager) { manager.completeErr = internalErr },
+			expected:  "Failed to complete job",
+		},
+		{
+			name:     "invalid failure variables",
+			request:  failRequest([]byte("{")),
+			expected: "Invalid job variables",
+		},
+		{
+			name:      "failure request failure",
+			request:   failRequest(nil),
+			configure: func(manager *jobStreamTestManager) { manager.failErr = internalErr },
+			expected:  "Failed to process job failure request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &jobStreamTestManager{}
+			if tt.configure != nil {
+				tt.configure(manager)
+			}
+			stream := newJobStreamTestServer(tt.request)
+			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+			require.Len(t, stream.sent, 1)
+			require.NotNil(t, stream.sent[0].Error)
+			assert.Equal(t, tt.expected, stream.sent[0].Error.GetMessage())
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "node-42")
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "10.0.0.1")
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "invalid character")
+		})
+	}
+}
+
 func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) {
 	manager := &jobStreamTestManager{subscribeErr: errors.New("subscription failed")}
 	stream := newJobStreamTestServer(
@@ -136,6 +189,8 @@ func TestUnknownRequestError(t *testing.T) {
 type jobStreamTestManager struct {
 	subscribeErr     error
 	unsubscribeErr   error
+	completeErr      error
+	failErr          error
 	subscribeCalls   int
 	unsubscribeCalls int
 }
@@ -156,12 +211,12 @@ func (m *jobStreamTestManager) RemoveClientJobSub(context.Context, jobmanager.Cl
 	return m.unsubscribeErr
 }
 
-func (*jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error {
-	return nil
+func (m *jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error {
+	return m.completeErr
 }
 
-func (*jobStreamTestManager) FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error {
-	return nil
+func (m *jobStreamTestManager) FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error {
+	return m.failErr
 }
 
 type jobStreamTestServer struct {
@@ -206,6 +261,28 @@ func subscriptionRequest(requestType proto.StreamSubscriptionRequest_Type) *prot
 			Subscription: &proto.StreamSubscriptionRequest{
 				Type:    requestType.Enum(),
 				JobType: new("job-a"),
+			},
+		},
+	}
+}
+
+func completeRequest(variables []byte) *proto.JobStreamRequest {
+	return &proto.JobStreamRequest{
+		Request: &proto.JobStreamRequest_Complete{
+			Complete: &proto.JobCompleteRequest{
+				Key:       new(int64(42)),
+				Variables: variables,
+			},
+		},
+	}
+}
+
+func failRequest(variables []byte) *proto.JobStreamRequest {
+	return &proto.JobStreamRequest{
+		Request: &proto.JobStreamRequest_Fail{
+			Fail: &proto.JobFailRequest{
+				Key:       new(int64(42)),
+				Variables: variables,
 			},
 		},
 	}

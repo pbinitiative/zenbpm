@@ -22,7 +22,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
-	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	grpcrecovery "github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/safego"
@@ -1869,11 +1868,6 @@ func isErrNotFound(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound)
 }
 
-const (
-	errorCodeInvalidTimerState = "cluster.invalid_timer_state"
-	errorCodeInvalidErrorState = "cluster.invalid_error_state"
-)
-
 func timerStateToActivityState(timerState int64) (int64, error) {
 	switch runtime.TimerState(timerState) {
 	case runtime.TimerStateCreated:
@@ -1884,7 +1878,6 @@ func timerStateToActivityState(timerState int64) (int64, error) {
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
 		err := fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
-		errortracking.CaptureUnexpected(context.Background(), errorCodeInvalidTimerState, err)
 		log.Error("%s", err)
 		return 0, err
 	}
@@ -1898,7 +1891,6 @@ func errorStateToActivityState(errorState int64) (int64, error) {
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
 		err := fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
-		errortracking.CaptureUnexpected(context.Background(), errorCodeInvalidErrorState, err)
 		log.Error("%s", err)
 		return 0, err
 	}

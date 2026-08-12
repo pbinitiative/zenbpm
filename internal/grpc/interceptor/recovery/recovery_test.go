@@ -54,7 +54,7 @@ func (s *recoveryServerStream) Context() context.Context {
 
 func newRecoveryRecordingContext(t *testing.T) (context.Context, func() *sentry.Event) {
 	t.Helper()
-	events := make(chan *sentry.Event, 1)
+	events := make(chan *sentry.Event, 4)
 	client, err := sentry.NewClient(sentry.ClientOptions{
 		Dsn:              "https://public@example.com/1",
 		AttachStacktrace: true,

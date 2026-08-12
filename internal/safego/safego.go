@@ -1,3 +1,4 @@
+// Package safego provides helpers for running functions with panic recovery.
 package safego
 
 import (

@@ -56,7 +56,7 @@ The Java client is a lightweight library that wraps the REST and gRPC APIs, prov
 The client is available on GitHub: [zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client)
 
 There are 2 artefacts available:
-- **zenbpm-client-code:** the core library, can be used independently of Spring Boot and supports old java versions
+- **zenbpm-client-core:** the core library, can be used independently of Spring Boot and supports old java versions
 - **zenbpm-spring-boot-starter:** a Spring Boot starter that provides auto-configuration for the core library and `@JobWorker("jobName")` method annotation.
 
 ### Features
@@ -76,15 +76,28 @@ Add the starter to your application and the core client as needed.
 
 Maven:
 ```xml
+<!-- Use the same version as your ZenBPM engine (e.g., for ZenBPM v1.3.0, use 1.3.0) -->
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-spring-boot-starter</artifactId>
   <version>${zenbpm.version}</version>
 </dependency>
+
+<!-- Core REST + gRPC client (without Spring auto-configuration) -->
 <dependency>
-  <groupId>org.zenbpm</groupId>
+  <groupId>org.pbinitiative.zenbpm</groupId>
   <artifactId>zenbpm-client-core</artifactId>
   <version>${zenbpm.version}</version>
+</dependency>
+
+<!-- gRPC transport. gRPC Java splits API stubs from the transport implementation
+     on purpose, so this library doesn't pull one in transitively. Pick whichever
+     transport fits your runtime (grpc-netty-shaded is the most common). -->
+<dependency>
+  <groupId>io.grpc</groupId>
+  <artifactId>grpc-netty-shaded</artifactId>
+  <version>1.78.0</version>
+  <scope>runtime</scope>
 </dependency>
 ```
 
@@ -104,13 +117,15 @@ zenbpm:
   grpcPlaintext: true
   grpcLoggingEnabled: true
   jobWorkerEnabled: true
-  otelEnabled: true
-  
+
+# Disable OpenTelemetry — this is an OpenTelemetry SDK property, not a library property.
+otel.sdk.disabled: true
+
 logging:
   level:
     root: INFO
-    org.zenbpm.rest: TRACE
-    org.zenbpm.grpc: DEBUG
+    org.pbinitiative.zenbpm.rest: TRACE
+    org.pbinitiative.zenbpm.grpc: DEBUG
 
 ```
 
@@ -122,13 +137,15 @@ Inject the provided ZenbpmClientService to obtain the ApiClient, then create a t
 ```java
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.zenbpm.rest.ZenbpmClientService;
-import org.zenbpm.client.ApiException;
-import org.zenbpm.client.ApiClient;
-import org.zenbpm.client.api.ProcessDefinitionApi;
-import org.zenbpm.client.api.ProcessInstanceApi;
-import org.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+import org.pbinitiative.zenbpm.rest.ZenbpmClientService;
+import org.pbinitiative.zenbpm.client.ApiException;
+import org.pbinitiative.zenbpm.client.ApiClient;
+import org.pbinitiative.zenbpm.client.api.ProcessDefinitionApi;
+import org.pbinitiative.zenbpm.client.api.ProcessInstanceApi;
+import org.pbinitiative.zenbpm.client.api.dto.CreateProcessInstanceRequest;
+import org.pbinitiative.zenbpm.client.api.dto.ProcessInstance;
 
+import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -141,13 +158,11 @@ public class MyService {
     ApiClient apiClient = zenbpm.getApiClient();
     ProcessDefinitionApi defApi = new ProcessDefinitionApi(apiClient);
 
-    // Example: create a process definition from a BPMN string (adjust to your endpoint contract)
-    String bpmnXml = "<definitions ...>...</definitions>";
-    Long definitionKey = defApi.createProcessDefinition(bpmnXml).getProcessDefinitionKey();
-    return definitionKey;
+    File bpmnFile = new File("path/to/process.bpmn");
+    return defApi.createProcessDefinition(bpmnFile).getProcessDefinitionKey();
   }
 
-  public void startMyProcess() throws ApiException {
+  public ProcessInstance startMyProcess(Long definitionKey) throws ApiException {
     ApiClient apiClient = zenbpm.getApiClient();
     ProcessInstanceApi piApi = new ProcessInstanceApi(apiClient);
 
@@ -155,31 +170,31 @@ public class MyService {
     vars.put("orderId", 12345L);
 
     CreateProcessInstanceRequest req = new CreateProcessInstanceRequest()
-        .processDefinitionKey(123456L)
+        .processDefinitionKey(definitionKey)
         .variables(vars);
 
-    piApi.createProcessInstance(req);
+    return piApi.createProcessInstance(req);
   }
 }
 ```
 
 Notes:
 - Available typed APIs include ProcessDefinitionApi, ProcessInstanceApi, JobApi, MessageApi, etc. Construct them with the provided ApiClient.
-- Methods and DTOs come from the generated package `org.zenbpm.client.api` and `org.zenbpm.client.api.dto`.
+- Methods and DTOs come from the generated package `org.pbinitiative.zenbpm.client.api` and `org.pbinitiative.zenbpm.client.api.dto`.
 
 #### 2) Register a gRPC job worker
 Create a Spring bean with a method annotated by `@JobWorker`. Accepted method signatures:
 - no parameters
-- one parameter of type `org.zenbpm.proto.Zenbpm.WaitingJob`
-- one parameter of type `org.zenbpm.grpc.JobContext`
+- one parameter of type `org.pbinitiative.zenbpm.proto.Zenbpm.WaitingJob`
+- one parameter of type `org.pbinitiative.zenbpm.grpc.JobContext`
 - one parameter of type `Map<String, Object>`
 
 Return value can be any object and will be serialized as variables for job completion. Throwing an exception fails the job.
 
 ```java
 import org.springframework.stereotype.Component;
-import org.zenbpm.grpc.JobWorker;
-import org.zenbpm.grpc.JobContext;
+import org.pbinitiative.zenbpm.grpc.JobWorker;
+import org.pbinitiative.zenbpm.grpc.JobContext;
 import java.util.Map;
 import java.util.HashMap;
 

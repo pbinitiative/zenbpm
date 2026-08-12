@@ -1,9 +1,13 @@
+// Package safego provides helpers for running functions with panic recovery.
 package safego
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 )
 
 type Logger interface {
@@ -14,6 +18,7 @@ func Go(name string, logger Logger, fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
+				errortracking.CapturePanic(context.Background(), r, "safego."+name)
 				logger.Error(fmt.Sprintf("safego: panic in %s", name), "panic", r, "stack", string(debug.Stack()))
 			}
 		}()
@@ -32,6 +37,7 @@ func (slogLogger) Error(msg string, args ...interface{}) {
 func Run(name string, logger Logger, fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			errortracking.CapturePanic(context.Background(), r, "safego."+name)
 			stack := string(debug.Stack())
 			logger.Error(fmt.Sprintf("safego: panic in %s", name), "panic", r, "stack", stack)
 			err = fmt.Errorf("panic in %s: %v\n%s", name, r, stack)

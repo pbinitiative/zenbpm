@@ -33,3 +33,4 @@ dist/
 .release-env
 .gocache
 .cache/
+.gomodcache

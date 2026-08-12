@@ -1,3 +1,4 @@
+// Package server implements the cluster-facing Zen BPM service.
 package server
 
 import (
@@ -1876,8 +1877,9 @@ func timerStateToActivityState(timerState int64) (int64, error) {
 	case runtime.TimerStateCancelled:
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
-		log.Error("unknown timer state: %d", timerState)
-		return 0, fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
+		err := fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
+		log.Error("%s", err)
+		return 0, err
 	}
 }
 
@@ -1888,7 +1890,8 @@ func errorStateToActivityState(errorState int64) (int64, error) {
 	case runtime.ErrorStateCancelled:
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
-		log.Error("errorStateToActivityState: unrecognized ErrorState %d; filtering disabled", errorState)
-		return 0, fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
+		err := fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
+		log.Error("%s", err)
+		return 0, err
 	}
 }

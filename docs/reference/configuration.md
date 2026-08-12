@@ -118,6 +118,20 @@ Distributed tracing settings using OpenTelemetry.
 
 ---
 
+## Error Tracking: GlitchTip
+
+ZenBPM reports recovered panics and explicitly marked invariant violations to GlitchTip. Error tracking uses environment variables rather than the application configuration file so it can initialize before configuration parsing.
+
+| Env Variable         | Default                 | Description                                                                         |
+|----------------------|-------------------------|-------------------------------------------------------------------------------------|
+| `SENTRY_ENABLED`     | `true`                  | Master switch for error reporting. Set to `false` to disable it even when DSN is set. |
+| `SENTRY_DSN`         | —                       | GlitchTip project DSN. Error reporting is disabled when it is unset or empty.       |
+| `SENTRY_ENVIRONMENT` | Current `PROFILE` value | Deployment environment attached to each event.                                      |
+
+The application build version is attached as the GlitchTip release. Sentry performance tracing and automatic log forwarding are disabled because ZenBPM uses OpenTelemetry for tracing and reports only actionable unexpected errors.
+
+---
+
 ## Example YAML Configuration
 
 ```yaml

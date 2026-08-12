@@ -1174,7 +1174,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
 	}
-	batch.UpdateOutputFlowElementInstance(ctx,
+	if err := batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -1184,7 +1184,10 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			OutputVariables:    outputVariables,
 			CompletedAt:        new(time.Now()),
 		},
-	)
+	); err != nil {
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to update flow element instance for business rule %s: %w", element.GetId(), err)
+	}
 
 	return runtime.ActivityStateCompleted, nil
 }

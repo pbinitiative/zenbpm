@@ -295,7 +295,9 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 					}
 				case raft.LeaderObservation:
 					isLeader := signal.LeaderID == raft.ServerID(s.raftID)
-					s.selfLeaderChange(isLeader)
+					if err := s.selfLeaderChange(isLeader); err != nil {
+						s.logger.Error(fmt.Sprintf("failed to handle leadership change: %s", err.Error()))
+					}
 					if isLeader {
 						s.logger.Info(fmt.Sprintf("this node (ID=%s) is now Leader", s.raftID))
 					} else {

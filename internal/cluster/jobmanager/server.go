@@ -107,9 +107,11 @@ func (s *jobServer) startServer(ctx context.Context) {
 func (s *jobServer) distributeJobs() {
 	for {
 		if s.ctx.Err() != nil {
-			for _, sub := range s.nodeSubs {
-				// send empty message to close the stream
-				sub.stream.Send(&proto.SubscribeJobResponse{})
+			for nodeID, sub := range s.nodeSubs {
+				// best-effort: send empty message to close the stream; the stream may already be gone during shutdown
+				if err := sub.stream.Send(&proto.SubscribeJobResponse{}); err != nil {
+					s.logger.Debug("failed to send stream close message to node", "nodeID", nodeID, "err", err)
+				}
 			}
 			s.nodeSubs = make(map[NodeId]*nodeSub)
 			s.logger.Info("Stopping job distribution", "err", s.ctx.Err())

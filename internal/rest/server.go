@@ -599,12 +599,19 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			// Read file data
 			data, err = io.ReadAll(part)
 			if err != nil {
+				if closeErr := part.Close(); closeErr != nil {
+					err = errors.Join(err, fmt.Errorf("failed to close resource multipart part: %w", closeErr))
+				}
 				return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
 			}
-			part.Close()
+			if err := part.Close(); err != nil {
+				return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to close resource multipart part: %w", err)).ToApiError()), nil
+			}
 			break
 		}
-		part.Close()
+		if err := part.Close(); err != nil {
+			return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to close multipart part %q: %w", part.FormName(), err)).ToApiError()), nil
+		}
 	}
 
 	if !found {
@@ -2244,8 +2251,8 @@ func writeError(w http.ResponseWriter, _ *http.Request, status int, resp interfa
 	body, err := json.Marshal(resp)
 	if err != nil {
 		log.Error("Server error: %s", err)
-	} else {
-		w.Write(body)
+	} else if _, err := w.Write(body); err != nil {
+		log.Error("Failed to write error response body: %s", err)
 	}
 }
 

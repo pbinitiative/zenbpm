@@ -216,8 +216,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -230,8 +229,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -241,12 +239,14 @@ mainLoop:
 		}
 
 		for _, tok := range updatedTokens {
-			switch tok.State {
-			case runtime.TokenStateRunning:
-				batch.SaveToken(ctx, tok)
+			if saveErr := batch.SaveToken(ctx, tok); saveErr != nil {
+				saveErr = fmt.Errorf("failed to save token %d for process instance %d: %w", tok.Key, instance.ProcessInstance().Key, saveErr)
+				runErr = errors.Join(runErr, saveErr)
+				engine.logger.Warn("failed to save token", "token", tok.Key, "processInstance", instance.ProcessInstance().Key, "err", saveErr)
+				continue
+			}
+			if tok.State == runtime.TokenStateRunning {
 				runningExecutionTokens = append(runningExecutionTokens, tok)
-			default:
-				batch.SaveToken(ctx, tok)
 			}
 		}
 
@@ -258,8 +258,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to save process instance after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -274,8 +273,7 @@ mainLoop:
 				if err != nil {
 					runErr = errors.Join(runErr, err)
 					engine.logger.Warn("failed to handle parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-					batch.WriteTokenIncident(ctx, currentToken, instance, err)
-					incidentError := batch.Flush(ctx)
+					incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 					if incidentError != nil {
 						err = errors.Join(err, incidentError)
 						runErr = errors.Join(runErr, incidentError)
@@ -288,8 +286,7 @@ mainLoop:
 			if err != nil {
 				runErr = errors.Join(runErr, err)
 				engine.logger.Warn("failed to flush after processing parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-				batch.WriteTokenIncident(ctx, currentToken, instance, err)
-				incidentError := batch.Flush(ctx)
+				incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 				if incidentError != nil {
 					err = errors.Join(err, incidentError)
 					runErr = errors.Join(runErr, incidentError)
@@ -305,8 +302,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to flush after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)

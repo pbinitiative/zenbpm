@@ -84,7 +84,8 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	client1 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
 
@@ -127,7 +128,8 @@ func TestManagerDistributesJob(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
 	loader.addJobs(generatedJobs...)
@@ -167,12 +169,14 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
 	client2Jobs := consumeJobs(t, "client-2", client2, jm2)
@@ -216,7 +220,8 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
 
@@ -226,7 +231,8 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	assert.NoError(t, err)
 
 	client2Jobs := consumeJobs(t, "client-2", client2, jm2)
 
@@ -309,7 +315,8 @@ func TestManagerTroughput(t *testing.T) {
 		clientID := ClientID(fmt.Sprintf("client-%d", i))
 		err = jm2.AddClient(t.Context(), clientID, client)
 		assert.NoError(t, err)
-		jm2.AddClientJobSub(t.Context(), clientID, jobType)
+		err = jm2.AddClientJobSub(t.Context(), clientID, jobType)
+		assert.NoError(t, err)
 
 		go func() {
 			for {

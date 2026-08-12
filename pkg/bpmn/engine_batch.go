@@ -145,22 +145,37 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 	b.postFlushActions = []func(){}
 }
 
-func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, err error) {
-	b.b = b.engine.persistence.NewBatch()
-	b.preFlushActions = []func() error{}
-	b.postFlushActions = []func(){}
+func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
+	incidentBatch := b.engine.persistence.NewBatch()
 	token.State = bpmnruntime.TokenStateFailed
 	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
-	b.b.SaveToken(ctx, token)
-	b.b.SaveProcessInstance(ctx, instance)
-	incident := createNewIncidentFromToken(err, token, b.engine)
-	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
-		b.engine.logger.Error("failed to queue incident for token", "token", token.Key, "err", saveErr)
-	} else {
-		b.postFlushActions = append(b.postFlushActions, func() {
-			b.engine.recordIncidentMetric(ctx, incident)
-		})
+	if err := incidentBatch.SaveToken(ctx, token); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue failed token %d: %w", token.Key, err)
 	}
+	if err := incidentBatch.SaveProcessInstance(ctx, instance); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue failed process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	incident := createNewIncidentFromToken(cause, token, b.engine)
+	if err := incidentBatch.SaveIncident(ctx, incident); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue incident %d for token %d: %w", incident.Key, token.Key, err)
+	}
+
+	b.b = incidentBatch
+	b.preFlushActions = []func() error{}
+	b.postFlushActions = []func(){func() {
+		b.engine.recordIncidentMetric(ctx, incident)
+	}}
+	return nil
+}
+
+func (b *EngineBatch) writeAndFlushTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
+	if err := b.WriteTokenIncident(ctx, token, instance, cause); err != nil {
+		return err
+	}
+	return b.Flush(ctx)
 }
 
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {

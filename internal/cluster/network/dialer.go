@@ -19,7 +19,8 @@ func (d *Dialer) DialGRPC(addr string) (conn net.Conn, retErr error) {
 
 	defer func() {
 		if retErr != nil && conn != nil {
-			conn.Close()
+			// best-effort cleanup on the error path; the dial/write error is returned to the caller
+			_ = conn.Close()
 		}
 	}()
 

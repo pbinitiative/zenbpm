@@ -283,8 +283,12 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	str.RegisterObserver(zpn.observer)
 	zpn.observerClose, zpn.observerDone = zpn.observe()
 
-	zpn.registerStatus("cluster", clstrServ)
-	zpn.registerStatus("network", tcp.NetworkReporter{})
+	if err := zpn.registerStatus("cluster", clstrServ); err != nil {
+		return nil, fmt.Errorf("failed to register cluster status reporter: %w", err)
+	}
+	if err := zpn.registerStatus("network", tcp.NetworkReporter{}); err != nil {
+		return nil, fmt.Errorf("failed to register network status reporter: %w", err)
+	}
 
 	nodes, err := str.Nodes()
 	if err != nil {
@@ -299,7 +303,9 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		return nil, fmt.Errorf("failed to start auto-backups: %w", err)
 	}
 	if backupSrv != nil {
-		zpn.registerStatus("auto_backups", backupSrv)
+		if err := zpn.registerStatus("auto_backups", backupSrv); err != nil {
+			return nil, fmt.Errorf("failed to register auto_backups status reporter: %w", err)
+		}
 	}
 	return &zpn, nil
 }

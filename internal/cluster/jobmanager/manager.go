@@ -107,12 +107,12 @@ func (m *JobManager) RemoveClient(ctx context.Context, clientId ClientID) {
 	m.client.removeClient(ctx, clientId)
 }
 
-func (m *JobManager) AddClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.addJobSub(ctx, clientId, jobType)
+func (m *JobManager) AddClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) error {
+	return m.client.addJobSub(ctx, clientId, jobType)
 }
 
-func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.removeJobSub(ctx, clientId, jobType)
+func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) error {
+	return m.client.removeJobSub(ctx, clientId, jobType)
 }
 
 func (m *JobManager) AddNodeSubscription(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {

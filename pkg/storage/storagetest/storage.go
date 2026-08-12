@@ -199,7 +199,7 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, _ *
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
@@ -218,7 +218,7 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, _ *
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
@@ -338,7 +338,7 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, _ *testing.T)
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -392,7 +392,7 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, _ *testing.T)
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -466,7 +466,7 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, _ *testing.T) f
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 
@@ -485,7 +485,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, _ *testing.T) f
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -535,7 +535,7 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, _ *testing.
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -596,7 +596,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, _ *testing.
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		messageSub := getMessage(r, st.processInstance.ProcessInstance().Key, st.processDefinition.Key, token)
 		err := s.SaveMessageSubscription(t.Context(), messageSub)

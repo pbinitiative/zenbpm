@@ -277,15 +277,27 @@ func (c *jobClient) startClient() {
 // the subscription replay done for newly opened streams.
 func (c *jobClient) broadcastToNodes(req *proto.SubscribeJobRequest) error {
 	var errJoin error
-	c.nodeMu.RLock()
-	defer c.nodeMu.RUnlock()
+	c.nodeMu.Lock()
+	defer c.nodeMu.Unlock()
+	healthyStreams := make([]*clientNodeStream, 0, len(c.nodeStreams))
 	for _, stream := range c.nodeStreams {
-		err := stream.send(req)
-		if err != nil {
+		if err := stream.send(req); err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to send request to nodeID %s: %w", stream.nodeID, err))
+			if closeErr := stream.closeSend(); closeErr != nil {
+				errJoin = errors.Join(errJoin, fmt.Errorf("failed to close subscription stream to nodeID %s: %w", stream.nodeID, closeErr))
+			}
+			continue
 		}
+		healthyStreams = append(healthyStreams, stream)
 	}
+	c.nodeStreams = healthyStreams
 	return errJoin
+}
+
+func (c *jobClient) reconcileNodeSubscriptions() {
+	if c.nodeClientManager != nil {
+		c.updateNodeSubs()
+	}
 }
 
 func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv chan Job) error {
@@ -305,33 +317,40 @@ func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv 
 
 func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	c.clientMu.Lock()
-	defer c.clientMu.Unlock()
 	sub, subFound := c.clientSubs[clientID]
-	if subFound {
-		err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
-			ClientId: new(string(clientID)),
-		})
-		if err != nil {
-			c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
-		}
-		delete(c.clientSubs, clientID)
-		close(sub.ch)
+	if !subFound {
+		c.clientMu.Unlock()
+		return
+	}
+	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
+		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
+		ClientId: new(string(clientID)),
+	})
+	delete(c.clientSubs, clientID)
+	close(sub.ch)
+	c.clientMu.Unlock()
+	if err != nil {
+		c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
+		c.reconcileNodeSubscriptions()
 	}
 }
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
-	defer c.clientMu.Unlock()
-	if sub, ok := c.clientSubs[clientID]; ok {
-		sub.jobTypes[jobType] = struct{}{}
+	sub, ok := c.clientSubs[clientID]
+	if !ok {
+		c.clientMu.Unlock()
+		return fmt.Errorf("client %s is not registered", clientID)
 	}
+	sub.jobTypes[jobType] = struct{}{}
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
 		ClientId: new(string(clientID)),
 	})
+	c.clientMu.Unlock()
 	if err != nil {
+		c.reconcileNodeSubscriptions()
 		return fmt.Errorf("failed to subscribe client %s to jobType %s: %w", clientID, jobType, err)
 	}
 	return nil
@@ -382,16 +401,20 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
-	defer c.clientMu.Unlock()
-	if sub, ok := c.clientSubs[clientID]; ok {
-		delete(sub.jobTypes, jobType)
+	sub, ok := c.clientSubs[clientID]
+	if !ok {
+		c.clientMu.Unlock()
+		return fmt.Errorf("client %s is not registered", clientID)
 	}
+	delete(sub.jobTypes, jobType)
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  new(string(jobType)),
 		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),
 		ClientId: new(string(clientID)),
 	})
+	c.clientMu.Unlock()
 	if err != nil {
+		c.reconcileNodeSubscriptions()
 		return fmt.Errorf("failed to unsubscribe client %s from jobType %s: %w", clientID, jobType, err)
 	}
 	return nil

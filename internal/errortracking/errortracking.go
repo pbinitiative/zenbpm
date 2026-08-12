@@ -57,6 +57,18 @@ func Flush(timeout time.Duration) bool {
 // stack-based grouping so different crashes are not grouped together merely
 // because they occurred in the same component.
 func CapturePanic(ctx context.Context, recovered any, code string) *sentry.EventID {
+	return capturePanic(ctx, recovered, code, nil)
+}
+
+func CaptureGRPCPanic(ctx context.Context, recovered any, method string) *sentry.EventID {
+	return capturePanic(ctx, recovered, "grpc.handler", func(scope *sentry.Scope) {
+		if method != "" {
+			scope.SetTag("rpc.method", method)
+		}
+	})
+}
+
+func capturePanic(ctx context.Context, recovered any, code string, configureScope func(*sentry.Scope)) *sentry.EventID {
 	if recovered == nil {
 		return nil
 	}
@@ -76,6 +88,9 @@ func CapturePanic(ctx context.Context, recovered any, code string) *sentry.Event
 		scope.SetTag("error.kind", "panic")
 		if code != "" {
 			scope.SetTag("error.code", code)
+		}
+		if configureScope != nil {
+			configureScope(scope)
 		}
 		eventID = hub.RecoverWithContext(ctx, panicErr)
 	})

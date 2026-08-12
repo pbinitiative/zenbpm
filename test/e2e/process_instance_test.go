@@ -31,7 +31,7 @@ func TestRestApiProcessInstance(t *testing.T) {
 		bpmnProcessId := "usertask-assignee-mapping-process"
 		businessKey := "create-response-business-key"
 		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", bpmnProcessId)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId:        &bpmnProcessId,
 			BusinessKey:          &businessKey,
@@ -39,11 +39,11 @@ func TestRestApiProcessInstance(t *testing.T) {
 			ProcessDefinitionKey: nil,
 			Variables:            nil,
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resp.StatusCode())
 		require.NotNil(t, resp.JSON201)
 		assert.Equal(t, zenclient.ProcessInstanceProcessTypeDefault, resp.JSON201.ProcessType)
-		assert.NotNil(t, resp.JSON201.ActiveElementInstances)
+		assert.Empty(t, resp.JSON201.ActiveElementInstances)
 		assert.Equal(t, &bpmnProcessId, resp.JSON201.BpmnProcessId)
 		assert.Equal(t, &businessKey, resp.JSON201.BusinessKey)
 	})
@@ -751,14 +751,18 @@ func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *test
 func deployGetDefinition(t *testing.T, filename string, bpmnProcessId string) (zenclient.ProcessDefinitionSimple, error) {
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, filename)
-	assert.NoError(t, err)
+	if err != nil {
+		return definition, err
+	}
 	definitions, err := listProcessDefinitions(t)
-	assert.NoError(t, err)
+	if err != nil {
+		return definition, err
+	}
 	for _, def := range definitions {
 		if def.BpmnProcessId == bpmnProcessId {
 			definition = def
 			break
 		}
 	}
-	return definition, err
+	return definition, nil
 }

@@ -222,7 +222,7 @@ The BPMN service task's job type must match the annotation. Declare `xmlns:zenbp
     <zenbpm:ioMapping>
       <zenbpm:output source="=emailSent" target="emailSent"/>
       <zenbpm:output source="=confirmation" target="confirmation"/>
-    </zeebe:ioMapping>
+    </zenbpm:ioMapping>
   </bpmn:extensionElements>
 </bpmn:serviceTask>
 ```

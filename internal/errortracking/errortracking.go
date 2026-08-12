@@ -111,9 +111,15 @@ func HTTPContext(next http.Handler) http.Handler {
 		}
 
 		hub = hub.Clone()
-		requestForScope := *r
+		requestForScope := r.Clone(r.Context())
 		requestForScope.Body = http.NoBody
-		hub.Scope().SetRequest(&requestForScope)
+		requestForScope.Header.Del("Authorization")
+		requestForScope.Header.Del("Proxy-Authorization")
+		requestForScope.Header.Del("Cookie")
+		requestForScope.Header.Del("X-CSRF-Token")
+		requestForScope.Header.Del("X-XSRF-Token")
+		requestForScope.Header.Del("Referer")
+		hub.Scope().SetRequest(requestForScope)
 		ctx := sentry.SetHubOnContext(r.Context(), hub)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

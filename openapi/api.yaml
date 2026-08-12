@@ -1728,9 +1728,9 @@ paths:
             type: integer
             format: int32
             minimum: 1
-            maximum: 100
+            maximum: 1000
             default: 10
-          description: Number of items per page (max 100)
+          description: Number of items per page (max 1000)
           example: 10
         - name: sortBy
           in: query

@@ -284,10 +284,11 @@ func subscriptionRequest(requestType proto.StreamSubscriptionRequest_Type) *prot
 }
 
 func completeRequest(variables []byte) *proto.JobStreamRequest {
+	key := int64(42)
 	return &proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Complete{
 			Complete: &proto.JobCompleteRequest{
-				Key:       new(int64(42)),
+				Key:       &key,
 				Variables: variables,
 			},
 		},
@@ -295,10 +296,11 @@ func completeRequest(variables []byte) *proto.JobStreamRequest {
 }
 
 func failRequest(variables []byte) *proto.JobStreamRequest {
+	key := int64(42)
 	return &proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Fail{
 			Fail: &proto.JobFailRequest{
-				Key:       new(int64(42)),
+				Key:       &key,
 				Variables: variables,
 			},
 		},

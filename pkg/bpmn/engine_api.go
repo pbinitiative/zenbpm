@@ -238,13 +238,14 @@ mainLoop:
 			continue
 		}
 
+		if saveErr := batch.saveTokens(ctx, updatedTokens); saveErr != nil {
+			saveErr = fmt.Errorf("failed to save updated tokens for process instance %d: %w", instance.ProcessInstance().Key, saveErr)
+			runErr = errors.Join(runErr, saveErr)
+			engine.logger.Warn("failed to save updated tokens", "processInstance", instance.ProcessInstance().Key, "err", saveErr)
+			endErrorSpan(tokenSpan, saveErr)
+			return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
+		}
 		for _, tok := range updatedTokens {
-			if saveErr := batch.SaveToken(ctx, tok); saveErr != nil {
-				saveErr = fmt.Errorf("failed to save token %d for process instance %d: %w", tok.Key, instance.ProcessInstance().Key, saveErr)
-				runErr = errors.Join(runErr, saveErr)
-				engine.logger.Warn("failed to save token", "token", tok.Key, "processInstance", instance.ProcessInstance().Key, "err", saveErr)
-				continue
-			}
 			if tok.State == runtime.TokenStateRunning {
 				runningExecutionTokens = append(runningExecutionTokens, tok)
 			}

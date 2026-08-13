@@ -82,6 +82,27 @@ func TestWriteAndFlushTokenIncidentPersistsCompleteFailureState(t *testing.T) {
 	assert.Equal(t, "original failure", incidents[0].Message)
 }
 
+func TestSaveTokensDiscardsPartialBatchOnFailure(t *testing.T) {
+	injectedErr := errors.New("injected token queue failure")
+	partialBatch := &tokenSaveTestBatch{failedKey: 22, err: injectedErr}
+	replacementBatch := &tokenSaveTestBatch{}
+	persistence := &tokenSaveTestStorage{
+		Storage: inmemory.NewStorage(),
+		batches: []storage.Batch{partialBatch, replacementBatch},
+	}
+	engine := NewEngine(EngineWithStorage(persistence))
+	cleanupIncidentTestEngine(t, &engine)
+	batch, err := engine.NewEngineBatchClean()
+	require.NoError(t, err)
+
+	err = batch.saveTokens(t.Context(), []runtime.ExecutionToken{{Key: 11}, {Key: 22}, {Key: 33}})
+
+	require.ErrorIs(t, err, injectedErr)
+	assert.Equal(t, []int64{11, 22}, partialBatch.savedKeys)
+	assert.Same(t, replacementBatch, batch.b, "the partially populated storage batch must be discarded")
+	assert.False(t, partialBatch.flushed)
+}
+
 type incidentTestStorage struct {
 	*inmemory.Storage
 	batch storage.Batch
@@ -121,6 +142,42 @@ func (b *incidentTestBatch) record(method string) error {
 	if b.failedMethod == method {
 		return b.err
 	}
+	return nil
+}
+
+type tokenSaveTestStorage struct {
+	*inmemory.Storage
+	batches []storage.Batch
+	next    int
+}
+
+func (s *tokenSaveTestStorage) NewBatch() storage.Batch {
+	if s.next >= len(s.batches) {
+		return s.Storage.NewBatch()
+	}
+	batch := s.batches[s.next]
+	s.next++
+	return batch
+}
+
+type tokenSaveTestBatch struct {
+	storage.Batch
+	failedKey int64
+	err       error
+	savedKeys []int64
+	flushed   bool
+}
+
+func (b *tokenSaveTestBatch) SaveToken(_ context.Context, token runtime.ExecutionToken) error {
+	b.savedKeys = append(b.savedKeys, token.Key)
+	if token.Key == b.failedKey {
+		return b.err
+	}
+	return nil
+}
+
+func (b *tokenSaveTestBatch) Flush(context.Context) error {
+	b.flushed = true
 	return nil
 }
 

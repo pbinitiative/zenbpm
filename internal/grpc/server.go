@@ -1,12 +1,14 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -129,7 +131,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Complete:
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
-				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "err", err)
+				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
@@ -145,7 +147,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
-				s.logger.Error("failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "err", err)
+				s.logger.Error("failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
@@ -162,7 +164,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Fail:
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
-				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "err", err)
+				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
@@ -178,7 +180,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
-				s.logger.Error("failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "err", err)
+				s.logger.Error("failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
@@ -311,4 +313,37 @@ func decodeVariables(raw []byte) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	return vars, nil
+}
+
+func variableKeys(raw []byte) []string {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil
+	}
+
+	keys := map[string]struct{}{}
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			break
+		}
+		key, ok := token.(string)
+		if !ok {
+			break
+		}
+		keys[key] = struct{}{}
+
+		var value json.RawMessage
+		if err = decoder.Decode(&value); err != nil {
+			break
+		}
+	}
+
+	result := make([]string, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	sort.Strings(result)
+	return result
 }

@@ -261,6 +261,16 @@ func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.Execution
 	return b.b.SaveToken(ctx, token)
 }
 
+func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.ExecutionToken) error {
+	for _, token := range tokens {
+		if err := b.b.SaveToken(ctx, token); err != nil {
+			b.Clear(ctx)
+			return fmt.Errorf("failed to save token %d: %w", token.Key, err)
+		}
+	}
+	return nil
+}
+
 func (b *EngineBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
 	return b.b.SaveFlowElementInstance(ctx, historyItem)
 }

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -58,32 +59,42 @@ func TestRecvClientRequestsSanitizesSubscriptionErrors(t *testing.T) {
 func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
 	internalErr := errors.New("node-42 at 10.0.0.1 refused the request")
 	tests := []struct {
-		name      string
-		request   *proto.JobStreamRequest
-		configure func(*jobStreamTestManager)
-		expected  string
+		name                 string
+		request              *proto.JobStreamRequest
+		configure            func(*jobStreamTestManager)
+		expected             string
+		expectedVariableKeys []string
+		secretValue          string
 	}{
 		{
-			name:     "invalid complete variables",
-			request:  completeRequest([]byte("{")),
-			expected: "Invalid job variables",
+			name:                 "invalid complete variables",
+			request:              completeRequest([]byte(`{"alpha":"complete-secret","broken":`)),
+			expected:             "Invalid job variables",
+			expectedVariableKeys: []string{"alpha", "broken"},
+			secretValue:          "complete-secret",
 		},
 		{
-			name:      "completion failure",
-			request:   completeRequest(nil),
-			configure: func(manager *jobStreamTestManager) { manager.completeErr = internalErr },
-			expected:  "Failed to complete job",
+			name:                 "completion failure",
+			request:              completeRequest([]byte(`{"zeta":"completion-secret","alpha":1}`)),
+			configure:            func(manager *jobStreamTestManager) { manager.completeErr = internalErr },
+			expected:             "Failed to complete job",
+			expectedVariableKeys: []string{"alpha", "zeta"},
+			secretValue:          "completion-secret",
 		},
 		{
-			name:     "invalid failure variables",
-			request:  failRequest([]byte("{")),
-			expected: "Invalid job variables",
+			name:                 "invalid failure variables",
+			request:              failRequest([]byte(`{"failureKey":"failure-secret","broken":`)),
+			expected:             "Invalid job variables",
+			expectedVariableKeys: []string{"broken", "failureKey"},
+			secretValue:          "failure-secret",
 		},
 		{
-			name:      "failure request failure",
-			request:   failRequest(nil),
-			configure: func(manager *jobStreamTestManager) { manager.failErr = internalErr },
-			expected:  "Failed to process job failure request",
+			name:                 "failure request failure",
+			request:              failRequest([]byte(`{"failureKey":"request-secret"}`)),
+			configure:            func(manager *jobStreamTestManager) { manager.failErr = internalErr },
+			expected:             "Failed to process job failure request",
+			expectedVariableKeys: []string{"failureKey"},
+			secretValue:          "request-secret",
 		},
 	}
 
@@ -94,7 +105,9 @@ func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
 				tt.configure(manager)
 			}
 			stream := newJobStreamTestServer(tt.request)
-			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true})
+			server := &Server{jobManager: manager, logger: logger}
 
 			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
 
@@ -104,6 +117,10 @@ func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
 			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "node-42")
 			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "10.0.0.1")
 			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "invalid character")
+			for _, key := range tt.expectedVariableKeys {
+				assert.Contains(t, logOutput.String(), key)
+			}
+			assert.NotContains(t, logOutput.String(), tt.secretValue)
 		})
 	}
 }

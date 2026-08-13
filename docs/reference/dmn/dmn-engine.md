@@ -46,6 +46,16 @@ A decision can carry a version tag, which lets callers pin a named version inste
 
 The `zenbpm` namespace is declared as `xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"`.
 
+### Validation
+
+A file is validated **before anything is stored** — a rejected file deploys nothing and the API answers `400 Bad Request`. Validation is deliberately shallow and variable-free; for every decision table (including tables nested in contexts) it checks:
+
+- **Rule shape** — every rule must carry exactly one input entry per input and one output entry per output.
+- **Input entry syntax** — every cell must parse as a FEEL unary test.
+- **Output entry syntax** — every output entry must parse as a FEEL expression.
+
+The syntax checks parse only. A cell or output may reference variables that do not exist yet (`customer_type`, `low`), because whether a name resolves is a runtime question — see [FEEL evaluation](#feel-evaluation). Structural checks that need the whole graph — cyclic requirements, duplicate ids, hit-policy conformance, `typeRef` matching — are still deferred to evaluation.
+
 ## Evaluating a decision
 
 A decision can be evaluated in three ways:
@@ -109,12 +119,15 @@ Every expression in a DMN file is evaluated by the FEEL runtime against the deci
 | Decision table output entry       | FEEL expression | The decision's variables. `?` is **not** available.                         |
 | Literal expression                | FEEL expression | The decision's variables.                                                   |
 
-Two details are worth knowing:
+A few details are worth knowing:
 
-- **An empty input entry means "any"**. A cell with no text is treated as `-` and always matches, which is how modellers leave a column unconstrained for a rule.
+- **An empty input entry means "any"**. A cell with no text — or only whitespace — is treated as `-` and always matches, which is how modellers leave a column unconstrained for a rule.
+- **A name in an input entry cell must resolve**. Cells are evaluated in _strict_ mode: a name that is neither a variable in the decision's context nor a FEEL built-in fails the evaluation with `unknown variable(s) in unary test: <name>`. This catches an unquoted string — `VIP` written where the literal `"VIP"` was meant. Left lenient, such a cell tests the input against the unbound name's `null`, i.e. `? = null`; since `null = null` is `true` in FEEL, it **matches whenever that input column is itself `null`** (a missing input) and misses otherwise — so it quietly fires the _wrong_ rule rather than erroring. Expression positions are not strict: a missing variable in an input expression, output entry or literal expression is `null`, as in FEEL generally.
 - **Newlines inside string literals are normalised**. XML formatting can introduce line breaks into an expression; the engine rewrites newlines that occur inside FEEL string literals to `\n` before evaluating, so a multi-line literal keeps its intended value instead of becoming a syntax error.
 
 The expression language of a literal expression must be `feel` or absent — any other `expressionLanguage` fails the evaluation.
+
+**Compatibility with Camunda.** Camunda 7 and Camunda 8 (feel-scala) resolve a missing variable to `null` and never raise: an input entry referencing an unknown name becomes a `null` comparison, which _matches_ when that input column is `null` and misses otherwise — so a forgotten pair of quotes can silently fire the wrong rule. ZenBPM is stricter **for input entry cells only** — an unknown name there fails the evaluation, turning that quiet mis-match into a visible incident. Because every other position keeps FEEL's lenient `null`, a decision table ported from Camunda evaluates identically as long as the names its cells reference actually resolve at runtime.
 
 ## Decision instances
 
@@ -128,7 +141,7 @@ A failed evaluation does not produce a decision instance.
 
 ## Error handling
 
-Errors surface at evaluation time rather than at deployment. The engine performs no semantic validation when a file is deployed, so a decision that cannot be evaluated still deploys successfully.
+Structural and syntactic problems are caught at [deployment](#validation) and reject the file. Everything semantic surfaces at evaluation time: a file that deploys can still fail to evaluate, because deployment does not check that the names an expression references actually exist.
 
 Evaluation fails when:
 
@@ -136,6 +149,7 @@ Evaluation fails when:
 - A required input variable is missing, or a required decision is missing or fails.
 - A decision has no supported logic — an empty decision node.
 - A FEEL expression cannot be evaluated, or a literal expression's result does not match its `typeRef`.
+- An input entry cell references a name that is neither a variable in the context nor a FEEL built-in — reported as `unknown variable(s) in unary test: <name>`. See [FEEL evaluation](#feel-evaluation).
 - A decision table uses an unsupported hit policy, has duplicate output names, or violates its hit policy at runtime — several rules matching under `UNIQUE`, or differing outputs under `ANY`.
 
 Called from a [business rule task](../bpmn/supported-elements/activities/tasks/business-rule-task.md), any of these fails the task and raises an incident. The failure can be handled in the process with an error boundary event.

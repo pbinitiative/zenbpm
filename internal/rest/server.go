@@ -329,6 +329,8 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
+			case zenerr.BadRequestCode:
+				return public.CreateDmnResourceDefinition400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ClusterErrorCode:
 				return public.CreateDmnResourceDefinition502JSONResponse(zerr.ToApiError()), nil
 			default:

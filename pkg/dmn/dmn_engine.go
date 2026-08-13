@@ -139,6 +139,10 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 		DmnChecksum:       md5sum,
 		DmnDefinitionName: definition.Name,
 	}
+	if err := engine.Validate(ctx, &dmnResourceDefinition); err != nil {
+		return nil, nil, err
+	}
+
 	decisionDefinitions := make([]runtime.DecisionDefinition, 0)
 	for _, definition := range definition.Decisions {
 		decisionDefinition := runtime.DecisionDefinition{
@@ -206,16 +210,11 @@ func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 		resultDecisions = append(resultDecisions, decisionDefinition)
 	}
 
-	return &dmnResourceDefinition, resultDecisions, engine.Validate(ctx, &dmnResourceDefinition)
+	return &dmnResourceDefinition, resultDecisions, nil
 }
 
 func (engine *ZenDmnEngine) generateKey() int64 {
 	return engine.persistence.GenerateId()
-}
-
-func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DmnResourceDefinition) error {
-	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
-	return nil
 }
 
 // TODO: improve tests
@@ -695,16 +694,18 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 	//this map is edited each cycle dont use it after this for loop
 	cellMatchVariables := map[string]interface{}{}
 	maps.Copy(cellMatchVariables, localVariableContext)
+	unaryTest := engine.feelRuntime.UnaryTest
+	if strictRuntime, ok := engine.feelRuntime.(script.StrictFeelRuntime); ok {
+		unaryTest = strictRuntime.UnaryTestStrict
+	}
 	for ruleIndex, rule := range decisionTable.Rules {
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
 			cellMatchVariables["?"] = evaluatedInputs[i].InputValue
-			if inputEntry.Text == "" {
-				inputEntry.Text = "-"
-			}
-			match, err := engine.feelRuntime.UnaryTest(inputEntry.Text, cellMatchVariables)
+			expression := normalizeUnaryTestExpression(inputEntry.Text)
+			match, err := unaryTest(expression, cellMatchVariables)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", inputEntry.Text, cellMatchVariables, err)
+				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", expression, cellMatchVariables, err)
 			}
 			if !match {
 				allColumnsMatch = false

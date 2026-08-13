@@ -32,6 +32,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/validation"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
@@ -604,12 +605,18 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 			definition, err = bpmnEngine.GetDmnEngine().ParseDmnFromBytes("", req.Data)
 			if err != nil {
 				return &proto.DeployDmnResourceDefinitionResponse{
-					Error: zenerr.TechnicalError(fmt.Errorf("failed to parse request data: %w", err)).ToProtoError(),
+					Error: zenerr.BadRequest(fmt.Errorf("failed to parse request data: %w", err)).ToProtoError(),
 				}, nil
 			}
 		}
 		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, definition, req.GetData(), req.GetKey())
 		if err != nil {
+			var validationErr *validation.Error
+			if errors.As(err, &validationErr) {
+				return &proto.DeployDmnResourceDefinitionResponse{
+					Error: zenerr.BadRequest(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
+				}, nil
+			}
 			return &proto.DeployDmnResourceDefinitionResponse{
 				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
 			}, nil

@@ -16,6 +16,16 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+func TestJobStreamRemovesClientWhenReceiveLoopEnds(t *testing.T) {
+	manager := &jobStreamTestManager{}
+	stream := newJobStreamTestServer()
+	server := &Server{ctx: t.Context(), jobManager: manager, logger: hclog.NewNullLogger()}
+
+	require.NoError(t, server.JobStream(stream))
+
+	assert.Equal(t, 1, manager.removeCalls)
+}
+
 func TestRecvClientRequestsSanitizesSubscriptionErrors(t *testing.T) {
 	internalErr := errors.New("node-42 at 10.0.0.1 refused the stream")
 	tests := []struct {
@@ -210,13 +220,16 @@ type jobStreamTestManager struct {
 	failErr          error
 	subscribeCalls   int
 	unsubscribeCalls int
+	removeCalls      int
 }
 
 func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
 	return nil
 }
 
-func (*jobStreamTestManager) RemoveClient(context.Context, jobmanager.ClientID) {}
+func (m *jobStreamTestManager) RemoveClient(context.Context, jobmanager.ClientID) {
+	m.removeCalls++
+}
 
 func (m *jobStreamTestManager) AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error {
 	m.subscribeCalls++

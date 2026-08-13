@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -138,11 +139,11 @@ func TestManagerDistributesJob(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Contains(t, completer.completedJobs, generatedJobs[0].Key)
-	assert.NotEmpty(t, jm1.server.jobTypes[job.Type])
+	assert.Positive(t, serverClientCount(jm1.server, job.Type))
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes[job.Type].clients) == 0
+		return serverClientCount(jm1.server, job.Type) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -186,14 +187,14 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobs, completer, 2*time.Second)
 
-	assert.Equal(t, len(generatedJobs), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
-	assert.NotEqual(t, 0, client1Jobs)
-	assert.NotEqual(t, 0, client2Jobs)
+	assert.Equal(t, int64(len(generatedJobs)), client1Jobs.Load()+client2Jobs.Load(), "clients must consume all generated jobs")
+	assert.NotZero(t, client1Jobs.Load())
+	assert.NotZero(t, client2Jobs.Load())
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return serverClientCount(jm1.server, "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -243,16 +244,16 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobsBatch2, completer, 2*time.Second)
 
-	assert.Equal(t, len(generatedJobs)+len(generatedJobsBatch2), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
-	assert.NotEqual(t, 0, client1Jobs)
-	assert.NotEqual(t, 0, client2Jobs)
+	assert.Equal(t, int64(len(generatedJobs)+len(generatedJobsBatch2)), client1Jobs.Load()+client2Jobs.Load(), "clients must consume all generated jobs")
+	assert.NotZero(t, client1Jobs.Load())
+	assert.NotZero(t, client2Jobs.Load())
 
-	client1JobsOnDisconnect := *client1Jobs
-	client2JobsOnDisconnect := *client2Jobs
+	client1JobsOnDisconnect := client1Jobs.Load()
+	client2JobsOnDisconnect := client2Jobs.Load()
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 1
+		return serverClientCount(jm1.server, "test-job") == 1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -262,12 +263,12 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobsBatch3, completer, 2*time.Second)
 
-	assert.Equal(t, client1JobsOnDisconnect, *client1Jobs, "client 1 should not receive jobs after disconnect")
-	assert.Equal(t, len(generatedJobsBatch3), *client2Jobs-client2JobsOnDisconnect, "client 2 should consume all the jobs from batch 3")
+	assert.Equal(t, client1JobsOnDisconnect, client1Jobs.Load(), "client 1 should not receive jobs after disconnect")
+	assert.Equal(t, int64(len(generatedJobsBatch3)), client2Jobs.Load()-client2JobsOnDisconnect, "client 2 should consume all the jobs from batch 3")
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return serverClientCount(jm1.server, "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -329,7 +330,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-			return len(jm1.server.jobTypes["test-job"].clients) == i+1
+			return serverClientCount(jm1.server, "test-job") == i+1
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)
@@ -345,8 +346,8 @@ func TestManagerTroughput(t *testing.T) {
 	}
 }
 
-func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *int {
-	counter := 0
+func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *atomic.Int64 {
+	counter := &atomic.Int64{}
 	go func() {
 		for {
 			job := <-client
@@ -356,10 +357,16 @@ func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManage
 			fmt.Printf("%s completing %d\n", clientID, job.Key)
 			err := jm.CompleteJobReq(t.Context(), clientID, job.Key, nil)
 			assert.NoError(t, err)
-			counter++
+			counter.Add(1)
 		}
 	}()
-	return &counter
+	return counter
+}
+
+func serverClientCount(server *jobServer, jobType JobType) int {
+	server.clientMu.RLock()
+	defer server.clientMu.RUnlock()
+	return len(server.jobTypes[jobType].clients)
 }
 
 func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testCompleter, timeout time.Duration) {

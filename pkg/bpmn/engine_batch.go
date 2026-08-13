@@ -148,12 +148,16 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
 	incidentBatch := b.engine.persistence.NewBatch()
 	token.State = bpmnruntime.TokenStateFailed
-	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
+	failedInstance, err := processInstanceWithState(instance, bpmnruntime.ActivityStateFailed)
+	if err != nil {
+		b.Clear(ctx)
+		return err
+	}
 	if err := incidentBatch.SaveToken(ctx, token); err != nil {
 		b.Clear(ctx)
 		return fmt.Errorf("failed to queue failed token %d: %w", token.Key, err)
 	}
-	if err := incidentBatch.SaveProcessInstance(ctx, instance); err != nil {
+	if err := incidentBatch.SaveProcessInstance(ctx, failedInstance); err != nil {
 		b.Clear(ctx)
 		return fmt.Errorf("failed to queue failed process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -166,9 +170,32 @@ func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.
 	b.b = incidentBatch
 	b.preFlushActions = []func() error{}
 	b.postFlushActions = []func(){func() {
+		instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
 		b.engine.recordIncidentMetric(ctx, incident)
 	}}
 	return nil
+}
+
+func processInstanceWithState(instance bpmnruntime.ProcessInstance, state bpmnruntime.ActivityState) (bpmnruntime.ProcessInstance, error) {
+	var copied bpmnruntime.ProcessInstance
+	switch instance := instance.(type) {
+	case *bpmnruntime.DefaultProcessInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.SubProcessInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.CallActivityInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.MultiInstanceInstance:
+		value := *instance
+		copied = &value
+	default:
+		return nil, fmt.Errorf("unsupported process instance type %T", instance)
+	}
+	copied.ProcessInstance().State = state
+	return copied, nil
 }
 
 func (b *EngineBatch) writeAndFlushTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {

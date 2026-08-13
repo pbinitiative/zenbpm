@@ -170,7 +170,7 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 	// this reconciliation the node would never open a job stream to that
 	// partition leader and no job would ever be distributed to the workers.
 	if m.started.Load() {
-		m.client.updateNodeSubs()
+		m.client.reconcileNodeSubscriptions()
 	}
 }
 
@@ -207,7 +207,7 @@ func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
 		m.serverCtx = nil
 		m.server = nil
 	}
-	m.client.updateNodeSubs()
+	m.client.reconcileNodeSubscriptions()
 }
 
 // OnJobRejected is a server callback function called when client rejects job

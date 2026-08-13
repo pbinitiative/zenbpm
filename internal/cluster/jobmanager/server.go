@@ -107,16 +107,20 @@ func (s *jobServer) startServer(ctx context.Context) {
 func (s *jobServer) distributeJobs() {
 	for {
 		if s.ctx.Err() != nil {
-			for nodeID, sub := range s.nodeSubs {
+			s.nodeMu.Lock()
+			nodeSubs := s.nodeSubs
+			s.nodeSubs = make(map[NodeId]*nodeSub)
+			s.nodeMu.Unlock()
+			for nodeID, sub := range nodeSubs {
 				// best-effort: send empty message to close the stream; the stream may already be gone during shutdown
 				if err := sub.stream.Send(&proto.SubscribeJobResponse{}); err != nil {
 					s.logger.Debug("failed to send stream close message to node", "nodeID", nodeID, "err", err)
 				}
 			}
-			s.nodeSubs = make(map[NodeId]*nodeSub)
 			s.logger.Info("Stopping job distribution", "err", s.ctx.Err())
 			return
 		}
+		s.clientMu.RLock()
 		jobTypes := make([]string, 0, len(s.jobTypes))
 		clients := make(map[ClientID]int64)
 		for jobType, jobTypeData := range s.jobTypes {
@@ -125,6 +129,7 @@ func (s *jobServer) distributeJobs() {
 				clients[client] = maxActiveJobsPerClient
 			}
 		}
+		s.clientMu.RUnlock()
 		s.distributedJobsMu.Lock()
 		currentKeys := make([]int64, len(s.distributedJobs))
 		now := time.Now()
@@ -170,17 +175,17 @@ func (s *jobServer) distributeJobs() {
 		}
 		s.emptyDistributionCounter = 0
 		for _, job := range jobs {
-			s.clientMu.RLock()
+			s.clientMu.Lock()
 			jType := JobType(job.Type)
 			jobTypeData := s.jobTypes[jType]
 			// check if there are any clients able to process
 			if len(jobTypeData.clients) == 0 {
-				s.clientMu.RUnlock()
+				s.clientMu.Unlock()
 				continue
 			}
 			jobTypeData.index++
 			// index overflow
-			if jobTypeData.index >= len(jobTypeData.clients)-1 {
+			if jobTypeData.index >= len(jobTypeData.clients) {
 				jobTypeData.index = 0
 			}
 			clientIdx := jobTypeData.index
@@ -192,7 +197,7 @@ func (s *jobServer) distributeJobs() {
 			if clients[clientID] <= 0 {
 				jobTypeData.index++
 				// index overflow
-				if jobTypeData.index >= len(jobTypeData.clients)-1 {
+				if jobTypeData.index >= len(jobTypeData.clients) {
 					jobTypeData.index = 0
 				}
 				clientIdx = jobTypeData.index
@@ -207,7 +212,7 @@ func (s *jobServer) distributeJobs() {
 			nodeStream, ok := s.subscriptions[jType][clientID]
 			if !ok {
 				s.logger.Warn("Stream for job was not found", "jobType", jType, "key", job.Key)
-				s.clientMu.RUnlock()
+				s.clientMu.Unlock()
 				continue
 			}
 			s.distributedJobsMu.Lock()
@@ -217,7 +222,7 @@ func (s *jobServer) distributeJobs() {
 				jobKey:   job.Key,
 			})
 			s.distributedJobsMu.Unlock()
-			s.clientMu.RUnlock()
+			s.clientMu.Unlock()
 			// this might be bottleneck for now...in the future we might want
 			// to have something that will allow us to send jobs to clients on
 			// non blocked stream or use a pool of GRPC connections to handle jobs

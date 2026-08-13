@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
@@ -62,6 +63,9 @@ type jobClient struct {
 	nodeMu            *sync.RWMutex
 	// subscribeMu serializes node stream reconciliation
 	subscribeMu sync.Mutex
+	// reconcileCh coalesces requests to restore streams without blocking job
+	// distribution or public gRPC request handling.
+	reconcileCh chan struct{}
 	// jobs are streamed in here by a server and distributed to clients
 	jobsChan chan Job
 
@@ -74,7 +78,7 @@ type jobClient struct {
 // partition are closed and streams are opened for every partition that does not
 // have one yet. It is safe to call repeatedly: partitions that already have a
 // healthy stream are skipped.
-func (c *jobClient) updateNodeSubs() {
+func (c *jobClient) updateNodeSubs() bool {
 	// Serialize reconciliations so two concurrent calls cannot open two streams
 	// for the same partition (streams are opened outside of nodeMu).
 	c.subscribeMu.Lock()
@@ -116,9 +120,13 @@ func (c *jobClient) updateNodeSubs() {
 	}
 	c.nodeMu.Unlock()
 
+	allSubscribed := true
 	for _, partition := range partitionsToSubscribe {
-		c.subscribeNodeToPartition(partition)
+		if !c.subscribeNodeToPartition(partition) {
+			allSubscribed = false
+		}
 	}
+	return allSubscribed
 }
 
 func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager *client.ClientManager) *jobClient {
@@ -130,6 +138,7 @@ func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager
 		nodeClientManager: clientManager,
 		nodeStreams:       []*clientNodeStream{},
 		nodeMu:            &sync.RWMutex{},
+		reconcileCh:       make(chan struct{}, 1),
 		jobsChan:          make(chan Job),
 		logger:            hclog.Default().Named("job-manager-client"),
 		ctx:               ctx,
@@ -138,18 +147,20 @@ func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager
 
 // subscribeNode subscribes current node to all partition leaders
 func (c *jobClient) subscribeNode() {
-	c.updateNodeSubs()
+	if !c.updateNodeSubs() {
+		c.reconcileNodeSubscriptions()
+	}
 }
 
 // subscribeNodeToPartition opens a job stream to the leader of the partition.
 // The stream is bound to the job client context (not to the context of the
 // cluster state notification that triggered the reconciliation), because the
 // notification context is cancelled as soon as the notification is handled.
-func (c *jobClient) subscribeNodeToPartition(partition uint32) {
+func (c *jobClient) subscribeNodeToPartition(partition uint32) bool {
 	lClient, nodeID, err := c.nodeClientManager.PartitionLeaderWithID(partition)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("failed to create client for partition %d leader", partition), "err", err)
-		return
+		return false
 	}
 	md := metadata.New(map[string]string{
 		MetadataNodeID: string(c.nodeID),
@@ -158,7 +169,7 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) {
 	stream, err := lClient.SubscribeJob(streamCtx)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("failed to open stream for partition %d leader", partition), "err", err)
-		return
+		return false
 	}
 	nodeStream := clientNodeStream{
 		stream:    stream,
@@ -177,17 +188,25 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) {
 	c.nodeMu.Unlock()
 	// A stream opened after clients already registered (e.g. a partition that
 	// became available later) does not know about their job types yet.
-	c.resendClientSubscriptions(&nodeStream)
+	if !c.resendClientSubscriptions(&nodeStream) {
+		c.removeNodeStream(&nodeStream)
+		c.clientMu.RUnlock()
+		if err := nodeStream.closeSend(); err != nil {
+			c.logger.Error("Failed to close stream after subscription replay failure", "nodeID", nodeStream.nodeID, "err", err)
+		}
+		return false
+	}
 	c.clientMu.RUnlock()
 	safego.Go("jobclient-stream-recv", c.logger, func() {
 		c.handleJobStreamRecv(&nodeStream)
 	})
+	return true
 }
 
 // resendClientSubscriptions replays the job subscriptions of all locally
 // registered clients to a newly opened node stream.
 // The caller must hold clientMu.
-func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) {
+func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) bool {
 	requests := make([]*proto.SubscribeJobRequest, 0, len(c.clientSubs))
 	for clientID, sub := range c.clientSubs {
 		for jobType := range sub.jobTypes {
@@ -201,8 +220,10 @@ func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) {
 	for _, req := range requests {
 		if err := stream.send(req); err != nil {
 			c.logger.Error("Failed to resend client job subscription", "nodeID", stream.nodeID, "err", err)
+			return false
 		}
 	}
+	return true
 }
 
 func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
@@ -211,15 +232,20 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 		if err == io.EOF || errors.Is(err, context.Canceled) {
 			// read done.
 			c.logger.Debug("Stream closed", "err", err)
-			// TODO: reconnect when stream is closed
+			c.removeNodeStream(stream)
+			c.reconcileNodeSubscriptions()
 			return
 		}
 		if err != nil {
 			c.logger.Error("Failed to receive a job", "err", err, "streamNodeId", stream.nodeID)
+			c.removeNodeStream(stream)
+			c.reconcileNodeSubscriptions()
 			return
 		}
 		if resp.Job == nil {
 			c.logger.Error("closing stream", "err", err, "streamNodeId", stream.nodeID)
+			c.removeNodeStream(stream)
+			c.reconcileNodeSubscriptions()
 			return
 		}
 		c.jobsChan <- Job{
@@ -233,6 +259,14 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			ClientID:       ClientID(resp.GetClientId()),
 		}
 	}
+}
+
+func (c *jobClient) removeNodeStream(closing *clientNodeStream) {
+	c.nodeMu.Lock()
+	defer c.nodeMu.Unlock()
+	c.nodeStreams = slices.DeleteFunc(c.nodeStreams, func(stream *clientNodeStream) bool {
+		return stream == closing
+	})
 }
 
 func (c *jobClient) distributeToClients() {
@@ -250,21 +284,29 @@ func (c *jobClient) distributeToClients() {
 func (c *jobClient) sendJobToClient(job Job) {
 	c.clientMu.RLock()
 	pickedClient := c.clientSubs[job.ClientID]
+	c.clientMu.RUnlock()
 	if pickedClient == nil {
 		// TODO send msg to server to free the job
-		c.clientMu.RUnlock()
 		return
 	}
 	if pickedClient.ctx.Err() != nil {
-		c.clientMu.RUnlock()
-		c.removeClient(pickedClient.ctx, pickedClient.clientID)
+		safego.Go("jobclient-remove-disconnected", c.logger, func() {
+			c.removeClient(pickedClient.ctx, pickedClient.clientID)
+		})
 		return
 	}
-	pickedClient.ch <- job
-	c.clientMu.RUnlock()
+	select {
+	case pickedClient.ch <- job:
+	case <-pickedClient.ctx.Done():
+		safego.Go("jobclient-remove-disconnected", c.logger, func() {
+			c.removeClient(pickedClient.ctx, pickedClient.clientID)
+		})
+	case <-c.ctx.Done():
+	}
 }
 
 func (c *jobClient) startClient() {
+	safego.Go("jobclient-reconcile", c.logger, c.reconcileNodeSubscriptionsLoop)
 	c.subscribeNode()
 	safego.Go("jobclient-distribute", c.logger, func() {
 		c.distributeToClients()
@@ -295,8 +337,37 @@ func (c *jobClient) broadcastToNodes(req *proto.SubscribeJobRequest) error {
 }
 
 func (c *jobClient) reconcileNodeSubscriptions() {
-	if c.nodeClientManager != nil {
-		c.updateNodeSubs()
+	if c.nodeClientManager == nil {
+		return
+	}
+	select {
+	case c.reconcileCh <- struct{}{}:
+	default:
+	}
+}
+
+func (c *jobClient) reconcileNodeSubscriptionsLoop() {
+	const retryDelay = time.Second
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-c.reconcileCh:
+		}
+
+		for !c.updateNodeSubs() {
+			timer := time.NewTimer(retryDelay)
+			select {
+			case <-c.ctx.Done():
+				timer.Stop()
+				return
+			case <-c.reconcileCh:
+				if !timer.Stop() {
+					<-timer.C
+				}
+			case <-timer.C:
+			}
+		}
 	}
 }
 
@@ -316,19 +387,24 @@ func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv 
 }
 
 func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
-	c.clientMu.Lock()
-	sub, subFound := c.clientSubs[clientID]
-	if !subFound {
-		c.clientMu.Unlock()
+	var err error
+	removed := false
+	func() {
+		c.clientMu.Lock()
+		defer c.clientMu.Unlock()
+		if _, found := c.clientSubs[clientID]; !found {
+			return
+		}
+		delete(c.clientSubs, clientID)
+		removed = true
+		err = c.broadcastToNodes(&proto.SubscribeJobRequest{
+			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
+			ClientId: new(string(clientID)),
+		})
+	}()
+	if !removed {
 		return
 	}
-	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
-		ClientId: new(string(clientID)),
-	})
-	delete(c.clientSubs, clientID)
-	close(sub.ch)
-	c.clientMu.Unlock()
 	if err != nil {
 		c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
 		c.reconcileNodeSubscriptions()
@@ -337,9 +413,9 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]
 	if !ok {
-		c.clientMu.Unlock()
 		return fmt.Errorf("client %s is not registered", clientID)
 	}
 	sub.jobTypes[jobType] = struct{}{}
@@ -348,10 +424,9 @@ func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType Jo
 		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
 		ClientId: new(string(clientID)),
 	})
-	c.clientMu.Unlock()
 	if err != nil {
+		c.logger.Error("failed to broadcast client job subscription; desired state will be replayed", "clientID", clientID, "jobType", jobType, "err", err)
 		c.reconcileNodeSubscriptions()
-		return fmt.Errorf("failed to subscribe client %s to jobType %s: %w", clientID, jobType, err)
 	}
 	return nil
 }
@@ -401,9 +476,9 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]
 	if !ok {
-		c.clientMu.Unlock()
 		return fmt.Errorf("client %s is not registered", clientID)
 	}
 	delete(sub.jobTypes, jobType)
@@ -412,10 +487,9 @@ func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType
 		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),
 		ClientId: new(string(clientID)),
 	})
-	c.clientMu.Unlock()
 	if err != nil {
+		c.logger.Error("failed to broadcast client job unsubscription; desired state will be replayed", "clientID", clientID, "jobType", jobType, "err", err)
 		c.reconcileNodeSubscriptions()
-		return fmt.Errorf("failed to unsubscribe client %s from jobType %s: %w", clientID, jobType, err)
 	}
 	return nil
 }

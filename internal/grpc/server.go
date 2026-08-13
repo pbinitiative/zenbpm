@@ -103,11 +103,14 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 	if err != nil {
 		return fmt.Errorf("failed to add client: %w", err)
 	}
+	defer s.jobManager.RemoveClient(s.ctx, clientID)
 	sendMu := &sync.Mutex{}
+	recvDone := make(chan struct{})
 	safego.Go("grpc-job-stream-recv", safego.DefaultLogger, func() {
+		defer close(recvDone)
 		s.recvClientRequests(stream, clientID, sendMu)
 	})
-	s.sendClientJobs(stream, clientCh, clientID, sendMu)
+	s.sendClientJobs(stream, clientCh, recvDone, sendMu)
 	return nil
 }
 
@@ -240,15 +243,19 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 	}
 }
 
-func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, clientID jobmanager.ClientID, sendMu *sync.Mutex) {
+func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, recvDone <-chan struct{}, sendMu *sync.Mutex) {
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-stream.Context().Done():
-			s.jobManager.RemoveClient(s.ctx, clientID)
 			return
-		case job := <-clientCh:
+		case <-recvDone:
+			return
+		case job, ok := <-clientCh:
+			if !ok {
+				return
+			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 				Job: &proto.WaitingJob{
 					Key:            &job.Key,

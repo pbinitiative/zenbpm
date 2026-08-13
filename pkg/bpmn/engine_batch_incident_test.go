@@ -33,13 +33,32 @@ func TestWriteAndFlushTokenIncidentRejectsPartialBatch(t *testing.T) {
 			batch, err := engine.NewEngineBatchClean()
 			require.NoError(t, err)
 
-			err = batch.writeAndFlushTokenIncident(t.Context(), incidentTestToken(), incidentTestInstance(), errors.New("original failure"))
+			instance := incidentTestInstance()
+			err = batch.writeAndFlushTokenIncident(t.Context(), incidentTestToken(), instance, errors.New("original failure"))
 
 			require.ErrorIs(t, err, injectedErr)
 			assert.False(t, controlledBatch.flushed, "a partially queued incident batch must never be flushed")
 			assert.Equal(t, tt.expectedCalls, controlledBatch.calls)
+			assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 		})
 	}
+}
+
+func TestWriteAndFlushTokenIncidentLeavesLiveStateUnchangedOnFlushFailure(t *testing.T) {
+	injectedErr := errors.New("injected flush failure")
+	controlledBatch := &incidentTestBatch{failedMethod: "Flush", err: injectedErr}
+	persistence := &incidentTestStorage{Storage: inmemory.NewStorage(), batch: controlledBatch}
+	engine := NewEngine(EngineWithStorage(persistence))
+	cleanupIncidentTestEngine(t, &engine)
+	batch, err := engine.NewEngineBatchClean()
+	require.NoError(t, err)
+	instance := incidentTestInstance()
+
+	err = batch.writeAndFlushTokenIncident(t.Context(), incidentTestToken(), instance, errors.New("original failure"))
+
+	require.ErrorIs(t, err, injectedErr)
+	assert.True(t, controlledBatch.flushed)
+	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 }
 
 func TestWriteAndFlushTokenIncidentFlushesCompleteBatch(t *testing.T) {
@@ -134,6 +153,9 @@ func (b *incidentTestBatch) SaveIncident(_ context.Context, _ runtime.Incident) 
 
 func (b *incidentTestBatch) Flush(_ context.Context) error {
 	b.flushed = true
+	if b.failedMethod == "Flush" {
+		return b.err
+	}
 	return nil
 }
 

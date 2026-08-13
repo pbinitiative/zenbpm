@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/stretchr/testify/assert"
@@ -11,29 +12,85 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-func TestAddJobSubRemovesFailedStreamAndKeepsDesiredState(t *testing.T) {
+func TestAddJobSubRemovesFailedStreamAndAcceptsDesiredState(t *testing.T) {
 	client, healthy, failed := subscriptionTestClient(t)
 
 	err := client.addJobSub(t.Context(), "client-1", "job-a")
 
-	require.ErrorContains(t, err, "failed-node")
+	require.NoError(t, err)
 	assert.Contains(t, client.clientSubs["client-1"].jobTypes, JobType("job-a"))
 	assert.Equal(t, []*clientNodeStream{healthy}, client.nodeStreams)
 	assert.Equal(t, proto.SubscribeJobRequest_TYPE_SUBSCRIBE, healthy.stream.(*subscriptionTestStream).sent[0].GetType())
 	assert.Equal(t, 1, failed.stream.(*subscriptionTestStream).closeCalls)
 }
 
-func TestRemoveJobSubRemovesFailedStreamAndKeepsDesiredState(t *testing.T) {
+func TestRemoveJobSubRemovesFailedStreamAndAcceptsDesiredState(t *testing.T) {
 	client, healthy, failed := subscriptionTestClient(t)
 	client.clientSubs["client-1"].jobTypes["job-a"] = struct{}{}
 
 	err := client.removeJobSub(t.Context(), "client-1", "job-a")
 
-	require.ErrorContains(t, err, "failed-node")
+	require.NoError(t, err)
 	assert.NotContains(t, client.clientSubs["client-1"].jobTypes, JobType("job-a"))
 	assert.Equal(t, []*clientNodeStream{healthy}, client.nodeStreams)
 	assert.Equal(t, proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE, healthy.stream.(*subscriptionTestStream).sent[0].GetType())
 	assert.Equal(t, 1, failed.stream.(*subscriptionTestStream).closeCalls)
+}
+
+func TestRemoveClientReleasesLockAfterBroadcastPanic(t *testing.T) {
+	client := newJobClient(t.Context(), "local-node", nil, nil)
+	require.NoError(t, client.addClient(t.Context(), "client-1", make(chan Job)))
+	client.nodeStreams = []*clientNodeStream{{
+		stream: &subscriptionTestStream{ctx: t.Context(), panicOnSend: true},
+		nodeID: "panicking-node",
+	}}
+
+	assert.Panics(t, func() {
+		client.removeClient(t.Context(), "client-1")
+	})
+	require.True(t, client.clientMu.TryLock(), "client lock must be released while a panic unwinds")
+	client.clientMu.Unlock()
+}
+
+func TestSendJobToDisconnectedClientDoesNotWaitForNodeBroadcast(t *testing.T) {
+	client := newJobClient(t.Context(), "local-node", nil, nil)
+	clientCtx, cancel := context.WithCancel(t.Context())
+	require.NoError(t, client.addClient(clientCtx, "client-1", make(chan Job)))
+	blockSend := make(chan struct{})
+	sendStarted := make(chan struct{})
+	client.nodeStreams = []*clientNodeStream{{
+		stream: &subscriptionTestStream{
+			ctx:         t.Context(),
+			blockSend:   blockSend,
+			sendStarted: sendStarted,
+		},
+		nodeID: "blocked-node",
+	}}
+	cancel()
+	distributorReturned := make(chan struct{})
+
+	go func() {
+		client.sendJobToClient(Job{ClientID: "client-1"})
+		close(distributorReturned)
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-distributorReturned:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		select {
+		case <-sendStarted:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+	close(blockSend)
 }
 
 func subscriptionTestClient(t *testing.T) (*jobClient, *clientNodeStream, *clientNodeStream) {
@@ -53,13 +110,23 @@ func subscriptionTestClient(t *testing.T) (*jobClient, *clientNodeStream, *clien
 }
 
 type subscriptionTestStream struct {
-	ctx        context.Context
-	sendErr    error
-	sent       []*proto.SubscribeJobRequest
-	closeCalls int
+	ctx         context.Context
+	sendErr     error
+	sent        []*proto.SubscribeJobRequest
+	closeCalls  int
+	panicOnSend bool
+	blockSend   <-chan struct{}
+	sendStarted chan struct{}
 }
 
 func (s *subscriptionTestStream) Send(req *proto.SubscribeJobRequest) error {
+	if s.panicOnSend {
+		panic("injected send panic")
+	}
+	if s.blockSend != nil {
+		close(s.sendStarted)
+		<-s.blockSend
+	}
 	if s.sendErr != nil {
 		return s.sendErr
 	}

@@ -311,6 +311,23 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 
+	activeTokens, err := engine.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		err := zenerr.TechnicalError(fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err))
+		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
+	}
+	responseTokens := make([]*proto.ExecutionToken, 0, len(activeTokens))
+	for _, token := range activeTokens {
+		responseTokens = append(responseTokens, &proto.ExecutionToken{
+			Key:                &token.Key,
+			ElementInstanceKey: &token.ElementInstanceKey,
+			ElementId:          &token.ElementId,
+			ProcessInstanceKey: &token.ProcessInstanceKey,
+			CreatedAt:          new(token.CreatedAt.UnixMilli()),
+			State:              new(int64(token.State)),
+		})
+	}
+
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
 			Key:               &instance.ProcessInstance().Key,
@@ -323,6 +340,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			BusinessKey:       instance.ProcessInstance().BusinessKey,
 			Type:              new(int64(instance.Type())),
 		},
+		ExecutionTokens: responseTokens,
 	}, nil
 }
 

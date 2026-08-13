@@ -1001,7 +1001,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		), nil
 	}
 
-	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BpmnProcessId, request.Body.BusinessKey, variables, ttl)
+	result, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BpmnProcessId, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
@@ -1016,6 +1016,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		}
 		return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
+	process := result.GetProcess()
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
@@ -1032,9 +1033,19 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
 	}
 
+	activeElementInstances := make([]public.ElementInstance, 0, len(result.GetExecutionTokens()))
+	for _, token := range result.GetExecutionTokens() {
+		activeElementInstances = append(activeElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(token.GetCreatedAt()),
+			ElementId:          token.GetElementId(),
+			ElementInstanceKey: token.GetElementInstanceKey(),
+			State:              runtime.TokenState(token.GetState()).String(),
+		})
+	}
+
 	bpmnProcessID := process.GetProcessId()
 	return public.CreateProcessInstance201JSONResponse{
-		ActiveElementInstances: []public.ElementInstance{},
+		ActiveElementInstances: activeElementInstances,
 		ProcessInstancesSimple: public.ProcessInstancesSimple{
 			BpmnProcessId:        &bpmnProcessID,
 			BusinessKey:          request.Body.BusinessKey,

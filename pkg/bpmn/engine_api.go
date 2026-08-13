@@ -423,6 +423,10 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 	return instance, nil
 }
 
+func (engine *Engine) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	return engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
+}
+
 func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {

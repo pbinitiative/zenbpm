@@ -32,18 +32,26 @@ func TestRestApiProcessInstance(t *testing.T) {
 		businessKey := "create-response-business-key"
 		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", bpmnProcessId)
 		require.NoError(t, err)
+		variables := map[string]any{"assignee": "dynamic"}
 		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId:        &bpmnProcessId,
 			BusinessKey:          &businessKey,
 			HistoryTimeToLive:    nil,
 			ProcessDefinitionKey: nil,
-			Variables:            nil,
+			Variables:            &variables,
 		})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resp.StatusCode())
 		require.NotNil(t, resp.JSON201)
 		assert.Equal(t, zenclient.ProcessInstanceProcessTypeDefault, resp.JSON201.ProcessType)
-		assert.Empty(t, resp.JSON201.ActiveElementInstances)
+		require.Len(t, resp.JSON201.ActiveElementInstances, 2)
+		activeElementIDs := make([]string, 0, len(resp.JSON201.ActiveElementInstances))
+		for _, elementInstance := range resp.JSON201.ActiveElementInstances {
+			activeElementIDs = append(activeElementIDs, elementInstance.ElementId)
+			assert.NotZero(t, elementInstance.ElementInstanceKey)
+			assert.Equal(t, "TokenStateWaiting", elementInstance.State)
+		}
+		assert.ElementsMatch(t, []string{"user-task-static", "user-task-dynamic"}, activeElementIDs)
 		assert.Equal(t, &bpmnProcessId, resp.JSON201.BpmnProcessId)
 		assert.Equal(t, &businessKey, resp.JSON201.BusinessKey)
 	})

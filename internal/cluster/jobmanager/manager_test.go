@@ -709,5 +709,5 @@ func (s *captureStream) SetHeader(metadata.MD) error  { return nil }
 func (s *captureStream) SendHeader(metadata.MD) error { return nil }
 func (s *captureStream) SetTrailer(metadata.MD)       {}
 func (s *captureStream) Context() context.Context     { return s.ctx }
-func (s *captureStream) SendMsg(m any) error          { return nil }
-func (s *captureStream) RecvMsg(m any) error          { return nil }
+func (s *captureStream) SendMsg(_ any) error          { return nil }
+func (s *captureStream) RecvMsg(_ any) error          { return nil }

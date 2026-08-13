@@ -15,6 +15,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"github.com/stretchr/testify/require"
 )
 
 // Test_NonOpenStore tests that a non-open Store handles public methods correctly.
@@ -157,16 +158,13 @@ func TestStoreRestartSingleNode(t *testing.T) {
 		t.Fatalf("Error waiting for leader: %s", err)
 	}
 	// wait until fsm applies the log to the state
-	testPoll(t, func() bool {
+	require.Eventually(t, func() bool {
 		testNode, ok := s.state.Nodes[testNodeId]
 		if !ok {
-			t.Error("expected testNode was not found in the store")
+			return false
 		}
-		if testNode.State != state.NodeState(proto.NodeState_NODE_STATE_ERROR) {
-			t.Error("testNode is in a wrong state")
-		}
-		return true
-	}, 100*time.Millisecond, 5*time.Second)
+		return testNode.State == state.NodeState(proto.NodeState_NODE_STATE_ERROR)
+	}, 5*time.Second, 100*time.Millisecond, "expected testNode to be found in the store in error state")
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot

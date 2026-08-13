@@ -215,6 +215,7 @@ func (s *jobServer) distributeJobs() {
 				s.clientMu.Unlock()
 				continue
 			}
+			clients[clientID]--
 			s.distributedJobsMu.Lock()
 			s.distributedJobs = append(s.distributedJobs, distributedJob{
 				sentTime: time.Now(),

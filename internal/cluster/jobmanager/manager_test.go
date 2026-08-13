@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
@@ -52,6 +53,50 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	server.removeNode(replacementStream)
 	assert.Empty(t, server.jobTypes["test-job"].clients)
 	assert.Empty(t, server.subscriptions["test-job"])
+}
+
+func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
+	assert.NoError(t, registerMetrics())
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+	}
+	completer := &testCompleter{
+		completedJobs: []int64{},
+		loader:        loader,
+	}
+	server := newJobServer("node-1", loader, completer)
+
+	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}}
+	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2", stream: stream}
+	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-2", "test-job")
+
+	// client-1 already holds all but one of its slots, client-2 holds none
+	now := time.Now()
+	for range maxActiveJobsPerClient - 1 {
+		server.distributedJobs = append(server.distributedJobs, distributedJob{
+			sentTime: now,
+			client:   "client-1",
+			jobKey:   gen.Generate().Int64(),
+		})
+	}
+
+	// enough jobs to fill the remaining capacity of both clients
+	generatedJobs := generateJobs(int(maxActiveJobsPerClient) + 1)
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.totalSent() == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "expected all jobs to be distributed")
+	cancel()
+
+	assert.Equal(t, 1, stream.sentTo("client-1"), "client-1 must not be assigned more jobs than its remaining capacity within a batch")
+	assert.Equal(t, int(maxActiveJobsPerClient), stream.sentTo("client-2"), "client-2 should receive the rest of the batch")
 }
 
 func TestManagerHandlesLeaderChanges(t *testing.T) {
@@ -619,3 +664,50 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
 }
+
+// captureStream is a fake job subscription stream that records how many jobs
+// were sent to each client.
+type captureStream struct {
+	ctx  context.Context
+	mu   sync.Mutex
+	sent map[ClientID]int
+}
+
+func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
+	if resp.GetJob() == nil {
+		// stream close message sent on shutdown
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sent[ClientID(resp.GetClientId())]++
+	return nil
+}
+
+func (s *captureStream) Recv() (*proto.SubscribeJobRequest, error) {
+	<-s.ctx.Done()
+	return nil, io.EOF
+}
+
+func (s *captureStream) totalSent() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	total := 0
+	for _, count := range s.sent {
+		total += count
+	}
+	return total
+}
+
+func (s *captureStream) sentTo(clientID ClientID) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sent[clientID]
+}
+
+func (s *captureStream) SetHeader(metadata.MD) error  { return nil }
+func (s *captureStream) SendHeader(metadata.MD) error { return nil }
+func (s *captureStream) SetTrailer(metadata.MD)       {}
+func (s *captureStream) Context() context.Context     { return s.ctx }
+func (s *captureStream) SendMsg(m any) error          { return nil }
+func (s *captureStream) RecvMsg(m any) error          { return nil }

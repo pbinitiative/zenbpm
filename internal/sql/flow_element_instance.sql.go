@@ -171,6 +171,7 @@ FROM
 WHERE
     execution_token_key = ?1
 ORDER BY created_at DESC
+LIMIT 1
 `
 
 func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error) {

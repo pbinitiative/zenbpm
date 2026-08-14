@@ -1119,7 +1119,7 @@ func (node *ZenNode) CreateInstance(
 	businessKey *string,
 	variables map[string]any,
 	timeToLive *types.TTL,
-) (*proto.ProcessInstance, error) {
+) (*proto.CreateInstanceResponse, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -1168,7 +1168,7 @@ func (node *ZenNode) CreateInstance(
 	if resp.Error != nil {
 		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to create process instance"))
 	}
-	return resp.Process, nil
+	return resp, nil
 }
 
 func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, variables map[string]any) error {

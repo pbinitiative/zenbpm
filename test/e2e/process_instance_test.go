@@ -29,18 +29,31 @@ func TestRestApiProcessInstance(t *testing.T) {
 
 	t.Run("create process instance - by bpmn id", func(t *testing.T) {
 		bpmnProcessId := "usertask-assignee-mapping-process"
+		businessKey := "create-response-business-key"
 		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", bpmnProcessId)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		variables := map[string]any{"assignee": "dynamic"}
 		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId:        &bpmnProcessId,
-			BusinessKey:          nil,
+			BusinessKey:          &businessKey,
 			HistoryTimeToLive:    nil,
 			ProcessDefinitionKey: nil,
-			Variables:            nil,
+			Variables:            &variables,
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusCreated, resp.StatusCode())
-		assert.NotNil(t, resp.JSON201)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resp.StatusCode())
+		require.NotNil(t, resp.JSON201)
+		assert.Equal(t, zenclient.ProcessInstanceProcessTypeDefault, resp.JSON201.ProcessType)
+		require.Len(t, resp.JSON201.ActiveElementInstances, 2)
+		activeElementIDs := make([]string, 0, len(resp.JSON201.ActiveElementInstances))
+		for _, elementInstance := range resp.JSON201.ActiveElementInstances {
+			activeElementIDs = append(activeElementIDs, elementInstance.ElementId)
+			assert.NotZero(t, elementInstance.ElementInstanceKey)
+			assert.Equal(t, "TokenStateWaiting", elementInstance.State)
+		}
+		assert.ElementsMatch(t, []string{"user-task-static", "user-task-dynamic"}, activeElementIDs)
+		assert.Equal(t, &bpmnProcessId, resp.JSON201.BpmnProcessId)
+		assert.Equal(t, &businessKey, resp.JSON201.BusinessKey)
 	})
 
 	t.Run("create process instance - with no identification", func(t *testing.T) {
@@ -746,14 +759,18 @@ func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *test
 func deployGetDefinition(t *testing.T, filename string, bpmnProcessId string) (zenclient.ProcessDefinitionSimple, error) {
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, filename)
-	assert.NoError(t, err)
+	if err != nil {
+		return definition, err
+	}
 	definitions, err := listProcessDefinitions(t)
-	assert.NoError(t, err)
+	if err != nil {
+		return definition, err
+	}
 	for _, def := range definitions {
 		if def.BpmnProcessId == bpmnProcessId {
 			definition = def
 			break
 		}
 	}
-	return definition, err
+	return definition, nil
 }

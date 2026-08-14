@@ -126,7 +126,7 @@ func (engine *Engine) createInternalTask(
 				jobError = newEngineErrorf("failing internal job with message: %s", err)
 			} else {
 				job.State = runtime.ActivityStateCompleted
-				batch.UpdateOutputFlowElementInstance(ctx,
+				if updateErr := batch.UpdateOutputFlowElementInstance(ctx,
 					runtime.FlowElementInstance{
 						Key:                currentToken.ElementInstanceKey,
 						ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -136,7 +136,10 @@ func (engine *Engine) createInternalTask(
 						OutputVariables:    output,
 						CompletedAt:        new(time.Now()),
 					},
-				)
+				); updateErr != nil {
+					job.State = runtime.ActivityStateFailed
+					jobError = newEngineErrorf("failed to update flow element instance for internal job: %s", updateErr)
+				}
 			}
 		}
 		if job.State == runtime.ActivityStateCompleted {

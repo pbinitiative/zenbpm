@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -15,6 +16,21 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+func TestIsExpectedServeError(t *testing.T) {
+	if !isExpectedServeError(net.ErrClosed) {
+		t.Fatal("net.ErrClosed must be treated as an expected shutdown")
+	}
+	if !isExpectedServeError(grpc.ErrServerStopped) {
+		t.Fatal("grpc.ErrServerStopped must be treated as an expected shutdown")
+	}
+	if !isExpectedServeError(errors.New("network connection closed")) {
+		t.Fatal("rqlite mux close must be treated as an expected shutdown")
+	}
+	if isExpectedServeError(errors.New("accept failed")) {
+		t.Fatal("unexpected listener failures must still be reported")
+	}
+}
 
 func TestServer(t *testing.T) {
 	ctx := t.Context()

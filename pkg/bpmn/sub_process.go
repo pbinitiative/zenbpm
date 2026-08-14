@@ -66,7 +66,7 @@ func (engine *Engine) createCallActivity(
 	if err != nil {
 		return runtime.ActivityStateFailed, err
 	}
-	batch.SaveFlowElementInstance(ctx,
+	if err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -77,7 +77,9 @@ func (engine *Engine) createCallActivity(
 			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
-	)
+	); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist flow element instance for call activity %s: %w", element.GetId(), err)
+	}
 
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
@@ -132,7 +134,7 @@ func (engine *Engine) createSubProcess(
 		return runtime.ActivityStateFailed, err
 	}
 
-	batch.SaveFlowElementInstance(ctx,
+	if err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -143,7 +145,9 @@ func (engine *Engine) createSubProcess(
 			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
-	)
+	); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist flow element instance for sub process %s: %w", element.GetId(), err)
+	}
 
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(element.StartEvents))
 	for _, startEvent := range element.StartEvents {
@@ -306,7 +310,9 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 				return fmt.Errorf("failed to handle simple transition for parent instance  %d: %w", parentInstance.ProcessInstance().Key, err)
 			}
 			for _, tok := range tokens {
-				batch.SaveToken(ctx, tok)
+				if err = batch.SaveToken(ctx, tok); err != nil {
+					return fmt.Errorf("failed to save token %d for parent instance %d: %w", tok.Key, parentInstance.ProcessInstance().Key, err)
+				}
 			}
 		}
 	}
@@ -421,9 +427,13 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	}
 
 	for _, tok := range tokens {
-		batch.SaveToken(ctx, tok)
+		if err = batch.SaveToken(ctx, tok); err != nil {
+			return fmt.Errorf("failed to save token %d for parent instance %d: %w", tok.Key, parentInstance.ProcessInstance().Key, err)
+		}
 	}
-	batch.SaveProcessInstance(ctx, parentInstance)
+	if err = batch.SaveProcessInstance(ctx, parentInstance); err != nil {
+		return fmt.Errorf("failed to save parent process instance %d: %w", parentInstance.ProcessInstance().Key, err)
+	}
 	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
 		ElementType:     string(parentElement.GetType()),

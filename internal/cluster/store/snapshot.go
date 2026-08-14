@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -31,7 +32,9 @@ func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	}()
 
 	if err != nil {
-		sink.Cancel()
+		if cancelErr := sink.Cancel(); cancelErr != nil {
+			return errors.Join(err, cancelErr)
+		}
 	}
 
 	return err

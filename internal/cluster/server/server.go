@@ -106,15 +106,24 @@ func (s *Server) Open() error {
 		grpc.ChainStreamInterceptor(grpcrecovery.StreamServerInterceptor()),
 	)
 	proto.RegisterZenServiceServer(srv, s)
-	go srv.Serve(s.ln)
+	go func() {
+		if err := srv.Serve(s.ln); err != nil && !isExpectedServeError(err) {
+			log.Error("zen cluster service stopped serving: %s", err)
+		}
+	}()
 	log.Info("zen cluster service listening on %s", s.addr)
 	return nil
 }
 
+func isExpectedServeError(err error) bool {
+	return errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, grpc.ErrServerStopped) ||
+		err.Error() == "network connection closed"
+}
+
 // Close closes the Server.
 func (s *Server) Close() error {
-	s.ln.Close()
-	return nil
+	return s.ln.Close()
 }
 
 func (s *Server) Notify(ctx context.Context, req *proto.NotifyRequest) (*proto.NotifyResponse, error) {

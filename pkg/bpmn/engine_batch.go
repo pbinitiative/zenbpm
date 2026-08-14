@@ -145,22 +145,64 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 	b.postFlushActions = []func(){}
 }
 
-func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, err error) {
-	b.b = b.engine.persistence.NewBatch()
-	b.preFlushActions = []func() error{}
-	b.postFlushActions = []func(){}
+func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
+	incidentBatch := b.engine.persistence.NewBatch()
 	token.State = bpmnruntime.TokenStateFailed
-	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
-	b.b.SaveToken(ctx, token)
-	b.b.SaveProcessInstance(ctx, instance)
-	incident := createNewIncidentFromToken(err, token, b.engine)
-	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
-		b.engine.logger.Error("failed to queue incident for token", "token", token.Key, "err", saveErr)
-	} else {
-		b.postFlushActions = append(b.postFlushActions, func() {
-			b.engine.recordIncidentMetric(ctx, incident)
-		})
+	failedInstance, err := processInstanceWithState(instance, bpmnruntime.ActivityStateFailed)
+	if err != nil {
+		b.Clear(ctx)
+		return err
 	}
+	if err := incidentBatch.SaveToken(ctx, token); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue failed token %d: %w", token.Key, err)
+	}
+	if err := incidentBatch.SaveProcessInstance(ctx, failedInstance); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue failed process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	incident := createNewIncidentFromToken(cause, token, b.engine)
+	if err := incidentBatch.SaveIncident(ctx, incident); err != nil {
+		b.Clear(ctx)
+		return fmt.Errorf("failed to queue incident %d for token %d: %w", incident.Key, token.Key, err)
+	}
+
+	b.b = incidentBatch
+	b.preFlushActions = []func() error{}
+	b.postFlushActions = []func(){func() {
+		instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
+		b.engine.recordIncidentMetric(ctx, incident)
+	}}
+	return nil
+}
+
+func processInstanceWithState(instance bpmnruntime.ProcessInstance, state bpmnruntime.ActivityState) (bpmnruntime.ProcessInstance, error) {
+	var copied bpmnruntime.ProcessInstance
+	switch instance := instance.(type) {
+	case *bpmnruntime.DefaultProcessInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.SubProcessInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.CallActivityInstance:
+		value := *instance
+		copied = &value
+	case *bpmnruntime.MultiInstanceInstance:
+		value := *instance
+		copied = &value
+	default:
+		return nil, fmt.Errorf("unsupported process instance type %T", instance)
+	}
+	copied.ProcessInstance().State = state
+	return copied, nil
+}
+
+func (b *EngineBatch) writeAndFlushTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
+	if err := b.WriteTokenIncident(ctx, token, instance, cause); err != nil {
+		return err
+	}
+	return b.Flush(ctx)
 }
 
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
@@ -244,6 +286,16 @@ func (b *EngineBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.C
 
 func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	return b.b.SaveToken(ctx, token)
+}
+
+func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.ExecutionToken) error {
+	for _, token := range tokens {
+		if err := b.b.SaveToken(ctx, token); err != nil {
+			b.Clear(ctx)
+			return fmt.Errorf("failed to save token %d: %w", token.Key, err)
+		}
+	}
+	return nil
 }
 
 func (b *EngineBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {

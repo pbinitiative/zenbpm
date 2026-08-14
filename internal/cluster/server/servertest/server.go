@@ -44,8 +44,7 @@ var _ proto.ZenServiceServer = &TestServer{}
 
 // Close closes the TestServer.
 func (s *TestServer) Close() error {
-	s.Listener.Close()
-	return nil
+	return s.Listener.Close()
 }
 
 func (s *TestServer) Addr() string {

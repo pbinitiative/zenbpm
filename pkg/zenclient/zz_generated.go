@@ -1556,7 +1556,7 @@ type GetHistoryParams struct {
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
-	// Size Number of items per page (max 100)
+	// Size Number of items per page (max 1000)
 	Size   *int32                  `form:"size,omitempty" json:"size,omitempty"`
 	SortBy *GetHistoryParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 

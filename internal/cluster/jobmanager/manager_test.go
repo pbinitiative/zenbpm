@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,6 +55,50 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Empty(t, server.subscriptions["test-job"])
 }
 
+func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
+	assert.NoError(t, registerMetrics())
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+	}
+	completer := &testCompleter{
+		completedJobs: []int64{},
+		loader:        loader,
+	}
+	server := newJobServer("node-1", loader, completer)
+
+	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}}
+	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2", stream: stream}
+	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-2", "test-job")
+
+	// client-1 already holds all but one of its slots, client-2 holds none
+	now := time.Now()
+	for range maxActiveJobsPerClient - 1 {
+		server.distributedJobs = append(server.distributedJobs, distributedJob{
+			sentTime: now,
+			client:   "client-1",
+			jobKey:   gen.Generate().Int64(),
+		})
+	}
+
+	// enough jobs to fill the remaining capacity of both clients
+	generatedJobs := generateJobs(int(maxActiveJobsPerClient) + 1)
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.totalSent() == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "expected all jobs to be distributed")
+	cancel()
+
+	assert.Equal(t, 1, stream.sentTo("client-1"), "client-1 must not be assigned more jobs than its remaining capacity within a batch")
+	assert.Equal(t, int(maxActiveJobsPerClient), stream.sentTo("client-2"), "client-2 should receive the rest of the batch")
+}
+
 func TestManagerHandlesLeaderChanges(t *testing.T) {
 	// leader changes will be handled later
 	t.SkipNow()
@@ -84,7 +130,8 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	client1 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
 
@@ -127,7 +174,8 @@ func TestManagerDistributesJob(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
 	loader.addJobs(generatedJobs...)
@@ -136,11 +184,11 @@ func TestManagerDistributesJob(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Contains(t, completer.completedJobs, generatedJobs[0].Key)
-	assert.NotEmpty(t, jm1.server.jobTypes[job.Type])
+	assert.Positive(t, serverClientCount(jm1.server, job.Type))
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes[job.Type].clients) == 0
+		return serverClientCount(jm1.server, job.Type) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -167,12 +215,14 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
 	client2Jobs := consumeJobs(t, "client-2", client2, jm2)
@@ -182,14 +232,14 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobs, completer, 2*time.Second)
 
-	assert.Equal(t, len(generatedJobs), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
-	assert.NotEqual(t, 0, client1Jobs)
-	assert.NotEqual(t, 0, client2Jobs)
+	assert.Equal(t, int64(len(generatedJobs)), client1Jobs.Load()+client2Jobs.Load(), "clients must consume all generated jobs")
+	assert.NotZero(t, client1Jobs.Load())
+	assert.NotZero(t, client2Jobs.Load())
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return serverClientCount(jm1.server, "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -216,7 +266,8 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
 
@@ -226,7 +277,8 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	assert.NoError(t, err)
 
 	client2Jobs := consumeJobs(t, "client-2", client2, jm2)
 
@@ -237,16 +289,16 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobsBatch2, completer, 2*time.Second)
 
-	assert.Equal(t, len(generatedJobs)+len(generatedJobsBatch2), *client1Jobs+*client2Jobs, "clients must consume all generated jobs")
-	assert.NotEqual(t, 0, client1Jobs)
-	assert.NotEqual(t, 0, client2Jobs)
+	assert.Equal(t, int64(len(generatedJobs)+len(generatedJobsBatch2)), client1Jobs.Load()+client2Jobs.Load(), "clients must consume all generated jobs")
+	assert.NotZero(t, client1Jobs.Load())
+	assert.NotZero(t, client2Jobs.Load())
 
-	client1JobsOnDisconnect := *client1Jobs
-	client2JobsOnDisconnect := *client2Jobs
+	client1JobsOnDisconnect := client1Jobs.Load()
+	client2JobsOnDisconnect := client2Jobs.Load()
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 1
+		return serverClientCount(jm1.server, "test-job") == 1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -256,12 +308,12 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	waitForJobsToBeConsumed(t, generatedJobsBatch3, completer, 2*time.Second)
 
-	assert.Equal(t, client1JobsOnDisconnect, *client1Jobs, "client 1 should not receive jobs after disconnect")
-	assert.Equal(t, len(generatedJobsBatch3), *client2Jobs-client2JobsOnDisconnect, "client 2 should consume all the jobs from batch 3")
+	assert.Equal(t, client1JobsOnDisconnect, client1Jobs.Load(), "client 1 should not receive jobs after disconnect")
+	assert.Equal(t, int64(len(generatedJobsBatch3)), client2Jobs.Load()-client2JobsOnDisconnect, "client 2 should consume all the jobs from batch 3")
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return serverClientCount(jm1.server, "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -309,7 +361,8 @@ func TestManagerTroughput(t *testing.T) {
 		clientID := ClientID(fmt.Sprintf("client-%d", i))
 		err = jm2.AddClient(t.Context(), clientID, client)
 		assert.NoError(t, err)
-		jm2.AddClientJobSub(t.Context(), clientID, jobType)
+		err = jm2.AddClientJobSub(t.Context(), clientID, jobType)
+		assert.NoError(t, err)
 
 		go func() {
 			for {
@@ -322,7 +375,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-			return len(jm1.server.jobTypes["test-job"].clients) == i+1
+			return serverClientCount(jm1.server, "test-job") == i+1
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)
@@ -338,8 +391,8 @@ func TestManagerTroughput(t *testing.T) {
 	}
 }
 
-func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *int {
-	counter := 0
+func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *atomic.Int64 {
+	counter := &atomic.Int64{}
 	go func() {
 		for {
 			job := <-client
@@ -349,10 +402,16 @@ func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManage
 			fmt.Printf("%s completing %d\n", clientID, job.Key)
 			err := jm.CompleteJobReq(t.Context(), clientID, job.Key, nil)
 			assert.NoError(t, err)
-			counter++
+			counter.Add(1)
 		}
 	}()
-	return &counter
+	return counter
+}
+
+func serverClientCount(server *jobServer, jobType JobType) int {
+	server.clientMu.RLock()
+	defer server.clientMu.RUnlock()
+	return len(server.jobTypes[jobType].clients)
 }
 
 func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testCompleter, timeout time.Duration) {
@@ -605,3 +664,50 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
 }
+
+// captureStream is a fake job subscription stream that records how many jobs
+// were sent to each client.
+type captureStream struct {
+	ctx  context.Context
+	mu   sync.Mutex
+	sent map[ClientID]int
+}
+
+func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
+	if resp.GetJob() == nil {
+		// stream close message sent on shutdown
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sent[ClientID(resp.GetClientId())]++
+	return nil
+}
+
+func (s *captureStream) Recv() (*proto.SubscribeJobRequest, error) {
+	<-s.ctx.Done()
+	return nil, io.EOF
+}
+
+func (s *captureStream) totalSent() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	total := 0
+	for _, count := range s.sent {
+		total += count
+	}
+	return total
+}
+
+func (s *captureStream) sentTo(clientID ClientID) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sent[clientID]
+}
+
+func (s *captureStream) SetHeader(metadata.MD) error  { return nil }
+func (s *captureStream) SendHeader(metadata.MD) error { return nil }
+func (s *captureStream) SetTrailer(metadata.MD)       {}
+func (s *captureStream) Context() context.Context     { return s.ctx }
+func (s *captureStream) SendMsg(_ any) error          { return nil }
+func (s *captureStream) RecvMsg(_ any) error          { return nil }

@@ -107,12 +107,12 @@ func (m *JobManager) RemoveClient(ctx context.Context, clientId ClientID) {
 	m.client.removeClient(ctx, clientId)
 }
 
-func (m *JobManager) AddClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.addJobSub(ctx, clientId, jobType)
+func (m *JobManager) AddClientJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	return m.client.addJobSub(ctx, clientID, jobType)
 }
 
-func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.removeJobSub(ctx, clientId, jobType)
+func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	return m.client.removeJobSub(ctx, clientID, jobType)
 }
 
 func (m *JobManager) AddNodeSubscription(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {
@@ -170,7 +170,7 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 	// this reconciliation the node would never open a job stream to that
 	// partition leader and no job would ever be distributed to the workers.
 	if m.started.Load() {
-		m.client.updateNodeSubs()
+		m.client.reconcileNodeSubscriptions()
 	}
 }
 
@@ -207,7 +207,7 @@ func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
 		m.serverCtx = nil
 		m.server = nil
 	}
-	m.client.updateNodeSubs()
+	m.client.reconcileNodeSubscriptions()
 }
 
 // OnJobRejected is a server callback function called when client rejects job

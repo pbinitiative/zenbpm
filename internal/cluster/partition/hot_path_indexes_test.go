@@ -23,10 +23,10 @@ var hotPathIndexNames = []string{
 
 func TestHotPathIndexes(t *testing.T) {
 	partition, conf, clientMgr, testStore, server := prepareTestSetup(t, false)
-	defer func() {
+	t.Cleanup(func() {
 		require.NoError(t, partition.Stop())
 		require.NoError(t, server.Close())
-	}()
+	})
 
 	db := newTestDB(t, partition, conf, clientMgr, testStore, "test-hot-path-indexes")
 
@@ -146,7 +146,9 @@ func explainQueryPlan(t *testing.T, db *DB, query string, arguments ...any) []st
 
 	rows, err := db.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+query, arguments...)
 	require.NoError(t, err)
-	defer rows.Close()
+	t.Cleanup(func() {
+		require.NoError(t, rows.Close())
+	})
 
 	details := make([]string, 0, 2)
 	for rows.Next() {

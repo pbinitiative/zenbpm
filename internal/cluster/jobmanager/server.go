@@ -131,7 +131,7 @@ func (s *jobServer) distributeJobs() {
 		}
 		s.clientMu.RUnlock()
 		s.distributedJobsMu.Lock()
-		currentKeys := make([]int64, len(s.distributedJobs))
+		currentKeys := make([]int64, 0, len(s.distributedJobs))
 		now := time.Now()
 		for i := len(s.distributedJobs) - 1; i >= 0; i-- {
 			job := s.distributedJobs[i]
@@ -140,14 +140,20 @@ func (s *jobServer) distributeJobs() {
 				s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
 				continue
 			}
-			clients[job.client]--
-			currentKeys[i] = job.jobKey
+			// only track capacity for clients that are still subscribed,
+			// jobs of already removed clients must not create phantom entries
+			if _, ok := clients[job.client]; ok {
+				clients[job.client]--
+			}
+			currentKeys = append(currentKeys, job.jobKey)
 		}
 		s.distributedJobsMu.Unlock()
 
 		jobsToLoad := int64(0)
 		for _, numberOfSlots := range clients {
-			jobsToLoad += numberOfSlots
+			if numberOfSlots > 0 {
+				jobsToLoad += numberOfSlots
+			}
 		}
 		if jobsToLoad <= 0 {
 			time.Sleep(20 * time.Millisecond)
@@ -183,39 +189,39 @@ func (s *jobServer) distributeJobs() {
 				s.clientMu.Unlock()
 				continue
 			}
-			jobTypeData.index++
-			// index overflow
-			if jobTypeData.index >= len(jobTypeData.clients) {
-				jobTypeData.index = 0
-			}
-			clientIdx := jobTypeData.index
-			clientID := jobTypeData.clients[clientIdx]
-
-			candidateIndex := clientIdx // contains the first matched client
-		indexLogic:
-			// if client under index is fully saturated check the next one
-			if clients[clientID] <= 0 {
-				jobTypeData.index++
-				// index overflow
-				if jobTypeData.index >= len(jobTypeData.clients) {
-					jobTypeData.index = 0
+			// round robin: starting from the client after the last used index,
+			// pick the first client that still has remaining capacity
+			numClients := len(jobTypeData.clients)
+			clientID := ClientID("")
+			var nodeStream *nodeSub
+			clientFound := false
+			for offset := 1; offset <= numClients; offset++ {
+				idx := (jobTypeData.index + offset) % numClients
+				candidateID := jobTypeData.clients[idx]
+				// clients subscribed after the capacity snapshot was taken have
+				// no known capacity in this round and are treated as saturated
+				if clients[candidateID] <= 0 {
+					continue
 				}
-				clientIdx = jobTypeData.index
-				clientID = jobTypeData.clients[clientIdx]
-				if candidateIndex != clientIdx {
-					goto indexLogic
+				candidateStream, ok := s.subscriptions[jType][candidateID]
+				if !ok {
+					continue
 				}
+				jobTypeData.index = idx
+				clientID = candidateID
+				nodeStream = candidateStream
+				clients[clientID]--
+				clientFound = true
+				break
 			}
-
-			s.jobTypes[jType] = jobTypeData // set the updated index
-
-			nodeStream, ok := s.subscriptions[jType][clientID]
-			if !ok {
-				s.logger.Warn("Stream for job was not found", "jobType", jType, "key", job.Key)
+			if !clientFound {
+				// every client for this job type is saturated, the job stays
+				// in the database and will be picked up in a later round
 				s.clientMu.Unlock()
 				continue
 			}
-			clients[clientID]--
+
+			s.jobTypes[jType] = jobTypeData // set the updated index
 			s.distributedJobsMu.Lock()
 			s.distributedJobs = append(s.distributedJobs, distributedJob{
 				sentTime: time.Now(),

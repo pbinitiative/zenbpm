@@ -1942,21 +1942,37 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 	if len(databases) == 0 {
 		return nil, fmt.Errorf("no partitions where node is a leader were found")
 	}
-	jobsAcc := make([]sql.Job, 0)
 	// hack to not send NULL into sqlite
 	if len(idsToSkip) == 0 {
 		idsToSkip = []int64{0}
 	}
-	for _, db := range databases {
+	return loadJobsWithGlobalLimit(len(databases), count, func(index int, limit int64) ([]sql.Job, error) {
+		db := databases[index]
 		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
-			Limit:   count,
+			Limit:   limit,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.Partition, err)
 		}
+		return jobs, nil
+	})
+}
+
+func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {
+	jobsAcc := make([]sql.Job, 0)
+	remaining := count
+	for index := 0; index < sourceCount && remaining > 0; index++ {
+		jobs, err := load(index, remaining)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(jobs)) > remaining {
+			jobs = jobs[:remaining]
+		}
 		jobsAcc = append(jobsAcc, jobs...)
+		remaining -= int64(len(jobs))
 	}
 	return jobsAcc, nil
 }

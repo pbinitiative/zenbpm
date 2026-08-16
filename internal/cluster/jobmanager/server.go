@@ -180,6 +180,7 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		s.emptyDistributionCounter = 0
+		assignedJobs := 0
 		for _, job := range jobs {
 			s.clientMu.Lock()
 			jType := JobType(job.Type)
@@ -220,6 +221,7 @@ func (s *jobServer) distributeJobs() {
 				s.clientMu.Unlock()
 				continue
 			}
+			assignedJobs++
 
 			s.jobTypes[jType] = jobTypeData // set the updated index
 			s.distributedJobsMu.Lock()
@@ -263,6 +265,11 @@ func (s *jobServer) distributeJobs() {
 					attribute.String("type", job.Type),
 				))
 			}
+		}
+		if assignedJobs == 0 {
+			// every loaded job was skipped (saturated or unavailable clients),
+			// back off to avoid a tight database-query loop until capacity changes
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }

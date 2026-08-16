@@ -220,7 +220,7 @@ func TestServerSkipListContainsOnlyValidJobKeys(t *testing.T) {
 	loader := &testLoader{
 		jobsToSend: []sql.Job{},
 		mu:         &sync.RWMutex{},
-		onLoad: func(jobTypes []string, idsToSkip []int64, count int64) {
+		onLoad: func(_ []string, idsToSkip []int64, _ int64) {
 			skipListMu.Lock()
 			skipLists = append(skipLists, slices.Clone(idsToSkip))
 			skipListMu.Unlock()

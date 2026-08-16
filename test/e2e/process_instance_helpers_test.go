@@ -475,8 +475,12 @@ func assertExactProcessInstanceHistory(t testing.TB, processInstanceKey int64, e
 func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {
 	t.Helper()
 
+	const cleanupTimeout = 5 * time.Second
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		response, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstanceKey)
+		response, err := app.restClient.CancelProcessInstanceWithResponse(cleanupCtx, processInstanceKey)
 		if !assert.NoError(collect, err) {
 			return
 		}
@@ -484,9 +488,9 @@ func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {
 			return
 		}
 
-		assert.Contains(collect, []int{http.StatusNoContent, http.StatusConflict}, response.StatusCode(),
+		assert.Contains(collect, []int{http.StatusNoContent, http.StatusConflict, http.StatusNotFound}, response.StatusCode(),
 			"process instance %d cleanup returned %s", processInstanceKey, response.Status())
-	}, 5*time.Second, 50*time.Millisecond,
+	}, cleanupTimeout, 50*time.Millisecond,
 		"process instance %d cleanup did not complete", processInstanceKey)
 }
 

@@ -41,7 +41,9 @@ func TestProcessFlowNode_UnsupportedElementReturnsError(t *testing.T) {
 func TestSafeGo_GoroutinePanicDoesNotCrashEngine(t *testing.T) {
 	isolatedStorage := inmemory.NewStorage()
 	eng := NewEngine(EngineWithStorage(isolatedStorage))
-	require.NoError(t, eng.Start(t.Context()))
+	startErr := eng.Start(t.Context())
+	defer eng.Stop()
+	require.NoError(t, startErr)
 
 	process, err := eng.LoadFromFile(t.Context(), "./test-cases/safego-sub-process-panic-test.bpmn")
 	assert.NoError(t, err)

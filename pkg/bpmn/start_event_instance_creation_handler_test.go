@@ -21,8 +21,9 @@ import (
 func TestPublishMessageOnInstanceCreation_RenewsDefinitionSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	require.NoError(t, engine.Start(t.Context()))
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	// Keep service-task jobs Active so the spawned instances remain in Active state.
 	h := engine.NewTaskHandler().
@@ -86,8 +87,9 @@ func TestProcessTimerTriggerOnInstanceCreation_DoesNotRenewTimer(t *testing.T) {
 	// Use a long pollTimerDelay so the engine's timer manager does not pick up any timer
 	// during this synchronous test. We Stop() the engine immediately after asserting.
 	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(1*time.Hour))
-	require.NoError(t, engine.Start(t.Context()))
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -149,8 +151,8 @@ func TestPublishMessageOnInstanceCreation_FailedOutputMappingKeepsSubscriptionAc
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
 	err := engine.Start(t.Context())
-	require.NoError(t, err)
 	defer engine.Stop()
+	require.NoError(t, err)
 
 	h := engine.NewTaskHandler().
 		Type("input-task-for-message-start-event-test").
@@ -202,8 +204,8 @@ func TestHandleStartEventInstanceCreation_SkipRefreshSkipsRenewal(t *testing.T) 
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
 	err := engine.Start(t.Context())
-	require.NoError(t, err)
 	defer engine.Stop()
+	require.NoError(t, err)
 
 	def, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)

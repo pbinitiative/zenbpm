@@ -217,10 +217,10 @@ func TestGRPCHeaderMux(t *testing.T) {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(h1Ln) }()
 	defer func() {
+		require.NoError(t, muxLn.Close())
 		srv.Stop()
 		err := <-serveErr
 		require.True(t, err == nil || errors.Is(err, grpc.ErrServerStopped), "gRPC server failed: %v", err)
-		require.NoError(t, muxLn.Close())
 		require.ErrorIs(t, <-muxErr, net.ErrClosed)
 	}()
 	conn, err := grpc.NewClient(

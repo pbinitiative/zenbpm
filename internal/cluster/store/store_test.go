@@ -112,8 +112,8 @@ func TestStoreRestartSingleNode(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
-	defer func() { require.NoError(t, ln.Close()) }()
+	defer func(store *Store) { require.NoError(t, store.Close(true)) }(s)
+	defer func(listener net.Listener) { require.NoError(t, listener.Close()) }(ln)
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -147,8 +147,8 @@ func TestStoreRestartSingleNode(t *testing.T) {
 	}
 
 	s, ln = newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
-	defer func() { require.NoError(t, ln.Close()) }()
+	defer func(store *Store) { require.NoError(t, store.Close(true)) }(s)
+	defer func(listener net.Listener) { require.NoError(t, listener.Close()) }(ln)
 	if err = s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -295,10 +295,11 @@ func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	if c.Addr != "" {
 		addr = c.Addr
 	}
-	mux, _, err := network.NewNodeMux(addr)
+	mux, muxLn, err := network.NewNodeMux(addr)
 	if err != nil {
 		t.Fatalf("failed to start network mux: %s", err)
 	}
+	t.Cleanup(func() { require.NoError(t, muxLn.Close()) })
 	ln := network.NewZenBpmRaftListener(mux)
 	raftTn := tcp.NewLayer(ln, network.NewZenBpmRaftDialer())
 

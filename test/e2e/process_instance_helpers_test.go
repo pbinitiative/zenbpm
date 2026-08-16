@@ -475,15 +475,19 @@ func assertExactProcessInstanceHistory(t testing.TB, processInstanceKey int64, e
 func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {
 	t.Helper()
 
-	response, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstanceKey)
-	assert.NoError(t, err)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		response, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstanceKey)
+		if !assert.NoError(collect, err) {
+			return
+		}
+		if !assert.NotNil(collect, response) || !assert.NotNil(collect, response.HTTPResponse) {
+			return
+		}
 
-	switch response.StatusCode() {
-	case http.StatusNoContent, http.StatusConflict:
-		return
-	default:
-		assert.Failf(t, "unexpected cleanup response", "process instance %d cleanup returned %s", processInstanceKey, response.Status())
-	}
+		assert.Contains(collect, []int{http.StatusNoContent, http.StatusConflict}, response.StatusCode(),
+			"process instance %d cleanup returned %s", processInstanceKey, response.Status())
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d cleanup did not complete", processInstanceKey)
 }
 
 func requireFirstActiveInstanceWithSingleToken(t testing.TB, processInstances *zenclient.GetProcessInstancesResponse) (zenclient.ProcessInstancesSimple, storage.Storage) {

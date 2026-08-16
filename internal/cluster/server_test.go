@@ -16,6 +16,7 @@ import (
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -140,27 +141,27 @@ func (mux *Mux) handleConn(conn net.Conn) {
 	defer mux.wg.Done()
 	// Set a read deadline so connections with no data don't timeout.
 	if err := conn.SetReadDeadline(time.Now().Add(mux.Timeout)); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		fmt.Printf("cannot set read deadline: %s\n", err)
 		return
 	}
 	// Read first byte from connection to determine handler.
 	var typ [1]byte
 	if _, err := io.ReadFull(conn, typ[:]); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		fmt.Printf("cannot read header byte: %s\n", err)
 		return
 	}
 	// Reset read deadline and let the listener handle that.
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		fmt.Printf("cannot reset set read deadline: %s\n", err)
 		return
 	}
 	// Retrieve handler based on first byte.
 	handler := mux.m[typ[0]]
 	if handler == nil {
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
 	// Send connection to handler.  The handler is responsible for closing the connection.
@@ -182,7 +183,7 @@ func (d *Dialer) Dial(addr string, timeout time.Duration) (conn net.Conn, retErr
 
 	defer func() {
 		if retErr != nil && conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -211,15 +212,17 @@ func TestGRPCHeaderMux(t *testing.T) {
 	}
 	h1Ln := mux.Listen(byte(1))
 	srv := grpc.NewServer()
-	go mux.Serve()
-	go func() {
-		_ = h1Ln
-		err := srv.Serve(h1Ln)
-		if err != nil {
-			fmt.Printf("%s\n", err)
-		}
+	muxErr := make(chan error, 1)
+	go func() { muxErr <- mux.Serve() }()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(h1Ln) }()
+	defer func() {
+		srv.Stop()
+		err := <-serveErr
+		require.True(t, err == nil || errors.Is(err, grpc.ErrServerStopped), "gRPC server failed: %v", err)
+		require.NoError(t, muxLn.Close())
+		require.ErrorIs(t, <-muxErr, net.ErrClosed)
 	}()
-	defer muxLn.Close()
 	conn, err := grpc.NewClient(
 		muxLn.Addr().String(),
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
@@ -238,7 +241,7 @@ func TestGRPCHeaderMux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create grpc connection: %s", err)
 	}
-	defer conn.Close()
+	defer func() { require.NoError(t, conn.Close()) }()
 
 	for range 3 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -260,13 +263,13 @@ func TestGRPCClient(t *testing.T) {
 		t.Fatalf("failed to create mux listener: %s", err)
 	}
 	srv := grpc.NewServer()
-	go func() {
-		err := srv.Serve(ln)
-		if err != nil {
-			fmt.Printf("%s\n", err)
-		}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(ln) }()
+	defer func() {
+		srv.Stop()
+		err := <-serveErr
+		require.True(t, err == nil || errors.Is(err, grpc.ErrServerStopped), "gRPC server failed: %v", err)
 	}()
-	defer ln.Close()
 	conn, err := grpc.NewClient(
 		ln.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -274,7 +277,7 @@ func TestGRPCClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create grpc connection: %s", err)
 	}
-	defer conn.Close()
+	defer func() { require.NoError(t, conn.Close()) }()
 
 	for range 3 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

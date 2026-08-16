@@ -9,16 +9,17 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type unknownFlowNode struct {
 	bpmn20.TFlowNode
 }
 
-func (u *unknownFlowNode) GetId() string                          { return "unknown-id" }
+func (u *unknownFlowNode) GetId() string                            { return "unknown-id" }
 func (u *unknownFlowNode) GetDocumentation() []bpmn20.Documentation { return nil }
-func (u *unknownFlowNode) GetType() bpmn20.ElementType            { return "UnknownType" }
-func (u *unknownFlowNode) GetName() string                        { return "unknown" }
+func (u *unknownFlowNode) GetType() bpmn20.ElementType              { return "UnknownType" }
+func (u *unknownFlowNode) GetName() string                          { return "unknown" }
 
 func TestProcessFlowNode_UnsupportedElementReturnsError(t *testing.T) {
 	engineBatch, err := bpmnEngine.NewEngineBatchClean()
@@ -40,7 +41,7 @@ func TestProcessFlowNode_UnsupportedElementReturnsError(t *testing.T) {
 func TestSafeGo_GoroutinePanicDoesNotCrashEngine(t *testing.T) {
 	isolatedStorage := inmemory.NewStorage()
 	eng := NewEngine(EngineWithStorage(isolatedStorage))
-	eng.Start(t.Context())
+	require.NoError(t, eng.Start(t.Context()))
 
 	process, err := eng.LoadFromFile(t.Context(), "./test-cases/safego-sub-process-panic-test.bpmn")
 	assert.NoError(t, err)

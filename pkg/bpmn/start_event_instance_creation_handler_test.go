@@ -21,7 +21,7 @@ import (
 func TestPublishMessageOnInstanceCreation_RenewsDefinitionSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	require.NoError(t, engine.Start(t.Context()))
 	defer engine.Stop()
 
 	// Keep service-task jobs Active so the spawned instances remain in Active state.
@@ -86,7 +86,7 @@ func TestProcessTimerTriggerOnInstanceCreation_DoesNotRenewTimer(t *testing.T) {
 	// Use a long pollTimerDelay so the engine's timer manager does not pick up any timer
 	// during this synchronous test. We Stop() the engine immediately after asserting.
 	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(1*time.Hour))
-	engine.Start(t.Context())
+	require.NoError(t, engine.Start(t.Context()))
 	defer engine.Stop()
 
 	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")

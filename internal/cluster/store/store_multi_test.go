@@ -11,6 +11,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMultiNodeVerifyLeader(t *testing.T) {
@@ -20,8 +21,8 @@ func TestMultiNodeVerifyLeader(t *testing.T) {
 		},
 	}
 	s1, ln1 := newMustTestStore(t, c1)
-	defer s1.Close(true)
-	defer ln1.Close()
+	defer func() { require.NoError(t, s1.Close(true)) }()
+	defer func() { require.NoError(t, ln1.Close()) }()
 
 	if err := s1.Open(); err != nil {
 		t.Fatalf("failed to open store s1: %s", err.Error())
@@ -49,8 +50,8 @@ func TestMultiNodeVerifyLeader(t *testing.T) {
 	}
 
 	s2, ln2 := newMustTestStore(t, c2)
-	defer s2.Close(true)
-	defer ln2.Close()
+	defer func() { require.NoError(t, s2.Close(true)) }()
+	defer func() { require.NoError(t, ln2.Close()) }()
 	if err := s2.Open(); err != nil {
 		t.Fatalf("failed to open store s2: %s", err.Error())
 	}
@@ -96,8 +97,8 @@ func TestMultiNodeSimple(t *testing.T) {
 		},
 	}
 	s1, ln1 := newMustTestStore(t, c1)
-	defer s1.Close(true)
-	defer ln1.Close()
+	defer func() { require.NoError(t, s1.Close(true)) }()
+	defer func() { require.NoError(t, ln1.Close()) }()
 
 	if err := s1.Open(); err != nil {
 		t.Fatalf("failed to open store s1: %s", err.Error())
@@ -120,8 +121,8 @@ func TestMultiNodeSimple(t *testing.T) {
 		},
 	}
 	s2, ln2 := newMustTestStore(t, c2)
-	defer s2.Close(true)
-	defer ln2.Close()
+	defer func() { require.NoError(t, s2.Close(true)) }()
+	defer func() { require.NoError(t, ln2.Close()) }()
 
 	if err := s2.Open(); err != nil {
 		t.Fatalf("failed to open store s2: %s", err.Error())
@@ -219,8 +220,8 @@ func TestMultiNodePeerObservations(t *testing.T) {
 		NodeId: fmt.Sprintf("s1-%s", random.String()),
 	}
 	s1, ln1 := newMustTestStore(t, c1)
-	defer s1.Close(true)
-	defer ln1.Close()
+	defer func() { require.NoError(t, s1.Close(true)) }()
+	defer func() { require.NoError(t, ln1.Close()) }()
 
 	if err := s1.Open(); err != nil {
 		t.Fatalf("failed to open store s1: %s", err.Error())
@@ -244,8 +245,8 @@ func TestMultiNodePeerObservations(t *testing.T) {
 		NodeId: fmt.Sprintf("s2-%s", random.String()),
 	}
 	s2, ln2 := newMustTestStore(t, c2)
-	defer s2.Close(true)
-	defer ln2.Close()
+	defer func() { require.NoError(t, s2.Close(true)) }()
+	defer func() { require.NoError(t, ln2.Close()) }()
 
 	if err := s2.Open(); err != nil {
 		t.Fatalf("failed to open store s2: %s", err.Error())
@@ -301,8 +302,8 @@ func TestMultiNodePeerObservations(t *testing.T) {
 		NodeId: fmt.Sprintf("s3-%s", random.String()),
 	}
 	s3, ln3 := newMustTestStore(t, c3)
-	defer s3.Close(true)
-	defer ln3.Close()
+	defer func() { require.NoError(t, s3.Close(true)) }()
+	defer func() { require.NoError(t, ln3.Close()) }()
 
 	if err := s3.Open(); err != nil {
 		t.Fatalf("failed to open store s3: %s", err.Error())

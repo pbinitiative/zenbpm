@@ -24,7 +24,7 @@ func TestChildProcessesPagination(t *testing.T) {
 			require.NotZero(t, subInstanceKey, "multiInstance sub-instance key must be set after children appear")
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), parentKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, parentKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {

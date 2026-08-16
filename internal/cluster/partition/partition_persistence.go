@@ -523,7 +523,7 @@ func (rq *DB) QueryRowContext(ctx context.Context, query string, args ...interfa
 	if err != nil {
 		return sql.ConstructRow(ctx, []string{}, []string{}, nil, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	row := rows.Next()
 	if !row {

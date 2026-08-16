@@ -3,6 +3,7 @@ package jobmanager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -21,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -103,8 +105,8 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	// leader changes will be handled later
 	t.SkipNow()
 	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeLn.Close()) }()
 	ln := network.NewZenBpmClusterListener(mux)
 	assert.NoError(t, err)
 
@@ -153,8 +155,8 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 
 func TestManagerDistributesJob(t *testing.T) {
 	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeLn.Close()) }()
 	ln := network.NewZenBpmClusterListener(mux)
 	assert.NoError(t, err)
 
@@ -194,8 +196,8 @@ func TestManagerDistributesJob(t *testing.T) {
 
 func TestManagerHandlesMultipleClients(t *testing.T) {
 	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeLn.Close()) }()
 	ln := network.NewZenBpmClusterListener(mux)
 	assert.NoError(t, err)
 
@@ -245,8 +247,8 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 
 func TestManagerHandlesClientConnections(t *testing.T) {
 	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeLn.Close()) }()
 	ln := network.NewZenBpmClusterListener(mux)
 	assert.NoError(t, err)
 
@@ -324,10 +326,10 @@ func TestManagerTroughput(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer f.Close()
+	defer func() { require.NoError(t, f.Close()) }()
 	mux, nodeLn, err := network.NewNodeMux("")
-	defer nodeLn.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeLn.Close()) }()
 	ln := network.NewZenBpmClusterListener(mux)
 	assert.NoError(t, err)
 
@@ -511,7 +513,13 @@ func createServerNode(t *testing.T, partition uint32, listener net.Listener, sto
 		jobManager: jm,
 	}
 	proto.RegisterZenServiceServer(srv, zenSrv)
-	go srv.Serve(listener)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(listener) }()
+	t.Cleanup(func() {
+		srv.Stop()
+		err := <-serveErr
+		require.True(t, isExpectedGRPCServerStopError(err), "gRPC server failed: %v", err)
+	})
 	jm.Start()
 	return jm, completer
 }
@@ -634,6 +642,10 @@ func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 	}
 	l.mu.Unlock()
 	return distributedJobs, nil
+}
+
+func isExpectedGRPCServerStopError(err error) bool {
+	return err == nil || errors.Is(err, grpc.ErrServerStopped) || err.Error() == "network connection closed"
 }
 
 type testStore struct {

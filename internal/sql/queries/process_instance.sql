@@ -26,10 +26,14 @@ WHERE
     key = @key;
 
 -- name: FindInactiveInstancesToDelete :many
+-- Pinned to idx_process_instance_cleanup so SQLite uses the partial range index on
+-- history_delete_sec for terminal states. Without the hint the planner (which never
+-- sees ANALYZE stats in production) picks the generic idx_process_instance_state and
+-- scans every terminal instance on every cleanup pass. See TestHotPathIndexes.
 SELECT
     pi.key
 FROM
-    process_instance AS pi
+    process_instance AS pi INDEXED BY idx_process_instance_cleanup
     LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
     LEFT JOIN process_instance AS parent_pi ON et.process_instance_key = parent_pi.key
 WHERE

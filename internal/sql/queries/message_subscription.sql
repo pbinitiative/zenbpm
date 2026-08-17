@@ -28,10 +28,14 @@ WHERE
     AND state = @state;
 
 -- name: FindProcessInstanceMessageSubscriptions :many
+-- Pinned to idx_fk_message_subscription_process_instance_key. The planner currently picks it
+-- correctly, but pinning here makes the contract explicit and prevents the generic
+-- idx_message_subscription_execution_token_state from shadowing it under different data
+-- distributions. See TestHotPathIndexes.
 SELECT
     *
 FROM
-    message_subscription
+    message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
@@ -74,11 +78,13 @@ WHERE
     AND state = @state;
 
 -- name: FindProcessInstanceMessageSubscriptionsPage :many
+-- Pinned to idx_fk_message_subscription_process_instance_key. See note on
+-- FindProcessInstanceMessageSubscriptions.
 SELECT
     *,
     COUNT(*) OVER () AS total_count
 FROM
-    message_subscription
+    message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND COALESCE(sqlc.narg('state'), state) = state

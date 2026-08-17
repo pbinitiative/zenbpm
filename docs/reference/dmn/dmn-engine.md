@@ -56,6 +56,8 @@ A file is validated **before anything is stored** — a rejected file deploys no
 
 The syntax checks parse only. A cell or output may reference variables that do not exist yet (`customer_type`, `low`), because whether a name resolves is a runtime question — see [FEEL evaluation](#feel-evaluation). Structural checks that need the whole graph — cyclic requirements, duplicate ids, hit-policy conformance, `typeRef` matching — are still deferred to evaluation.
 
+Custom FEEL runtimes supplied through `EngineWithFeel` must implement the complete `script.DmnFeelRuntime` contract: strict unary-test evaluation plus parse-only validation for expressions and unary tests. A runtime that only implements the legacy `script.FeelRuntime` contract can still be used for ordinary expression evaluation, but deployment or evaluation of a DMN decision table fails explicitly. The engine never falls back to lenient unary testing or evaluates expressions to validate their syntax.
+
 ## Evaluating a decision
 
 A decision can be evaluated in three ways:

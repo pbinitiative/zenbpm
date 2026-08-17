@@ -18,6 +18,8 @@ type FeelinRuntime struct {
 	pool *script.RunnerPool
 }
 
+var _ script.DmnFeelRuntime = (*FeelinRuntime)(nil)
+
 func NewFeelinRuntime(maxVmPoolSize int, minVmPoolSize int) script.FeelRuntime {
 	return &FeelinRuntime{
 		pool: script.NewRunnerPool(FeelinRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
@@ -47,6 +49,13 @@ func (r *FeelinRuntime) ValidateExpression(expression string) error {
 	defer r.pool.ReturnRunnerToPool(runner)
 
 	return (*runner.(*FeelinRunner).validateExpression)(expression)
+}
+
+func (r *FeelinRuntime) ValidateUnaryTest(expression string) error {
+	var runner = r.pool.GetRunnerFromPool()
+	defer r.pool.ReturnRunnerToPool(runner)
+
+	return (*runner.(*FeelinRunner).validateUnaryTest)(expression)
 }
 
 func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]any) (any, error) {
@@ -112,6 +121,7 @@ type FeelinRunner struct {
 	unaryTest          *func(expression string, variableContext map[string]any) (bool, error)
 	unaryTestStrict    *func(expression string, variableContext map[string]any) (bool, error)
 	validateExpression *func(expression string) error
+	validateUnaryTest  *func(expression string) error
 }
 
 func (r *FeelinRunner) Runner() {}
@@ -133,6 +143,7 @@ func newFeelRunner() *FeelinRunner {
 	r.exportUnaryTest()
 	r.exportUnaryTestStrict()
 	r.exportValidateExpression()
+	r.exportValidateUnaryTest()
 	return &r
 }
 
@@ -172,6 +183,15 @@ func (r *FeelinRunner) exportValidateExpression() {
 	r.validateExpression = &validateExpression
 }
 
+func (r *FeelinRunner) exportValidateUnaryTest() {
+	var validateUnaryTest func(expression string) error
+	err := r.vm.ExportTo(r.vm.Get("validateUnaryTest"), &validateUnaryTest)
+	if err != nil {
+		panic(err)
+	}
+	r.validateUnaryTest = &validateUnaryTest
+}
+
 const feelRuntimeExtensions = `
 function unaryTestStrict(expression, context, dialect) {
   var missingVariables = [];
@@ -201,5 +221,9 @@ function unaryTestStrict(expression, context, dialect) {
 
 function validateExpression(expression, dialect) {
   interpreter.evaluate(expression, {}, dialect);
+}
+
+function validateUnaryTest(expression, dialect) {
+  interpreter.unaryTest(expression, {}, dialect);
 }
 `

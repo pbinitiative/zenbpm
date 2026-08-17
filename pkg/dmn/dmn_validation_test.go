@@ -52,6 +52,15 @@ func TestDecisionTableValidationRegressions(t *testing.T) {
 		require.ErrorContains(t, err, `output entry "output-entry" contains invalid or unsupported FEEL expression "1 +"`)
 	})
 
+	t.Run("rejects an input entry with invalid FEEL unary-test syntax", func(t *testing.T) {
+		decisionTable := validationTestDecisionTable("1 +", "1")
+
+		err := engine.validateDecisionTable("decision", decisionTable)
+
+		require.Error(t, err)
+		require.ErrorContains(t, err, `input entry "input-entry" contains invalid or unsupported FEEL unary test "1 +"`)
+	})
+
 	t.Run("rejects an input expression with invalid FEEL syntax", func(t *testing.T) {
 		decisionTable := validationTestDecisionTable("-", "1")
 		decisionTable.Inputs[0].InputExpression.Text = "1 +"

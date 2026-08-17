@@ -81,7 +81,9 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 }
 
 // EngineWithFeel sets the FEEL runtime used for expression evaluation and hands
-// its ownership to the caller. It is meant for construction time only (through
+// its ownership to the caller. DMN decision tables require the supplied runtime
+// to implement script.DmnFeelRuntime; incomplete runtimes are rejected during
+// deployment and evaluation. It is meant for construction time only (through
 // NewEngine): applying it to a running engine stops an already owned runtime and
 // with it any FEEL evaluation in flight.
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
@@ -90,6 +92,17 @@ func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 		engine.feelRuntime = feel
 		engine.ownsFeelRuntime = false
 	}
+}
+
+func (engine *ZenDmnEngine) decisionTableFeelRuntime() (script.DmnFeelRuntime, error) {
+	feelRuntime, ok := engine.feelRuntime.(script.DmnFeelRuntime)
+	if !ok {
+		return nil, fmt.Errorf(
+			"configured FEEL runtime %T does not support DMN decision tables: it must implement UnaryTestStrict, ValidateExpression, and ValidateUnaryTest",
+			engine.feelRuntime,
+		)
+	}
+	return feelRuntime, nil
 }
 
 // Stop releases resources created and owned by the DMN engine. A runtime
@@ -665,6 +678,11 @@ func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLi
 }
 
 func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTable, decisionId string, localVariableContext map[string]interface{}) (map[string]interface{}, []EvaluatedRule, []EvaluatedInput, error) {
+	feelRuntime, err := engine.decisionTableFeelRuntime()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	//TODO: move to parsing checks
 	if len(decisionTable.Outputs) > 1 && !isUnique(decisionTable.Outputs) {
 		return nil, nil, nil, fmt.Errorf("decision table contains more than one output and all of them have to have unique names, decision id %s", decisionId)
@@ -674,7 +692,7 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 	for i, input := range decisionTable.Inputs {
 		originalInputExpr := input.InputExpression.Text
 		normalizedInputExpr := normalizeFeelStringLiteral(originalInputExpr)
-		value, err := engine.feelRuntime.Evaluate(normalizedInputExpr, localVariableContext)
+		value, err := feelRuntime.Evaluate(normalizedInputExpr, localVariableContext)
 		if err != nil {
 			if normalizedInputExpr != originalInputExpr {
 				return nil, nil, nil, fmt.Errorf("error while evaluating expression \"%s\" (normalized: \"%s\") with variables %s: %v", originalInputExpr, normalizedInputExpr, localVariableContext, err)
@@ -694,16 +712,12 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 	//this map is edited each cycle dont use it after this for loop
 	cellMatchVariables := map[string]interface{}{}
 	maps.Copy(cellMatchVariables, localVariableContext)
-	unaryTest := engine.feelRuntime.UnaryTest
-	if strictRuntime, ok := engine.feelRuntime.(script.StrictFeelRuntime); ok {
-		unaryTest = strictRuntime.UnaryTestStrict
-	}
 	for ruleIndex, rule := range decisionTable.Rules {
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
 			cellMatchVariables["?"] = evaluatedInputs[i].InputValue
 			expression := normalizeUnaryTestExpression(inputEntry.Text)
-			match, err := unaryTest(expression, cellMatchVariables)
+			match, err := feelRuntime.UnaryTestStrict(expression, cellMatchVariables)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", expression, cellMatchVariables, err)
 			}
@@ -718,7 +732,7 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 			for i, output := range decisionTable.Outputs {
 				originalOutputExpr := rule.OutputEntry[i].Text
 				normalizedOutputExpr := normalizeFeelStringLiteral(originalOutputExpr)
-				value, err := engine.feelRuntime.Evaluate(normalizedOutputExpr, localVariableContext)
+				value, err := feelRuntime.Evaluate(normalizedOutputExpr, localVariableContext)
 				if err != nil {
 					if normalizedOutputExpr != originalOutputExpr {
 						return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" (normalized: \"%s\") with variables %s: %v", originalOutputExpr, normalizedOutputExpr, localVariableContext, err)

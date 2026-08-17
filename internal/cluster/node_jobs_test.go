@@ -26,18 +26,33 @@ func TestLoadJobsWithGlobalLimitAcrossSources(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, []int64{3, 1}, requestedLimits)
+	assert.Equal(t, []int64{3, 3, 3}, requestedLimits, "every partition must get an opportunity to contribute jobs")
 	assert.Equal(t, []sql.Job{{Key: 1}, {Key: 2}, {Key: 3}}, jobs)
 }
 
-func TestLoadJobsWithGlobalLimitClampsUnexpectedSourceResults(t *testing.T) {
+func TestLoadJobsWithGlobalLimitSelectsOldestJobsAcrossSources(t *testing.T) {
+	sources := [][]sql.Job{
+		{{Key: 1, CreatedAt: 10}, {Key: 2, CreatedAt: 30}},
+		{{Key: 3, CreatedAt: 20}, {Key: 4, CreatedAt: 40}},
+	}
+
+	jobs, err := loadJobsWithGlobalLimit(len(sources), 2, func(index int, _ int64) ([]sql.Job, error) {
+		return sources[index], nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []sql.Job{{Key: 1, CreatedAt: 10}, {Key: 3, CreatedAt: 20}}, jobs)
+}
+
+func TestLoadJobsWithGlobalLimitClampsUnexpectedPerSourceResults(t *testing.T) {
 	calls := 0
-	jobs, err := loadJobsWithGlobalLimit(2, 2, func(_ int, _ int64) ([]sql.Job, error) {
+	jobs, err := loadJobsWithGlobalLimit(2, 2, func(index int, _ int64) ([]sql.Job, error) {
 		calls++
-		return []sql.Job{{Key: 1}, {Key: 2}, {Key: 3}}, nil
+		firstKey := int64(index*3 + 1)
+		return []sql.Job{{Key: firstKey}, {Key: firstKey + 1}, {Key: firstKey + 2}}, nil
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, []sql.Job{{Key: 1}, {Key: 2}}, jobs)
-	assert.Equal(t, 1, calls, "later partitions must not be queried after the global limit is reached")
+	assert.Equal(t, 2, calls, "all partitions must be queried even if an earlier source over-returns")
 }

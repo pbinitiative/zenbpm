@@ -1962,17 +1962,27 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 
 func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {
 	jobsAcc := make([]sql.Job, 0)
-	remaining := count
-	for index := 0; index < sourceCount && remaining > 0; index++ {
-		jobs, err := load(index, remaining)
+	if count <= 0 {
+		return jobsAcc, nil
+	}
+	for index := range sourceCount {
+		jobs, err := load(index, count)
 		if err != nil {
 			return nil, err
 		}
-		if int64(len(jobs)) > remaining {
-			jobs = jobs[:remaining]
+		if int64(len(jobs)) > count {
+			jobs = jobs[:count]
 		}
 		jobsAcc = append(jobsAcc, jobs...)
-		remaining -= int64(len(jobs))
+	}
+	sort.Slice(jobsAcc, func(i, j int) bool {
+		if jobsAcc[i].CreatedAt == jobsAcc[j].CreatedAt {
+			return jobsAcc[i].Key < jobsAcc[j].Key
+		}
+		return jobsAcc[i].CreatedAt < jobsAcc[j].CreatedAt
+	})
+	if int64(len(jobsAcc)) > count {
+		jobsAcc = jobsAcc[:count]
 	}
 	return jobsAcc, nil
 }
@@ -1981,7 +1991,7 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to complete job was not found on the node")
+		return fmt.Errorf("engine to complete job was not found on the node")
 	}
 	err := engine.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
@@ -2003,7 +2013,7 @@ func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message str
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to fail job was not found on the node")
+		return fmt.Errorf("engine to fail job was not found on the node")
 	}
 	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables)
 	if err != nil {

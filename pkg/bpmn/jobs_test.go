@@ -471,7 +471,7 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2h)
 	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
+	err = bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
 	assert.NotNil(t, instance)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 

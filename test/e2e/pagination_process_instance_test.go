@@ -19,7 +19,7 @@ func TestProcessInstancePagination(t *testing.T) {
 
 			return func() {
 				for _, key := range keys {
-					app.restClient.CancelProcessInstanceWithResponse(t.Context(), key) //nolint:errcheck
+					cleanupOwnedProcessInstance(t, key)
 				}
 			}
 		},

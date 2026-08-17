@@ -81,7 +81,8 @@ func TestUserTaskAssigneeMapping(t *testing.T) {
 	variables := map[string]interface{}{
 		"assignee": randomString,
 	}
-	bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	assert.NoError(t, err)
 
 	for _, job := range engineStorage.Jobs {
 		if job.ElementId == "user-task-static" {

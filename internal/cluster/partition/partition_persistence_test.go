@@ -242,7 +242,7 @@ func TestNewDBRejectsNegativeCacheSizes(t *testing.T) {
 
 func TestRqLiteStorage(t *testing.T) {
 	partition, conf, clientMgr, tStore, ts := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-rq-lite-db")
 
@@ -263,7 +263,7 @@ func TestRqLiteStorage(t *testing.T) {
 
 func TestRunUpMigrations(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
@@ -289,7 +289,7 @@ func TestRunUpMigrations(t *testing.T) {
 
 func TestRunRollbackMigration(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetupWithTestMigration(t)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
@@ -322,7 +322,7 @@ func TestRunRollbackMigration(t *testing.T) {
 
 func TestDataCleanup(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-data-cleanup")
 	const cleanupBatchSize = 10
@@ -1173,7 +1173,7 @@ func testFindProcessInstancesPageFiltersAndSort(t *testing.T, db *DB) {
 
 func TestGetLatestDecisionDefinitionById(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-decision-def")
 

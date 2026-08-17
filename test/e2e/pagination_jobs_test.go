@@ -23,7 +23,7 @@ func TestGlobalJobsPagination(t *testing.T) {
 
 			return func() {
 				for _, key := range instanceKeys {
-					app.restClient.CancelProcessInstanceWithResponse(t.Context(), key) //nolint:errcheck
+					cleanupOwnedProcessInstance(t, key)
 				}
 			}
 		},
@@ -92,7 +92,7 @@ func TestProcessInstanceJobsPagination(t *testing.T) {
 			require.NotZero(t, subInstanceKey, "sub-instance key must be set after jobs appear")
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), parentKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, parentKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {

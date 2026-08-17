@@ -325,10 +325,15 @@ WHERE
     parent_process_execution_token = @parent_process_execution_token;
 
 -- name: CountActiveSubProcessInstances :one
+-- Pinned to idx_process_instance_parent_execution_token so the planner drives
+-- from execution_token (filtered by process_instance_key) and probes child by
+-- parent_process_execution_token, instead of starting from process_instance
+-- filtered by state (which the new generic idx_process_instance_state would
+-- otherwise prefer). See TestHotPathIndexes.
 SELECT
     CAST(COUNT(*) AS INTEGER)
 FROM
-    process_instance AS child
+    process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
     INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
 WHERE
     et.process_instance_key = @process_instance_key

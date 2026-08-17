@@ -12,6 +12,11 @@ import (
 type Querier interface {
 	CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	// Pinned to idx_process_instance_parent_execution_token so the planner drives
+	// from execution_token (filtered by process_instance_key) and probes child by
+	// parent_process_execution_token, instead of starting from process_instance
+	// filtered by state (which the new generic idx_process_instance_state would
+	// otherwise prefer). See TestHotPathIndexes.
 	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)

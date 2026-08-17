@@ -280,11 +280,25 @@ WHERE process_instance_key = ? AND state = ?`,
 		},
 		{
 			name:      "error subscriptions for process instance use FK index",
-			table:     "error_subscription",
+			scanTargets: []string{"error_subscription"},
 			index:     "idx_fk_error_subscription_process_instance_key",
 			query: `SELECT * FROM error_subscription INDEXED BY idx_fk_error_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
+		},
+		{
+			// Without the hint SQLite picks idx_process_instance_state (added in 0012) and
+			// scans every process instance in the active/ready states, instead of joining from
+			// execution_token filtered by process_instance_key. The pin forces a join order
+			// that probes child by parent_process_execution_token.
+			name:      "active subprocess count uses FK join",
+			scanTargets: []string{"child", "et", "process_instance", "execution_token"},
+			index:     "idx_process_instance_parent_execution_token",
+			query: `SELECT CAST(COUNT(*) AS INTEGER)
+FROM process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
+    INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
+WHERE et.process_instance_key = ? AND child.process_type = ? AND child.state IN (?, ?)`,
+			arguments: []any{int64(1), int64(1), int64(1), int64(8)},
 		},
 	}
 }

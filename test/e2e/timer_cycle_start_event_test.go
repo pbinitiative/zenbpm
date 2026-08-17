@@ -24,11 +24,11 @@ const timerCycleSimpleBpmnPath = "../../pkg/bpmn/test-cases/process_definition_s
 // both ending up in the Active state (waiting on the service task), and exactly 2 triggered
 // definition-level timers.
 func TestTimerCycleStartEvent_ISORepeatingInterval(t *testing.T) {
-	// Anchor the start to a near-future moment (today's date) so the engine schedules the first
-	// firing at `start` and the second at `start+PT1S` — both within a few seconds.
+	// RFC3339 drops sub-second precision. Anchor six seconds after the beginning of the current
+	// second so deployment always has at least five seconds to register the first timer occurrence.
 	// If `start` were in the past at scheduling time the engine's nextDueAt loop would consume
 	// repetitions just catching up to `now`, exhausting R2 before any process instance is created.
-	startTime := time.Now().Add(1 * time.Second).UTC().Format(time.RFC3339)
+	startTime := time.Now().UTC().Truncate(time.Second).Add(6 * time.Second).Format(time.RFC3339)
 	timerCycle := fmt.Sprintf("R2/%s/PT1S", startTime)
 	uniqueProcessId := fmt.Sprintf("timer-cycle-iso-%d", time.Now().UnixNano())
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	internalsql "github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -129,7 +130,7 @@ func saveActiveProcessInstance(t *testing.T, zpn *ZenPartitionNode, key int64) {
 
 func TestUpdatePartitionMetrics_EmptyDB(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	defer zpn.Stop()
+	defer func() { require.NoError(t, zpn.Stop()) }()
 
 	jobsGauge, instancesGauge := injectFakeMetrics(zpn)
 
@@ -154,7 +155,7 @@ func TestUpdatePartitionMetrics_EmptyDB(t *testing.T) {
 
 func TestUpdatePartitionMetrics_CountsReflectData(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	defer zpn.Stop()
+	defer func() { require.NoError(t, zpn.Stop()) }()
 
 	saveWaitingJob(t, zpn, 1001)
 	saveWaitingJob(t, zpn, 1002)
@@ -185,7 +186,7 @@ func TestUpdatePartitionMetrics_CountsReflectData(t *testing.T) {
 
 func TestUpdatePartitionMetrics_PartitionAttributeIsSet(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	defer zpn.Stop()
+	defer func() { require.NoError(t, zpn.Stop()) }()
 
 	jobsGauge, instancesGauge := injectFakeMetrics(zpn)
 
@@ -214,10 +215,10 @@ func TestUpdatePartitionMetrics_PartitionAttributeIsSet(t *testing.T) {
 
 func TestUpdatePartitionMetrics_RecordsNotCalledOnQueryError(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	defer zpn.Stop()
+	defer func() { _ = zpn.Stop() }()
 
 	// Force DB queries to fail; Stop() will attempt Close again, which is harmless.
-	zpn.DB.Store.Close(true)
+	_ = zpn.DB.Store.Close(true)
 
 	jobsGauge, instancesGauge := injectFakeMetrics(zpn)
 
@@ -230,7 +231,7 @@ func TestUpdatePartitionMetrics_RecordsNotCalledOnQueryError(t *testing.T) {
 
 func TestUpdatePartitionMetrics_IdempotentOnRepeatedCalls(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	defer zpn.Stop()
+	defer func() { require.NoError(t, zpn.Stop()) }()
 
 	saveWaitingJob(t, zpn, 3001)
 

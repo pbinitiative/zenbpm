@@ -19,8 +19,9 @@ import (
 func TestMessageStartEventProcess_LoadAndParse(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -36,8 +37,9 @@ func TestMessageStartEventProcess_LoadAndParse(t *testing.T) {
 func TestLoadFromBytes_MessageStartEvent_IdenticalReloadKeepsExistingSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	xmlData, err := os.ReadFile("./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -75,8 +77,9 @@ func TestLoadFromBytes_MessageStartEvent_IdenticalReloadKeepsExistingSubscriptio
 func TestPublishMessage_OnDefinitionSubscription_CreatesActiveProcessInstance(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	// Register a no-op handler so the service-task job stays Active and the instance remains
 	// in Active state after creation (allowing the assertion to be deterministic).
@@ -148,8 +151,9 @@ func TestPublishMessage_OnDefinitionSubscription_CreatesActiveProcessInstance(t 
 func TestLoadFromBytes_MessageStartEvent_RegisterIsDeterministic(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -214,8 +218,9 @@ func TestLoadFromBytes_MessageStartEvent_RegisterIsDeterministic(t *testing.T) {
 func TestPublishMessage_OnDefinitionSubscription_NotFound_NoOp(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	def, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -247,8 +252,9 @@ func TestPublishMessage_OnDefinitionSubscription_NotFound_NoOp(t *testing.T) {
 func TestRegisterProcessDefinitionSubscriptions_CreatesMessageSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	def, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/message-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -296,8 +302,9 @@ func definitionMessageSubscriptionsForDefinition(store *inmemory.Storage, proces
 func TestLoadFromBytes_MessageStartEvent_ReloadCreatesExactlyOneSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	// Keep service-task jobs Active so the spawned instance stays in Active state for assertions.
 	h := engine.NewTaskHandler().

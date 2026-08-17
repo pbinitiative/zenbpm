@@ -24,7 +24,7 @@ func TestFlowElementHistoryPagination(t *testing.T) {
 			waitForHistoryEntries(t, instanceKey, totalHistoryEntries)
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), instanceKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, instanceKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {

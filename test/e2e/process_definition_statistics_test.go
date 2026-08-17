@@ -401,7 +401,7 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 	})
 
 	// cleanup: cancel remaining instance
-	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key) //nolint:errcheck
+	cleanupOwnedProcessInstance(t, instance2.Key)
 }
 
 func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
@@ -442,7 +442,7 @@ func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
 			"should count child body tokens, not the parent scope token")
 	})
 
-	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+	cleanupOwnedProcessInstance(t, instance.Key)
 }
 
 func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalActive, totalIncidents int) {

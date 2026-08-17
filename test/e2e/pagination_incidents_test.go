@@ -24,7 +24,7 @@ func TestIncidentsPagination(t *testing.T) {
 			waitForIncidents(t, instanceKey, totalIncidents)
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), instanceKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, instanceKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {

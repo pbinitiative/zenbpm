@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_lookup" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Lookup_Test_Process" isExecutable="true">
+    <bpmn:startEvent id="LookupStart">
+      <bpmn:outgoing>Flow_LookupToOuter</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_LookupToOuter" sourceRef="LookupStart" targetRef="OuterSub" />
+    <bpmn:endEvent id="LookupEnd">
+      <bpmn:incoming>Flow_OuterToEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="OuterSub">
+      <bpmn:incoming>Flow_LookupToOuter</bpmn:incoming>
+      <bpmn:outgoing>Flow_OuterToEnd</bpmn:outgoing>
+      <bpmn:startEvent id="OuterStart">
+        <bpmn:outgoing>Flow_OuterToInner</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:endEvent id="OuterEnd">
+        <bpmn:incoming>Flow_InnerToOuter</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:subProcess id="InnerSub">
+        <bpmn:incoming>Flow_OuterToInner</bpmn:incoming>
+        <bpmn:outgoing>Flow_InnerToOuter</bpmn:outgoing>
+        <bpmn:startEvent id="InnerStart">
+          <bpmn:outgoing>Flow_InnerToDeep</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:endEvent id="InnerEnd">
+          <bpmn:incoming>Flow_DeepToInner</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:serviceTask id="DeepTask" name="DeepServiceTask">
+          <bpmn:extensionElements>
+            <zenbpm:taskDefinition type="deep-task-type" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" />
+          </bpmn:extensionElements>
+          <bpmn:incoming>Flow_InnerToDeep</bpmn:incoming>
+          <bpmn:outgoing>Flow_DeepToInner</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:sequenceFlow id="Flow_InnerToDeep" sourceRef="InnerStart" targetRef="DeepTask" />
+        <bpmn:sequenceFlow id="Flow_DeepToInner" sourceRef="DeepTask" targetRef="InnerEnd" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="Flow_OuterToInner" sourceRef="OuterStart" targetRef="InnerSub" />
+      <bpmn:sequenceFlow id="Flow_InnerToOuter" sourceRef="InnerSub" targetRef="OuterEnd" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_OuterToEnd" sourceRef="OuterSub" targetRef="LookupEnd" />
+  </bpmn:process>
+</bpmn:definitions>

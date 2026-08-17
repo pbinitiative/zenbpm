@@ -785,23 +785,45 @@ func (engine *Engine) getExecutionTokenActivity(
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
-	var currentFlowNode bpmn20.FlowNode
+	// Validate the process-instance category first. Lookup is independent
+	// of the instance type because BPMN element IDs are unique within a
+	// definitions document; the validation is kept as defense in depth so
+	// that any future instance type that the engine does not know how to
+	// handle fails fast rather than silently exercising the lookup path.
 	switch instance.(type) {
-	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance, *runtime.MultiInstanceInstance:
-		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
-	case *runtime.SubProcessInstance:
-		parentActivityDefinition := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
-		currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+	case *runtime.DefaultProcessInstance,
+		*runtime.CallActivityInstance,
+		*runtime.MultiInstanceInstance,
+		*runtime.SubProcessInstance:
+		// supported
 	default:
 		return nil, errors.New("invalid instance type")
 	}
-	if currentFlowNode == nil {
+	// Resolve the token's element ID through the definition-wide index.
+	// Definitions loaded from BPMN XML always carry the index; the lookup
+	// helper retains a read-only recursive fallback for programmatically
+	// constructed definitions that never went through reference resolution.
+	definitions := &instance.ProcessInstance().Definition.Definitions
+	elem, ok := bpmn20.FindBaseElementById(definitions, token.ElementId)
+	if !ok {
 		return nil, fmt.Errorf("failed to find flow node %s for execution token in process definition", token.ElementId)
+	}
+	flowNode, ok := elem.(bpmn20.FlowNode)
+	if !ok {
+		return nil, fmt.Errorf("element %s (type %T) for execution token is not a flow node", token.ElementId, elem)
+	}
+	// Boundary events embed TFlowNode through TEvent, so they satisfy
+	// the FlowNode interface — but they are not token-driven. They are
+	// consumed via boundary-event subscriptions, not via the token
+	// execution path. The previous recursive lookup excluded them by
+	// not walking the BoundaryEvent slice; preserve that contract.
+	if _, isBoundary := flowNode.(*bpmn20.TBoundaryEvent); isBoundary {
+		return nil, fmt.Errorf("element %s is a boundary event and cannot be driven by an execution token", token.ElementId)
 	}
 	activity := &elementActivity{
 		key:     engine.generateKey(),
 		state:   runtime.ActivityStateReady,
-		element: currentFlowNode,
+		element: flowNode,
 	}
 	return activity, nil
 }

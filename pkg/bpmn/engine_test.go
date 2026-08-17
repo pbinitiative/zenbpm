@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type CallPath struct {
@@ -796,4 +798,304 @@ func TestPlainEndEventCompletedAtWithMultipleTokens(t *testing.T) {
 		assert.NotNil(t, fe.CompletedAt,
 			"end event row %d (key %d) should have CompletedAt set", i, fe.Key)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for issue #725 — Indexed BPMN element lookup during token execution.
+//
+// These tests pin down the externally observable contract of
+// Engine.getExecutionTokenActivity. They cover the behavior the engine
+// hot path depends on:
+//   - top-level flow node resolution (DefaultProcessInstance),
+//   - nested-subprocess token resolution (SubProcessInstance),
+//   - call-activity token resolution (CallActivityInstance),
+//   - multi-instance token resolution (MultiInstanceInstance),
+//   - error paths for unknown IDs, IDs that resolve to a non-flow element,
+//     and IDs that resolve to a boundary event,
+//   - instance-type validation,
+//   - pointer identity of the returned flow node (locks in the indexed
+//     object rather than a range-loop copy).
+//
+// End-to-end coverage for call-activity and multi-instance execution is
+// already provided by TestCallActivityStartsAndCompletes and the
+// TestMultiInstance* tests in sub_process_test.go; this section adds
+// focused tests that drive the lookup hot path directly with those
+// instance types so the lookup contract is pinned even if a future
+// change introduces a separate instance-type-specific lookup branch.
+// ---------------------------------------------------------------------------
+
+// lookupTestProcess loads and returns a BPMN process definition used by
+// unsaved instances in direct getExecutionTokenActivity tests.
+func lookupTestProcess(t *testing.T, path string) *runtime.ProcessDefinition {
+	t.Helper()
+	def, err := bpmnEngine.LoadFromFile(t.Context(), path)
+	require.NoError(t, err, "failed to load BPMN fixture %s", path)
+	return def
+}
+
+func lookupTestInstance(def *runtime.ProcessDefinition) runtime.ProcessInstance {
+	return &runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition: def,
+			Key:        1,
+			State:      runtime.ActivityStateReady,
+		},
+	}
+}
+
+func lookupTestToken(elementID string) runtime.ExecutionToken {
+	return runtime.ExecutionToken{
+		Key:                100,
+		ElementInstanceKey: 200,
+		ElementId:          elementID,
+		ProcessInstanceKey: 1,
+		State:              runtime.TokenStateRunning,
+	}
+}
+
+// TestGetExecutionTokenActivity_TopLevelFlowNode ensures a token whose
+// ElementId points to a top-level service task resolves to that element.
+func TestGetExecutionTokenActivity_TopLevelFlowNode(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("id"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+	assert.Equal(t, "id", activity.Element().GetId())
+	assert.Equal(t, bpmn20.ElementTypeServiceTask, activity.Element().GetType())
+}
+
+// TestGetExecutionTokenActivity_NestedSubprocess exercises a token whose
+// ElementId lives two subprocess levels deep and verifies that indexed
+// lookup preserves the previous recursive lookup behavior.
+func TestGetExecutionTokenActivity_NestedSubprocess(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/nested_sub_process_lookup.bpmn")
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("DeepTask"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+	assert.Equal(t, "DeepTask", activity.Element().GetId())
+	assert.Equal(t, bpmn20.ElementTypeServiceTask, activity.Element().GetType())
+}
+
+// TestGetExecutionTokenActivity_SubProcessInstance drives the hot path
+// with a SubProcessInstance whose token targets a deeply nested element.
+// Indexed lookup resolves it with one definition-wide map probe.
+func TestGetExecutionTokenActivity_SubProcessInstance(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/nested_sub_process_lookup.bpmn")
+
+	parentToken := lookupTestToken("OuterSub")
+	instance := &runtime.SubProcessInstance{
+		ParentProcessExecutionToken:  parentToken,
+		ParentProcessTargetElementId: "OuterSub",
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition: def,
+			Key:        2,
+			State:      runtime.ActivityStateReady,
+		},
+	}
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		instance,
+		lookupTestToken("DeepTask"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+	assert.Equal(t, "DeepTask", activity.Element().GetId())
+}
+
+// TestGetExecutionTokenActivity_CallActivityInstance drives the hot path
+// with a CallActivityInstance to confirm the lookup path is the same
+// regardless of which supported instance type the token belongs to.
+// End-to-end call-activity execution is covered by
+// TestCallActivityStartsAndCompletes in sub_process_test.go; this test
+// focuses on the lookup contract itself.
+func TestGetExecutionTokenActivity_CallActivityInstance(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	instance := &runtime.CallActivityInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition: def,
+			Key:        4,
+			State:      runtime.ActivityStateReady,
+		},
+	}
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		instance,
+		lookupTestToken("id"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+	assert.Equal(t, "id", activity.Element().GetId())
+	assert.Equal(t, bpmn20.ElementTypeServiceTask, activity.Element().GetType())
+}
+
+// TestGetExecutionTokenActivity_MultiInstanceInstance drives the hot path
+// with a MultiInstanceInstance to confirm the lookup path is the same
+// regardless of which supported instance type the token belongs to.
+// End-to-end multi-instance execution is covered by the
+// TestMultiInstance* tests in sub_process_test.go; this test focuses on
+// the lookup contract itself.
+func TestGetExecutionTokenActivity_MultiInstanceInstance(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	instance := &runtime.MultiInstanceInstance{
+		ParentProcessExecutionToken: lookupTestToken("id"),
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition: def,
+			Key:        5,
+			State:      runtime.ActivityStateReady,
+		},
+	}
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		instance,
+		lookupTestToken("id"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+	assert.Equal(t, "id", activity.Element().GetId())
+	assert.Equal(t, bpmn20.ElementTypeServiceTask, activity.Element().GetType())
+}
+
+// TestGetExecutionTokenActivity_UnknownElementId confirms the engine
+// returns a controlled error (not a panic) when the token references an
+// id that the index does not contain.
+func TestGetExecutionTokenActivity_UnknownElementId(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("does-not-exist"),
+	)
+	assert.Nil(t, activity)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does-not-exist")
+}
+
+// TestGetExecutionTokenActivity_NonFlowNode covers the case where the
+// id resolves to an element that is registered in the index but is not
+// a flow node. Sequence flows are good examples: they are BaseElements
+// (and therefore indexed), but they do not implement FlowNode because
+// they connect flow nodes rather than being driven themselves.
+// Boundary events, by contrast, embed TFlowNode through TEvent and so
+// they ARE flow nodes — see TestGetExecutionTokenActivity_BoundaryEventRejected.
+func TestGetExecutionTokenActivity_NonFlowNode(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_sub_process_task.bpmn")
+
+	// Flow_0xt1d7q is a sequence flow. It is in the index, but it is
+	// not a flow node, so the engine must refuse to process it.
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("Flow_0xt1d7q"),
+	)
+	assert.Nil(t, activity)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Flow_0xt1d7q")
+	assert.Contains(t, err.Error(), "not a flow node")
+}
+
+// TestGetExecutionTokenActivity_BoundaryEventRejected pins down the
+// contract that boundary events must never be accepted as token targets.
+// A TBoundaryEvent technically satisfies the FlowNode interface through
+// method promotion (TEvent -> TFlowNode), but boundary events are
+// consumed via boundary-event subscriptions rather than token execution,
+// so the engine must reject them at the lookup step. This test would
+// fail if the explicit boundary-event rejection were ever removed.
+func TestGetExecutionTokenActivity_BoundaryEventRejected(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_sub_process_task.bpmn")
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("Event_07bcheq"),
+	)
+	assert.Nil(t, activity)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Event_07bcheq")
+	assert.Contains(t, err.Error(), "boundary event")
+}
+
+// bogusProcessInstance satisfies runtime.ProcessInstance but does not
+// match any of the case arms in the getExecutionTokenActivity switch.
+// It is used by TestGetExecutionTokenActivity_InvalidInstanceType.
+type bogusProcessInstance struct {
+	runtime.ProcessInstanceData
+}
+
+func (b *bogusProcessInstance) Type() runtime.ProcessType { return runtime.ProcessType(99) }
+func (b *bogusProcessInstance) ProcessInstance() *runtime.ProcessInstanceData {
+	return &b.ProcessInstanceData
+}
+func (b *bogusProcessInstance) GetParentProcessInstanceKey() *int64 { return nil }
+
+// TestGetExecutionTokenActivity_InvalidInstanceType asserts that the
+// hot path validates the process-instance category before attempting to
+// resolve the token element.
+func TestGetExecutionTokenActivity_InvalidInstanceType(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	bogus := &bogusProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition: def,
+			Key:        3,
+			State:      runtime.ActivityStateReady,
+		},
+	}
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		bogus,
+		lookupTestToken("id"),
+	)
+	assert.Nil(t, activity)
+	require.Error(t, err)
+}
+
+// TestGetExecutionTokenActivity_PointerIdentity locks in the hot path's
+// use of the indexed object rather than a pointer to a range-loop copy.
+// On the recursive implementation this test fails: the returned flow node
+// is a copy of the slice element that lives at a different address than
+// &definitions.Process.ServiceTasks[i]. Once the lookup switches to the
+// index, the returned flow node IS that slice element, and the assertion
+// holds.
+func TestGetExecutionTokenActivity_PointerIdentity(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/simple_task.bpmn")
+
+	activity, err := bpmnEngine.getExecutionTokenActivity(
+		t.Context(),
+		lookupTestInstance(def),
+		lookupTestToken("id"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, activity)
+
+	// Find the service task index in the parsed definition.
+	expected := (*bpmn20.TServiceTask)(nil)
+	for i := range def.Definitions.Process.ServiceTasks {
+		if def.Definitions.Process.ServiceTasks[i].Id == "id" {
+			expected = &def.Definitions.Process.ServiceTasks[i]
+			break
+		}
+	}
+	require.NotNil(t, expected, "test fixture must contain a service task with id 'id'")
+
+	// The hot path must hand back the very same slice element, not a copy.
+	got, ok := activity.Element().(*bpmn20.TServiceTask)
+	require.True(t, ok, "activity element should be a *TServiceTask")
+	assert.Same(t, expected, got)
 }

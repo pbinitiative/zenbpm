@@ -11,22 +11,29 @@ import (
 )
 
 // buildProcessDefinitionWithMessage constructs a minimal ProcessDefinition
-// containing one TMessage identified by messageId.
-func buildProcessDefinitionWithMessage(messageId, messageName, correlationKey string) runtime.ProcessDefinition {
-	return runtime.ProcessDefinition{
-		Definitions: bpmn20.TDefinitions{
-			TRootElementsContainer: bpmn20.TRootElementsContainer{
-				Messages: []bpmn20.TMessage{
-					{
-						Id:   messageId,
-						Name: messageName,
-						Extension: bpmn20.TSubscription{
-							CorrelationKey: correlationKey,
-						},
+// containing one TMessage identified by messageID. The fixture resolves
+// references explicitly so the definition-wide element index is populated,
+// keeping the fixture in sync with how production code loads process
+// definitions (through xml.Unmarshal, which calls ResolveReferences).
+func buildProcessDefinitionWithMessage(t *testing.T, messageID, messageName, correlationKey string) runtime.ProcessDefinition {
+	t.Helper()
+	definitions := bpmn20.TDefinitions{
+		TRootElementsContainer: bpmn20.TRootElementsContainer{
+			Messages: []bpmn20.TMessage{
+				{
+					Id:   messageID,
+					Name: messageName,
+					Extension: bpmn20.TSubscription{
+						CorrelationKey: correlationKey,
 					},
 				},
 			},
 		},
+	}
+	require.NoError(t, definitions.ResolveReferences(),
+		"fixture must build a valid reference index")
+	return runtime.ProcessDefinition{
+		Definitions: definitions,
 	}
 }
 
@@ -56,7 +63,7 @@ func newProcessInstanceWithVars(vars map[string]any) runtime.ProcessInstance {
 
 func TestGetMessageName_ReturnsNameForKnownRef(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", "")
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", "")
 	name, err := engine.getMessageName(pd, messageDef("msg-1"))
 	require.NoError(t, err)
 	assert.Equal(t, "OrderPlaced", name)
@@ -64,7 +71,7 @@ func TestGetMessageName_ReturnsNameForKnownRef(t *testing.T) {
 
 func TestGetMessageName_ErrorForUnknownRef(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", "")
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", "")
 	_, err := engine.getMessageName(pd, messageDef("does-not-exist"))
 	require.Error(t, err)
 }
@@ -75,7 +82,7 @@ func TestGetMessageName_ErrorForUnknownRef(t *testing.T) {
 
 func TestGetMessageCorrelationKey_StaticKey_NoInstance(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", "order-42")
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", "order-42")
 	key, err := engine.getMessageCorrelationKey(pd, nil, messageDef("msg-1"))
 	require.NoError(t, err)
 	assert.Equal(t, "order-42", key)
@@ -83,7 +90,7 @@ func TestGetMessageCorrelationKey_StaticKey_NoInstance(t *testing.T) {
 
 func TestGetMessageCorrelationKey_StaticKey_WithInstance(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", "order-42")
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", "order-42")
 	pi := newProcessInstanceWithVars(nil)
 	key, err := engine.getMessageCorrelationKey(pd, &pi, messageDef("msg-1"))
 	require.NoError(t, err)
@@ -96,7 +103,7 @@ func TestGetMessageCorrelationKey_StaticKey_WithInstance(t *testing.T) {
 
 func TestGetMessageCorrelationKey_ExpressionKey_EvaluatedFromInstanceVariables(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", `=orderId`)
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", `=orderId`)
 	pi := newProcessInstanceWithVars(map[string]any{"orderId": "order-99"})
 	key, err := engine.getMessageCorrelationKey(pd, &pi, messageDef("msg-1"))
 	require.NoError(t, err)
@@ -105,7 +112,7 @@ func TestGetMessageCorrelationKey_ExpressionKey_EvaluatedFromInstanceVariables(t
 
 func TestGetMessageCorrelationKey_ExpressionKey_NilInstance_UsesEmptyVars(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", `="static-key"`)
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", `="static-key"`)
 	key, err := engine.getMessageCorrelationKey(pd, nil, messageDef("msg-1"))
 	require.NoError(t, err)
 	assert.Equal(t, "static-key", key)
@@ -113,7 +120,7 @@ func TestGetMessageCorrelationKey_ExpressionKey_NilInstance_UsesEmptyVars(t *tes
 
 func TestGetMessageCorrelationKey_ErrorForUnknownRef(t *testing.T) {
 	engine := newIsolatedEngine()
-	pd := buildProcessDefinitionWithMessage("msg-1", "OrderPlaced", "order-42")
+	pd := buildProcessDefinitionWithMessage(t, "msg-1", "OrderPlaced", "order-42")
 	_, err := engine.getMessageCorrelationKey(pd, nil, messageDef("unknown-ref"))
 	require.Error(t, err)
 }

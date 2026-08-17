@@ -333,6 +333,141 @@ func TestResolveReferencesSuccessEmptyIds(t *testing.T) {
 	err := ts.ResolveReferences()
 	assert.NoError(t, err)
 }
+
+// TestResolveReferencesIndexesNestedSubprocessElements documents the
+// contract that ResolveReferences indexes every BaseElement — including
+// those nested inside embedded subprocesses — into the definition-wide
+// baseElements map. The engine hot path relies on this contract for
+// constant-time token resolution. If collectBaseElements ever stops
+// descending into subprocesses, this test will fail and the engine hot
+// path will silently break for subprocess tokens.
+func TestResolveReferencesIndexesNestedSubprocessElements(t *testing.T) {
+	ts := TDefinitions{
+		TBaseElement: TBaseElement{
+			Id: "definitions_nested",
+		},
+		TRootElementsContainer: TRootElementsContainer{
+			Process: TProcess{
+				TCallableElement: TCallableElement{
+					TBaseElement: TBaseElement{Id: "outer-process"},
+				},
+				TFlowElementsContainer: TFlowElementsContainer{
+					SubProcess: []TSubProcess{
+						{
+							TProcess: TProcess{
+								TCallableElement: TCallableElement{
+									TBaseElement: TBaseElement{Id: "outer-sub"},
+								},
+								TFlowElementsContainer: TFlowElementsContainer{
+									SubProcess: []TSubProcess{
+										{
+											TProcess: TProcess{
+												TCallableElement: TCallableElement{
+													TBaseElement: TBaseElement{Id: "inner-sub"},
+												},
+												TFlowElementsContainer: TFlowElementsContainer{
+													ServiceTasks: []TServiceTask{
+														{
+															TExternallyProcessedTask: TExternallyProcessedTask{
+																TTask: TTask{
+																	TActivity: TActivity{
+																		TFlowNode: TFlowNode{
+																			TFlowElement: TFlowElement{
+																				TBaseElement: TBaseElement{
+																					Id: "deeply-nested-service-task",
+																				},
+																			},
+																		},
+																	},
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+									EndEvents: []TEndEvent{
+										{
+											TEvent: TEvent{
+												TFlowNode: TFlowNode{
+													TFlowElement: TFlowElement{
+														TBaseElement: TBaseElement{
+															Id: "outer-sub-end",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					StartEvents: []TStartEvent{
+						{
+							TEvent: TEvent{
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "outer-process-start",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := ts.ResolveReferences()
+	require.NoError(t, err)
+
+	// Top-level element must be present.
+	assert.Contains(t, ts.baseElements, "outer-process-start",
+		"top-level element must be indexed")
+
+	// Immediate subprocess + its own direct child must be indexed.
+	assert.Contains(t, ts.baseElements, "outer-sub",
+		"top-level subprocess must be indexed")
+	assert.Contains(t, ts.baseElements, "outer-sub-end",
+		"child of the top-level subprocess must be indexed")
+
+	// Nested subprocesses must be indexed as deeply as collectBaseElements
+	// descends. Three levels deep here: outer-process > outer-sub > inner-sub
+	// > deeply-nested-service-task.
+	assert.Contains(t, ts.baseElements, "inner-sub",
+		"subprocess nested inside another subprocess must be indexed")
+	assert.Contains(t, ts.baseElements, "deeply-nested-service-task",
+		"element nested two subprocess levels deep must be indexed")
+
+	// And FindBaseElementById — the public helper the engine hot path uses —
+	// must surface each of them as well.
+	for _, id := range []string{
+		"outer-process-start",
+		"outer-sub",
+		"outer-sub-end",
+		"inner-sub",
+		"deeply-nested-service-task",
+	} {
+		elem, ok := FindBaseElementById(&ts, id)
+		require.True(t, ok, "FindBaseElementById must resolve %q", id)
+		require.NotNil(t, elem, "FindBaseElementById must return a non-nil element for %q", id)
+		assert.Equal(t, id, elem.GetId())
+	}
+
+	// The deeply-nested service task must come back as the same pointer
+	// the caller can reach through Process.SubProcess[0].SubProcess[0].
+	// ServiceTasks — not a range-loop copy. This pins down the loop-copy
+	// fix in collectBaseElements that the engine hot path also benefits from.
+	deep, ok := FindBaseElementById(&ts, "deeply-nested-service-task")
+	require.True(t, ok)
+	expected := &ts.Process.SubProcess[0].TProcess.SubProcess[0].TProcess.ServiceTasks[0]
+	assert.Same(t, expected, deep.(*TServiceTask))
+}
+
 func TestResolveReferencesFailWrongType(t *testing.T) {
 	ts := TDefinitions{
 		TBaseElement: TBaseElement{

@@ -50,10 +50,14 @@ type newIndexUseCase struct {
 // ensure it stays that way.
 type pinnedIndexUseCase struct {
 	name      string
-	table     string
-	index     string
-	query     string
-	arguments []any
+	// scanTargets lists every name SQLite could print in a SCAN line for this
+	// query — the underlying table name plus any alias used in the FROM clause.
+	// EXPLAIN prints the alias, not the table name, so both must be checked
+	// (or a SCAN slip-through will silently pass).
+	scanTargets []string
+	index       string
+	query       string
+	arguments   []any
 }
 
 func TestHotPathIndexes(t *testing.T) {
@@ -90,7 +94,9 @@ func TestHotPathIndexes(t *testing.T) {
 				plan := strings.Join(details, "\n")
 
 				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
-				require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
+				for _, target := range tt.scanTargets {
+					require.NotContains(t, plan, "SCAN "+target, "query plan:\n%s", plan)
+				}
 			})
 		}
 	})
@@ -192,7 +198,7 @@ func pinnedIndexUseCases() []pinnedIndexUseCase {
 			// Without the hint SQLite picks idx_process_instance_state (added in 0012)
 			// and scans every terminal instance on each cleanup pass.
 			name:      "TTL cleanup uses partial cleanup index",
-			table:     "process_instance",
+			scanTargets: []string{"pi", "parent_pi", "et", "process_instance", "execution_token"},
 			index:     "idx_process_instance_cleanup",
 			query: `SELECT pi.key
 FROM process_instance AS pi INDEXED BY idx_process_instance_cleanup
@@ -210,7 +216,7 @@ LIMIT ?`,
 			// timer in that state across the partition instead of the few timers
 			// for one process instance.
 			name:      "process instance timers use FK index",
-			table:     "timer",
+			scanTargets: []string{"timer"},
 			index:     "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
@@ -218,7 +224,7 @@ WHERE process_instance_key = ? AND state = ?`,
 		},
 		{
 			name:      "process definition timers use FK index",
-			table:     "timer",
+			scanTargets: []string{"timer"},
 			index:     "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND state = ?`,
@@ -226,7 +232,7 @@ WHERE process_definition_key = ? AND state = ?`,
 		},
 		{
 			name:      "process instance timers by element use FK index",
-			table:     "timer",
+			scanTargets: []string{"timer"},
 			index:     "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND element_id = ? AND state = ?`,
@@ -234,7 +240,7 @@ WHERE process_instance_key = ? AND element_id = ? AND state = ?`,
 		},
 		{
 			name:      "process definition timers by element use FK index",
-			table:     "timer",
+			scanTargets: []string{"timer"},
 			index:     "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id = ? AND state = ?`,
@@ -245,7 +251,7 @@ WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id
 			// the contract explicit and prevents the generic idx_execution_token_state
 			// from shadowing it under different data distributions.
 			name:      "tokens for process instance use FK index",
-			table:     "execution_token",
+			scanTargets: []string{"execution_token"},
 			index:     "idx_fk_execution_token_process_instance_key",
 			query: `SELECT * FROM execution_token INDEXED BY idx_fk_execution_token_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
@@ -253,7 +259,7 @@ WHERE process_instance_key = ? AND state IN (?, ?)`,
 		},
 		{
 			name:      "jobs in state for process instance use FK index",
-			table:     "job",
+			scanTargets: []string{"job"},
 			index:     "idx_fk_job_process_instance_key",
 			query: `SELECT * FROM job INDEXED BY idx_fk_job_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
@@ -261,7 +267,7 @@ WHERE process_instance_key = ? AND state IN (?, ?)`,
 		},
 		{
 			name:      "message subscriptions for process instance use FK index",
-			table:     "message_subscription",
+			scanTargets: []string{"message_subscription"},
 			index:     "idx_fk_message_subscription_process_instance_key",
 			query: `SELECT * FROM message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,

@@ -20,7 +20,6 @@ var hotPathIndexNames = []string{
 	"idx_message_subscription_execution_token_state",
 	"idx_error_subscription_execution_token_state",
 	"idx_incident_execution_token",
-	"idx_flow_element_instance_execution_token_created_at",
 	"idx_execution_token_state",
 	"idx_process_instance_state",
 }
@@ -78,9 +77,6 @@ func TestHotPathIndexes(t *testing.T) {
 				// (the latter when the index covers every column the query needs).
 				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
 				require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
-				if tt.index == "idx_flow_element_instance_execution_token_created_at" {
-					require.NotContains(t, plan, "USE TEMP B-TREE FOR ORDER BY", "query plan:\n%s", plan)
-				}
 			})
 		}
 	})
@@ -163,13 +159,6 @@ func newIndexUseCases() []newIndexUseCase {
 			table:     "incident",
 			index:     "idx_incident_execution_token",
 			query:     "SELECT * FROM incident WHERE execution_token = ?",
-			arguments: []any{int64(1)},
-		},
-		{
-			name:      "flow element instances by execution token",
-			table:     "flow_element_instance",
-			index:     "idx_flow_element_instance_execution_token_created_at",
-			query:     "SELECT * FROM flow_element_instance WHERE execution_token_key = ? ORDER BY created_at DESC LIMIT 1",
 			arguments: []any{int64(1)},
 		},
 		{

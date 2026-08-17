@@ -1,6 +1,5 @@
 DROP INDEX IF EXISTS idx_process_instance_state;
 DROP INDEX IF EXISTS idx_execution_token_state;
-DROP INDEX IF EXISTS idx_flow_element_instance_execution_token_created_at;
 DROP INDEX IF EXISTS idx_incident_execution_token;
 DROP INDEX IF EXISTS idx_error_subscription_execution_token_state;
 DROP INDEX IF EXISTS idx_message_subscription_execution_token_state;

@@ -52,16 +52,6 @@ ORDER BY
 LIMIT @limit OFFSET @offset;
 
 
--- name: GetFlowElementInstanceByTokenKey :one
-SELECT
-    *
-FROM
-    flow_element_instance
-WHERE
-    execution_token_key = @execution_token_key
-ORDER BY created_at DESC
-LIMIT 1;
-
 -- name: GetFlowElementInstanceByKey :one
 SELECT
     *

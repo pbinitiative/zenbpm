@@ -24,9 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_error_subscription_execution_token_state
 CREATE INDEX IF NOT EXISTS idx_incident_execution_token
     ON incident(execution_token);
 
-CREATE INDEX IF NOT EXISTS idx_flow_element_instance_execution_token_created_at
-    ON flow_element_instance(execution_token_key, created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_execution_token_state
     ON execution_token(state);
 

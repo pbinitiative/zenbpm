@@ -133,7 +133,6 @@ type Querier interface {
 	GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error)
 	GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)
-	GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error)
 	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)
 	// https://github.com/sqlc-dev/sqlc/issues/2452
 	GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInStateByTokenKeyParams) ([]Job, error)

@@ -393,6 +393,71 @@ func FindInternalTaskById(definitions *TDefinitions, id string) (InternalTask, e
 	return t, nil
 }
 
+// IsElementInSubProcessScope reports whether elementID is contained in
+// the subprocess identified by subprocessID or any of its descendants.
+//
+//   - Returns false if the element id is not present in the definitions.
+//   - Returns true if subprocessID == "" (root scope) AND the element is present.
+//   - Returns false if the element is missing, the subprocess is missing,
+//     or the element is outside the scope.
+// O(depth) in subprocess nesting.
+func IsElementInSubProcessScope(definitions *TDefinitions, subprocessID, elementID string) bool {
+	if definitions == nil || definitions.flowNodes == nil {
+		return false
+	}
+	// Element must exist; "" subprocessID with a missing element returns false.
+	if _, exists := definitions.flowNodes[elementID]; !exists {
+		return false
+	}
+	if subprocessID == "" {
+		return true
+	}
+	ownerID := definitions.elementOwner[elementID]
+	for ownerID != "" {
+		if ownerID == subprocessID {
+			return true
+		}
+		ownerID = definitions.subprocessParent[ownerID]
+	}
+	return false
+}
+
+// FindSubprocessAndStartEventById returns (subprocess, startEvent) when
+// the start event id is registered as belonging to a (nested)
+// subprocess. Returns (nil, nil, false) for top-level start events
+// and for missing ids. O(1) lookup using the typed indexes.
+//
+// Note: this helper keeps the (value, bool) signature because it is
+// not on the token-execution hot path. Only FindFlowNodeById and
+// FindInternalTaskById return error so the engine can distinguish
+// unresolved-index from missing-element.
+func FindSubprocessAndStartEventById(definitions *TDefinitions, id string) (*TSubProcess, *TStartEvent, bool) {
+	if definitions == nil || definitions.flowNodes == nil {
+		return nil, nil, false
+	}
+	node, ok := definitions.flowNodes[id]
+	if !ok {
+		return nil, nil, false
+	}
+	start, ok := node.(*TStartEvent)
+	if !ok {
+		return nil, nil, false
+	}
+	ownerID := definitions.elementOwner[id]
+	if ownerID == "" {
+		return nil, nil, false
+	}
+	ownerNode, ok := definitions.flowNodes[ownerID]
+	if !ok {
+		return nil, nil, false
+	}
+	owner, ok := ownerNode.(*TSubProcess)
+	if !ok {
+		return nil, nil, false
+	}
+	return owner, start, true
+}
+
 // FindBaseElementById returns the element with the given ID. Definitions
 // loaded from BPMN XML use the definition-wide index populated by
 // ResolveReferences. Programmatically assembled definitions may not have

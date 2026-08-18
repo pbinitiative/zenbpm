@@ -89,3 +89,68 @@ func TestFindInternalTaskById_IncludesEndEvent(t *testing.T) {
 	require.Error(t, err, "TStartEvent does not implement InternalTask")
 	assert.ErrorIs(t, err, ErrInternalTaskNotFound)
 }
+
+func TestIsElementInSubProcessScope_RootAcceptsPresentElements(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/nested_sub_process_lookup.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	// Root scope (subprocessID == "") accepts every registered element.
+	assert.True(t, IsElementInSubProcessScope(&defs, "", "LookupEnd"))
+	assert.True(t, IsElementInSubProcessScope(&defs, "", "OuterSub"))
+	assert.True(t, IsElementInSubProcessScope(&defs, "", "DeepTask"))
+
+	// Root scope REJECTS missing elements — see docstring on
+	// IsElementInSubProcessScope.
+	assert.False(t, IsElementInSubProcessScope(&defs, "", "missing-id"))
+}
+
+func TestIsElementInSubProcessScope_NestedMatrix(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/nested_sub_process_lookup.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	cases := []struct {
+		sub, elem string
+		want      bool
+	}{
+		{"OuterSub", "OuterEnd", true},    // direct child
+		{"OuterSub", "InnerSub", true},    // nested subprocess
+		{"OuterSub", "DeepTask", true},    // deeply nested
+		{"OuterSub", "LookupEnd", false},  // top-level — BLOCKER 1
+		{"InnerSub", "DeepTask", true},    // direct child of inner
+		{"InnerSub", "OuterEnd", false},   // sibling inside OuterSub
+		{"InnerSub", "LookupEnd", false},  // top-level
+		{"OuterSub", "OuterSub", false},   // instance cannot resolve itself
+		{"does-not-exist", "LookupEnd", false}, // missing parent subprocess
+		{"OuterSub", "missing-id", false}, // missing element
+	}
+	for _, tc := range cases {
+		got := IsElementInSubProcessScope(&defs, tc.sub, tc.elem)
+		assert.Equalf(t, tc.want, got, "sub=%q elem=%q", tc.sub, tc.elem)
+	}
+}
+
+func TestFindSubprocessAndStartEventById_O1(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/nested_sub_process_lookup.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	sp, se, ok := FindSubprocessAndStartEventById(&defs, "OuterStart")
+	require.True(t, ok)
+	assert.Equal(t, "OuterSub", sp.GetId())
+	assert.Equal(t, "OuterStart", se.GetId())
+
+	sp, se, ok = FindSubprocessAndStartEventById(&defs, "InnerStart")
+	require.True(t, ok)
+	assert.Equal(t, "InnerSub", sp.GetId())
+
+	_, _, ok = FindSubprocessAndStartEventById(&defs, "LookupStart")
+	assert.False(t, ok, "top-level start events do not belong to a subprocess")
+
+	_, _, ok = FindSubprocessAndStartEventById(&defs, "no-such-id")
+	assert.False(t, ok)
+}

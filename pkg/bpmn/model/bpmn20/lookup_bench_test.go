@@ -42,7 +42,7 @@ func BenchmarkFindFlowNodeById_Breadth(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				elem := defs.Process.GetFlowNodeById(target)
+				elem := defs.Process.linearFindFlowNode(target)
 				if elem == nil {
 					b.Fatalf("expected to resolve %q in legacy scan", target)
 				}
@@ -81,9 +81,36 @@ func BenchmarkFindFlowNodeById_Depth(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				elem := defs.Process.GetFlowNodeById(target)
+				elem := defs.Process.linearFindFlowNode(target)
 				if elem == nil {
 					b.Fatalf("expected to resolve %q in legacy scan", target)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkScopedFlowNodeLookup_Depth measures the actual hot path
+// for nested-token execution: FindFlowNodeById followed by
+// IsElementInSubProcessScope. Real SubProcessInstance execution pays
+// for both. The expected shape is O(1) (map lookup) plus O(depth)
+// (subprocess ancestry walk), so the benchmark should grow linearly
+// with depth and stay flat as element count grows.
+func BenchmarkScopedFlowNodeLookup_Depth(b *testing.B) {
+	for _, depth := range []int{1, 3, 5, 10, 20} {
+		b.Run(fmt.Sprintf("scoped/depth=%d", depth), func(b *testing.B) {
+			defs := buildDeepProcess(depth)
+			target := deepestTaskID(depth)
+			scopeID := deepestSubprocessID(depth)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				fn, err := FindFlowNodeById(defs, target)
+				if err != nil || fn == nil {
+					b.Fatalf("expected to resolve %q via typed index: %v", target, err)
+				}
+				if !IsElementInSubProcessScope(defs, scopeID, target) {
+					b.Fatalf("expected %q to be in scope of %q", target, scopeID)
 				}
 			}
 		})

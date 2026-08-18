@@ -27,8 +27,6 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	if err != nil {
 		return fmt.Errorf("failed to collect references: %w", err)
 	}
-	definitions.baseElements = baseElementMap
-	// Try to resolve references for each base element implementing ResolvableReferences
 	for _, resolvable := range resolvables {
 		// Check if the baseElement implements ResolvableReferences
 		if err = resolvable(&baseElementMap); err != nil {
@@ -38,6 +36,30 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	if err := validateEventBasedGateways(&definitions.Process.TFlowElementsContainer); err != nil {
 		return err
 	}
+
+	// Build typed indexes transactionally into locals. walkProcess does
+	// not return an error today (duplicate validation is deferred to a
+	// follow-up issue); the void signature keeps the door open for a
+	// future typed/schema-aware validator to plug in without changing
+	// call sites.
+	flowNodes := make(map[string]FlowNode)
+	internalTasks := make(map[string]InternalTask)
+	elementOwner := make(map[string]string)
+	subprocessParent := make(map[string]string)
+	builder := &typedIndexBuilder{
+		flowNodes:        flowNodes,
+		internalTasks:    internalTasks,
+		elementOwner:     elementOwner,
+		subprocessParent: subprocessParent,
+	}
+	builder.walkProcess(&definitions.Process, "")
+
+	// Publish only after every step succeeded.
+	definitions.baseElements = baseElementMap
+	definitions.flowNodes = flowNodes
+	definitions.internalTasks = internalTasks
+	definitions.elementOwner = elementOwner
+	definitions.subprocessParent = subprocessParent
 	return nil
 }
 

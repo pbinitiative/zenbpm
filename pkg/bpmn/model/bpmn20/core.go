@@ -80,9 +80,13 @@ type TDefinitions struct {
 	TargetNamespace    string `xml:"targetNamespace,attr"`
 	ExpressionLanguage string `xml:"expressionLanguage,attr"`
 	TypeLanguage       string `xml:"typeLanguage,attr"`
-	Exporter           string `xml:"exporter,attr"`
-	ExporterVersion    string `xml:"exporterVersion,attr"`
-	baseElements       map[string]BaseElement
+	Exporter        string `xml:"exporter,attr"`
+	ExporterVersion string `xml:"exporterVersion,attr"`
+	baseElements    map[string]BaseElement
+	flowNodes       map[string]FlowNode
+	internalTasks   map[string]InternalTask
+	elementOwner     map[string]string
+	subprocessParent map[string]string
 }
 
 func (d *TDefinitions) GetMessageByRef(ref string) (TMessage, error) {

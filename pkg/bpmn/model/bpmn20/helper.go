@@ -20,7 +20,14 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	if err := validateSubProcessStartEvents(&definitions.Process.TFlowElementsContainer); err != nil {
 		return err
 	}
-	// Map to store FlowNodes by their IDs
+	// Build per-TFlowElementsContainer subtree indices for O(1) lookup of
+	// flow nodes and internal tasks. Each container level's index contains
+	// its own elements plus all elements owned by descendant sub-processes,
+	// so a lookup against a sub-process is automatically scoped to that
+	// sub-process's visible subtree (it can never resolve ancestors or
+	// sibling branches). Lookup is O(1) regardless of total process size
+	// or number of sub-processes.
+	populateContainerIndex(&definitions.Process.TFlowElementsContainer)
 	baseElementMap := make(map[string]BaseElement)
 	resolvables := make([]resolvableFunc, 0)
 	err := collectBaseElements(definitions, &baseElementMap, &resolvables)
@@ -28,9 +35,7 @@ func (definitions *TDefinitions) ResolveReferences() error {
 		return fmt.Errorf("failed to collect references: %w", err)
 	}
 	definitions.baseElements = baseElementMap
-	// Try to resolve references for each base element implementing ResolvableReferences
 	for _, resolvable := range resolvables {
-		// Check if the baseElement implements ResolvableReferences
 		if err = resolvable(&baseElementMap); err != nil {
 			return fmt.Errorf("failed to resolve references: %w", err)
 		}
@@ -187,6 +192,85 @@ func (definitions *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartEle
 
 type resolvableFunc func(refs *map[string]BaseElement) error
 
+// populateContainerIndex fills container.flowNodesByID with this
+// container's own elements plus every descendant element from nested
+// sub-processes, so a single map probe resolves any element in the
+// container's subtree. Boundary events are excluded to preserve
+// historical lookup semantics.
+func populateContainerIndex(container *TFlowElementsContainer) {
+	container.flowNodesByID = make(map[string]FlowNode)
+	container.internalTasksByID = make(map[string]InternalTask)
+
+	register := func(id string, node FlowNode) {
+		if id == "" {
+			return
+		}
+		container.flowNodesByID[id] = node
+		if task, ok := node.(InternalTask); ok {
+			container.internalTasksByID[id] = task
+		}
+	}
+
+	for i := range container.StartEvents {
+		register(container.StartEvents[i].GetId(), &container.StartEvents[i])
+	}
+	for i := range container.EndEvents {
+		register(container.EndEvents[i].GetId(), &container.EndEvents[i])
+	}
+	for i := range container.ServiceTasks {
+		register(container.ServiceTasks[i].GetId(), &container.ServiceTasks[i])
+	}
+	for i := range container.UserTasks {
+		register(container.UserTasks[i].GetId(), &container.UserTasks[i])
+	}
+	for i := range container.BusinessRuleTask {
+		register(container.BusinessRuleTask[i].GetId(), &container.BusinessRuleTask[i])
+	}
+	for i := range container.SendTask {
+		register(container.SendTask[i].GetId(), &container.SendTask[i])
+	}
+	for i := range container.ReceiveTask {
+		register(container.ReceiveTask[i].GetId(), &container.ReceiveTask[i])
+	}
+	for i := range container.ParallelGateway {
+		register(container.ParallelGateway[i].GetId(), &container.ParallelGateway[i])
+	}
+	for i := range container.ExclusiveGateway {
+		register(container.ExclusiveGateway[i].GetId(), &container.ExclusiveGateway[i])
+	}
+	for i := range container.EventBasedGateway {
+		register(container.EventBasedGateway[i].GetId(), &container.EventBasedGateway[i])
+	}
+	for i := range container.InclusiveGateway {
+		register(container.InclusiveGateway[i].GetId(), &container.InclusiveGateway[i])
+	}
+	for i := range container.IntermediateCatchEvent {
+		register(container.IntermediateCatchEvent[i].GetId(), &container.IntermediateCatchEvent[i])
+	}
+	for i := range container.IntermediateThrowEvent {
+		register(container.IntermediateThrowEvent[i].GetId(), &container.IntermediateThrowEvent[i])
+	}
+	for i := range container.CallActivity {
+		register(container.CallActivity[i].GetId(), &container.CallActivity[i])
+	}
+	for i := range container.SubProcess {
+		sp := &container.SubProcess[i]
+		populateContainerIndex(&sp.TFlowElementsContainer)
+		// Preserve local element precedence if duplicate IDs are present.
+		sp.flowNodesByID[sp.GetId()] = sp
+		for k, v := range sp.flowNodesByID {
+			if _, exists := container.flowNodesByID[k]; !exists {
+				container.flowNodesByID[k] = v
+			}
+		}
+		for k, v := range sp.internalTasksByID {
+			if _, exists := container.internalTasksByID[k]; !exists {
+				container.internalTasksByID[k] = v
+			}
+		}
+	}
+}
+
 func collectBaseElements(element interface{}, refs *map[string]BaseElement, resolvables *[]resolvableFunc) error {
 	val := reflect.ValueOf(element)
 
@@ -327,6 +411,32 @@ func FindBoundaryEventsForActivity(processContainer *TFlowElementsContainer, act
 func FindBaseElementById(definitions *TDefinitions, id string) (BaseElement, bool) {
 	v, ok := definitions.baseElements[id]
 	return v, ok
+}
+
+// GetFlowNodeById returns the indexed flow node, or nil if it does not exist.
+func (definitions *TDefinitions) GetFlowNodeById(id string) FlowNode {
+	el, ok := definitions.baseElements[id]
+	if !ok {
+		return nil
+	}
+	fn, ok := el.(FlowNode)
+	if !ok {
+		return nil
+	}
+	return fn
+}
+
+// GetInternalTaskById returns the indexed internal task, or nil if it does not exist.
+func (definitions *TDefinitions) GetInternalTaskById(id string) InternalTask {
+	el, ok := definitions.baseElements[id]
+	if !ok {
+		return nil
+	}
+	task, ok := el.(InternalTask)
+	if !ok {
+		return nil
+	}
+	return task
 }
 
 // FindEventSubProcesses returns (non-recursively) all subprocesses with TriggeredByEvent=true in the given flow elements container.

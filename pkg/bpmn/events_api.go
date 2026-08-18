@@ -153,9 +153,10 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 		return fmt.Errorf("message type after refresh not supported")
 	}
 
-	// Token points either to message listener or event based gateway
-	pd := instance.ProcessInstance().Definition.Definitions.Process
-	node := pd.GetFlowNodeById(message.Token.ElementId)
+	// Token points either to message listener or event based gateway.
+	// Use the scope-local Process lookup so we never resolve an element
+	// from an unrelated sub-process or the root process.
+	node := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(message.Token.ElementId)
 	switch nodeT := node.(type) {
 	case *bpmn20.TEventBasedGateway:
 		tokens, err := engine.publishEventOnEventGateway(ctx, &batch, nodeT, message, instance, variables)

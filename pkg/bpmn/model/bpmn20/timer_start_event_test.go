@@ -317,3 +317,29 @@ func TestIntermediateCatchEvent_TimerDefinition_NoId(t *testing.T) {
 	require.NotNil(t, timerDef.TimeDuration)
 	assert.Equal(t, "PT10S", timerDef.TimeDuration.XMLText)
 }
+
+func TestGetSubprocessAndStartEventById_StablePointers(t *testing.T) {
+	process := TProcess{
+		TFlowElementsContainer: TFlowElementsContainer{
+			SubProcess: []TSubProcess{
+				{
+					TProcess: TProcess{
+						TCallableElement: TCallableElement{TBaseElement: TBaseElement{Id: "sub1"}},
+						TFlowElementsContainer: TFlowElementsContainer{
+							StartEvents: []TStartEvent{
+								{TEvent: TEvent{TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "start-in-sub1"}},
+								}}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	sp, se := process.GetSubprocessAndStartEventById("start-in-sub1")
+	require.NotNil(t, sp)
+	require.NotNil(t, se)
+	assert.Same(t, &process.SubProcess[0], sp)
+	assert.Same(t, &process.SubProcess[0].StartEvents[0], se)
+}

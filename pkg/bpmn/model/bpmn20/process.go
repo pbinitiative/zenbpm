@@ -208,18 +208,24 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 	return p.linearFindFlowNode(id)
 }
 
-// GetSubprocessAndStartEventById recursively searches for a start event by ID within this process and all nested subprocesses.
+// GetSubprocessAndStartEventById returns the (subprocess, startEvent)
+// pair for the given start event id, recursively descending into
+// nested subprocesses. Uses for i := range so the returned pointers
+// are stable.
+//
+// Production callers should prefer bpmn20.FindSubprocessAndStartEventById,
+// which is O(1). This method is the slow legacy path.
 func (p *TProcess) GetSubprocessAndStartEventById(id string) (*TSubProcess, *TStartEvent) {
-	for _, subProcess := range p.SubProcess {
-		// Check immediate subprocess start events
-		for _, startEvent := range subProcess.StartEvents {
-			if startEvent.GetId() == id {
-				return &subProcess, &startEvent
+	for i := range p.SubProcess {
+		sp := &p.SubProcess[i]
+		for j := range sp.StartEvents {
+			se := &sp.StartEvents[j]
+			if se.GetId() == id {
+				return sp, se
 			}
 		}
-		// Recursively search nested subprocesses within this subprocess
-		if nestedSubprocess, startEvent := subProcess.GetSubprocessAndStartEventById(id); nestedSubprocess != nil {
-			return nestedSubprocess, startEvent
+		if nested, start := sp.GetSubprocessAndStartEventById(id); nested != nil {
+			return nested, start
 		}
 	}
 	return nil, nil

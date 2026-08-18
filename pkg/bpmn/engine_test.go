@@ -989,15 +989,19 @@ func TestGetExecutionTokenActivity_UnknownElementId(t *testing.T) {
 // TestGetExecutionTokenActivity_NonFlowNode covers the case where the
 // id resolves to an element that is registered in the index but is not
 // a flow node. Sequence flows are good examples: they are BaseElements
-// (and therefore indexed), but they do not implement FlowNode because
-// they connect flow nodes rather than being driven themselves.
-// Boundary events, by contrast, embed TFlowNode through TEvent and so
-// they ARE flow nodes — see TestGetExecutionTokenActivity_BoundaryEventRejected.
+// (and therefore registered in the legacy baseElements index), but they
+// do not implement FlowNode because they connect flow nodes rather than
+// being driven themselves. With the typed index, sequence flows are
+// not in flowNodes at all, so the typed helper returns ErrFlowNodeNotFound.
+// Boundary events, by contrast, embed TFlowNode through TEvent. The
+// typed walker skips the BoundaryEvent slice, so boundary events are
+// also unreachable via FindFlowNodeById — see
+// TestGetExecutionTokenActivity_BoundaryEventRejected.
 func TestGetExecutionTokenActivity_NonFlowNode(t *testing.T) {
 	def := lookupTestProcess(t, "./test-cases/simple_sub_process_task.bpmn")
 
-	// Flow_0xt1d7q is a sequence flow. It is in the index, but it is
-	// not a flow node, so the engine must refuse to process it.
+	// Flow_0xt1d7q is a sequence flow. It is not a flow node, so the
+	// typed helper returns ErrFlowNodeNotFound.
 	activity, err := bpmnEngine.getExecutionTokenActivity(
 		t.Context(),
 		lookupTestInstance(def),
@@ -1005,17 +1009,18 @@ func TestGetExecutionTokenActivity_NonFlowNode(t *testing.T) {
 	)
 	assert.Nil(t, activity)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, bpmn20.ErrFlowNodeNotFound)
 	assert.Contains(t, err.Error(), "Flow_0xt1d7q")
-	assert.Contains(t, err.Error(), "not a flow node")
 }
 
 // TestGetExecutionTokenActivity_BoundaryEventRejected pins down the
 // contract that boundary events must never be accepted as token targets.
 // A TBoundaryEvent technically satisfies the FlowNode interface through
 // method promotion (TEvent -> TFlowNode), but boundary events are
-// consumed via boundary-event subscriptions rather than token execution,
-// so the engine must reject them at the lookup step. This test would
-// fail if the explicit boundary-event rejection were ever removed.
+// consumed via boundary-event subscriptions rather than token execution.
+// The typed walker (typed_walk.go) intentionally does not index the
+// BoundaryEvent slice, so FindFlowNodeById returns ErrFlowNodeNotFound
+// for any boundary event id.
 func TestGetExecutionTokenActivity_BoundaryEventRejected(t *testing.T) {
 	def := lookupTestProcess(t, "./test-cases/simple_sub_process_task.bpmn")
 
@@ -1026,8 +1031,8 @@ func TestGetExecutionTokenActivity_BoundaryEventRejected(t *testing.T) {
 	)
 	assert.Nil(t, activity)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, bpmn20.ErrFlowNodeNotFound)
 	assert.Contains(t, err.Error(), "Event_07bcheq")
-	assert.Contains(t, err.Error(), "boundary event")
 }
 
 // bogusProcessInstance satisfies runtime.ProcessInstance but does not
@@ -1098,4 +1103,78 @@ func TestGetExecutionTokenActivity_PointerIdentity(t *testing.T) {
 	got, ok := activity.Element().(*bpmn20.TServiceTask)
 	require.True(t, ok, "activity element should be a *TServiceTask")
 	assert.Same(t, expected, got)
+}
+
+// TestSubProcessScope_AllMatrix pins down the scope semantics for
+// SubProcessInstance across the full matrix of (parent subprocess,
+// target element) combinations.
+//
+// Tree (sibling_sub_process_scope.bpmn):
+//   Process (root)
+//   ├── ScopeStart, ScopeEnd
+//   ├── SiblingA
+//   │   ├── AStart, AEnd
+//   │   └── ANested
+//   │       └── ANestedStart, ANestedTask, ANestedEnd
+//   └── SiblingB
+//       ├── BStart, BEnd
+//       └── BNested
+//           └── BNestedStart, BNestedTask, BNestedEnd
+//
+// This is the engine-level integration of the BLOCKER 1 fix and the
+// expanded sibling scope coverage.
+func TestSubProcessScope_AllMatrix(t *testing.T) {
+	def := lookupTestProcess(t, "./test-cases/sibling_sub_process_scope.bpmn")
+
+	cases := []struct {
+		sub, elem string
+		want      bool
+	}{
+		// SiblingA scope
+		{"SiblingA", "AEnd", true},
+		{"SiblingA", "ANested", true},
+		{"SiblingA", "ANestedTask", true},
+		{"SiblingA", "BEnd", false},
+		{"SiblingA", "BNestedTask", false},
+		{"SiblingA", "ScopeEnd", false},
+		{"SiblingA", "ScopeStart", false},
+		// ANested scope
+		{"ANested", "ANestedTask", true},
+		{"ANested", "ANestedEnd", true},
+		{"ANested", "AEnd", false},
+		{"ANested", "BEnd", false},
+		{"ANested", "BNestedTask", false},
+		// SiblingB scope
+		{"SiblingB", "BEnd", true},
+		{"SiblingB", "BNestedTask", true},
+		{"SiblingB", "AEnd", false},
+		{"SiblingB", "ANestedTask", false},
+		// BNested scope
+		{"BNested", "BNestedTask", true},
+		{"BNested", "BEnd", false},
+		// Edge cases
+		{"SiblingA", "SiblingA", false}, // instance cannot resolve itself
+		{"missing", "ScopeStart", false},
+		{"SiblingA", "missing-id", false},
+	}
+	for _, tc := range cases {
+		instance := &runtime.SubProcessInstance{
+			ParentProcessTargetElementId: tc.sub,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition: def,
+				Key:        1,
+				State:      runtime.ActivityStateReady,
+			},
+		}
+		_, err := bpmnEngine.getExecutionTokenActivity(
+			t.Context(),
+			instance,
+			lookupTestToken(tc.elem),
+		)
+		if tc.want {
+			assert.NoErrorf(t, err, "sub=%q elem=%q should resolve", tc.sub, tc.elem)
+		} else {
+			assert.Errorf(t, err, "sub=%q elem=%q should be rejected", tc.sub, tc.elem)
+		}
+	}
 }

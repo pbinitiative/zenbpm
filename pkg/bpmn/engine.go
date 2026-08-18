@@ -345,9 +345,13 @@ func (engine *Engine) terminateExecutionToken(
 }
 
 func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBatch, startingElementIds []string, processInstance runtime.ProcessInstance) ([]runtime.ExecutionToken, error) {
+	definitions := &processInstance.ProcessInstance().Definition.Definitions
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, elementId := range startingElementIds {
-		var flowNode = processInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(elementId)
+		flowNode, err := bpmn20.FindFlowNodeById(definitions, elementId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find flow node %s for starting execution token: %w", elementId, err)
+		}
 		executionToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
@@ -357,9 +361,9 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 			CreatedAt:          time.Now(),
 		}
 		executionTokens = append(executionTokens, executionToken)
-		err := batch.SaveToken(ctx, executionToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", flowNode.GetId(), processInstance.ProcessInstance().Key, err)
+		if err := batch.SaveToken(ctx, executionToken); err != nil {
+			return nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w",
+				flowNode.GetId(), processInstance.ProcessInstance().Key, err)
 		}
 	}
 
@@ -785,11 +789,8 @@ func (engine *Engine) getExecutionTokenActivity(
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
-	// Validate the process-instance category first. Lookup is independent
-	// of the instance type because BPMN element IDs are unique within a
-	// definitions document; the validation is kept as defense in depth so
-	// that any future instance type that the engine does not know how to
-	// handle fails fast rather than silently exercising the lookup path.
+	// Type-check first: keeps the lookup path narrow and gives a clear
+	// error for unknown instance types.
 	switch instance.(type) {
 	case *runtime.DefaultProcessInstance,
 		*runtime.CallActivityInstance,
@@ -799,27 +800,31 @@ func (engine *Engine) getExecutionTokenActivity(
 	default:
 		return nil, errors.New("invalid instance type")
 	}
-	// Resolve the token's element ID through the definition-wide index.
-	// Definitions loaded from BPMN XML always carry the index; the lookup
-	// helper retains a read-only recursive fallback for programmatically
-	// constructed definitions that never went through reference resolution.
+
 	definitions := &instance.ProcessInstance().Definition.Definitions
-	elem, ok := bpmn20.FindBaseElementById(definitions, token.ElementId)
-	if !ok {
-		return nil, fmt.Errorf("failed to find flow node %s for execution token in process definition", token.ElementId)
+	flowNode, err := bpmn20.FindFlowNodeById(definitions, token.ElementId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find flow node %s for execution token in process definition: %w", token.ElementId, err)
 	}
-	flowNode, ok := elem.(bpmn20.FlowNode)
-	if !ok {
-		return nil, fmt.Errorf("element %s (type %T) for execution token is not a flow node", token.ElementId, elem)
-	}
-	// Boundary events embed TFlowNode through TEvent, so they satisfy
-	// the FlowNode interface — but they are not token-driven. They are
-	// consumed via boundary-event subscriptions, not via the token
-	// execution path. The previous recursive lookup excluded them by
-	// not walking the BoundaryEvent slice; preserve that contract.
+	// Boundary events are never indexed by the typed walker
+	// (typed_walk.go skips the BoundaryEvent slice), so they cannot
+	// reach this branch via the indexed path. The explicit guard
+	// remains as defense in depth in case a future index population
+	// ever starts indexing them.
 	if _, isBoundary := flowNode.(*bpmn20.TBoundaryEvent); isBoundary {
 		return nil, fmt.Errorf("element %s is a boundary event and cannot be driven by an execution token", token.ElementId)
 	}
+
+	// SubProcessInstance scope check: the target element must live
+	// inside the instance's parent subprocess or one of its descendants.
+	// Top-level instance types never enter this branch.
+	if sub, isSub := instance.(*runtime.SubProcessInstance); isSub {
+		if !bpmn20.IsElementInSubProcessScope(definitions, sub.ParentProcessTargetElementId, token.ElementId) {
+			return nil, fmt.Errorf("element %s is outside the scope of subprocess %s for execution token",
+				token.ElementId, sub.ParentProcessTargetElementId)
+		}
+	}
+
 	activity := &elementActivity{
 		key:     engine.generateKey(),
 		state:   runtime.ActivityStateReady,

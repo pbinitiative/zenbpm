@@ -346,6 +346,53 @@ func FindBoundaryEventsForActivity(processContainer *TFlowElementsContainer, act
 	return result
 }
 
+// Sentinel errors for typed lookup failures. Tests use
+// require.ErrorIs(err, ErrXxx); production code can match them with
+// errors.Is. Boundary-event exclusion is not a sentinel because it is
+// an absence-of-result, not an error.
+var (
+	ErrLookupIndexNotInitialised = errors.New("BPMN lookup index not initialised")
+	ErrFlowNodeNotFound          = errors.New("BPMN flow node not found")
+	ErrInternalTaskNotFound      = errors.New("BPMN internal task not found")
+)
+
+// FindFlowNodeById returns the FlowNode with the given id.
+// Boundary events are never exposed (they are not token-driven).
+// Returns an explicit error so the engine can distinguish "index not
+// initialised" (ErrLookupIndexNotInitialised) from "id not found"
+// (ErrFlowNodeNotFound): programmatic definitions that skip
+// ResolveReferences fail fast with an explicit message, instead of
+// looking like a missing BPMN element.
+func FindFlowNodeById(definitions *TDefinitions, id string) (FlowNode, error) {
+	if definitions == nil {
+		return nil, errors.New("definitions is nil")
+	}
+	if definitions.flowNodes == nil {
+		return nil, fmt.Errorf("%w: call ResolveReferences on definitions before using typed lookups", ErrLookupIndexNotInitialised)
+	}
+	fn, ok := definitions.flowNodes[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrFlowNodeNotFound, id)
+	}
+	return fn, nil
+}
+
+// FindInternalTaskById returns the InternalTask with the given id.
+// Includes TEndEvent and any future InternalTask implementors.
+func FindInternalTaskById(definitions *TDefinitions, id string) (InternalTask, error) {
+	if definitions == nil {
+		return nil, errors.New("definitions is nil")
+	}
+	if definitions.internalTasks == nil {
+		return nil, fmt.Errorf("%w: call ResolveReferences on definitions before using typed lookups", ErrLookupIndexNotInitialised)
+	}
+	t, ok := definitions.internalTasks[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrInternalTaskNotFound, id)
+	}
+	return t, nil
+}
+
 // FindBaseElementById returns the element with the given ID. Definitions
 // loaded from BPMN XML use the definition-wide index populated by
 // ResolveReferences. Programmatically assembled definitions may not have

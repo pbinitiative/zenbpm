@@ -31,8 +31,8 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 		return fmt.Errorf("process instance %d has no process definition", instance.ProcessInstance().Key)
 	}
 
-	subProcess, startEvent := processDefinition.Definitions.Process.GetSubprocessAndStartEventById(incident.ElementId)
-	if subProcess == nil || startEvent == nil {
+	subProcess, _, ok := bpmn20.FindSubprocessAndStartEventById(&processDefinition.Definitions, incident.ElementId)
+	if !ok {
 		return fmt.Errorf("failed to find event subprocess start event %s in process definition %d", incident.ElementId, processDefinition.Key)
 	}
 
@@ -40,7 +40,10 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 }
 
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
-	element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(job.ElementId)
+	element, err := bpmn20.FindFlowNodeById(&instance.ProcessInstance().Definition.Definitions, job.ElementId)
+	if err != nil {
+		return fmt.Errorf("failed to find task %s for job %d: %w", job.ElementId, job.Key, err)
+	}
 	task, ok := element.(bpmn20.InternalTask)
 	if !ok {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)

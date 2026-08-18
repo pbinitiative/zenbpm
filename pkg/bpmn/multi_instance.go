@@ -354,9 +354,9 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		tokenSpan.End()
 	}()
 
-	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId)
-	if parentFlowNode == nil {
-		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
+	parentFlowNode, err := bpmn20.FindFlowNodeById(&parentInstance.ProcessInstance().Definition.Definitions, parentProcessTargetElementId)
+	if err != nil {
+		return fmt.Errorf("failed to find flow node by id %s: %w", parentProcessTargetElementId, err)
 	}
 	parentElement, ok := parentFlowNode.(bpmn20.Activity)
 	if !ok || parentElement.GetMultiInstance() == nil {

@@ -435,9 +435,9 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(startingElementIds))
 	for _, startingFlowNodeId := range startingElementIds {
-		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
-		if startNode == nil {
-			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key)
+		startNode, err := bpmn20.FindFlowNodeById(&processDefinition.Definitions, startingFlowNodeId)
+		if err != nil {
+			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d: %w", startingFlowNodeId, processDefinition.Key, err)
 		}
 		startingFlowNodes = append(startingFlowNodes, startNode)
 	}

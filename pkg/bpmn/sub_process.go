@@ -212,13 +212,16 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return nil
 	}
 
-	subProcessDef, ok := bpmn20.FindBaseElementById(&instance.ProcessInstanceData.GetProcessInfo().Definitions, parentProcessTargetElementId)
-	if !ok {
-		return fmt.Errorf("could not find sub process definition by id %s", parentProcessTargetElementId)
+	subProcessDef, err := bpmn20.FindFlowNodeById(&instance.ProcessInstanceData.GetProcessInfo().Definitions, parentProcessTargetElementId)
+	if err != nil {
+		return fmt.Errorf("could not find sub process definition by id %s: %w", parentProcessTargetElementId, err)
 	}
 	var isEventSubProcess bool
 	completeParentAfterEventSubProcess := false
-	subProcessDefTyped := subProcessDef.(*bpmn20.TSubProcess)
+	subProcessDefTyped, ok := subProcessDef.(*bpmn20.TSubProcess)
+	if !ok {
+		return fmt.Errorf("element %s is not a sub process", parentProcessTargetElementId)
+	}
 	if subProcessDefTyped.TriggeredByEvent {
 		if len(subProcessDefTyped.TProcess.StartEvents) != 1 {
 			return fmt.Errorf("event subprocess must have exactly 1 start event")
@@ -265,9 +268,9 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	}()
 
 	//process variables
-	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId)
-	if parentFlowNode == nil {
-		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
+	parentFlowNode, err := bpmn20.FindFlowNodeById(&parentInstance.ProcessInstance().Definition.Definitions, parentProcessTargetElementId)
+	if err != nil {
+		return fmt.Errorf("failed to find flow node by id %s: %w", parentProcessTargetElementId, err)
 	}
 	parentElement, ok := parentFlowNode.(*bpmn20.TSubProcess)
 	if !ok {
@@ -398,9 +401,9 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	}()
 
 	//process variables
-	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(updatedParentToken.ElementId)
-	if parentFlowNode == nil {
-		return fmt.Errorf("failed to find flow node by id %s", updatedParentToken.ElementId)
+	parentFlowNode, err := bpmn20.FindFlowNodeById(&parentInstance.ProcessInstance().Definition.Definitions, updatedParentToken.ElementId)
+	if err != nil {
+		return fmt.Errorf("failed to find flow node by id %s: %w", updatedParentToken.ElementId, err)
 	}
 	parentElement, ok := parentFlowNode.(*bpmn20.TCallActivity)
 	if !ok {

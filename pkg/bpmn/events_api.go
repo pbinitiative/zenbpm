@@ -154,8 +154,11 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 	}
 
 	// Token points either to message listener or event based gateway
-	pd := instance.ProcessInstance().Definition.Definitions.Process
-	node := pd.GetFlowNodeById(message.Token.ElementId)
+	definitions := &instance.ProcessInstance().Definition.Definitions
+	node, err := bpmn20.FindFlowNodeById(definitions, message.Token.ElementId)
+	if err != nil {
+		return fmt.Errorf("failed to resolve message token element %s: %w", message.Token.ElementId, err)
+	}
 	switch nodeT := node.(type) {
 	case *bpmn20.TEventBasedGateway:
 		tokens, err := engine.publishEventOnEventGateway(ctx, &batch, nodeT, message, instance, variables)

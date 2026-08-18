@@ -267,9 +267,9 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	variableHolder.SetLocalVariables(job.InputVariables)
 
-	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
-	if task == nil {
-		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
+	task, err := bpmn20.FindInternalTaskById(&instance.ProcessInstance().Definition.Definitions, job.Token.ElementId)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 	}
 	outputVariables, err := variableHolder.PropagateOnlyMappedOutputs(task.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {

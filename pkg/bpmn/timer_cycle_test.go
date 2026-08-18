@@ -486,6 +486,9 @@ func TestBuildNextCycleTimer_NoRearmAfterAllRepetitions(t *testing.T) {
 				},
 			},
 			TProcess: bpmn20.TProcess{
+				TCallableElement: bpmn20.TCallableElement{
+					TBaseElement: bpmn20.TBaseElement{Id: "sub-1"},
+				},
 				TFlowElementsContainer: bpmn20.TFlowElementsContainer{
 					StartEvents: []bpmn20.TStartEvent{
 						{
@@ -498,6 +501,7 @@ func TestBuildNextCycleTimer_NoRearmAfterAllRepetitions(t *testing.T) {
 			},
 		},
 	}
+	require.NoError(t, def.Definitions.ResolveReferences())
 	// Sanity: parser sees R2.
 	td, err := findTimerEventDefinition(def, "evt-start-1")
 	require.NoError(t, err)

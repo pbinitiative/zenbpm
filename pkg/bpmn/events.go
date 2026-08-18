@@ -137,9 +137,12 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 			return nil, fmt.Errorf("failed to cancel boundary subscriptions: %w", err)
 		}
 	} else {
-		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+		element, err := bpmn20.FindFlowNodeById(&instance.ProcessInstance().Definition.Definitions, token.ElementId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve token element %s: %w", token.ElementId, err)
+		}
 		// recreate the message subscription
-		_, err := engine.createMessageCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TMessageEventDefinition), element, token)
+		_, err = engine.createMessageCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TMessageEventDefinition), element, token)
 		if err != nil {
 			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
 		}

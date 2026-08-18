@@ -137,12 +137,9 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 // resolveEventSubprocessDefs looks up the subprocess definition and its start event from the process instance model.
 // It performs no I/O and returns an error when either definition cannot be found.
 func resolveEventSubprocessDefs(instance runtime.ProcessInstance, elementId string) (*bpmn20.TSubProcess, *bpmn20.TStartEvent, error) {
-	subProcessDef, startEventDef := instance.ProcessInstance().Definition.Definitions.Process.GetSubprocessAndStartEventById(elementId)
-	if startEventDef == nil {
+	subProcessDef, startEventDef, ok := bpmn20.FindSubprocessAndStartEventById(&instance.ProcessInstance().Definition.Definitions, elementId)
+	if !ok {
 		return nil, nil, fmt.Errorf("failed to find a startEvent with id: %s", elementId)
-	}
-	if subProcessDef == nil {
-		return nil, nil, fmt.Errorf("failed to find a subProcess for start element id: %s", elementId)
 	}
 	return subProcessDef, startEventDef, nil
 }

@@ -153,7 +153,10 @@ func errorEventSubprocessScopeContainer(instance runtime.ProcessInstance) *bpmn2
 	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance:
 		return &instance.ProcessInstance().Definition.Definitions.Process.TFlowElementsContainer
 	case *runtime.SubProcessInstance:
-		flowNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(inst.ParentProcessTargetElementId)
+		flowNode, err := bpmn20.FindFlowNodeById(&instance.ProcessInstance().Definition.Definitions, inst.ParentProcessTargetElementId)
+		if err != nil {
+			return nil
+		}
 		subProcess, ok := flowNode.(*bpmn20.TSubProcess)
 		if !ok {
 			return nil

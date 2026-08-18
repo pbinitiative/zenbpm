@@ -318,7 +318,7 @@ func findTimerEventDefinition(definition *runtime.ProcessDefinition, elementId s
 			}
 		}
 	}
-	if _, se := process.GetSubprocessAndStartEventById(elementId); se != nil {
+	if _, se, ok := bpmn20.FindSubprocessAndStartEventById(&definition.Definitions, elementId); ok {
 		td, err := extractTimerEventDefinition(se.EventDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("element %s: %w", elementId, err)
@@ -340,7 +340,7 @@ func isInterruptingTimerElement(definition *runtime.ProcessDefinition, timer run
 		return false
 	}
 	process := &definition.Definitions.Process
-	if _, se := process.GetSubprocessAndStartEventById(timer.ElementId); se != nil {
+	if _, se, ok := bpmn20.FindSubprocessAndStartEventById(&definition.Definitions, timer.ElementId); ok {
 		return se.IsInterrupting
 	}
 	for _, be := range process.BoundaryEvent {

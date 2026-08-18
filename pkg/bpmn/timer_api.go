@@ -70,9 +70,9 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	}
 
 	currentToken := timer.Token
-	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
-	if tokenNode == nil || tokenNode.GetId() == "" {
-		return nil, nil, newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId)
+	tokenNode, err := bpmn20.FindFlowNodeById(&instance.ProcessInstance().Definition.Definitions, currentToken.ElementId)
+	if err != nil {
+		return nil, nil, newEngineErrorf("failed to find timer node with elementId: %s: %s", timer.ElementId, err)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)

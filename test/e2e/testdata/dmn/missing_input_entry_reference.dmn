@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_missing_input_entry_reference" name="Missing input entry reference" namespace="https://pbinitiative.com/zenbpm">
+  <decision id="dmn_missing_input_entry_reference" name="Missing input entry reference">
+    <decisionTable id="missing_input_entry_reference_table" hitPolicy="FIRST">
+      <input id="input_customer_type" label="Customer type">
+        <inputExpression id="input_expression_customer_type" typeRef="string">
+          <text>customer_type</text>
+        </inputExpression>
+      </input>
+      <input id="input_amount" label="Amount">
+        <inputExpression id="input_expression_amount" typeRef="number">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="output_discount" name="discount" typeRef="number" />
+      <rule id="rule_vip_customer">
+        <inputEntry id="rule_vip_customer_type">
+          <text>VIP</text>
+        </inputEntry>
+        <inputEntry id="rule_vip_amount">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="rule_vip_discount">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_low_amount">
+        <inputEntry id="rule_low_amount_customer_type">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="rule_low_amount_amount">
+          <text>&lt; 500</text>
+        </inputEntry>
+        <outputEntry id="rule_low_amount_discount">
+          <text>0</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

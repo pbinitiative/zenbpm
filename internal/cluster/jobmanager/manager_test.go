@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,13 +53,18 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Same(t, replacementStream, server.subscriptions["test-job"]["client-1"])
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
+	server.distributedJobs = append(server.distributedJobs, distributedJob{
+		sentTime: time.Now(),
+		client:   "client-1",
+		jobKey:   gen.Generate().Int64(),
+	})
 	server.removeNode(replacementStream)
 	assert.Empty(t, server.jobTypes["test-job"].clients)
 	assert.Empty(t, server.subscriptions["test-job"])
+	assert.Empty(t, server.distributedJobs, "jobs assigned to disconnected clients must become immediately eligible again")
 }
 
 func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
-	assert.NoError(t, registerMetrics())
 	loader := &testLoader{
 		jobsToSend: []sql.Job{},
 		mu:         &sync.RWMutex{},
@@ -67,10 +73,7 @@ func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
 		completedJobs: []int64{},
 		loader:        loader,
 	}
-	server := newJobServer("node-1", loader, completer)
-
-	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}}
-	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2", stream: stream}
+	server, stream := newTestJobServer(t, loader, completer)
 	server.subscribeClient("node-2", "client-1", "test-job")
 	server.subscribeClient("node-2", "client-2", "test-job")
 
@@ -99,6 +102,235 @@ func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
 
 	assert.Equal(t, 1, stream.sentTo("client-1"), "client-1 must not be assigned more jobs than its remaining capacity within a batch")
 	assert.Equal(t, int(maxActiveJobsPerClient), stream.sentTo("client-2"), "client-2 should receive the rest of the batch")
+}
+
+func TestServerDistributesToSingleClient(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "test-job")
+
+	generatedJobs := generateJobs(3)
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.sentTo("client-1") == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "a single subscribed client must receive all jobs")
+}
+
+func TestServerRoundRobinUsesBothClients(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-2", "test-job")
+
+	generatedJobs := generateJobs(10)
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.totalSent() == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "expected all jobs to be distributed")
+	cancel()
+
+	assert.Equal(t, 5, stream.sentTo("client-1"), "round robin must distribute jobs evenly between two clients")
+	assert.Equal(t, 5, stream.sentTo("client-2"), "round robin must distribute jobs evenly between two clients")
+}
+
+func TestServerDistributesFairlyBetweenMultipleClients(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, nil)
+	clientIDs := []ClientID{"client-1", "client-2", "client-3"}
+	for _, clientID := range clientIDs {
+		server.subscribeClient("node-2", clientID, "test-job")
+	}
+
+	generatedJobs := generateJobs(9)
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.totalSent() == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "expected all jobs to be distributed")
+	cancel()
+
+	for _, clientID := range clientIDs {
+		assert.Equal(t, 3, stream.sentTo(clientID), "round robin must distribute jobs evenly between eligible clients")
+	}
+}
+
+func TestServerNeverAssignsJobsToSaturatedClients(t *testing.T) {
+	loadMu := sync.Mutex{}
+	loadedJobTypes := make([][]string, 0)
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+		onLoad: func(jobTypes []string, _ []int64, _ int64) {
+			loadMu.Lock()
+			loadedJobTypes = append(loadedJobTypes, slices.Clone(jobTypes))
+			loadMu.Unlock()
+		},
+	}
+	server, stream := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "job-a")
+	server.subscribeClient("node-2", "client-2", "job-b")
+
+	// client-1 holds all of its slots
+	now := time.Now()
+	for range maxActiveJobsPerClient {
+		server.distributedJobs = append(server.distributedJobs, distributedJob{
+			sentTime: now,
+			client:   "client-1",
+			jobKey:   gen.Generate().Int64(),
+		})
+	}
+
+	jobsA := generateJobsOfType(int(maxActiveJobsPerClient), "job-a")
+	jobsB := generateJobsOfType(2, "job-b")
+	loader.addJobs(jobsA...)
+	loader.addJobs(jobsB...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.sentTo("client-2") == len(jobsB)
+	}, 5*time.Second, 10*time.Millisecond, "client-2 must receive all job-b jobs")
+	cancel()
+
+	assert.Zero(t, stream.sentTo("client-1"), "a saturated client must never receive additional jobs")
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	require.NotEmpty(t, loadedJobTypes)
+	assert.NotContains(t, loadedJobTypes[0], "job-a", "types with no remaining client capacity must not consume the query limit")
+	assert.Contains(t, loadedJobTypes[0], "job-b")
+}
+
+func TestServerRetriesJobImmediatelyAfterTransientSendFailure(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, nil)
+	stream.failSends = 1
+	server.subscribeClient("node-2", "client-1", "test-job")
+	loader.addJobs(generateJobs(1)...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.sentTo("client-1") == 1
+	}, 5*time.Second, 10*time.Millisecond, "a failed send must not lock the undelivered job for the full lock duration")
+	cancel()
+
+	assert.GreaterOrEqual(t, stream.sendAttempts(), 2)
+	server.distributedJobsMu.Lock()
+	defer server.distributedJobsMu.Unlock()
+	assert.Len(t, server.distributedJobs, 1, "only the successful delivery may retain a reservation")
+}
+
+func TestServerSkipListContainsOnlyValidJobKeys(t *testing.T) {
+	skipListMu := sync.Mutex{}
+	skipLists := make([][]int64, 0)
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+		onLoad: func(_ []string, idsToSkip []int64, _ int64) {
+			skipListMu.Lock()
+			skipLists = append(skipLists, slices.Clone(idsToSkip))
+			skipListMu.Unlock()
+		},
+	}
+	server, _ := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "test-job")
+
+	activeKey := gen.Generate().Int64()
+	server.distributedJobs = []distributedJob{
+		{sentTime: time.Now().Add(-2 * jobLockDuration), client: "client-1", jobKey: gen.Generate().Int64()},
+		{sentTime: time.Now(), client: "client-1", jobKey: activeKey},
+		{sentTime: time.Now().Add(-2 * jobLockDuration), client: "client-1", jobKey: gen.Generate().Int64()},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		skipListMu.Lock()
+		defer skipListMu.Unlock()
+		return len(skipLists) > 0
+	}, 5*time.Second, 10*time.Millisecond, "loader must be called at least once")
+	cancel()
+
+	skipListMu.Lock()
+	defer skipListMu.Unlock()
+	assert.Equal(t, []int64{activeKey}, skipLists[0], "skip list must contain only keys of still-locked jobs")
+	for _, skipList := range skipLists {
+		assert.NotContains(t, skipList, int64(0), "expired jobs must not introduce zero IDs into the skip list")
+	}
+}
+
+func TestServerHandlesSubscriptionChangesDuringDistribution(t *testing.T) {
+	loadStarted := make(chan struct{})
+	releaseLoad := make(chan struct{})
+	var loadStartedOnce sync.Once
+	var releaseLoadOnce sync.Once
+	release := func() {
+		releaseLoadOnce.Do(func() { close(releaseLoad) })
+	}
+	defer release()
+
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+		onLoad: func(_ []string, _ []int64, _ int64) {
+			loadStartedOnce.Do(func() { close(loadStarted) })
+			<-releaseLoad
+		},
+	}
+	server, stream := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "test-job")
+
+	generatedJobs := generateJobs(int(maxActiveJobsPerClient))
+	loader.addJobs(generatedJobs...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		select {
+		case <-loadStarted:
+			return true
+		default:
+			return false
+		}
+	}, 5*time.Second, 10*time.Millisecond, "distribution must start loading jobs")
+
+	// Replace the only eligible client while a batch is being loaded. The new
+	// client has no capacity in the in-flight snapshot and becomes eligible on
+	// the next distribution iteration.
+	server.unsubscribeClient("client-1", "test-job")
+	server.subscribeClient("node-2", "client-2", "test-job")
+	release()
+
+	assert.Eventually(t, func() bool {
+		return stream.totalSent() == len(generatedJobs)
+	}, 5*time.Second, 10*time.Millisecond, "jobs must be distributed while subscriptions change")
+	cancel()
+
+	assert.Zero(t, stream.sentTo("client-1"), "an unsubscribed client must not receive jobs from the in-flight batch")
+	assert.Equal(t, len(generatedJobs), stream.sentTo("client-2"))
+	assert.Equal(t, 1, serverClientCount(server, "test-job"), "only client-2 must remain subscribed")
 }
 
 func TestManagerHandlesLeaderChanges(t *testing.T) {
@@ -393,6 +625,15 @@ func TestManagerTroughput(t *testing.T) {
 	}
 }
 
+func newTestJobServer(t *testing.T, loader JobLoader, completer JobCompleter) (*jobServer, *captureStream) {
+	t.Helper()
+	require.NoError(t, registerMetrics())
+	server := newJobServer("node-1", loader, completer)
+	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}}
+	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2", stream: stream}
+	return server, stream
+}
+
 func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *atomic.Int64 {
 	counter := &atomic.Int64{}
 	go func() {
@@ -444,6 +685,10 @@ func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testComple
 }
 
 func generateJobs(count int) []sql.Job {
+	return generateJobsOfType(count, "test-job")
+}
+
+func generateJobsOfType(count int, jobType string) []sql.Job {
 	resp := make([]sql.Job, 0, count)
 	for range count {
 		resp = append(resp,
@@ -452,7 +697,7 @@ func generateJobs(count int) []sql.Job {
 				ElementInstanceKey: rand.Int63(),
 				ElementID:          "test-id",
 				ProcessInstanceKey: rand.Int63(),
-				Type:               "test-job",
+				Type:               jobType,
 				State:              int64(runtime.ActivityStateActive),
 				CreatedAt:          time.Now().UnixMilli(),
 				InputVariables:     "{}",
@@ -615,6 +860,8 @@ func (c *testCompleter) JobFailByKey(ctx context.Context, jobKey int64, message 
 type testLoader struct {
 	jobsToSend []sql.Job
 	mu         *sync.RWMutex
+	// onLoad is an optional hook invoked with the arguments of every LoadJobsToDistribute call
+	onLoad func(jobTypes []string, idsToSkip []int64, count int64)
 }
 
 func (l *testLoader) addJobs(jobs ...sql.Job) {
@@ -624,15 +871,23 @@ func (l *testLoader) addJobs(jobs ...sql.Job) {
 }
 
 func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error) {
+	if l.onLoad != nil {
+		l.onLoad(jobTypes, idsToSkip, count)
+	}
 	distributedJobs := make([]sql.Job, 0)
 	l.mu.Lock()
 	currentCount := int64(0)
+	jobTypesSet := make(map[string]struct{}, len(jobTypes))
+	for _, jobType := range jobTypes {
+		jobTypesSet[jobType] = struct{}{}
+	}
 	idsToSkipMap := make(map[int64]struct{}, len(idsToSkip))
 	for _, id := range idsToSkip {
 		idsToSkipMap[id] = struct{}{}
 	}
 	for _, job := range l.jobsToSend {
-		if _, ok := idsToSkipMap[job.Key]; !ok {
+		_, requestedType := jobTypesSet[job.Type]
+		if _, skipped := idsToSkipMap[job.Key]; requestedType && !skipped {
 			distributedJobs = append(distributedJobs, job)
 			currentCount++
 			if currentCount >= count {
@@ -680,9 +935,11 @@ func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 // captureStream is a fake job subscription stream that records how many jobs
 // were sent to each client.
 type captureStream struct {
-	ctx  context.Context
-	mu   sync.Mutex
-	sent map[ClientID]int
+	ctx       context.Context
+	mu        sync.Mutex
+	sent      map[ClientID]int
+	attempts  int
+	failSends int
 }
 
 func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
@@ -692,6 +949,11 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.attempts++
+	if s.failSends > 0 {
+		s.failSends--
+		return errors.New("transient send failure")
+	}
 	s.sent[ClientID(resp.GetClientId())]++
 	return nil
 }
@@ -715,6 +977,12 @@ func (s *captureStream) sentTo(clientID ClientID) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.sent[clientID]
+}
+
+func (s *captureStream) sendAttempts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts
 }
 
 func (s *captureStream) SetHeader(metadata.MD) error  { return nil }

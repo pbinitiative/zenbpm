@@ -1942,21 +1942,47 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 	if len(databases) == 0 {
 		return nil, fmt.Errorf("no partitions where node is a leader were found")
 	}
-	jobsAcc := make([]sql.Job, 0)
 	// hack to not send NULL into sqlite
 	if len(idsToSkip) == 0 {
 		idsToSkip = []int64{0}
 	}
-	for _, db := range databases {
+	return loadJobsWithGlobalLimit(len(databases), count, func(index int, limit int64) ([]sql.Job, error) {
+		db := databases[index]
 		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
-			Limit:   count,
+			Limit:   limit,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.Partition, err)
 		}
+		return jobs, nil
+	})
+}
+
+func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {
+	jobsAcc := make([]sql.Job, 0)
+	if count <= 0 {
+		return jobsAcc, nil
+	}
+	for index := range sourceCount {
+		jobs, err := load(index, count)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(jobs)) > count {
+			jobs = jobs[:count]
+		}
 		jobsAcc = append(jobsAcc, jobs...)
+	}
+	sort.Slice(jobsAcc, func(i, j int) bool {
+		if jobsAcc[i].CreatedAt == jobsAcc[j].CreatedAt {
+			return jobsAcc[i].Key < jobsAcc[j].Key
+		}
+		return jobsAcc[i].CreatedAt < jobsAcc[j].CreatedAt
+	})
+	if int64(len(jobsAcc)) > count {
+		jobsAcc = jobsAcc[:count]
 	}
 	return jobsAcc, nil
 }
@@ -1965,7 +1991,7 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to complete job was not found on the node")
+		return fmt.Errorf("engine to complete job was not found on the node")
 	}
 	err := engine.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
@@ -1987,7 +2013,7 @@ func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message str
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to fail job was not found on the node")
+		return fmt.Errorf("engine to fail job was not found on the node")
 	}
 	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -29,7 +30,7 @@ const (
 )
 
 type JobLoader interface {
-	// LoadJobsToDistribute loads a number of jobs (sorted from oldest) from each partition that the node is leader on
+	// LoadJobsToDistribute loads at most count jobs, sorted from oldest, across all partitions led by the node.
 	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error)
 }
 
@@ -67,7 +68,7 @@ type jobServer struct {
 	loader    JobLoader
 	completer JobCompleter
 
-	maxPartitionJobLoadCount int64
+	maxJobLoadCount          int64
 	distributedJobs          []distributedJob
 	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
@@ -81,18 +82,18 @@ func newJobServer(
 	jobCompleter JobCompleter,
 ) *jobServer {
 	return &jobServer{
-		nodeMu:                   &sync.RWMutex{},
-		nodeSubs:                 map[NodeId]*nodeSub{},
-		nodeID:                   nodeID,
-		distributedJobs:          []distributedJob{},
-		distributedJobsMu:        &sync.Mutex{},
-		subscriptions:            map[JobType]map[ClientID]*nodeSub{},
-		jobTypes:                 map[JobType]jobTypeData{},
-		clientMu:                 &sync.RWMutex{},
-		logger:                   hclog.Default().Named("job-manager-server"),
-		loader:                   jobLoader,
-		maxPartitionJobLoadCount: 300,
-		completer:                jobCompleter,
+		nodeMu:            &sync.RWMutex{},
+		nodeSubs:          map[NodeId]*nodeSub{},
+		nodeID:            nodeID,
+		distributedJobs:   []distributedJob{},
+		distributedJobsMu: &sync.Mutex{},
+		subscriptions:     map[JobType]map[ClientID]*nodeSub{},
+		jobTypes:          map[JobType]jobTypeData{},
+		clientMu:          &sync.RWMutex{},
+		logger:            hclog.Default().Named("job-manager-server"),
+		loader:            jobLoader,
+		maxJobLoadCount:   300,
+		completer:         jobCompleter,
 	}
 }
 
@@ -121,17 +122,17 @@ func (s *jobServer) distributeJobs() {
 			return
 		}
 		s.clientMu.RLock()
-		jobTypes := make([]string, 0, len(s.jobTypes))
 		clients := make(map[ClientID]int64)
+		jobTypeClients := make(map[JobType][]ClientID, len(s.jobTypes))
 		for jobType, jobTypeData := range s.jobTypes {
-			jobTypes = append(jobTypes, string(jobType))
+			jobTypeClients[jobType] = slices.Clone(jobTypeData.clients)
 			for _, client := range jobTypeData.clients {
 				clients[client] = maxActiveJobsPerClient
 			}
 		}
 		s.clientMu.RUnlock()
 		s.distributedJobsMu.Lock()
-		currentKeys := make([]int64, len(s.distributedJobs))
+		currentKeys := make([]int64, 0, len(s.distributedJobs))
 		now := time.Now()
 		for i := len(s.distributedJobs) - 1; i >= 0; i-- {
 			job := s.distributedJobs[i]
@@ -140,23 +141,40 @@ func (s *jobServer) distributeJobs() {
 				s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
 				continue
 			}
-			clients[job.client]--
-			currentKeys[i] = job.jobKey
+			// only track capacity for clients that are still subscribed,
+			// jobs of already removed clients must not create phantom entries
+			if _, ok := clients[job.client]; ok {
+				clients[job.client]--
+			}
+			currentKeys = append(currentKeys, job.jobKey)
 		}
 		s.distributedJobsMu.Unlock()
 
+		jobTypes := make([]string, 0, len(jobTypeClients))
+		for jobType, typeClients := range jobTypeClients {
+			for _, clientID := range typeClients {
+				if clients[clientID] > 0 {
+					jobTypes = append(jobTypes, string(jobType))
+					break
+				}
+			}
+		}
+		sort.Strings(jobTypes)
+
 		jobsToLoad := int64(0)
 		for _, numberOfSlots := range clients {
-			jobsToLoad += numberOfSlots
+			if numberOfSlots > 0 {
+				jobsToLoad += numberOfSlots
+			}
 		}
 		if jobsToLoad <= 0 {
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
-		if jobsToLoad > s.maxPartitionJobLoadCount {
-			jobsToLoad = s.maxPartitionJobLoadCount
+		if jobsToLoad > s.maxJobLoadCount {
+			jobsToLoad = s.maxJobLoadCount
 		}
-		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, int64(jobsToLoad))
+		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
 			// give it some time not to overwhelm the node we might not be a leader anymore
@@ -174,6 +192,7 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		s.emptyDistributionCounter = 0
+		assignedJobs := 0
 		for _, job := range jobs {
 			s.clientMu.Lock()
 			jType := JobType(job.Type)
@@ -183,39 +202,36 @@ func (s *jobServer) distributeJobs() {
 				s.clientMu.Unlock()
 				continue
 			}
-			jobTypeData.index++
-			// index overflow
-			if jobTypeData.index >= len(jobTypeData.clients) {
-				jobTypeData.index = 0
-			}
-			clientIdx := jobTypeData.index
-			clientID := jobTypeData.clients[clientIdx]
-
-			candidateIndex := clientIdx // contains the first matched client
-		indexLogic:
-			// if client under index is fully saturated check the next one
-			if clients[clientID] <= 0 {
-				jobTypeData.index++
-				// index overflow
-				if jobTypeData.index >= len(jobTypeData.clients) {
-					jobTypeData.index = 0
+			// round robin: starting from the client after the last used index,
+			// pick the first client that still has remaining capacity
+			numClients := len(jobTypeData.clients)
+			var clientID ClientID
+			var nodeStream *nodeSub
+			for offset := 1; offset <= numClients; offset++ {
+				idx := (jobTypeData.index + offset) % numClients
+				candidateID := jobTypeData.clients[idx]
+				// clients subscribed after the capacity snapshot was taken have
+				// no known capacity in this round and are treated as saturated
+				if clients[candidateID] <= 0 {
+					continue
 				}
-				clientIdx = jobTypeData.index
-				clientID = jobTypeData.clients[clientIdx]
-				if candidateIndex != clientIdx {
-					goto indexLogic
+				candidateStream, ok := s.subscriptions[jType][candidateID]
+				if !ok {
+					continue
 				}
+				jobTypeData.index = idx
+				clientID = candidateID
+				nodeStream = candidateStream
+				clients[clientID]--
+				break
 			}
-
-			s.jobTypes[jType] = jobTypeData // set the updated index
-
-			nodeStream, ok := s.subscriptions[jType][clientID]
-			if !ok {
-				s.logger.Warn("Stream for job was not found", "jobType", jType, "key", job.Key)
+			if nodeStream == nil {
+				// every client for this job type is saturated, the job stays
+				// in the database and will be picked up in a later round
 				s.clientMu.Unlock()
 				continue
 			}
-			clients[clientID]--
+			s.jobTypes[jType] = jobTypeData // set the updated index
 			s.distributedJobsMu.Lock()
 			s.distributedJobs = append(s.distributedJobs, distributedJob{
 				sentTime: time.Now(),
@@ -241,9 +257,15 @@ func (s *jobServer) distributeJobs() {
 				},
 			})
 			if err != nil {
+				s.distributedJobsMu.Lock()
+				s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(distributed distributedJob) bool {
+					return distributed.jobKey == job.Key && distributed.client == clientID
+				})
+				s.distributedJobsMu.Unlock()
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
 			}
+			assignedJobs++
 			JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
 				attribute.String("type", job.Type),
 				attribute.String("client", string(clientID)),
@@ -257,6 +279,11 @@ func (s *jobServer) distributeJobs() {
 					attribute.String("type", job.Type),
 				))
 			}
+		}
+		if assignedJobs == 0 {
+			// every loaded job was skipped (saturated or unavailable clients),
+			// back off to avoid a tight database-query loop until capacity changes
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -316,6 +343,7 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 
+	removedClients := make(map[ClientID]struct{})
 	for jobType, subs := range s.subscriptions {
 		removed := make(map[ClientID]struct{}, len(subs))
 		for clientID, nodeSub := range subs {
@@ -324,6 +352,7 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			}
 			delete(s.subscriptions[jobType], clientID)
 			removed[clientID] = struct{}{}
+			removedClients[clientID] = struct{}{}
 		}
 		if len(removed) == 0 {
 			continue
@@ -347,6 +376,14 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			jobTypeData.index = 0
 		}
 		s.jobTypes[jobType] = jobTypeData
+	}
+	if len(removedClients) > 0 {
+		s.distributedJobsMu.Lock()
+		s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+			_, removed := removedClients[job.client]
+			return removed
+		})
+		s.distributedJobsMu.Unlock()
 	}
 }
 

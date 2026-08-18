@@ -276,3 +276,117 @@ func TestTProcessGetInternalTaskById_StablePointer(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Same(t, &proc.ServiceTasks[0], got)
 }
+
+func TestFindFlowNodeById_AllSupportedTypes(t *testing.T) {
+	xmlStr := `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="defs_all_types">
+  <bpmn:process id="p_all" isExecutable="true">
+    <bpmn:startEvent id="se" />
+    <bpmn:endEvent id="ee" />
+    <bpmn:serviceTask id="st"><bpmn:extensionElements><zenbpm:taskDefinition type="x" /></bpmn:extensionElements></bpmn:serviceTask>
+    <bpmn:userTask id="ut"><bpmn:extensionElements><zenbpm:assignmentDefinition /></bpmn:extensionElements></bpmn:userTask>
+    <bpmn:businessRuleTask id="brt"><bpmn:extensionElements><zenbpm:taskDefinition type="y" /></bpmn:extensionElements></bpmn:businessRuleTask>
+    <bpmn:sendTask id="snd"><bpmn:extensionElements><zenbpm:taskDefinition type="z" /></bpmn:extensionElements></bpmn:sendTask>
+    <bpmn:receiveTask id="rcv" />
+    <bpmn:parallelGateway id="pg" />
+    <bpmn:exclusiveGateway id="eg" />
+    <bpmn:eventBasedGateway id="ebg" />
+    <bpmn:inclusiveGateway id="ig" />
+    <bpmn:intermediateCatchEvent id="ice" />
+    <bpmn:intermediateThrowEvent id="ite" />
+    <bpmn:callActivity id="ca" />
+    <bpmn:subProcess id="sp">
+      <bpmn:startEvent id="sp_se" />
+    </bpmn:subProcess>
+  </bpmn:process>
+</bpmn:definitions>`
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal([]byte(xmlStr), &defs))
+
+	for _, id := range []string{
+		"se", "ee", "st", "ut", "brt", "snd", "rcv",
+		"pg", "eg", "ebg", "ig", "ice", "ite", "ca", "sp", "sp_se",
+	} {
+		fn, err := FindFlowNodeById(&defs, id)
+		require.NoErrorf(t, err, "%s must be indexable as a flow node", id)
+		require.NotNilf(t, fn, "%s must not be nil", id)
+		assert.Equal(t, id, fn.GetId())
+	}
+}
+
+func TestFindInternalTaskById_AllSupportedTypes(t *testing.T) {
+	xmlStr := `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="defs_internal_tasks">
+  <bpmn:process id="p_it" isExecutable="true">
+    <bpmn:serviceTask id="st"><bpmn:extensionElements><zenbpm:taskDefinition type="x" /></bpmn:extensionElements></bpmn:serviceTask>
+    <bpmn:userTask id="ut"><bpmn:extensionElements><zenbpm:assignmentDefinition /></bpmn:extensionElements></bpmn:userTask>
+    <bpmn:businessRuleTask id="brt"><bpmn:extensionElements><zenbpm:taskDefinition type="y" /></bpmn:extensionElements></bpmn:businessRuleTask>
+    <bpmn:sendTask id="snd"><bpmn:extensionElements><zenbpm:taskDefinition type="z" /></bpmn:extensionElements></bpmn:sendTask>
+    <bpmn:intermediateThrowEvent id="ite"><bpmn:messageEventDefinition id="med" /></bpmn:intermediateThrowEvent>
+    <bpmn:endEvent id="ee" />
+  </bpmn:process>
+</bpmn:definitions>`
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal([]byte(xmlStr), &defs))
+
+	for _, id := range []string{"st", "ut", "brt", "snd", "ite", "ee"} {
+		t2, err := FindInternalTaskById(&defs, id)
+		require.NoErrorf(t, err, "%s must be indexable as an internal task (including TEndEvent)", id)
+		require.NotNilf(t, t2, "%s must not be nil", id)
+		assert.Equal(t, id, t2.GetId())
+	}
+
+	_, err := FindInternalTaskById(&defs, "missing-id")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInternalTaskNotFound)
+}
+
+func TestTypedIndex_StablePointerIdentity(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/nested_sub_process_lookup.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	n1, err := FindFlowNodeById(&defs, "DeepTask")
+	require.NoError(t, err)
+	n2, err := FindFlowNodeById(&defs, "DeepTask")
+	require.NoError(t, err)
+	assert.Same(t, n1, n2, "repeated lookups must return the same pointer")
+
+	expected := &defs.Process.SubProcess[0].TProcess.SubProcess[0].TProcess.ServiceTasks[0]
+	assert.Same(t, expected, n1, "indexed lookup must return the slice element pointer")
+
+	t1, err := FindInternalTaskById(&defs, "DeepTask")
+	require.NoError(t, err)
+	assert.Same(t, expected, t1, "internal-task lookup must return the same slice element pointer")
+}
+
+func TestTypedHelpers_MissingIDs(t *testing.T) {
+	xmlData, err := os.ReadFile("./test-cases/simple_task.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	assert.NotPanics(t, func() {
+		n, err := FindFlowNodeById(&defs, "")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrFlowNodeNotFound)
+		assert.Nil(t, n)
+
+		t2, err := FindInternalTaskById(&defs, "")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInternalTaskNotFound)
+		assert.Nil(t, t2)
+
+		_, _, ok := FindSubprocessAndStartEventById(&defs, "")
+		assert.False(t, ok)
+	})
+
+	n, err := FindFlowNodeById(&defs, "absolutely-no-such-element")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFlowNodeNotFound)
+	assert.Nil(t, n)
+
+	_, _, ok := FindSubprocessAndStartEventById(&defs, "absolutely-no-such-element")
+	assert.False(t, ok)
+
+	assert.False(t, IsElementInSubProcessScope(&defs, "any", "absent-element"))
+}

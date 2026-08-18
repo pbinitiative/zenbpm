@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_sibling_scope" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Sibling_Scope_Process" isExecutable="true">
+    <bpmn:startEvent id="ScopeStart">
+      <bpmn:outgoing>Flow_ToA</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:subProcess id="SiblingA">
+      <bpmn:incoming>Flow_ToA</bpmn:incoming>
+      <bpmn:outgoing>Flow_FromA</bpmn:outgoing>
+      <bpmn:startEvent id="AStart">
+        <bpmn:outgoing>Flow_AToANested</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:subProcess id="ANested">
+        <bpmn:incoming>Flow_AToANested</bpmn:incoming>
+        <bpmn:outgoing>Flow_ANestedToA</bpmn:outgoing>
+        <bpmn:startEvent id="ANestedStart">
+          <bpmn:outgoing>Flow_ANestedToTask</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:serviceTask id="ANestedTask" name="ANestedServiceTask">
+          <bpmn:extensionElements><zenbpm:taskDefinition type="x" /></bpmn:extensionElements>
+          <bpmn:incoming>Flow_ANestedToTask</bpmn:incoming>
+          <bpmn:outgoing>Flow_TaskToANestedEnd</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="ANestedEnd">
+          <bpmn:incoming>Flow_TaskToANestedEnd</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_ANestedToTask" sourceRef="ANestedStart" targetRef="ANestedTask" />
+        <bpmn:sequenceFlow id="Flow_TaskToANestedEnd" sourceRef="ANestedTask" targetRef="ANestedEnd" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="Flow_AToANested" sourceRef="AStart" targetRef="ANested" />
+      <bpmn:sequenceFlow id="Flow_ANestedToA" sourceRef="ANested" targetRef="AEnd" />
+      <bpmn:endEvent id="AEnd">
+        <bpmn:incoming>Flow_ANestedToA</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+
+    <bpmn:subProcess id="SiblingB">
+      <bpmn:startEvent id="BStart">
+        <bpmn:outgoing>Flow_BToBNested</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:subProcess id="BNested">
+        <bpmn:incoming>Flow_BToBNested</bpmn:incoming>
+        <bpmn:outgoing>Flow_BNestedToB</bpmn:outgoing>
+        <bpmn:startEvent id="BNestedStart">
+          <bpmn:outgoing>Flow_BNestedToTask</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:serviceTask id="BNestedTask" name="BNestedServiceTask">
+          <bpmn:extensionElements><zenbpm:taskDefinition type="y" /></bpmn:extensionElements>
+          <bpmn:incoming>Flow_BNestedToTask</bpmn:incoming>
+          <bpmn:outgoing>Flow_TaskToBNestedEnd</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="BNestedEnd">
+          <bpmn:incoming>Flow_TaskToBNestedEnd</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_BNestedToTask" sourceRef="BNestedStart" targetRef="BNestedTask" />
+        <bpmn:sequenceFlow id="Flow_TaskToBNestedEnd" sourceRef="BNestedTask" targetRef="BNestedEnd" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="Flow_BToBNested" sourceRef="BStart" targetRef="BNested" />
+      <bpmn:sequenceFlow id="Flow_BNestedToB" sourceRef="BNested" targetRef="BEnd" />
+      <bpmn:endEvent id="BEnd">
+        <bpmn:incoming>Flow_BNestedToB</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+
+    <bpmn:endEvent id="ScopeEnd">
+      <bpmn:incoming>Flow_FromA</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_ToA" sourceRef="ScopeStart" targetRef="SiblingA" />
+    <bpmn:sequenceFlow id="Flow_FromA" sourceRef="SiblingA" targetRef="ScopeEnd" />
+  </bpmn:process>
+</bpmn:definitions>

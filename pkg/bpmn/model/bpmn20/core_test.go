@@ -154,3 +154,79 @@ func TestFindSubprocessAndStartEventById_O1(t *testing.T) {
 	_, _, ok = FindSubprocessAndStartEventById(&defs, "no-such-id")
 	assert.False(t, ok)
 }
+
+// TestSiblingScopeFixture_ParsesAndIndexes ensures the new
+// sibling_sub_process_scope.bpmn fixture is valid BPMN and the
+// ResolveReferences pipeline populates the typed indexes for every
+// element in it. If the fixture XML is invalid or the pipeline
+// regresses, this test fails.
+func TestSiblingScopeFixture_ParsesAndIndexes(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/sibling_sub_process_scope.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs),
+		"sibling_sub_process_scope.bpmn must parse cleanly")
+
+	for _, id := range []string{
+		// root-level
+		"ScopeStart", "ScopeEnd",
+		// SiblingA
+		"SiblingA", "AStart", "AEnd",
+		// ANested (child of SiblingA)
+		"ANested", "ANestedStart", "ANestedTask", "ANestedEnd",
+		// SiblingB
+		"SiblingB", "BStart", "BEnd",
+		// BNested (child of SiblingB)
+		"BNested", "BNestedStart", "BNestedTask", "BNestedEnd",
+	} {
+		assert.Containsf(t, defs.flowNodes, id,
+			"fixture element %q must be indexed", id)
+	}
+}
+
+// TestIsElementInSubProcessScope_SiblingFixture exercises the deeper
+// nesting tree (root → SiblingA → ANested, root → SiblingB → BNested)
+// and pins down the scope algorithm against siblings and ancestor
+// subprocesses.
+func TestIsElementInSubProcessScope_SiblingFixture(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/sibling_sub_process_scope.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
+
+	cases := []struct {
+		sub, elem string
+		want      bool
+	}{
+		// SiblingA scope
+		{"SiblingA", "AEnd", true},
+		{"SiblingA", "ANested", true},
+		{"SiblingA", "ANestedTask", true},
+		{"SiblingA", "BEnd", false},
+		{"SiblingA", "BNestedTask", false},
+		{"SiblingA", "ScopeEnd", false},
+		{"SiblingA", "ScopeStart", false},
+		// ANested scope (sibling of ANested inside SiblingA is AEnd)
+		{"ANested", "ANestedTask", true},
+		{"ANested", "ANestedEnd", true},
+		{"ANested", "AEnd", false},
+		{"ANested", "BEnd", false},
+		{"ANested", "BNestedTask", false},
+		// SiblingB scope
+		{"SiblingB", "BEnd", true},
+		{"SiblingB", "BNestedTask", true},
+		{"SiblingB", "AEnd", false},
+		{"SiblingB", "ANestedTask", false},
+		// BNested scope
+		{"BNested", "BNestedTask", true},
+		{"BNested", "BEnd", false},
+		// Edge cases
+		{"SiblingA", "SiblingA", false},
+		{"missing", "ScopeStart", false},
+		{"SiblingA", "missing-id", false},
+	}
+	for _, tc := range cases {
+		got := IsElementInSubProcessScope(&defs, tc.sub, tc.elem)
+		assert.Equalf(t, tc.want, got, "sub=%q elem=%q", tc.sub, tc.elem)
+	}
+}

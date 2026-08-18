@@ -247,7 +247,7 @@ func TestTimerEventDefinitionId_NilSafety(t *testing.T) {
 	})
 }
 
-func TestFindBaseElementById(t *testing.T) {
+func TestFindFlowNodeById_TimerEventSubprocessFixture(t *testing.T) {
 	xmlData, err := os.ReadFile("../../test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
 
@@ -255,14 +255,16 @@ func TestFindBaseElementById(t *testing.T) {
 	err = xml.Unmarshal(xmlData, &definitions)
 	require.NoError(t, err)
 
-	// Should find the service task
-	elem, ok := FindBaseElementById(&definitions, "service-task-1")
-	assert.True(t, ok)
-	assert.NotNil(t, elem)
+	// Should find the service task via the typed helper.
+	elem, err := FindFlowNodeById(&definitions, "service-task-1")
+	require.NoError(t, err)
+	require.NotNil(t, elem)
+	assert.Equal(t, "service-task-1", elem.GetId())
 
-	// Should not find non-existent element
-	_, ok = FindBaseElementById(&definitions, "does-not-exist")
-	assert.False(t, ok)
+	// Should return ErrFlowNodeNotFound for a non-existent id.
+	_, err = FindFlowNodeById(&definitions, "does-not-exist")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFlowNodeNotFound)
 }
 
 func TestStartEventTimerDefinition_NoId(t *testing.T) {

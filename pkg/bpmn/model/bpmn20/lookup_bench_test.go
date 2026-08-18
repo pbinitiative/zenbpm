@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// BenchmarkFindBaseElementById_Breadth measures the cost of resolving an
+// BenchmarkFindFlowNodeById_Breadth measures the cost of resolving an
 // element near the end of a large, wide flow-node collection. A constant
 // lookup cost as the model grows is the primary acceptance criterion for
 // issue #725.
 //
 // To compare recursive and indexed costs, the benchmark runs both
 // implementations over the same model. The recursive path uses
-// TProcess.GetFlowNodeById directly (the production method, whose
-// internal slices the loop walks) so the comparison is honest.
-func BenchmarkFindBaseElementById_Breadth(b *testing.B) {
+// TProcess.GetFlowNodeById (the legacy method, whose internal slices the
+// loop walks) so the comparison is honest.
+func BenchmarkFindFlowNodeById_Breadth(b *testing.B) {
 	for _, size := range []int{10, 100, 1000, 10000} {
 		b.Run(fmt.Sprintf("indexed/size=%d", size), func(b *testing.B) {
 			defs := buildWideProcess(size)
@@ -23,9 +23,9 @@ func BenchmarkFindBaseElementById_Breadth(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				elem, ok := FindBaseElementById(defs, target)
-				if !ok || elem == nil {
-					b.Fatalf("expected to resolve %q in indexed map", target)
+				elem, err := FindFlowNodeById(defs, target)
+				if err != nil || elem == nil {
+					b.Fatalf("expected to resolve %q in indexed map: %v", target, err)
 				}
 				// Sanity check that the indexed path returns the
 				// actual slice element — not a copy or a different
@@ -51,11 +51,11 @@ func BenchmarkFindBaseElementById_Breadth(b *testing.B) {
 	}
 }
 
-// BenchmarkFindBaseElementById_Depth measures the cost of resolving an
+// BenchmarkFindFlowNodeById_Depth measures the cost of resolving an
 // element nested several subprocess levels deep. The recursive scan
 // performs an O(depth * siblings_per_level) walk, while the indexed
 // lookup stays O(1) regardless of nesting.
-func BenchmarkFindBaseElementById_Depth(b *testing.B) {
+func BenchmarkFindFlowNodeById_Depth(b *testing.B) {
 	for _, depth := range []int{1, 3, 5} {
 		b.Run(fmt.Sprintf("indexed/depth=%d", depth), func(b *testing.B) {
 			defs := buildDeepProcess(depth)
@@ -63,9 +63,9 @@ func BenchmarkFindBaseElementById_Depth(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				elem, ok := FindBaseElementById(defs, target)
-				if !ok || elem == nil {
-					b.Fatalf("expected to resolve %q in indexed map", target)
+				elem, err := FindFlowNodeById(defs, target)
+				if err != nil || elem == nil {
+					b.Fatalf("expected to resolve %q in indexed map: %v", target, err)
 				}
 				// Sanity check: the deepest element is a service
 				// task, not the leaf subprocess that surrounds it.

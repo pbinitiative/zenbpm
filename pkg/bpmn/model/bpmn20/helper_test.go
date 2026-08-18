@@ -443,8 +443,8 @@ func TestResolveReferencesIndexesNestedSubprocessElements(t *testing.T) {
 	assert.Contains(t, ts.baseElements, "deeply-nested-service-task",
 		"element nested two subprocess levels deep must be indexed")
 
-	// And FindBaseElementById — the public helper the engine hot path uses —
-	// must surface each of them as well.
+	// And FindFlowNodeById / FindInternalTaskById — the typed helpers the
+	// engine hot path uses — must surface each of them as well.
 	for _, id := range []string{
 		"outer-process-start",
 		"outer-sub",
@@ -452,9 +452,9 @@ func TestResolveReferencesIndexesNestedSubprocessElements(t *testing.T) {
 		"inner-sub",
 		"deeply-nested-service-task",
 	} {
-		elem, ok := FindBaseElementById(&ts, id)
-		require.True(t, ok, "FindBaseElementById must resolve %q", id)
-		require.NotNil(t, elem, "FindBaseElementById must return a non-nil element for %q", id)
+		elem, err := FindFlowNodeById(&ts, id)
+		require.NoError(t, err, "FindFlowNodeById must resolve %q", id)
+		require.NotNil(t, elem, "FindFlowNodeById must return a non-nil element for %q", id)
 		assert.Equal(t, id, elem.GetId())
 	}
 
@@ -462,8 +462,8 @@ func TestResolveReferencesIndexesNestedSubprocessElements(t *testing.T) {
 	// the caller can reach through Process.SubProcess[0].SubProcess[0].
 	// ServiceTasks — not a range-loop copy. This pins down the loop-copy
 	// fix in collectBaseElements that the engine hot path also benefits from.
-	deep, ok := FindBaseElementById(&ts, "deeply-nested-service-task")
-	require.True(t, ok)
+	deep, err := FindFlowNodeById(&ts, "deeply-nested-service-task")
+	require.NoError(t, err)
 	expected := &ts.Process.SubProcess[0].TProcess.SubProcess[0].TProcess.ServiceTasks[0]
 	assert.Same(t, expected, deep.(*TServiceTask))
 }

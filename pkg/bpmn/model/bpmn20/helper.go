@@ -458,26 +458,6 @@ func FindSubprocessAndStartEventById(definitions *TDefinitions, id string) (*TSu
 	return owner, start, true
 }
 
-// FindBaseElementById returns the element with the given ID. Definitions
-// loaded from BPMN XML use the definition-wide index populated by
-// ResolveReferences. Programmatically assembled definitions may not have
-// that index, so they use a read-only collection fallback that preserves
-// the pre-index lookup behavior without mutating shared model data.
-func FindBaseElementById(definitions *TDefinitions, id string) (BaseElement, bool) {
-	if definitions.baseElements != nil {
-		v, ok := definitions.baseElements[id]
-		return v, ok
-	}
-
-	baseElements := make(map[string]BaseElement)
-	resolvables := make([]resolvableFunc, 0)
-	if err := collectBaseElements(definitions, &baseElements, &resolvables); err != nil {
-		return nil, false
-	}
-	v, ok := baseElements[id]
-	return v, ok
-}
-
 // FindEventSubProcesses returns (non-recursively) all subprocesses with TriggeredByEvent=true in the given flow elements container.
 func FindEventSubProcesses(container *TFlowElementsContainer) []*TSubProcess {
 	result := make([]*TSubProcess, 0)

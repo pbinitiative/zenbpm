@@ -1,6 +1,10 @@
 package bpmn20
 
 import (
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -8,46 +12,85 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindBaseElementByIdUnindexedUsesReadOnlyFallback(t *testing.T) {
-	definitions := unindexedLookupDefinition()
-	require.Nil(t, definitions.baseElements)
+// TestTypedHelpers_UninitialisedIndexReturnsError pins down the contract
+// that programmatic definitions must call ResolveReferences before
+// passing to the engine. The typed helpers return an explicit error
+// wrapping ErrLookupIndexNotInitialised instead of lazy-initialising or
+// silently looking like a missing id.
+func TestTypedHelpers_UninitialisedIndexReturnsError(t *testing.T) {
+	defs := unindexedLookupDefinition()
+	require.Nil(t, defs.flowNodes)
 
-	task, ok := FindBaseElementById(&definitions, "task")
-	require.True(t, ok)
-	assert.Same(t, &definitions.Process.ServiceTasks[0], task)
+	_, err := FindFlowNodeById(&defs, "task")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrLookupIndexNotInitialised,
+		"uninitialised typed index must return the sentinel error so callers can distinguish it from a missing id")
 
-	flow, ok := FindBaseElementById(&definitions, "flow-start-task")
-	require.True(t, ok)
-	assert.Same(t, &definitions.Process.SequenceFlows[0], flow)
+	_, err = FindInternalTaskById(&defs, "task")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrLookupIndexNotInitialised)
 
-	_, ok = FindBaseElementById(&definitions, "does-not-exist")
+	assert.False(t, IsElementInSubProcessScope(&defs, "any", "task"),
+		"uninitialised typed index must report no scope match")
+	_, _, ok := FindSubprocessAndStartEventById(&defs, "any")
 	assert.False(t, ok)
-
-	assert.Nil(t, definitions.baseElements,
-		"fallback lookup must not initialize or mutate the definition")
-	assert.Empty(t, definitions.Process.StartEvents[0].OutgoingAssociations,
-		"fallback lookup must not resolve references as a side effect")
 }
 
-func TestFindBaseElementByIdUnindexedCopiesAreConcurrencySafe(t *testing.T) {
-	definitions := unindexedLookupDefinition()
-	first := definitions
-	second := definitions
+// TestTypedLookups_ConcurrentReadsOnSameDefinitions pins down that the
+// typed indexes are safe for concurrent access by many goroutines
+// reading the same prepared definitions.
+func TestTypedLookups_ConcurrentReadsOnSameDefinitions(t *testing.T) {
+	xmlData, err := os.ReadFile("../../test-cases/nested_sub_process_lookup.bpmn")
+	require.NoError(t, err)
+	var defs TDefinitions
+	require.NoError(t, xml.Unmarshal(xmlData, &defs))
 
+	const N = 100
+	const Iterations = 100
+
+	errCh := make(chan error, N)
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(2)
-	for _, definition := range []*TDefinitions{&first, &second} {
+	wg.Add(N)
+	for i := 0; i < N; i++ {
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("goroutine panic: %v", r)
+				}
+			}()
 			<-start
-			element, ok := FindBaseElementById(definition, "task")
-			assert.True(t, ok)
-			assert.NotNil(t, element)
+			for j := 0; j < Iterations; j++ {
+				n, err := FindFlowNodeById(&defs, "DeepTask")
+				if err != nil || n == nil {
+					errCh <- errors.New("flow lookup failed")
+					return
+				}
+				t2, err := FindInternalTaskById(&defs, "DeepTask")
+				if err != nil || t2 == nil {
+					errCh <- errors.New("task lookup failed")
+					return
+				}
+				if !IsElementInSubProcessScope(&defs, "OuterSub", "DeepTask") {
+					errCh <- errors.New("scope check failed")
+					return
+				}
+				sp, se, ok := FindSubprocessAndStartEventById(&defs, "InnerStart")
+				if !ok || sp == nil || se == nil {
+					errCh <- errors.New("subprocess lookup failed")
+					return
+				}
+			}
 		}()
 	}
 	close(start)
 	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Errorf("goroutine error: %v", err)
+	}
 }
 
 func unindexedLookupDefinition() TDefinitions {

@@ -43,39 +43,53 @@ type TProcess struct {
 	DefinitionalCollaborationRef string `xml:"definitionalCollaborationRef,attr"`
 }
 
+// GetInternalTaskById returns the InternalTask with the given id by
+// walking the process tree linearly. Prefer bpmn20.FindInternalTaskById
+// for hot paths — it is O(1) and never returns range-loop copies.
+//
+// Uses for i := range so the returned pointer is stable.
+// Recurses into subprocesses so an internal task inside a nested
+// subprocess is reachable.
 func (p *TProcess) GetInternalTaskById(id string) InternalTask {
-	for _, e := range p.ServiceTasks {
+	for i := range p.ServiceTasks {
+		e := &p.ServiceTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.UserTasks {
+	for i := range p.UserTasks {
+		e := &p.UserTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.BusinessRuleTask {
+	for i := range p.BusinessRuleTask {
+		e := &p.BusinessRuleTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SendTask {
+	for i := range p.SendTask {
+		e := &p.SendTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.IntermediateThrowEvent {
+	for i := range p.IntermediateThrowEvent {
+		e := &p.IntermediateThrowEvent[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.EndEvents {
+	for i := range p.EndEvents {
+		e := &p.EndEvents[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SubProcess {
-		if res := e.GetInternalTaskById(id); res != nil {
+	for i := range p.SubProcess {
+		sp := &p.SubProcess[i]
+		if res := sp.GetInternalTaskById(id); res != nil {
 			return res
 		}
 	}

@@ -253,3 +253,26 @@ func TestTProcessGetFlowNodeById_StablePointer(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Same(t, &proc.ServiceTasks[0], got, "must return slice element pointer, not range-loop copy")
 }
+
+func TestTProcessGetInternalTaskById_StablePointer(t *testing.T) {
+	proc := TProcess{
+		TFlowElementsContainer: TFlowElementsContainer{
+			ServiceTasks: []TServiceTask{
+				{
+					TExternallyProcessedTask: TExternallyProcessedTask{
+						TTask: TTask{
+							TActivity: TActivity{
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "task"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	got := proc.GetInternalTaskById("task")
+	require.NotNil(t, got)
+	assert.Same(t, &proc.ServiceTasks[0], got)
+}

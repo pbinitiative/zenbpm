@@ -144,7 +144,7 @@ const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMes
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key
 FROM
-    message_subscription
+    message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE
     process_instance_key = ?1
     AND state = ?2
@@ -155,6 +155,10 @@ type FindProcessInstanceMessageSubscriptionsParams struct {
 	State              int64         `json:"state"`
 }
 
+// Pinned to idx_fk_message_subscription_process_instance_key. The planner currently picks it
+// correctly, but pinning here makes the contract explicit and prevents the generic
+// idx_message_subscription_execution_token_state from shadowing it under different data
+// distributions. See TestHotPathIndexes.
 func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceMessageSubscriptions, arg.ProcessInstanceKey, arg.State)
 	if err != nil {
@@ -195,7 +199,7 @@ SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type, element_instance_key,
     COUNT(*) OVER () AS total_count
 FROM
-    message_subscription
+    message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE
     process_instance_key = ?1
     AND COALESCE(?2, state) = state
@@ -225,6 +229,8 @@ type FindProcessInstanceMessageSubscriptionsPageRow struct {
 	TotalCount           int64          `json:"total_count"`
 }
 
+// Pinned to idx_fk_message_subscription_process_instance_key. See note on
+// FindProcessInstanceMessageSubscriptions.
 func (q *Queries) FindProcessInstanceMessageSubscriptionsPage(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsPageParams) ([]FindProcessInstanceMessageSubscriptionsPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceMessageSubscriptionsPage,
 		arg.ProcessInstanceKey,

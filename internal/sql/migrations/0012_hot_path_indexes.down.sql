@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS idx_process_instance_state;
+DROP INDEX IF EXISTS idx_execution_token_state;
+DROP INDEX IF EXISTS idx_incident_execution_token;
+DROP INDEX IF EXISTS idx_error_subscription_execution_token_state;
+DROP INDEX IF EXISTS idx_message_subscription_execution_token_state;
+DROP INDEX IF EXISTS idx_timer_execution_token_state;
+DROP INDEX IF EXISTS idx_timer_state_due_at;
+DROP INDEX IF EXISTS idx_job_execution_token_state;
+DROP INDEX IF EXISTS idx_decision_instance_process_instance_key;

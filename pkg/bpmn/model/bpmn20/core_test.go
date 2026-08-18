@@ -230,3 +230,26 @@ func TestIsElementInSubProcessScope_SiblingFixture(t *testing.T) {
 		assert.Equalf(t, tc.want, got, "sub=%q elem=%q", tc.sub, tc.elem)
 	}
 }
+func TestTProcessGetFlowNodeById_StablePointer(t *testing.T) {
+	proc := TProcess{
+		TCallableElement: TCallableElement{TBaseElement: TBaseElement{Id: "proc"}},
+		TFlowElementsContainer: TFlowElementsContainer{
+			ServiceTasks: []TServiceTask{
+				{
+					TExternallyProcessedTask: TExternallyProcessedTask{
+						TTask: TTask{
+							TActivity: TActivity{
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "task"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	got := proc.GetFlowNodeById("task")
+	require.NotNil(t, got)
+	assert.Same(t, &proc.ServiceTasks[0], got, "must return slice element pointer, not range-loop copy")
+}

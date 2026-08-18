@@ -83,89 +83,115 @@ func (p *TProcess) GetInternalTaskById(id string) InternalTask {
 	return nil
 }
 
-func (p *TProcess) GetFlowNodeById(id string) FlowNode {
-	for _, e := range p.StartEvents {
+// linearFindFlowNode is the legacy O(N) scan, retained as the
+// benchmark baseline. Production hot paths use
+// bpmn20.FindFlowNodeById, which relies on the typed index populated
+// by ResolveReferences. It uses for i := range so it returns stable
+// slice-element pointers.
+func (p *TProcess) linearFindFlowNode(id string) FlowNode {
+	c := &p.TFlowElementsContainer
+	for i := range c.StartEvents {
+		e := &c.StartEvents[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.EndEvents {
+	for i := range c.EndEvents {
+		e := &c.EndEvents[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ServiceTasks {
+	for i := range c.ServiceTasks {
+		e := &c.ServiceTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.UserTasks {
+	for i := range c.UserTasks {
+		e := &c.UserTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.BusinessRuleTask {
+	for i := range c.BusinessRuleTask {
+		e := &c.BusinessRuleTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SendTask {
+	for i := range c.SendTask {
+		e := &c.SendTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ReceiveTask {
+	for i := range c.ReceiveTask {
+		e := &c.ReceiveTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ParallelGateway {
+	for i := range c.ParallelGateway {
+		e := &c.ParallelGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ExclusiveGateway {
+	for i := range c.ExclusiveGateway {
+		e := &c.ExclusiveGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.EventBasedGateway {
+	for i := range c.EventBasedGateway {
+		e := &c.EventBasedGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.InclusiveGateway {
+	for i := range c.InclusiveGateway {
+		e := &c.InclusiveGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.IntermediateCatchEvent {
+	for i := range c.IntermediateCatchEvent {
+		e := &c.IntermediateCatchEvent[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.IntermediateThrowEvent {
+	for i := range c.IntermediateThrowEvent {
+		e := &c.IntermediateThrowEvent[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.CallActivity {
+	for i := range c.CallActivity {
+		e := &c.CallActivity[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SubProcess {
-		if e.GetId() == id {
-			return &e
+	// Boundary events are intentionally not searched.
+	for i := range c.SubProcess {
+		sp := &c.SubProcess[i]
+		if sp.GetId() == id {
+			return sp
 		}
-	}
-	for _, e := range p.SubProcess {
-		if res := e.GetFlowNodeById(id); res != nil {
+		if res := sp.linearFindFlowNode(id); res != nil {
 			return res
 		}
 	}
-
 	return nil
+}
+
+// GetFlowNodeById returns the FlowNode with the given id by walking
+// the process tree linearly. Prefer bpmn20.FindFlowNodeById for hot
+// paths — it is O(1) and never returns range-loop copies.
+func (p *TProcess) GetFlowNodeById(id string) FlowNode {
+	return p.linearFindFlowNode(id)
 }
 
 // GetSubprocessAndStartEventById recursively searches for a start event by ID within this process and all nested subprocesses.

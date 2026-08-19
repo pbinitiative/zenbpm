@@ -31,6 +31,13 @@ for version in v1.6 v1.6.0-rc v1.6.0-rc0 v1.6.0-rc.0 v1.6.0-rc01 v1.6.0-beta1 1.
   assert_invalid "$version"
 done
 
+export_output="$tmp/export-output"
+GITHUB_OUTPUT="$export_output" BACKEND_TAG_EXISTS=true VERSION=v1.6.0 "$script" export-release-vars
+grep -qx 'backend-checkout-ref=v1.6.0' "$export_output" || fail "external tags must be tested directly"
+: > "$export_output"
+GITHUB_OUTPUT="$export_output" BACKEND_TAG_EXISTS=false VERSION=v1.6.0 "$script" export-release-vars
+grep -qx 'backend-checkout-ref=release/1.6.0' "$export_output" || fail "orchestrated releases must test the prepared branch"
+
 mkdir -p "$tmp/bin" "$tmp/state"
 cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash

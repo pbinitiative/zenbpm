@@ -16,9 +16,13 @@ configure_git() {
 
 export_release_vars() {
   validate_version_format
-  local branch kind
+  local branch kind backend_ref
   branch="release/$(plain_version)"
   kind=$(release_kind)
+  backend_ref=$branch
+  if [ "${BACKEND_TAG_EXISTS:-false}" = "true" ]; then
+    backend_ref=$VERSION
+  fi
   RELEASE_BRANCH=$branch
   if [ -n "${GITHUB_ENV:-}" ]; then
     echo "RELEASE_BRANCH=$branch" >> "$GITHUB_ENV"
@@ -28,6 +32,7 @@ export_release_vars() {
     echo "release-tag=$VERSION" >> "$GITHUB_OUTPUT"
     echo "release-branch=$branch" >> "$GITHUB_OUTPUT"
     echo "release-kind=$kind" >> "$GITHUB_OUTPUT"
+    echo "backend-checkout-ref=$backend_ref" >> "$GITHUB_OUTPUT"
   fi
 }
 
@@ -186,7 +191,10 @@ ensure_release_tag() {
   require_env VERSION
   require_env RELEASE_BRANCH
   local expected_sha actual_sha
-  expected_sha=$(gh api "/repos/$ORG/$repo/git/ref/heads/${RELEASE_BRANCH}" --jq .object.sha)
+  expected_sha=${EXPECTED_SHA:-}
+  if [ -z "$expected_sha" ]; then
+    expected_sha=$(gh api "/repos/$ORG/$repo/git/ref/heads/${RELEASE_BRANCH}" --jq .object.sha)
+  fi
   if actual_sha=$(tag_commit_sha "$repo"); then
     if [ "$actual_sha" != "$expected_sha" ]; then
       echo "Tag $VERSION in $ORG/$repo points to $actual_sha; expected tested commit $expected_sha" >&2

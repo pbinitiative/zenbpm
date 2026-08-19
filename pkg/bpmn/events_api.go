@@ -154,8 +154,6 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 	}
 
 	// Token points either to message listener or event based gateway.
-	// Use the scope-local Process lookup so we never resolve an element
-	// from an unrelated sub-process or the root process.
 	node := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(message.Token.ElementId)
 	switch nodeT := node.(type) {
 	case *bpmn20.TEventBasedGateway:

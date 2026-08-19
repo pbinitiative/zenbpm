@@ -791,11 +791,12 @@ func (engine *Engine) getExecutionTokenActivity(
 		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	case *runtime.SubProcessInstance:
 		// Resolve through the parent sub-process to preserve execution scope.
-		rootDefinitions := instance.ProcessInstance().Definition.Definitions.Process
-		parentActivityDefinition := rootDefinitions.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
+		subProcessInstance := instance.(*runtime.SubProcessInstance)
+		rootProcess := &instance.ProcessInstance().Definition.Definitions.Process
+		parentActivityDefinition := rootProcess.GetFlowNodeById(subProcessInstance.ParentProcessTargetElementId)
 		parentSubProcess, ok := parentActivityDefinition.(*bpmn20.TSubProcess)
 		if !ok {
-			return nil, fmt.Errorf("failed to find sub-process activity %s for execution token in process definition", instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
+			return nil, fmt.Errorf("failed to find sub-process activity %s for execution token in process definition", subProcessInstance.ParentProcessTargetElementId)
 		}
 		currentFlowNode = parentSubProcess.GetFlowNodeById(token.ElementId)
 	default:

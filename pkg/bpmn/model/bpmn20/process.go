@@ -24,11 +24,11 @@ type TFlowElementsContainer struct {
 	// Used to detect unsupported BPMN elements at validation time.
 	UnknownElements []TUnknownElement `xml:",any"`
 
-	// Per-container indices populated by ResolveReferences. They provide
-	// O(1) scope-local lookup of flow nodes and internal tasks at this
-	// container level. TProcess.GetFlowNodeById combines these with a
-	// recursive descent into nested sub-processes, so a token executing in
-	// sub-process A cannot accidentally resolve an element owned by an
+	// Per-container indices populated by ResolveReferences. Each index holds
+	// this container's own elements plus every element of its descendant
+	// sub-processes, so TProcess.GetFlowNodeById resolves any element of the
+	// container's subtree with a single map probe. A token executing in
+	// sub-process A therefore cannot resolve an element owned by an
 	// unrelated sub-process or the root process. BoundaryEvent is
 	// intentionally excluded to preserve the historical scope of
 	// TProcess.GetFlowNodeById (boundary events are not flow nodes from

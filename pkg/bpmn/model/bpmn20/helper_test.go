@@ -500,6 +500,13 @@ func buildAllFlowNodeTypesProcess() *TDefinitions {
 func TestGetFlowNodeByIdCoversEveryFlowNodeType(t *testing.T) {
 	definitions := buildAllFlowNodeTypesProcess()
 
+	// TSubProcess embeds both TActivity and TProcess, each with their own
+	// TBaseElement.Id. GetId() resolves to the shallower TProcess path, which
+		// is the id populateContainerIndex uses to register the sub-process
+		// itself in the index.
+	subProcess := definitions.Process.SubProcess[0]
+	require.Equal(t, "P_subProcess", subProcess.GetId())
+
 	cases := []struct {
 		id   string
 		want reflect.Type
@@ -780,84 +787,96 @@ func BenchmarkGetFlowNodeById(b *testing.B) {
 }
 
 func legacyLinearScanFlowNodeByID(p *TProcess, id string) FlowNode {
-	for _, e := range p.StartEvents {
+	for i := range p.StartEvents {
+		e := &p.StartEvents[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.EndEvents {
+	for i := range p.EndEvents {
+		e := &p.EndEvents[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ServiceTasks {
+	for i := range p.ServiceTasks {
+		e := &p.ServiceTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.UserTasks {
+	for i := range p.UserTasks {
+		e := &p.UserTasks[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.BusinessRuleTask {
+	for i := range p.BusinessRuleTask {
+		e := &p.BusinessRuleTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SendTask {
+	for i := range p.SendTask {
+		e := &p.SendTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ReceiveTask {
+	for i := range p.ReceiveTask {
+		e := &p.ReceiveTask[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ParallelGateway {
+	for i := range p.ParallelGateway {
+		e := &p.ParallelGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.ExclusiveGateway {
+	for i := range p.ExclusiveGateway {
+		e := &p.ExclusiveGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.EventBasedGateway {
+	for i := range p.EventBasedGateway {
+		e := &p.EventBasedGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.InclusiveGateway {
+	for i := range p.InclusiveGateway {
+		e := &p.InclusiveGateway[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.IntermediateCatchEvent {
+	for i := range p.IntermediateCatchEvent {
+		e := &p.IntermediateCatchEvent[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.IntermediateThrowEvent {
+	for i := range p.IntermediateThrowEvent {
+		e := &p.IntermediateThrowEvent[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.CallActivity {
+	for i := range p.CallActivity {
+		e := &p.CallActivity[i]
 		if e.GetId() == id {
-			return &e
+			return e
 		}
 	}
-	for _, e := range p.SubProcess {
-		if e.GetId() == id {
-			return &e
+	for i := range p.SubProcess {
+		sp := &p.SubProcess[i]
+		if sp.GetId() == id {
+			return sp
 		}
-	}
-	for _, e := range p.SubProcess {
-		subProcess := e
-		if res := legacyLinearScanFlowNodeByID(&subProcess.TProcess, id); res != nil {
+		if res := legacyLinearScanFlowNodeByID(&sp.TProcess, id); res != nil {
 			return res
 		}
 	}

@@ -15,9 +15,11 @@ jobs:
     name: Go ${{ matrix.go }} test
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: validate version synchronization
         run: make validate-version-sync
+      - name: test release CI scripts
+        run: make test-ci-scripts
       - name: Setup go
         uses: actions/setup-go@v5
         with:

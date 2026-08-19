@@ -47,8 +47,15 @@ fi
 checked="VERSION and openapi/api.yaml"
 release_tag=${RELEASE_TAG:-}
 if [ -n "$release_tag" ] && [ "$release_tag" != "dev" ]; then
-  # Release tags may carry a prerelease suffix (v1.5.0-rc1) that VERSION never holds.
-  if [ "${release_tag%%-*}" != "$version" ]; then
+  if [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    release_base=$release_tag
+  elif [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc(\.)?[1-9][0-9]*$ ]]; then
+    release_base=${release_tag%%-rc*}
+  else
+    echo "Release tag must be vX.Y.Z, vX.Y.Z-rcN, or vX.Y.Z-rc.N: $release_tag" >&2
+    exit 1
+  fi
+  if [ "$release_base" != "$version" ]; then
     echo "Version mismatch: release tag $release_tag does not match VERSION $version" >&2
     exit 1
   fi

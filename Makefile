@@ -420,6 +420,10 @@ test-dmntest:
 validate-version-sync: ## Validate that VERSION matches the OpenAPI version
 	@scripts/ci/validate-version-sync.sh
 
+.PHONY: test-ci-scripts
+test-ci-scripts: ## Test release CI scripts without network access
+	@scripts/ci/tests/release-orchestrator-test.sh
+
 .PHONY: build
 build: validate-version-sync generate ## Build the project
 	go build -ldflags "$(BUILD_LDFLAGS)" -o zenbpm cmd/zenbpm/main.go
@@ -483,6 +487,10 @@ release-dev: validate-version-sync
 
 .PHONY: release
 release: validate-version-sync
+	@if [ -z "$${RELEASE_TAG:-}" ]; then \
+		echo "\033[91mRELEASE_TAG is required for release\033[0m";\
+		exit 1;\
+	fi
 	@if [ ! -f ".release-env" ]; then \
 		echo "\033[91m.release-env is required for release\033[0m";\
 		exit 1;\
@@ -499,8 +507,10 @@ release: validate-version-sync
 		-e DOCKER_BUILDKIT=1 \
 		-e GOCACHE=/root/.cache/go-build \
 		-e GOMODCACHE=/go/pkg/mod \
+		-e RELEASE_TAG \
 		-e APP_VERSION="$(APP_VERSION)" \
 		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
+		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
 		-e GORELEASER_RELEASE_DISABLE=false \
 		-e GORELEASER_DOCKER_LATEST=true \
 		-v /var/run/docker.sock:/var/run/docker.sock \

@@ -1,10 +1,21 @@
 name: release orchestrator
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: Exact final or release-candidate tag to publish.
+        required: true
+        type: string
+      backend_tag_exists:
+        description: Whether an external tag push already created the backend tag.
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
-        description: Release version with v prefix, for example v2.0.0.
+        description: Exact tag, for example v2.0.0, v2.0.0-rc1, or v2.0.0-rc.1.
         required: true
         type: string
 
@@ -15,7 +26,7 @@ permissions:
   security-events: write
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-orchestrator
   cancel-in-progress: false
 
 env:
@@ -32,6 +43,8 @@ jobs:
     outputs:
       release-tag: ${{ steps.release-vars.outputs.release-tag }}
       release-branch: ${{ steps.release-vars.outputs.release-branch }}
+      release-kind: ${{ steps.release-vars.outputs.release-kind }}
+      backend-checkout-ref: ${{ steps.release-vars.outputs.backend-checkout-ref }}
     steps:
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -40,10 +53,13 @@ jobs:
 
       - name: Export release variables
         id: release-vars
+        env:
+          BACKEND_TAG_EXISTS: ${{ inputs.backend_tag_exists }}
         run: scripts/ci/release-orchestrator.sh export-release-vars
 
       - name: Create release app token
         id: release-app-token
+        if: ${{ !inputs.backend_tag_exists }}
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
@@ -51,24 +67,24 @@ jobs:
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.BACKEND_REPO }}
-            ${{ env.FRONTEND_REPO }}
-            ${{ env.JAVA_CLIENT_REPO }}
-            ${{ env.DOCS_REPO }}
 
       - name: Validate release version format
         run: scripts/ci/release-orchestrator.sh validate-version-format
 
-      - name: Validate release tags do not exist
+      - name: Validate externally tagged backend versions
+        if: ${{ inputs.backend_tag_exists }}
         env:
-          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-        run: scripts/ci/release-orchestrator.sh validate-tags
+          RELEASE_TAG: ${{ inputs.version }}
+        run: scripts/ci/validate-version-sync.sh
 
       - name: Create or update backend release branch
+        if: ${{ !inputs.backend_tag_exists }}
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh prepare-backend-branch
 
       - name: Bump backend versions on release branch
+        if: ${{ !inputs.backend_tag_exists }}
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh bump-backend-versions
@@ -82,13 +98,16 @@ jobs:
   prepare-and-test:
     runs-on: ubuntu-latest
     needs: validate
+    outputs:
+      backend-sha: ${{ steps.tested-commits.outputs.backend-sha }}
+      frontend-sha: ${{ steps.tested-commits.outputs.frontend-sha }}
     env:
       RELEASE_BRANCH: ${{ needs.validate.outputs.release-branch }}
     steps:
       - name: Checkout backend release branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate.outputs.release-branch }}
+          ref: ${{ needs.validate.outputs.backend-checkout-ref }}
           fetch-depth: 0
 
       - name: Create release app token
@@ -177,6 +196,12 @@ jobs:
           # For now the release gate uses the existing mocked Playwright suite.
           pnpm test:e2e
 
+      - name: Capture tested commits
+        id: tested-commits
+        run: |
+          echo "backend-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "frontend-sha=$(git -C zenbpm-ui rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   backend-release:
     needs:
       - validate
@@ -190,7 +215,7 @@ jobs:
       artifact-prefix: trivy-release-reports
       publish: true
       security-scan: true
-      notify: true
+      notify: false
     secrets: inherit
 
   create-release-tags:
@@ -212,21 +237,23 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
-            ${{ env.BACKEND_REPO }}
             ${{ env.FRONTEND_REPO }}
 
       - name: Tag backend tested commit
         env:
-          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.prepare-and-test.outputs.backend-sha }}
         run: scripts/ci/release-orchestrator.sh tag-backend
 
       - name: Tag frontend tested commit
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          EXPECTED_SHA: ${{ needs.prepare-and-test.outputs.frontend-sha }}
         run: scripts/ci/release-orchestrator.sh tag-frontend
 
   frontend-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     needs:
       - validate
       - backend-release
@@ -247,6 +274,7 @@ jobs:
             ${{ env.FRONTEND_REPO }}
 
       - name: Dispatch frontend release
+        id: dispatch
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh dispatch-frontend-release
@@ -254,14 +282,16 @@ jobs:
       - name: Wait for frontend release
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RUN_ID: ${{ steps.dispatch.outputs.run-id }}
         run: scripts/ci/release-orchestrator.sh wait-frontend-release
 
   java-client-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     needs:
       - validate
       - frontend-release
-    if: ${{ success() }}
+    if: ${{ needs.frontend-release.result == 'success' }}
     steps:
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -277,6 +307,7 @@ jobs:
             ${{ env.JAVA_CLIENT_REPO }}
 
       - name: Dispatch java client release
+        id: dispatch
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh dispatch-java-client-release
@@ -284,14 +315,16 @@ jobs:
       - name: Wait for java client release
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RUN_ID: ${{ steps.dispatch.outputs.run-id }}
         run: scripts/ci/release-orchestrator.sh wait-java-client-release
 
   docs-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     needs:
       - validate
-      - frontend-release
-    if: ${{ success() }}
+      - java-client-release
+    if: ${{ needs.java-client-release.result == 'success' }}
     steps:
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -307,6 +340,7 @@ jobs:
             ${{ env.DOCS_REPO }}
 
       - name: Dispatch documentation versioning
+        id: dispatch
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh dispatch-docs-release
@@ -314,6 +348,7 @@ jobs:
       - name: Wait for documentation versioning
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          RUN_ID: ${{ steps.dispatch.outputs.run-id }}
         run: scripts/ci/release-orchestrator.sh wait-docs-release
 
   notify-result:
@@ -335,5 +370,5 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          RELEASE_RESULT: ${{ contains(needs.*.result, 'failure') && 'failed' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'succeeded' }}
+          RELEASE_RESULT: ${{ contains(needs.*.result, 'failure') && 'failed' || contains(needs.*.result, 'cancelled') && 'cancelled' || contains(needs.*.result, 'skipped') && 'failed' || 'succeeded' }}
         run: scripts/ci/release-orchestrator.sh notify-discord

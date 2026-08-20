@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/xmlutil"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -61,7 +62,16 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 				latest = &processes[i]
 			}
 		}
-		if latest.BpmnChecksum == md5sum {
+		sameContent, err := xmlutil.SameContent(
+			latest.BpmnChecksum[:],
+			md5sum[:],
+			[]byte(latest.BpmnData),
+			xmlData,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compare BPMN content for process %s: %w", definitions.Process.Id, err)
+		}
+		if sameContent {
 			return latest, nil
 		}
 		if err := engine.deleteProcessDefinitionSubscriptions(ctx, latest); err != nil {

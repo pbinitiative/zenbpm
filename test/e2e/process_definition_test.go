@@ -521,6 +521,35 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		assert.Equal(t, firstKey, resp.JSON200.ProcessDefinitionKey)
 	})
 
+	t.Run("CreateProcessDefinition - formatting-only deploy returns existing definition", func(t *testing.T) {
+		processID := fmt.Sprintf("formatting-only-%d", time.Now().UnixNano())
+		original := []byte(fmt.Sprintf(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="definitions" targetNamespace="urn:test"><bpmn:process id="%s" name="Formatting test" isExecutable="true"><bpmn:startEvent id="start"/></bpmn:process></bpmn:definitions>`, processID))
+		formatted := []byte(fmt.Sprintf(`<bpmn:definitions
+		targetNamespace = 'urn:test'
+		id = 'definitions'
+		xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+
+		<bpmn:process isExecutable = 'true' name = 'Formatting test' id = '%s'>
+			<bpmn:startEvent id = 'start'></bpmn:startEvent>
+		</bpmn:process>
+	</bpmn:definitions>`, processID))
+
+		first, err := deployDefinitionFromBytes(t, original, "formatting-original.bpmn")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, first.StatusCode())
+		require.NotNil(t, first.JSON201)
+
+		second, err := deployDefinitionFromBytes(t, formatted, "formatting-redeploy.bpmn")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, second.StatusCode())
+		require.NotNil(t, second.JSON200)
+		assert.Equal(t, first.JSON201.ProcessDefinitionKey, second.JSON200.ProcessDefinitionKey)
+
+		definitions := getProcessDefinitionVersions(t, processID, false)
+		require.Len(t, definitions, 1)
+		assert.Equal(t, 1, definitions[0].Version)
+	})
+
 	t.Run("GetProcessDefinition - 404 for nonexistent key", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionWithResponse(t.Context(), int64(999999999))
 		require.NoError(t, err)

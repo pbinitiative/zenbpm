@@ -324,6 +324,39 @@ func TestDmnDeploymentValidation(t *testing.T) {
 	})
 }
 
+func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {
+	definitionID := uniqueDmnResourceDefinitionTestValue("formattingOnly")
+	original := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"VIP"`)
+	formatted := strings.Replace(original, ">\n  <decision", ">\n\n\n  <decision", 1)
+	require.NotEqual(t, original, formatted, "test inputs must exercise the formatting fallback")
+
+	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, first.StatusCode())
+	require.NotNil(t, first.JSON201)
+
+	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(formatted),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, second.StatusCode())
+	require.NotNil(t, second.JSON200)
+	require.Equal(t, first.JSON201.DmnResourceDefinitionKey, second.JSON200.DmnResourceDefinitionKey)
+
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+		DmnResourceDefinitionId: &definitionID,
+	})
+	require.NoError(t, err)
+	require.Len(t, definitions, 1)
+	require.Equal(t, 1, definitions[0].Version)
+}
+
 func dmnDeploymentValidationDefinition(t testing.TB, definitionID string, inputType string, inputExpression string, inputEntry string) string {
 	t.Helper()
 

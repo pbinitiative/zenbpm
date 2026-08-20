@@ -797,8 +797,15 @@ func (engine *Engine) getExecutionTokenActivity(
 	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance, *runtime.MultiInstanceInstance:
 		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	case *runtime.SubProcessInstance:
-		parentActivityDefinition := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
-		currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+		// Resolve through the parent sub-process to preserve execution scope.
+		subProcessInstance := instance.(*runtime.SubProcessInstance)
+		rootProcess := &instance.ProcessInstance().Definition.Definitions.Process
+		parentActivityDefinition := rootProcess.GetFlowNodeById(subProcessInstance.ParentProcessTargetElementId)
+		parentSubProcess, ok := parentActivityDefinition.(*bpmn20.TSubProcess)
+		if !ok {
+			return nil, fmt.Errorf("failed to find sub-process activity %s for execution token in process definition", subProcessInstance.ParentProcessTargetElementId)
+		}
+		currentFlowNode = parentSubProcess.GetFlowNodeById(token.ElementId)
 	default:
 		return nil, errors.New("invalid instance type")
 	}

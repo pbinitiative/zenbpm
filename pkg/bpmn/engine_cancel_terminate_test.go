@@ -145,7 +145,7 @@ func TestCancelInstancePropagatesInnerCancelError(t *testing.T) {
 	// setup: engine with a storage that can be switched to fail job lookups
 	store := inmemory.NewStorage()
 	failingStore := &failingJobReadStorage{Storage: store}
-	engine := NewEngine(EngineWithStorage(failingStore))
+	engine := newCancelTerminateTestEngine(t, EngineWithStorage(failingStore))
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/simple-user-task.bpmn")
 	require.NoError(t, err)
@@ -179,7 +179,7 @@ func createParallelBranchesInstance(t *testing.T) (Engine, runtime.ProcessInstan
 	t.Helper()
 
 	store := &countingTokenSaveStorage{Storage: inmemory.NewStorage()}
-	engine := NewEngine(EngineWithStorage(store))
+	engine := newCancelTerminateTestEngine(t, EngineWithStorage(store))
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/parallel-gateway-flow.bpmn")
 	require.NoError(t, err)
@@ -197,6 +197,18 @@ func createParallelBranchesInstance(t *testing.T) (Engine, runtime.ProcessInstan
 	require.Len(t, tokens, 2, "expected two active tokens on the parallel branches")
 
 	return engine, instance, tokens, &store.tokenSaves
+}
+
+func newCancelTerminateTestEngine(t *testing.T, options ...EngineOption) Engine {
+	t.Helper()
+
+	engine := NewEngine(options...)
+	t.Cleanup(func() {
+		engine.contextCancel()
+		engine.feelRuntime.Stop()
+		engine.jsRuntime.Stop()
+	})
+	return engine
 }
 
 var errFindPendingJobsFailure = errors.New("storage failure: find pending jobs")

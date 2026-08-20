@@ -168,11 +168,13 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 }
 
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
-	_, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch)
+	if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch); err != nil {
+		return fmt.Errorf("failed to cancel process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	// Cancel process instance
 	instance.ProcessInstance().State = runtime.ActivityStateTerminated
-	err = batch.SaveProcessInstance(ctx, instance)
+	err := batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -281,9 +283,14 @@ func (engine *Engine) terminateExecutionTokens(
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
 	}
 
+	keysToTerminate := make(map[int64]struct{}, len(elementInstanceKeysToTerminate))
+	for _, key := range elementInstanceKeysToTerminate {
+		keysToTerminate[key] = struct{}{}
+	}
+
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
-		if slices.Contains(elementInstanceKeysToTerminate, activeToken.ElementInstanceKey) {
+		if _, terminate := keysToTerminate[activeToken.ElementInstanceKey]; terminate {
 			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)

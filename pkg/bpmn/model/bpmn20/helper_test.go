@@ -485,6 +485,9 @@ func buildAllFlowNodeTypesProcess() *TDefinitions {
 				// the BPMN id attribute to both embedded bases.
 				{TActivity: TActivity{TFlowNode: TFlowNode{TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "P_subProcess"}}}}, TProcess: TProcess{TCallableElement: TCallableElement{TBaseElement: TBaseElement{Id: "P_subProcess"}}}},
 			},
+			SequenceFlows: []TSequenceFlow{
+				{TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "P_sequence"}}, SourceRefId: "P_start", TargetRefId: "P_end"},
+			},
 		},
 	}
 	definitions := &TDefinitions{
@@ -502,8 +505,8 @@ func TestGetFlowNodeByIdCoversEveryFlowNodeType(t *testing.T) {
 
 	// TSubProcess embeds both TActivity and TProcess, each with their own
 	// TBaseElement.Id. GetId() resolves to the shallower TProcess path, which
-		// is the id populateContainerIndex uses to register the sub-process
-		// itself in the index.
+	// is the id populateContainerIndex uses to register the sub-process in
+	// its parent container's index.
 	subProcess := definitions.Process.SubProcess[0]
 	require.Equal(t, "P_subProcess", subProcess.GetId())
 
@@ -537,7 +540,7 @@ func TestGetFlowNodeByIdCoversEveryFlowNodeType(t *testing.T) {
 	}
 
 	assert.Nil(t, definitions.Process.GetFlowNodeById("P_boundary"))
-	assert.Nil(t, definitions.Process.GetFlowNodeById("any-sequence-flow"))
+	assert.Nil(t, definitions.Process.GetFlowNodeById("P_sequence"), "sequence flows must not be indexed as flow nodes")
 	assert.Nil(t, definitions.Process.GetFlowNodeById(""))
 	assert.Nil(t, definitions.Process.GetFlowNodeById("does-not-exist"))
 }
@@ -610,6 +613,8 @@ func TestGetFlowNodeByIdScopesToSubprocess(t *testing.T) {
 	require.NotNil(t, subB.GetFlowNodeById("Activity_1gbwlgl"))
 	require.NotNil(t, subA.GetFlowNodeById("Activity_1gbwlgl"))
 
+	assert.Nil(t, subA.GetFlowNodeById(subA.GetId()), "a sub-process must not resolve itself in its child scope")
+	assert.Nil(t, subB.GetFlowNodeById(subB.GetId()), "a sub-process must not resolve itself in its child scope")
 	assert.Nil(t, subA.GetFlowNodeById("StartEvent_1"))
 	assert.Nil(t, subA.GetFlowNodeById("Event_1j4mcqg"))
 	assert.Nil(t, subB.GetFlowNodeById("StartEvent_1"))
@@ -660,7 +665,7 @@ func buildLargeProcessDefinitionForLookupBenchmark(numTasks int) *TDefinitions {
 		if i > 0 {
 			incomingFlowID = fmt.Sprintf("flow-%d", i-1)
 		}
-		targetRef := taskID
+		targetRef := fmt.Sprintf("task-%d", i+1)
 		if i == numTasks-1 {
 			targetRef = "end"
 		}

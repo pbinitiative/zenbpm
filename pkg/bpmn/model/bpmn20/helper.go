@@ -255,9 +255,11 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 	}
 	for i := range container.SubProcess {
 		sp := &container.SubProcess[i]
+		register(sp.GetId(), sp)
+	}
+	for i := range container.SubProcess {
+		sp := &container.SubProcess[i]
 		populateContainerIndex(&sp.TFlowElementsContainer)
-		// Preserve local element precedence if duplicate IDs are present.
-		sp.flowNodesByID[sp.GetId()] = sp
 		for k, v := range sp.flowNodesByID {
 			if _, exists := container.flowNodesByID[k]; !exists {
 				container.flowNodesByID[k] = v
@@ -411,32 +413,6 @@ func FindBoundaryEventsForActivity(processContainer *TFlowElementsContainer, act
 func FindBaseElementById(definitions *TDefinitions, id string) (BaseElement, bool) {
 	v, ok := definitions.baseElements[id]
 	return v, ok
-}
-
-// GetFlowNodeById returns the indexed flow node, or nil if it does not exist.
-func (definitions *TDefinitions) GetFlowNodeById(id string) FlowNode {
-	el, ok := definitions.baseElements[id]
-	if !ok {
-		return nil
-	}
-	fn, ok := el.(FlowNode)
-	if !ok {
-		return nil
-	}
-	return fn
-}
-
-// GetInternalTaskById returns the indexed internal task, or nil if it does not exist.
-func (definitions *TDefinitions) GetInternalTaskById(id string) InternalTask {
-	el, ok := definitions.baseElements[id]
-	if !ok {
-		return nil
-	}
-	task, ok := el.(InternalTask)
-	if !ok {
-		return nil
-	}
-	return task
 }
 
 // FindEventSubProcesses returns (non-recursively) all subprocesses with TriggeredByEvent=true in the given flow elements container.

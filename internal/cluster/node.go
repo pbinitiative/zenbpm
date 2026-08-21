@@ -323,6 +323,10 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, bool, error) {
 	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			return key, false, zerr
+		}
 		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
 	}
 	if key != 0 {
@@ -402,10 +406,10 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 
 	var definition dmnmodel.TDefinitions
 	if err := xml.Unmarshal(data, &definition); err != nil {
-		return 0, fmt.Errorf("failed to unmarshal DMN data: %w", err)
+		return 0, zenerr.BadRequest(fmt.Errorf("failed to unmarshal DMN data: %w", err))
 	}
 	if definition.Id == "" {
-		return 0, fmt.Errorf("DMN resource definition ID is empty")
+		return 0, zenerr.BadRequest(fmt.Errorf("DMN resource definition ID is empty"))
 	}
 
 	latest, err := db.Queries.FindLatestDmnResourceDefinitionById(ctx, definition.Id)

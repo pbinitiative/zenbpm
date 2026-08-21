@@ -322,6 +322,82 @@ func TestDmnDeploymentValidation(t *testing.T) {
 		require.Equal(t, definitionID, definitions[0].DmnResourceDefinitionId)
 		require.Equal(t, response.JSON201.DmnResourceDefinitionKey, definitions[0].Key)
 	})
+
+	t.Run("rejects malformed DMN XML", func(t *testing.T) {
+		definitionID := uniqueDmnResourceDefinitionTestValue("malformedXml")
+
+		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+			t.Context(),
+			"application/xml",
+			strings.NewReader(`<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="`+definitionID+`" <<<unclosed`),
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode())
+		require.NotNil(t, response.JSON400)
+		require.Equal(t, "BAD_REQUEST", response.JSON400.Code)
+		require.Contains(t, response.JSON400.Message, "failed to unmarshal DMN data")
+
+		definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+			DmnResourceDefinitionId: &definitionID,
+		})
+		require.NoError(t, err)
+		require.Empty(t, definitions)
+	})
+
+	t.Run("rejects a DMN definition missing a definitions ID", func(t *testing.T) {
+		definitionID := uniqueDmnResourceDefinitionTestValue("missingDefinitionsId")
+
+		missingID := `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" name="DMN missing definitions id" namespace="https://pbinitiative.com/zenbpm">
+  <decision id="` + definitionID + `Decision" name="decision">
+    <decisionTable id="decision-table" hitPolicy="FIRST">
+      <input id="input" label="Input">
+        <inputExpression id="input-expression" typeRef="string">
+          <text>value</text>
+        </inputExpression>
+      </input>
+      <output id="output" name="result" typeRef="string" />
+      <rule id="rule">
+        <inputEntry id="input-entry">
+          <text>"VIP"</text>
+        </inputEntry>
+        <outputEntry id="output-entry">
+          <text>"ok"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>`
+
+		before, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
+		require.NoError(t, err)
+
+		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+			t.Context(),
+			"application/xml",
+			strings.NewReader(missingID),
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode())
+		require.NotNil(t, response.JSON400)
+		require.Equal(t, "BAD_REQUEST", response.JSON400.Code)
+		require.Contains(t, response.JSON400.Message, "DMN resource definition ID is empty")
+
+		// The rejected payload has no definitions ID, so a faulty deployment could persist a
+		// row with an empty root ID that the per-definitionID filter below would not surface.
+		// Compare the full list before and after to detect any spurious persistence.
+		definitionsForID, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+			DmnResourceDefinitionId: &definitionID,
+		})
+		require.NoError(t, err)
+		require.Empty(t, definitionsForID)
+
+		after, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
+		require.NoError(t, err)
+		require.Len(t, after, len(before), "no DMN resource definition should be persisted when validation rejects the payload")
+	})
 }
 
 func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {

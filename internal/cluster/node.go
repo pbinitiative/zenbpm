@@ -395,15 +395,10 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 		return 0, fmt.Errorf("failed to get database for dmn resource definition key lookup: %w", err)
 	}
 
-	newChecksum := md5.Sum(data)
-	key, err := db.Queries.GetDmnResourceDefinitionKeyByChecksum(ctx, newChecksum[:])
-	if err == nil {
-		return key, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("failed to find DMN resource definition by checksum: %w", err)
-	}
-
+	// Parse and validate the payload before any reuse lookup so the latest-definition
+	// comparison (and any validation errors) apply to every deployment. Looking up by
+	// raw checksum first would let an older version be reused after a newer one was
+	// deployed with different content, silently skipping the required new version.
 	var definition dmnmodel.TDefinitions
 	if err := xml.Unmarshal(data, &definition); err != nil {
 		return 0, zenerr.BadRequest(fmt.Errorf("failed to unmarshal DMN data: %w", err))
@@ -420,6 +415,7 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 		return 0, fmt.Errorf("failed to find latest DMN resource definition by id %s: %w", definition.Id, err)
 	}
 
+	newChecksum := md5.Sum(data)
 	sameContent, err := xmlutil.SameContent(
 		latest.DmnChecksum,
 		newChecksum[:],

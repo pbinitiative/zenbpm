@@ -129,7 +129,6 @@ type Querier interface {
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
-	GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error)
 	GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)

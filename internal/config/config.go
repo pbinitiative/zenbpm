@@ -109,8 +109,17 @@ type Persistence struct {
 	ProcDefCacheSize   int       `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
 	DecDefCacheTTL     types.TTL `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
 	DecDefCacheSize    int       `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
+	CDCEnabled         bool      `yaml:"cdcEnabled" json:"cdcEnabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
+	CDC                string    `yaml:"cdc" json:"cdc" env:"RQLITE_CDC_CONFIG"`
 	RqLite             *RqLite   `yaml:"rqlite" json:"rqlite"`
 	Migration          Migration `yaml:"migration" json:"migration"`
+}
+
+func (c Persistence) Validate() error {
+	if !c.CDCEnabled || c.CDC != "" || (c.RqLite != nil && c.RqLite.CDCConfig != "") {
+		return nil
+	}
+	return errors.New("CDC configuration is required when CDC is enabled")
 }
 
 type Migration struct {
@@ -139,6 +148,9 @@ func (c *Config) validate() error {
 	}
 	if c.HttpServer.MaxRequestBodyBytes <= 0 {
 		return fmt.Errorf("httpServer.maxRequestBodyBytes must be greater than zero, got %d", c.HttpServer.MaxRequestBodyBytes)
+	}
+	if err := c.Cluster.Persistence.Validate(); err != nil {
+		return err
 	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv

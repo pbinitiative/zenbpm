@@ -14,6 +14,7 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		AuthFile:                    "",
 		AutoBackupFile:              "",
 		AutoRestoreFile:             "",
+		CDCConfig:                   "",
 		HTTPx509CACert:              "",
 		HTTPx509Cert:                "",
 		HTTPx509Key:                 "",

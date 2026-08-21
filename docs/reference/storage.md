@@ -9,6 +9,12 @@ RqLite is a distributed relational database that combines the simplicity of SQLi
 We use the most important parts of the RqLite project as our storage solution.
 [RqLite documentation](https://rqlite.io/docs/guides/config/) is a great resource to see most of the configuration possibilities.
 
+RqLite Change Data Capture can be enabled with `cluster.persistence.cdcEnabled`
+and `cluster.persistence.cdc`, or with `RQLITE_CDC_ENABLED` and
+`RQLITE_CDC_CONFIG`. See the
+[configuration reference](configuration.md#rqlite-change-data-capture) for
+setup and delivery semantics.
+
 :::note[Future plans]
 We plan to expose the RqLite endpoints on the system path so that the users can use those endpoints to interact with the database directly.
 :::

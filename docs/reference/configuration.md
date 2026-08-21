@@ -88,8 +88,64 @@ Configuration for caching and storage.
 | `procDefCacheSize`   | int         | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions      |
 | `decDefCacheTTL`     | types.TTL   | `PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS`  | `24h`       | TTL for cached dmn resource definitions       |
 | `decDefCacheSize`    | int         | `PERSISTENCE_DEC_DEF_CACHE_SIZE`         | `200`       | Max number of cached dmn resource definitions |
+| `cdcEnabled`         | bool        | `RQLITE_CDC_ENABLED`                     | `false`     | Enables RqLite CDC                            |
+| `cdc`                | string      | `RQLITE_CDC_CONFIG`                      | —           | RqLite CDC endpoint, `stdout`, or JSON configuration file |
 | `rqlite`             | `*RqLite`   | —                                        | —           | Configuration for embedded RQLite database    |
 | `migration`          | `Migration` | —                                        | —           | Configuration for SQL migration               |
+
+#### RqLite Change Data Capture
+
+CDC is disabled by default. Enable it on every voting RqLite partition node by
+setting `cluster.persistence.cdcEnabled` (or `RQLITE_CDC_ENABLED`) to `true`
+and providing `cluster.persistence.cdc` (or `RQLITE_CDC_CONFIG`). The `cdc`
+value accepts an HTTP(S) endpoint, `stdout` for local debugging, or a path to
+an RqLite CDC JSON configuration file.
+
+```yaml
+cluster:
+  persistence:
+    cdcEnabled: true
+    cdc: /etc/zenbpm/cdc.json
+```
+
+The equivalent environment configuration is:
+
+```bash
+RQLITE_CDC_ENABLED=true
+RQLITE_CDC_CONFIG=/etc/zenbpm/cdc.json
+```
+
+Example `/etc/zenbpm/cdc.json`:
+
+```json
+{
+  "endpoint": "https://consumer.example.com/rqlite/cdc",
+  "service_id": "environment-a",
+  "table_filter": "^(process_instance|job)$",
+  "row_ids_only": false
+}
+```
+
+The optional rqlite `service_id` identifies the ZenBPM data source. ZenBPM emits
+it as `<service_id>-partition-N`, because each partition is a separate
+RqLite/Raft cluster with its own event index. If `service_id` is omitted,
+ZenBPM uses the backward-compatible default `zenbpm-partition-N`. A custom
+`service_id` therefore requires a JSON configuration file; the endpoint-only
+and `stdout` forms use the default.
+
+All replicas of one logical ZenBPM cluster must use the same `service_id`.
+Choose a globally unique value for every environment so a downstream consumer
+can map it to the correct tenant and environment. Keep it unchanged across
+restarts, failovers, scaling, and replacement of a node that rejoins the
+existing cluster. Assign a new value when creating fresh storage, cloning an
+environment, or restoring data in a way that resets or rewinds the Raft
+history. The default is convenient for existing single-cluster installations
+but is not globally unique.
+
+CDC batches may be delivered more than once. Consumers should acknowledge only
+durably stored events and deduplicate each transaction group by
+`(service_id, payload.index)`. If a consumer splits `events` into separate
+records, it must add the event's array position to that key.
 
 
 ---

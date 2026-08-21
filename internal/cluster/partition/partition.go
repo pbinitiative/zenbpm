@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/rqlite/rqlite/v10/auth"
 	"github.com/rqlite/rqlite/v10/auto/backup"
 	"github.com/rqlite/rqlite/v10/auto/restore"
+	"github.com/rqlite/rqlite/v10/cdc"
 	"github.com/rqlite/rqlite/v10/cluster"
 	"github.com/rqlite/rqlite/v10/command"
 	"github.com/rqlite/rqlite/v10/command/proto"
@@ -63,6 +65,7 @@ type ZenPartitionNode struct {
 	clusterClient   *cluster.Client
 	clusterDialer   *network.ClosableDialer
 	clusterService  *cluster.Service
+	cdcService      *cdc.Service
 	statusMu        sync.Mutex
 	statuses        map[string]httpd.StatusReporter
 	metrics         partitionMetrics
@@ -266,6 +269,14 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	}
 	zpn.clusterClient = clstrClient
 
+	if cfg.CDCConfig != "" {
+		cdcService, err := zpn.createCDCService(cfg, str, clstrServ, clstrClient, partition)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CDC service: %w", err)
+		}
+		zpn.cdcService = cdcService
+	}
+
 	// Now, open store. How long this takes does depend on how much data is being stored by rqlite.
 	if err := str.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
@@ -288,6 +299,11 @@ func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	}
 	if err := zpn.registerStatus("network", tcp.NetworkReporter{}); err != nil {
 		return nil, fmt.Errorf("failed to register network status reporter: %w", err)
+	}
+	if zpn.cdcService != nil {
+		if err := zpn.registerStatus("cdc", zpn.cdcService); err != nil {
+			return nil, fmt.Errorf("failed to register CDC status provider: %w", err)
+		}
 	}
 
 	nodes, err := str.Nodes()
@@ -422,8 +438,56 @@ func (zpn *ZenPartitionNode) stop() error {
 			zpn.storeOpen = false
 		}
 	}
+	if zpn.cdcService != nil {
+		// Keep CDC running until Store.Close completes. RqLite performs a
+		// snapshot-on-close and waits for CDC to flush its persistent queue
+		// before taking that snapshot.
+		zpn.cdcService.Stop()
+		zpn.cdcService = nil
+	}
 	zpn.logger.Info("rqlite server stopped")
 	return stopErr
+}
+
+func (zpn *ZenPartitionNode) createCDCService(
+	cfg *config.RqLite,
+	str *store.Store,
+	clstrServ *cluster.Service,
+	clstrClient *cluster.Client,
+	partition uint32,
+) (*cdc.Service, error) {
+	cdcCfg, err := cdc.NewConfig(cfg.CDCConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load CDC config: %w", err)
+	}
+
+	cdcCfg.ServiceID = partitionCDCServiceID(cdcCfg.ServiceID, partition)
+
+	cdcCluster := cdc.NewCDCCluster(str, clstrServ, clstrClient)
+	cdcService, err := cdc.NewService(cfg.NodeID, cfg.DataPath, cdcCluster, cdcCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize CDC service: %w", err)
+	}
+	if err := cdcService.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start CDC service: %w", err)
+	}
+
+	var tableFilter *regexp.Regexp
+	if cdcCfg.TableFilter != nil {
+		tableFilter = cdcCfg.TableFilter.Regexp
+	}
+	if err := str.EnableCDC(cdcService.C(), tableFilter, cdcCfg.RowIDsOnly); err != nil {
+		cdcService.Stop()
+		return nil, fmt.Errorf("failed to enable CDC on store: %w", err)
+	}
+	return cdcService, nil
+}
+
+func partitionCDCServiceID(serviceID string, partition uint32) string {
+	if serviceID == "" {
+		serviceID = "zenbpm"
+	}
+	return fmt.Sprintf("%s-partition-%d", serviceID, partition)
 }
 
 func (zpn *ZenPartitionNode) registerStatus(key string, stat httpd.StatusReporter) error {

@@ -60,7 +60,7 @@ func newTestDB(t *testing.T, partition *ZenPartitionNode, conf config.Persistenc
 	return db
 }
 
-func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
+func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLite ...func(*config.RqLite)) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
 	ctx := context.Background()
 	mux, muxLn, err := network.NewNodeMux("")
 	if err != nil {
@@ -72,6 +72,9 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 		t.TempDir(),
 		[]string{muxLn.Addr().String()},
 	)
+	for _, configure := range configureRqLite {
+		configure(&c)
+	}
 
 	migrationDir := ""
 	if runMigrationWithRollback {

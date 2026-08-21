@@ -103,6 +103,14 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses)
 		persistenceConfig.RqLite = &defaultConfig
 	}
+	if err := persistenceConfig.Validate(); err != nil {
+		return fmt.Errorf("failed to start controller, persistence config validation failed: %w", err)
+	}
+	if persistenceConfig.CDCEnabled {
+		persistenceConfig.RqLite.CDCConfig = persistenceConfig.CDC
+	} else {
+		persistenceConfig.RqLite.CDCConfig = ""
+	}
 	err := persistenceConfig.RqLite.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to start controller, rqLite config validation failed: %w", err)

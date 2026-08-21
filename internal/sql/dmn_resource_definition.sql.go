@@ -208,23 +208,6 @@ func (q *Queries) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnRe
 	return i, err
 }
 
-const getDmnResourceDefinitionKeyByChecksum = `-- name: GetDmnResourceDefinitionKeyByChecksum :one
-SELECT
-    key
-FROM
-    dmn_resource_definition
-WHERE
-    dmn_checksum = ?1
-LIMIT 1
-`
-
-func (q *Queries) GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getDmnResourceDefinitionKeyByChecksum, dmnChecksum)
-	var key int64
-	err := row.Scan(&key)
-	return key, err
-}
-
 const saveDmnResourceDefinition = `-- name: SaveDmnResourceDefinition :exec
 INSERT INTO dmn_resource_definition(key, version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_definition_name)
     VALUES (?, ?, ?, ?, ?, ?)

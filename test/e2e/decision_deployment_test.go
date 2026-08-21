@@ -433,6 +433,56 @@ func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {
 	require.Equal(t, 1, definitions[0].Version)
 }
 
+// TestDmnContentChangeAfterNewerVersionCreatesNewVersion guards against a regression where
+// redeploying an older DMN version after a newer one was already accepted would silently
+// reuse the older version's key. The deduplication must always compare the new payload
+// against the latest stored definition, not the first definition that happens to share a
+// raw checksum.
+func TestDmnContentChangeAfterNewerVersionCreatesNewVersion(t *testing.T) {
+	definitionID := uniqueDmnResourceDefinitionTestValue("contentChangeAfterNewer")
+	original := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"VIP"`)
+	changed := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"STANDARD"`)
+
+	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, first.StatusCode())
+	require.NotNil(t, first.JSON201)
+	require.NotZero(t, first.JSON201.DmnResourceDefinitionKey)
+
+	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(changed),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, second.StatusCode())
+	require.NotNil(t, second.JSON201)
+	require.NotZero(t, second.JSON201.DmnResourceDefinitionKey)
+	require.NotEqual(t, first.JSON201.DmnResourceDefinitionKey, second.JSON201.DmnResourceDefinitionKey, "content changes must produce a new definition key")
+
+	third, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, third.StatusCode(), "redeploying an older version after a newer one was accepted must create a new version, not reuse the older one")
+	require.NotNil(t, third.JSON201)
+	require.NotZero(t, third.JSON201.DmnResourceDefinitionKey)
+	require.NotEqual(t, first.JSON201.DmnResourceDefinitionKey, third.JSON201.DmnResourceDefinitionKey, "the older version must not be reused after a newer one was accepted")
+	require.NotEqual(t, second.JSON201.DmnResourceDefinitionKey, third.JSON201.DmnResourceDefinitionKey, "the older version must not collide with the latest accepted version")
+
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+		DmnResourceDefinitionId: &definitionID,
+	})
+	require.NoError(t, err)
+	require.Len(t, definitions, 3)
+}
+
 func dmnDeploymentValidationDefinition(t testing.TB, definitionID string, inputType string, inputExpression string, inputEntry string) string {
 	t.Helper()
 

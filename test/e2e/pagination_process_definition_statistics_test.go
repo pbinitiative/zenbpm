@@ -28,6 +28,17 @@ func TestProcessDefinitionStatisticsPagination(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
 			require.NotNil(t, resp.JSON200)
+			require.NotEmpty(t, resp.JSON200.Partitions)
+
+			partitionTotalCount := 0
+			partitionTotalExceedsPageCount := false
+			for _, partition := range resp.JSON200.Partitions {
+				partitionTotalCount += partition.TotalCount
+				partitionTotalExceedsPageCount = partitionTotalExceedsPageCount || partition.TotalCount > len(partition.Items)
+			}
+			assert.Equal(t, resp.JSON200.TotalCount, partitionTotalCount)
+			assert.True(t, partitionTotalExceedsPageCount, "at least one partition totalCount must exceed its current page item count")
+
 			return len(allStatsItems(resp.JSON200)), resp.JSON200.TotalCount, resp.JSON200.Page, resp.JSON200.Size
 		},
 		Scenarios: []PageScenario{
@@ -45,22 +56,8 @@ func TestProcessDefinitionStatisticsPagination(t *testing.T) {
 	})
 }
 
-func createDefinitionKeysForStats(t *testing.T, count int) []int64 {
-	t.Helper()
-
-	var keys []int64
-	for i := 0; i < count; i++ {
-		def, err := deployGetUniqueDefinition(t, "pagination-test-service-task.bpmn")
-		require.NoError(t, err)
-		require.NotZero(t, def.Key)
-		keys = append(keys, def.Key)
-	}
-	return keys
-}
-
 func TestProcessDefinitionStatisticsEmptyKeyFilter(t *testing.T) {
-	def, err := deployGetUniqueDefinition(t, "pagination-test-service-task.bpmn")
-	require.NoError(t, err)
+	def := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/pagination-test-service-task.bpmn")
 	require.NotZero(t, def.Key)
 
 	resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
@@ -74,4 +71,16 @@ func TestProcessDefinitionStatisticsEmptyKeyFilter(t *testing.T) {
 	require.NotNil(t, resp.JSON200)
 	assert.Equal(t, 1, len(allStatsItems(resp.JSON200)), "page 1 with size 1 should return exactly 1 item")
 	assert.Greater(t, resp.JSON200.TotalCount, 1, "totalCount should be at least 1 when empty filter is a no-op")
+}
+
+func createDefinitionKeysForStats(t *testing.T, count int) []int64 {
+	t.Helper()
+
+	var keys []int64
+	for range count {
+		def := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/pagination-test-service-task.bpmn")
+		require.NotZero(t, def.Key)
+		keys = append(keys, def.Key)
+	}
+	return keys
 }

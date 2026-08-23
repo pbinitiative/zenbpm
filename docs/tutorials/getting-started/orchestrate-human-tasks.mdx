@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 
 In the [previous chapter](first-bpmn-process), a *service task* handed work to a worker you wrote. Many processes also need a step that waits for a **person** — an approval, a review, a form to fill in. In BPMN that's a **user task**, and this chapter shows how to drive one with the engine.
 
-The key difference: a service task is completed by a worker that *polls* the engine; a user task is completed by *your application* (or a person through the UI) calling the engine when the human is done. At the engine level both are **jobs** — you just interact with a user-task job through the REST `/jobs` API instead of a gRPC worker.
+The key difference: a service task is completed by a worker that *polls* the engine; a user task is completed by *your application* (or a person through the UI) calling the engine when the human is done. At the engine level both are **jobs**, and both are reachable through the REST `/jobs` API — but for a service task you'll typically use the gRPC worker SDK instead, since polling and retries are exactly what it's built for. This chapter drives a user-task job with plain REST calls, no worker needed.
 
 :::info Prerequisites
 The engine running locally and the examples repo cloned, as set up in [Run the engine](run-the-engine). No worker is needed this time — you'll play the human.
@@ -22,7 +22,9 @@ The engine running locally and the examples repo cloned, as set up in [Run the e
 
 A minimal **approval** process: a request comes in, a person approves or rejects it, done.
 
-![The Approval process: Request received → Approve request (user task) → Done](../assets/images/approval-process.png)
+{/* Rendered from getting-started/03-orchestrate-human-tasks/approval-process.bpmn via bpmn-to-image.
+    Keep the .bpmn source next to the PNG so the figure always matches the real process. */}
+![The Approval process: Request received → Approve Request (user task) → Done](../assets/images/approval-process.png)
 
 This chapter's process is `approval-process.bpmn`. From `getting-started/`, move into the chapter folder:
 
@@ -30,7 +32,9 @@ This chapter's process is `approval-process.bpmn`. From `getting-started/`, move
 cd 03-orchestrate-human-tasks
 ```
 
-In the BPMN, the human step is a `userTask` marked with a `<zeebe:userTask />` extension. That's what tells the engine to create a **user-task job** and wait, rather than dispatching to a worker.
+In the BPMN, the human step is a plain `<bpmn:userTask>` element. Unlike a service task, ZenBPM needs no extension markup to recognize it: reaching any user task always creates a job of the fixed type `user-task-type` and waits — that's all `approval-process.bpmn` relies on here.
+
+You can optionally route a user task to a specific person or group right in the model, with a native `<zenbpm:assignmentDefinition assignee="..." candidateGroups="..." />` extension element — see [User task](../../reference/bpmn/supported-elements/activities/tasks/user-task) for the full attribute reference. This tutorial assigns at runtime instead, over REST, in Step 3 below, which is why `approval-process.bpmn` carries no extension elements at all.
 
 ## Step 1: Deploy and start {#step-1-deploy-and-start}
 
@@ -57,13 +61,13 @@ curl http://localhost:8080/v1/process-instances/<PROCESS_INSTANCE_KEY>
 
 ## Step 2: Find the pending task {#step-2-find-the-task}
 
-User tasks are jobs of type `user-task`. List the ones waiting to be worked on:
+User tasks are jobs of the fixed type `user-task-type`. List the ones waiting to be worked on:
 
 <Tabs groupId="client">
 <TabItem value="curl" label="cURL" default>
 
 ```bash
-curl "http://localhost:8080/v1/jobs?jobType=user-task&state=active"
+curl "http://localhost:8080/v1/jobs?processInstanceKey=<PROCESS_INSTANCE_KEY>&jobType=user-task-type&state=active"
 ```
 
 </TabItem>
@@ -72,11 +76,11 @@ curl "http://localhost:8080/v1/jobs?jobType=user-task&state=active"
 ```java
 // zenbpm: the injected ZenbpmClientService (see Client Libraries) that supplies the configured ApiClient.
 // JobApi is generated from the OpenAPI spec; construct it with the ApiClient.
-// verify: exact method/param names against the generated JobApi.
 JobApi jobApi = new JobApi(zenbpm.getApiClient());
+Long processInstanceKey = 0L; // set this to the processInstanceKey from Step 1
 JobPartitionPage jobs = jobApi.getJobs(
-    /* processInstanceKey */ null,
-    /* jobType */ "user-task",
+    /* processInstanceKey */ processInstanceKey,
+    /* jobType */ "user-task-type",
     /* assignee */ null,
     /* state */ "active",
     /* page */ 1,
@@ -93,14 +97,15 @@ Long jobKey = jobs.getPartitions().get(0).getItems().get(0).getKey();
 <TabItem value="go" label="Go">
 
 ```go
-// verify: exact params/struct names against the generated zenclient.
 ctx := context.Background()
 restClient, _ := zenclient.NewClient("http://localhost:8080/v1")
-jobType := "user-task"
+processInstanceKey := int64(0) // set this to the processInstanceKey from Step 1
+jobType := "user-task-type"
 state := zenclient.JobStateActive
 resp, _ := restClient.GetJobs(ctx, &zenclient.GetJobsParams{
-    JobType: &jobType,
-    State:   &state,
+    ProcessInstanceKey: &processInstanceKey,
+    JobType:            &jobType,
+    State:              &state,
 })
 defer resp.Body.Close()
 
@@ -113,7 +118,7 @@ jobKey := jobs.Partitions[0].Items[0].Key
 </TabItem>
 </Tabs>
 
-The response lists each waiting task with its `key`, the `elementId` (`Task_Approve`), the `processInstanceKey`, and its `inputVariables` — here the `instruction` the process passed in for the person to act on. Note the job `key`; you'll use it next.
+The response lists each waiting task with its `key`, the `elementId` (`Activity_1dyxkwc` for this process's user task), the `processInstanceKey`, and its `inputVariables` — empty here, since the process was started with no variables and the task has no input mapping, but this is where you'd find whatever data a real process passed in for the person to act on. Note the job `key`; you'll use it next.
 
 ## Step 3: Assign the task {#step-3-assign-the-task}
 
@@ -133,7 +138,8 @@ curl -X POST http://localhost:8080/v1/jobs/<JOB_KEY>/assign \
 
 ```java
 // Reuses jobApi and jobKey from Step 2.
-// verify: DTO name (AssignJobRequest) against the generated client.
+// AssignJobRequest follows openapi-generator's default naming for this endpoint's request body;
+// check your installed zenbpm-java-client version if it doesn't resolve.
 jobApi.assignJob(jobKey, new AssignJobRequest().assignee("john.doe"));
 ```
 
@@ -142,7 +148,6 @@ jobApi.assignJob(jobKey, new AssignJobRequest().assignee("john.doe"));
 
 ```go
 // Reuses restClient, ctx, and jobKey from Step 2.
-// verify: request body type name against the generated zenclient.
 restClient.AssignJob(ctx, jobKey, zenclient.AssignJobJSONRequestBody{
     Assignee: "john.doe",
 })
@@ -171,7 +176,8 @@ curl -X POST http://localhost:8080/v1/jobs/<JOB_KEY>/complete \
 
 ```java
 // Reuses jobApi and jobKey from Step 2.
-// verify: DTO name (CompleteJobRequest) against the generated client.
+// CompleteJobRequest follows openapi-generator's default naming for this endpoint's request body;
+// check your installed zenbpm-java-client version if it doesn't resolve.
 jobApi.completeJob(jobKey, new CompleteJobRequest()
     .variables(Map.of("approved", true)));
 ```
@@ -181,7 +187,6 @@ jobApi.completeJob(jobKey, new CompleteJobRequest()
 
 ```go
 // Reuses restClient, ctx, and jobKey from Step 2.
-// verify: request body type name against the generated zenclient.
 restClient.CompleteJob(ctx, jobKey, zenclient.CompleteJobJSONRequestBody{
     Variables: &map[string]any{"approved": true},
 })
@@ -196,20 +201,28 @@ The token advances to the end event. Query the instance again — it's now `comp
 curl http://localhost:8080/v1/process-instances/<PROCESS_INSTANCE_KEY>
 ```
 
+## Where the form comes from {#where-the-form-comes-from}
+
+ZenBPM doesn't dictate a form format at the engine level: a user-task job's `inputVariables` are just whatever the process passed in, and `completeJob` accepts whatever `variables` your app sends back. Rendering an actual form for the person is entirely up to your application.
+
+The convention used across the ZenBPM ecosystem — including the ZenBPM UI and the [Contract Closing & Commission Settlement showcase](https://github.com/pbinitiative/zenbpm-examples/tree/main/showcases/contract-closing-commission-settlement) in this repo — is to carry a [bpmn-io form](https://bpmn.io/toolkit/form-js/) JSON schema in a job variable conventionally named `ZEN_FORM`. In that showcase, the backend keeps one schema file per task (`process/forms/<ElementId>.json`, e.g. `UT_ManagerApproval.json`) and injects it into the job's `inputVariables` under `ZEN_FORM` if the process itself doesn't already supply one; the frontend reads that same variable name to render the form.
+
+`approval-process.bpmn` here doesn't attach a form — Step 4's `curl` stands in for "submit the form" — but this is the pattern you'd follow to build a real task inbox.
+
 ## Rejecting, and where your app fits {#rejecting-and-where-your-app-fits}
 
-Completing with `{"approved": false}` is a perfectly normal outcome — "reject" is a decision, not an error, so you still **complete** the job (with a different variable) rather than failing it. Reserve `POST /jobs/{jobKey}/fail` for genuine failures (a downstream system was unreachable, invalid data), which trigger a retry.
+Completing with `{"approved": false}` is a perfectly normal outcome — "reject" is a decision, not an error, so you still **complete** the job (with a different variable) rather than failing it. Reserve `POST /jobs/{jobKey}/fail` for genuine failures (a downstream system was unreachable, invalid data), which mark the job as failed and create an incident — see [Jobs](../../reference/jobs) for the full failure and retry model.
 
 In a real system you don't call these endpoints by hand. Your application backend:
 
 1. lists user-task jobs (Step 2) to build each person's task inbox,
 2. assigns a task when someone opens it (Step 3),
-3. shows a form, and on submit completes the task with the entered variables (Step 4).
+3. renders the task's form (see [above](#where-the-form-comes-from)), and on submit completes the task with the entered variables (Step 4).
 
 The engine stays the source of truth for what's pending and what was decided; your app is just the human-facing surface — and the ZenBPM UI is one ready-made such surface.
 
 ## Next steps {#next-steps}
 
-- **A realistic process.** The [Commission Payout example](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/processes/02-commission-payout) combines user tasks with an exclusive gateway (branching on the human decision) and an AI service task.
+- **A realistic process.** The [Contract Closing & Commission Settlement showcase](https://github.com/pbinitiative/zenbpm-examples/tree/main/showcases/contract-closing-commission-settlement) combines several user tasks with a service task and an exclusive gateway (branching on a business-rule-task result), each user task backed by a real `ZEN_FORM`.
 - **The concepts.** [BPM Concepts → tasks](../../explanation/bpm-concepts#tasks) explains user vs. service tasks and the job model.
 - **The full API.** The `/jobs` endpoints in the [REST reference](../../static/openapi).

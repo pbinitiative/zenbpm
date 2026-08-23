@@ -90,7 +90,7 @@ docker compose down -v
 **Port already in use** (`bind: address already in use`) — another process holds `8080` or `9090`. Stop it, or change the host ports in `compose.yaml` (e.g. `18080:8080`) and use those ports in the following chapters.
 
 :::note Beyond local
-The compose file mounts a small single-node config (`conf/zenbpm/conf.yaml`) that bootstraps the engine's cluster with one partition — enough to run everything in this tutorial. That file is where cluster, partition, and script-engine settings live. Durable persistence (rqlite), multi-node clustering, and observability are operational topics covered in the [How-to guides](/category/how-to).
+The compose file mounts a small single-node config (`conf/zenbpm/conf.yaml`) that bootstraps the engine's cluster with one partition — a shard of process/job data with its own Raft-replicated leader; production clusters split work across several — which is enough to run everything in this tutorial. That file is where cluster, partition, and script-engine settings live. Durable persistence (rqlite), multi-node clustering, and observability are operational topics covered in the [How-to guides](/category/how-to).
 :::
 
 ## Next {#next}

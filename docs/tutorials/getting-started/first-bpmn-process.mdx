@@ -13,7 +13,7 @@ import TabItem from '@theme/TabItem';
 With the engine running from the [previous chapter](run-the-engine), you'll now put it to work — talking to it over its REST and gRPC APIs, exactly as your own code will. By the end you'll have deployed a process, written a worker that does real work, and watched an instance run to completion.
 
 :::info New to BPM?
-The engine executes business processes described as **BPMN** diagrams. A **process definition** is the blueprint; a running copy of it is a **process instance**; a **worker** is a program *you* write that carries out a step. That's enough for this tutorial — for the full picture, see [BPM Concepts](../../explanation/bpm-concepts).
+The engine executes business processes described as **BPMN** diagrams. A **process definition** is the blueprint; a running copy of it is a **process instance**; a **job** is the unit of work the engine creates when an instance reaches a task; a **worker** is a program *you* write that carries out a step by taking jobs. That's enough for this tutorial — for the full picture, see [BPM Concepts](../../explanation/bpm-concepts).
 
 Coming from Camunda or Zeebe? This is the familiar external-worker model over gRPC; skim [the terminology mapping](../../explanation/bpm-concepts#terminology-mapping) and read straight on.
 :::
@@ -54,6 +54,8 @@ The response contains a `processDefinitionKey` — a generated number that uniqu
 ```json
 { "processDefinitionKey": 4503599627370498 }
 ```
+
+The examples below use this exact key — it's what a freshly started engine with nothing else deployed returns for the first definition. If you've deployed anything else first, or you're picking this tutorial back up, use the key your own response actually returned instead.
 
 ## Step 2: Start an instance (and watch it wait) {#step-2-start-an-instance}
 
@@ -230,7 +232,7 @@ func main() {
 	zen := zenclient.NewGrpc(conn)
 
 	// Subscribe to "log-worker" jobs.
-	zen.RegisterWorker(context.Background(), "first-bpmn-process-worker",
+	_, err = zen.RegisterWorker(context.Background(), "first-bpmn-process-worker",
 		func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 			vars := job.GetVariables()
 			fmt.Printf("[log-worker] %v\n", vars["log"])
@@ -238,6 +240,9 @@ func main() {
 		},
 		"log-worker",
 	)
+	if err != nil {
+		panic(err)
+	}
 
 	select {} // keep the worker running
 }
@@ -289,16 +294,17 @@ Because the process id is unchanged, the engine stores this as a **new version**
 
 ## Clean up {#clean-up}
 
-Stop the worker (Ctrl+C), then stop the engine from the `getting-started/` folder:
+Stop the worker (Ctrl+C), then move back up to the `getting-started/` folder and stop the engine:
 
 ```bash
+cd ../..
 docker compose down
 ```
 
 ## Next steps {#next-steps}
 
 - **Understand the model.** [BPM Concepts](../../explanation/bpm-concepts) — definitions, instances, tokens, and the job/worker mechanic in one short read.
-- **Service tasks.** Look at the detailed  [Service Task](../../reference/bpmn/supported-elements/activities/tasks/service-task) reference overview.
+- **Service tasks.** Look at the detailed [Service Task](../../reference/bpmn/supported-elements/activities/tasks/service-task) reference overview.
 - **More workers.** [`examples/workers/`](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/workers) shows several workers in one Go project.
 - **The APIs in full.** [REST (OpenAPI)](../../static/openapi) and the [gRPC proto](/zenbpm.proto).
 - **Engine internals.** [Architecture](/category/architecture).

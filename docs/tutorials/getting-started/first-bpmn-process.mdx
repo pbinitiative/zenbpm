@@ -17,9 +17,9 @@ If you'd rather deploy and run processes visually, start with the [ZenBPM UI doc
 */}
 
 :::info New to BPM?
-The engine executes business processes described as **BPMN** diagrams. A **process definition** is the blueprint; a running copy of it is a **process instance**; a **worker** is a program *you* write that carries out a step. That's enough for this tutorial — for the full picture, see [BPM Concepts](/explanation/bpm-concepts).
+The engine executes business processes described as **BPMN** diagrams. A **process definition** is the blueprint; a running copy of it is a **process instance**; a **worker** is a program *you* write that carries out a step. That's enough for this tutorial — for the full picture, see [BPM Concepts](../../explanation/bpm-concepts).
 
-Coming from Camunda or Zeebe? This is the familiar external-worker model over gRPC; skim [the terminology mapping](/explanation/bpm-concepts#terminology-mapping) and read straight on.
+Coming from Camunda or Zeebe? This is the familiar external-worker model over gRPC; skim [the terminology mapping](../../explanation/bpm-concepts#terminology-mapping) and read straight on.
 :::
 
 ## What you'll build {#what-youll-build}
@@ -267,7 +267,7 @@ The worker connects, finds the waiting job from Step 2, and prints:
 The moment it reports the job complete, the engine advances the token past the service task to the end event.
 
 :::note Client reference
-Full dependency coordinates, configuration options, and REST/gRPC usage for both languages are in the [Client Libraries](/static/client-libraries) reference.
+Full dependency coordinates, configuration options, and REST/gRPC usage for both languages are in the [Client Libraries](../../static/client-libraries) reference.
 :::
 
 ## Step 4: Observe completion {#step-4-observe-completion}
@@ -301,8 +301,8 @@ docker compose down
 
 ## Next steps {#next-steps}
 
-- **Understand the model.** [BPM Concepts](/explanation/bpm-concepts) — definitions, instances, tokens, and the job/worker mechanic in one short read.
+- **Understand the model.** [BPM Concepts](../../explanation/bpm-concepts) — definitions, instances, tokens, and the job/worker mechanic in one short read.
 - **A realistic process.** The [Commission Payout example](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/processes/02-commission-payout) adds user tasks and an exclusive gateway.
 - **More workers.** [`examples/workers/`](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/workers) shows several workers in one Go project.
-- **The APIs in full.** [REST (OpenAPI)](/static/openapi) and the [gRPC proto](/zenbpm.proto).
+- **The APIs in full.** [REST (OpenAPI)](../../static/openapi) and the [gRPC proto](/zenbpm.proto).
 - **Engine internals.** [Architecture](/category/architecture).

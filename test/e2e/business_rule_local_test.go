@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
@@ -60,4 +61,27 @@ func TestBusinessRuleLocalMultiInstance(t *testing.T) {
 		},
 	})
 	assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
+}
+
+func TestBusinessRuleMissingDmnInputEntryReferenceCreatesIncident(t *testing.T) {
+	response, err := deployDmnResourceDefinitionE2e(t, "testdata/dmn/missing_input_entry_reference.dmn")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode())
+
+	processInstance := deployAndCreateUniqueProcessDefinitionWithDmnDefinitionId(
+		t,
+		"testdata/dmn/business_rule_local_dynamic_decision_id.bpmn",
+		"dmn_missing_input_entry_reference",
+		map[string]any{"amount": 10},
+	)
+
+	waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateFailed)
+	assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"amount": float64(10)})
+	assertProcessInstanceTokenElements(t, processInstance.Key, []string{"business_rule"}, []string{"end_event"})
+	assertNoDecisionInstance(t, processInstance.Key)
+
+	incidents, err := getProcessInstanceIncidents(t, processInstance.Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	require.Contains(t, incidents[0].Message, "unknown variable(s) in unary test: VIP")
 }

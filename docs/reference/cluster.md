@@ -36,6 +36,29 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
+The REST response includes build metadata:
+
+```json
+{
+  "git": {
+    "branch": "main",
+    "commitId": "0123456789ab"
+  },
+  "build": {
+    "version": "v1.5.0",
+    "time": "2026-08-07T12:13:14Z"
+  },
+  "clusterConfig": {},
+  "partitions": {},
+  "nodes": {}
+}
+```
+
+The application version is stored in the repository's root `VERSION` file. During
+the build, it is compared without the `v` prefix against `openapi/api.yaml`
+`info.version`. Release, Makefile, and local Docker builds inject the source
+commit, branch, and build time into the binary.
+
 ## Partition clusters
 
 Partition clusters are smaller [RqLite](https://rqlite.io/) clusters created for data storage of each partition.

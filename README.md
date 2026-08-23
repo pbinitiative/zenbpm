@@ -67,9 +67,12 @@ To import configs into zen docker image use something like:
 If you want to build and run your own Docker container:
 
 ```bash
-docker build -t zenbpm -f Dockerfile.local .
-docker run --rm zenbpm:latest
+make docker-build-local
+docker run --rm zenbpm:local
 ```
+
+The application version is stored in [`VERSION`](VERSION). During the build, it is compared without the `v` prefix against `openapi/api.yaml` `info.version`.
+
 ## Architecture
 
 ZenBPM is built with a modular architecture:

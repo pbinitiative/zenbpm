@@ -35,11 +35,11 @@ Add a `bpmn:multiInstanceLoopCharacteristics` element to the activity and config
 
 Execution flow:
 
-1. A token arrives at the activity and `inputCollection` is evaluated against the process scope. A non-list value fails the activity; an empty list completes it immediately with an empty output collection.
+1. A token arrives at the activity and `inputCollection` is evaluated against the process scope. A non-list value fails the activity; an empty list completes it immediately. If `outputCollection` is configured, it receives an empty list; otherwise, no output variable is produced.
 2. The engine creates a dedicated child process instance for the iterations, linked to the parent and running on the same [partition](../../../cluster.md). The parent token waits at the activity, and boundary events attached to the activity cover the entire multi-instance execution.
 3. Iterations run inside the child instance — all at once in parallel mode, one at a time in collection order in sequential mode. Each iteration executes the activity with its own local scope holding the current element under `inputElement`; the process variables remain readable by expressions and input mappings.
-4. After an iteration completes, `outputElement` is evaluated against the iteration's input variables plus the variables created by the activity's **output mappings**. **Raw variables returned by a job are not visible to `outputElement`** — map every value it needs with an output mapping on the activity first.
-5. When all iterations have completed, the collected results are written to the parent process scope as `outputCollection` — one entry per iteration, in collection order for sequential execution; the order is not guaranteed for parallel execution. The parent token then continues along the outgoing sequence flow.
+4. When `outputCollection` and `outputElement` are configured, `outputElement` is evaluated after an iteration completes against the iteration's input variables plus the variables created by the activity's **output mappings**. **Raw variables returned by a job are not visible to `outputElement`** — map every value it needs with an output mapping on the activity first.
+5. When all iterations have completed and `outputCollection` is configured, the collected results are written to the parent process scope — one entry per iteration, in collection order for sequential execution; the order is not guaranteed for parallel execution. If `outputCollection` is omitted, per-iteration results are not collected and no output variable is produced. The parent token then continues along the outgoing sequence flow.
 
 ## Related documentation
 

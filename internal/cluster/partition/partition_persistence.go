@@ -34,12 +34,14 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	metricsPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/rqlite/rqlite/v10/store"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -59,6 +61,10 @@ type DB struct {
 	cleanupCancel          context.CancelFunc
 	cleanupDone            chan struct{}
 	cleanupStopOnce        sync.Once
+	// execDuration measures the duration of rqlite write statements, in ms
+	execDuration metric.Float64Histogram
+	// queryDuration measures the duration of rqlite read queries, in ms
+	queryDuration metric.Float64Histogram
 }
 
 const (
@@ -141,6 +147,22 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	}
 	queries := sql.New(db)
 	db.Queries = queries
+
+	meter := otel.GetMeterProvider().Meter("partition-rqlite")
+	db.execDuration, err = meter.Float64Histogram("rqlite_exec_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of rqlite write statements, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
+	if err != nil {
+		logger.Error("Failed to create rqlite_exec_duration instrument", "err", err)
+	}
+	db.queryDuration, err = meter.Float64Histogram("rqlite_query_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of rqlite read queries, milliseconds"),
+		metric.WithExplicitBucketBoundaries(metricsPkg.LatencyBucketsMs()...))
+	if err != nil {
+		logger.Error("Failed to create rqlite_query_duration instrument", "err", err)
+	}
 
 	if opts.startDataCleanup {
 		cleanupCtx, cancel := context.WithCancel(context.Background())
@@ -403,12 +425,26 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 	return r.rowsAffected, nil
 }
 
-func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+// ExecContext executes a single write SQL statement against the partition
+// rqlite store. It records an "rqlite-exec" trace span and the execution
+// duration metric labeled with the partition and outcome.
+func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) (_ ssql.Result, retErr error) {
+	start := time.Now()
 	ctx, execSpan := rq.tracer.Start(ctx, "rqlite-exec", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeExec, sql),
 		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
 	))
 	defer func() {
+		if rq.execDuration != nil {
+			outcome := "success"
+			if retErr != nil {
+				outcome = "error"
+			}
+			rq.execDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.Int64("partition", int64(rq.Partition)),
+				attribute.String("outcome", outcome),
+			))
+		}
 		execSpan.End()
 	}()
 	stmt, err := rq.generateStatement(sql, args...)
@@ -444,12 +480,26 @@ func (rq *DB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error
 	return nil, errors.New("PrepareContext not supported by rqlite")
 }
 
-func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+// QueryContext executes a read SQL query against the partition rqlite store.
+// It records an "rqlite-query" trace span and the query duration metric
+// labeled with the partition and outcome.
+func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (_ *sql.Rows, retErr error) {
+	start := time.Now()
 	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeQuery, query),
 		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
 	))
 	defer func() {
+		if rq.queryDuration != nil {
+			outcome := "success"
+			if retErr != nil {
+				outcome = "error"
+			}
+			rq.queryDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.Int64("partition", int64(rq.Partition)),
+				attribute.String("outcome", outcome),
+			))
+		}
 		querySpan.End()
 	}()
 	results, err := rq.queryDatabase(ctx, query, args...)
@@ -473,7 +523,7 @@ func (rq *DB) QueryRowContext(ctx context.Context, query string, args ...interfa
 	if err != nil {
 		return sql.ConstructRow(ctx, []string{}, []string{}, nil, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	row := rows.Next()
 	if !row {
@@ -1221,10 +1271,13 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
-	businessKey, bkFound := appcontext.BusinessKeyFromContext(ctx)
-	if !bkFound && processInstance.ProcessInstance().BusinessKey != nil {
+	var businessKey string
+	var bkFound bool
+	if processInstance.ProcessInstance().BusinessKey != nil {
 		businessKey = *processInstance.ProcessInstance().BusinessKey
 		bkFound = true
+	} else if processInstance.GetParentProcessInstanceKey() == nil {
+		businessKey, bkFound = appcontext.BusinessKeyFromContext(ctx)
 	}
 
 	var parentProcessExecutionToken ssql.NullInt64
@@ -2445,6 +2498,9 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 	var res bpmnruntime.FlowElementInstance
 	flowElementInstance, err := rq.Queries.GetFlowElementInstanceByKey(ctx, key)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return res, storage.ErrNotFound
+		}
 		return res, err
 	}
 
@@ -2484,6 +2540,17 @@ func (rq *DB) UpdateOutputFlowElementInstance(ctx context.Context, flowElementIn
 		return err
 	}
 	return nil
+}
+
+func (rq *DB) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	return CompleteFlowElementInstanceWith(ctx, rq.Queries, key, completedAt)
+}
+
+func CompleteFlowElementInstanceWith(ctx context.Context, db *sql.Queries, key int64, completedAt time.Time) error {
+	return db.CompleteFlowElementInstance(ctx, sql.CompleteFlowElementInstanceParams{
+		CompletedAt: ssql.NullInt64{Int64: completedAt.UnixMilli(), Valid: true},
+		Key:         key,
+	})
 }
 
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
@@ -2807,46 +2874,46 @@ type DBBatch struct {
 	logger           hclog.Logger
 }
 
-func (d *DBBatch) getQueries() *sql.Queries {
-	return d.queries
+func (b *DBBatch) getQueries() *sql.Queries {
+	return b.queries
 }
 
-func (d *DBBatch) getReadDB() *DB {
-	return d.db
+func (b *DBBatch) getReadDB() *DB {
+	return b.db
 }
 
-func (d *DBBatch) getLogger() hclog.Logger {
-	return d.logger
+func (b *DBBatch) getLogger() hclog.Logger {
+	return b.logger
 }
 
-func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
-	stmt, err := rq.db.generateStatement(sql, args...)
+func (b *DBBatch) ExecContext(_ context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+	stmt, err := b.db.generateStatement(sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	rq.stmtToRun = append(rq.stmtToRun, stmt)
+	b.stmtToRun = append(b.stmtToRun, stmt)
 	return rqliteResult{}, nil
 }
 
-func (rq *DBBatch) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {
+func (b *DBBatch) PrepareContext(_ context.Context, _ string) (*ssql.Stmt, error) {
 	return nil, fmt.Errorf("PrepareContext is not supported by RqLiteDBBatch")
 }
 
-func (rq *DBBatch) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (b *DBBatch) QueryContext(_ context.Context, _ string, _ ...interface{}) (*sql.Rows, error) {
 	return nil, fmt.Errorf("QueryContext is not supported by RqLiteDBBatch")
 }
 
-func (rq *DBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (b *DBBatch) QueryRowContext(ctx context.Context, _ string, _ ...interface{}) *sql.Row {
 	// Return a row carrying the error (surfaced on Scan), matching DB.QueryRowContext.
 	return sql.ConstructRow(ctx, []string{}, []string{}, nil, fmt.Errorf("QueryRowContext is not supported by RqLiteDBBatch"))
 }
 
 var _ storage.Batch = &DBBatch{}
 
-func (b *DBBatch) AddPostFlushAction(ctx context.Context, f func()) {
+func (b *DBBatch) AddPostFlushAction(_ context.Context, f func()) {
 	b.postFlushActions = append(b.postFlushActions, f)
 }
-func (b *DBBatch) AddPreFlushAction(ctx context.Context, f func() error) {
+func (b *DBBatch) AddPreFlushAction(_ context.Context, f func() error) {
 	b.preFlushActions = append(b.preFlushActions, f)
 }
 
@@ -2954,17 +3021,6 @@ func (b *DBBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Conte
 	return nil
 }
 
-func KeyFromTokenToNullInt64(t *bpmnruntime.ExecutionToken) ssql.NullInt64 {
-	if t == nil {
-		return ssql.NullInt64{Valid: false}
-	}
-
-	return ssql.NullInt64{
-		Int64: t.Key,
-		Valid: true,
-	}
-}
-
 var _ storage.TokenStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
@@ -2977,6 +3033,10 @@ func (b *DBBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnr
 
 func (b *DBBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
 	return UpdateOutputFlowElementInstanceWith(ctx, b.queries, historyItem)
+}
+
+func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	return CompleteFlowElementInstanceWith(ctx, b.queries, key, completedAt)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

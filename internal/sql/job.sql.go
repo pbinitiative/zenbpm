@@ -366,7 +366,7 @@ const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState 
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
-    job
+    job INDEXED BY idx_fk_job_process_instance_key
 WHERE
     process_instance_key = ?1
     AND state IN (/*SLICE:states*/?)
@@ -377,6 +377,9 @@ type FindProcessInstanceJobsInStateParams struct {
 	States             []int64 `json:"states"`
 }
 
+// Pinned to idx_fk_job_process_instance_key. The planner currently picks it correctly, but
+// pinning here makes the contract explicit and prevents the generic idx_job_execution_token_state
+// from shadowing it under different data distributions. See TestHotPathIndexes.
 func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error) {
 	query := findProcessInstanceJobsInState
 	var queryParams []interface{}

@@ -1,0 +1,92 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "1 - avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval]))", "legendFormat": "{{instance}} cpu", "refId": "A" }
+      ],
+      "title": "CPU usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes", "legendFormat": "{{instance}} memory", "refId": "A" }
+      ],
+      "title": "Memory usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\"}", "legendFormat": "{{instance}} {{mountpoint}}", "refId": "A" }
+      ],
+      "title": "Disk usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "binBps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(node_disk_read_bytes_total[$__rate_interval])", "legendFormat": "{{instance}} {{device}} read", "refId": "A" },
+        { "expr": "rate(node_disk_written_bytes_total[$__rate_interval])", "legendFormat": "{{instance}} {{device}} write", "refId": "B" }
+      ],
+      "title": "Disk I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(node_disk_io_time_seconds_total[$__rate_interval])", "legendFormat": "{{instance}} {{device}} io busy", "refId": "A" }
+      ],
+      "title": "Disk saturation (io time)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "binBps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[$__rate_interval])", "legendFormat": "{{instance}} {{device}} rx", "refId": "A" },
+        { "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[$__rate_interval])", "legendFormat": "{{instance}} {{device}} tx", "refId": "B" }
+      ],
+      "title": "Network traffic",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["zenbpm", "host"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timezone": "browser",
+  "title": "ZenBPM Host (node_exporter)",
+  "uid": "zenbpm-host",
+  "version": 1
+}

@@ -146,6 +146,20 @@ func (engine *Engine) tryCatchEndErrorAtScope(
 		return false, tokens, nil
 	}
 
+	var propagatedVariables map[string]any
+	var businessKey *string
+	if subprocessMatch != nil {
+		propagatedVariables, businessKey, err = engine.resolveEventSubprocessActivationData(
+			subprocessMatch.instance,
+			subprocessMatch.subProcess,
+			subprocessMatch.startEvent,
+			nil,
+		)
+		if err != nil {
+			return false, nil, err
+		}
+	}
+
 	tokens, err = engine.terminateEndErrorChain(ctx, batch, propagatingScopes, tokens, prop)
 	if err != nil {
 		return false, nil, err
@@ -158,7 +172,7 @@ func (engine *Engine) tryCatchEndErrorAtScope(
 		return true, tokens, nil
 	}
 
-	if err := engine.activateErrorEventSubprocessInParentScope(ctx, batch, scope, subprocessMatch); err != nil {
+	if err := engine.activateErrorEventSubprocessInParentScope(ctx, batch, scope, subprocessMatch, propagatedVariables, businessKey); err != nil {
 		return false, nil, err
 	}
 	return true, tokens, nil
@@ -265,6 +279,9 @@ func (engine *Engine) terminateEndErrorPropagatingScope(ctx context.Context, bat
 		return fmt.Errorf("failed to terminate propagating error scope on process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
+	if err := completeExistingFlowElementInstance(ctx, batch, propagatingToken); err != nil {
+		return err
+	}
 	propagatingToken.State = runtime.TokenStateCanceled
 	if err := batch.SaveToken(ctx, propagatingToken); err != nil {
 		return fmt.Errorf("failed to save canceled propagating token %d: %w", propagatingToken.Key, err)

@@ -15,6 +15,7 @@ import (
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type StorageTestFunc func(s storage.Storage, t *testing.T) func(t *testing.T)
@@ -49,6 +50,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
+		st.TestFlowElementInstanceSaveUpdatesOnlyInputVariables,
+		st.TestFlowElementInstanceReaderNotFound,
 		st.TestFlowElementInstanceCompletedAt,
 		st.TestFlowElementInstanceSaveWithCompletedAt,
 		st.TestFlowElementInstanceUpdateOutputInsertPath,
@@ -196,7 +199,7 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, _ *
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
@@ -215,7 +218,7 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, _ *
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
@@ -335,7 +338,7 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, _ *testing.T)
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -389,7 +392,7 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, _ *testing.T)
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -463,7 +466,7 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, _ *testing.T) f
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 
@@ -482,7 +485,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, _ *testing.T) f
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -532,7 +535,7 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, _ *testing.
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
@@ -593,7 +596,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, _ *testing.
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
-		s.SaveToken(t.Context(), token)
+		require.NoError(t, s.SaveToken(t.Context(), token))
 
 		messageSub := getMessage(r, st.processInstance.ProcessInstance().Key, st.processDefinition.Key, token)
 		err := s.SaveMessageSubscription(t.Context(), messageSub)
@@ -740,6 +743,55 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, _ 
 		}
 		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)
+	}
+}
+
+// TestFlowElementInstanceReaderNotFound verifies that an exact lookup of a missing
+// flow element instance follows the storage contract and returns storage.ErrNotFound.
+func (st *StorageTester) TestFlowElementInstanceReaderNotFound(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		_, err := s.GetFlowElementInstanceByKey(t.Context(), s.GenerateId())
+		assert.ErrorIs(t, err, storage.ErrNotFound)
+	}
+}
+
+// TestFlowElementInstanceSaveUpdatesOnlyInputVariables verifies that saving an
+// existing flow element instance preserves every field except input variables.
+func (st *StorageTester) TestFlowElementInstanceSaveUpdatesOnlyInputVariables(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		key := s.GenerateId()
+		createdAt := time.Now().Truncate(time.Millisecond)
+		completedAt := createdAt.Add(time.Second)
+		saved := bpmnruntime.FlowElementInstance{
+			Key:                key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-input-update",
+			ElementType:        "INTERMEDIATE_CATCH_EVENT",
+			CreatedAt:          createdAt,
+			ExecutionTokenKey:  s.GenerateId(),
+			InputVariables:     map[string]any{"input": "before"},
+			OutputVariables:    map[string]any{"output": "preserved"},
+			CompletedAt:        &completedAt,
+		}
+		require.NoError(t, s.SaveFlowElementInstance(t.Context(), saved))
+
+		require.NoError(t, s.SaveFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:            key,
+			InputVariables: map[string]any{"input": "after"},
+		}))
+
+		updated, err := s.GetFlowElementInstanceByKey(t.Context(), key)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"input": "after"}, updated.InputVariables)
+		assert.Equal(t, saved.ProcessInstanceKey, updated.ProcessInstanceKey)
+		assert.Equal(t, saved.ElementId, updated.ElementId)
+		assert.Equal(t, saved.ElementType, updated.ElementType)
+		assert.Equal(t, saved.CreatedAt, updated.CreatedAt)
+		assert.Equal(t, saved.ExecutionTokenKey, updated.ExecutionTokenKey)
+		assert.Equal(t, saved.OutputVariables, updated.OutputVariables)
+		if assert.NotNil(t, updated.CompletedAt) {
+			assert.Equal(t, *saved.CompletedAt, *updated.CompletedAt)
+		}
 	}
 }
 

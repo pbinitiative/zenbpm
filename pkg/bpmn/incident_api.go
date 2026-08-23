@@ -8,7 +8,6 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
@@ -128,7 +127,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		if err := engine.retryEventSubprocessSubscriptionIncident(ctx, &batch, instance, incident); err != nil {
 			return fmt.Errorf("failed to recreate event subprocess subscription for incident %d: %w", key, err)
 		}
-		incident.ResolvedAt = ptr.To(time.Now())
+		incident.ResolvedAt = new(time.Now())
 		if err := batch.SaveIncident(ctx, incident); err != nil {
 			return fmt.Errorf("failed to save resolved incident %d: %w", incident.Key, err)
 		}
@@ -150,7 +149,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key)
 	}
 
-	incident.ResolvedAt = ptr.To(time.Now())
+	incident.ResolvedAt = new(time.Now())
 	err = batch.SaveIncident(ctx, incident)
 	if err != nil {
 		return err
@@ -214,7 +213,7 @@ func (engine *Engine) resolveIncidentsForToken(ctx context.Context, batch *Engin
 			continue
 		}
 
-		incident.ResolvedAt = ptr.To(time.Now())
+		incident.ResolvedAt = new(time.Now())
 		err = batch.SaveIncident(ctx, incident)
 		if err != nil {
 			return fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)

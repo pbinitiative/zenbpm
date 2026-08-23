@@ -1,12 +1,154 @@
 package grpc
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"sync"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 )
+
+func TestJobStreamRemovesClientWhenReceiveLoopEnds(t *testing.T) {
+	manager := &jobStreamTestManager{}
+	stream := newJobStreamTestServer()
+	server := &Server{ctx: t.Context(), jobManager: manager, logger: hclog.NewNullLogger()}
+
+	require.NoError(t, server.JobStream(stream))
+
+	assert.Equal(t, 1, manager.removeCalls)
+}
+
+func TestRecvClientRequestsSanitizesSubscriptionErrors(t *testing.T) {
+	internalErr := errors.New("node-42 at 10.0.0.1 refused the stream")
+	tests := []struct {
+		name        string
+		requestType proto.StreamSubscriptionRequest_Type
+		configure   func(*jobStreamTestManager)
+		expected    string
+	}{
+		{
+			name:        "subscribe",
+			requestType: proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE,
+			configure:   func(manager *jobStreamTestManager) { manager.subscribeErr = internalErr },
+			expected:    "Failed to subscribe to job type job-a",
+		},
+		{
+			name:        "unsubscribe",
+			requestType: proto.StreamSubscriptionRequest_TYPE_UNSUBSCRIBE,
+			configure:   func(manager *jobStreamTestManager) { manager.unsubscribeErr = internalErr },
+			expected:    "Failed to unsubscribe from job type job-a",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &jobStreamTestManager{}
+			tt.configure(manager)
+			stream := newJobStreamTestServer(subscriptionRequest(tt.requestType))
+			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+			require.Len(t, stream.sent, 1)
+			require.NotNil(t, stream.sent[0].Error)
+			assert.Equal(t, tt.expected, stream.sent[0].Error.GetMessage())
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "node-42")
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "10.0.0.1")
+		})
+	}
+}
+
+func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
+	internalErr := errors.New("node-42 at 10.0.0.1 refused the request")
+	tests := []struct {
+		name                 string
+		request              *proto.JobStreamRequest
+		configure            func(*jobStreamTestManager)
+		expected             string
+		expectedVariableKeys []string
+		secretValue          string
+	}{
+		{
+			name:                 "invalid complete variables",
+			request:              completeRequest([]byte(`{"alpha":"complete-secret","broken":`)),
+			expected:             "Invalid job variables",
+			expectedVariableKeys: []string{"alpha", "broken"},
+			secretValue:          "complete-secret",
+		},
+		{
+			name:                 "completion failure",
+			request:              completeRequest([]byte(`{"zeta":"completion-secret","alpha":1}`)),
+			configure:            func(manager *jobStreamTestManager) { manager.completeErr = internalErr },
+			expected:             "Failed to complete job",
+			expectedVariableKeys: []string{"alpha", "zeta"},
+			secretValue:          "completion-secret",
+		},
+		{
+			name:                 "invalid failure variables",
+			request:              failRequest([]byte(`{"failureKey":"failure-secret","broken":`)),
+			expected:             "Invalid job variables",
+			expectedVariableKeys: []string{"broken", "failureKey"},
+			secretValue:          "failure-secret",
+		},
+		{
+			name:                 "failure request failure",
+			request:              failRequest([]byte(`{"failureKey":"request-secret"}`)),
+			configure:            func(manager *jobStreamTestManager) { manager.failErr = internalErr },
+			expected:             "Failed to process job failure request",
+			expectedVariableKeys: []string{"failureKey"},
+			secretValue:          "request-secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &jobStreamTestManager{}
+			if tt.configure != nil {
+				tt.configure(manager)
+			}
+			stream := newJobStreamTestServer(tt.request)
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true})
+			server := &Server{jobManager: manager, logger: logger}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+			require.Len(t, stream.sent, 1)
+			require.NotNil(t, stream.sent[0].Error)
+			assert.Equal(t, tt.expected, stream.sent[0].Error.GetMessage())
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "node-42")
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "10.0.0.1")
+			assert.NotContains(t, stream.sent[0].Error.GetMessage(), "invalid character")
+			for _, key := range tt.expectedVariableKeys {
+				assert.Contains(t, logOutput.String(), key)
+			}
+			assert.NotContains(t, logOutput.String(), tt.secretValue)
+		})
+	}
+}
+
+func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) {
+	manager := &jobStreamTestManager{subscribeErr: errors.New("subscription failed")}
+	stream := newJobStreamTestServer(
+		subscriptionRequest(proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE),
+		subscriptionRequest(proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE),
+	)
+	stream.sendErr = errors.New("stream closed")
+	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+	assert.Equal(t, 1, stream.recvCalls, "the receive loop must stop after the stream rejects a response")
+	assert.Equal(t, 1, manager.subscribeCalls)
+}
 
 func TestDecodeVariables(t *testing.T) {
 	t.Run("nil payload returns empty map", func(t *testing.T) {
@@ -69,4 +211,111 @@ func TestUnknownRequestError(t *testing.T) {
 		require.NotNil(t, resp.Error.Message)
 		assert.Contains(t, *resp.Error.Message, "unexpected")
 	})
+}
+
+type jobStreamTestManager struct {
+	subscribeErr     error
+	unsubscribeErr   error
+	completeErr      error
+	failErr          error
+	subscribeCalls   int
+	unsubscribeCalls int
+	removeCalls      int
+}
+
+func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
+	return nil
+}
+
+func (m *jobStreamTestManager) RemoveClient(context.Context, jobmanager.ClientID) {
+	m.removeCalls++
+}
+
+func (m *jobStreamTestManager) AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error {
+	m.subscribeCalls++
+	return m.subscribeErr
+}
+
+func (m *jobStreamTestManager) RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error {
+	m.unsubscribeCalls++
+	return m.unsubscribeErr
+}
+
+func (m *jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error {
+	return m.completeErr
+}
+
+func (m *jobStreamTestManager) FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error {
+	return m.failErr
+}
+
+type jobStreamTestServer struct {
+	ctx       context.Context
+	requests  []*proto.JobStreamRequest
+	recvCalls int
+	sent      []*proto.JobStreamResponse
+	sendErr   error
+}
+
+func newJobStreamTestServer(requests ...*proto.JobStreamRequest) *jobStreamTestServer {
+	return &jobStreamTestServer{ctx: context.Background(), requests: requests}
+}
+
+func (s *jobStreamTestServer) Recv() (*proto.JobStreamRequest, error) {
+	if s.recvCalls >= len(s.requests) {
+		return nil, io.EOF
+	}
+	req := s.requests[s.recvCalls]
+	s.recvCalls++
+	return req, nil
+}
+
+func (s *jobStreamTestServer) Send(response *proto.JobStreamResponse) error {
+	if s.sendErr != nil {
+		return s.sendErr
+	}
+	s.sent = append(s.sent, response)
+	return nil
+}
+
+func (*jobStreamTestServer) SetHeader(metadata.MD) error  { return nil }
+func (*jobStreamTestServer) SendHeader(metadata.MD) error { return nil }
+func (*jobStreamTestServer) SetTrailer(metadata.MD)       {}
+func (s *jobStreamTestServer) Context() context.Context   { return s.ctx }
+func (*jobStreamTestServer) SendMsg(any) error            { return nil }
+func (*jobStreamTestServer) RecvMsg(any) error            { return nil }
+
+func subscriptionRequest(requestType proto.StreamSubscriptionRequest_Type) *proto.JobStreamRequest {
+	return &proto.JobStreamRequest{
+		Request: &proto.JobStreamRequest_Subscription{
+			Subscription: &proto.StreamSubscriptionRequest{
+				Type:    requestType.Enum(),
+				JobType: new("job-a"),
+			},
+		},
+	}
+}
+
+func completeRequest(variables []byte) *proto.JobStreamRequest {
+	key := int64(42)
+	return &proto.JobStreamRequest{
+		Request: &proto.JobStreamRequest_Complete{
+			Complete: &proto.JobCompleteRequest{
+				Key:       &key,
+				Variables: variables,
+			},
+		},
+	}
+}
+
+func failRequest(variables []byte) *proto.JobStreamRequest {
+	key := int64(42)
+	return &proto.JobStreamRequest{
+		Request: &proto.JobStreamRequest_Fail{
+			Fail: &proto.JobFailRequest{
+				Key:       &key,
+				Variables: variables,
+			},
+		},
+	}
 }

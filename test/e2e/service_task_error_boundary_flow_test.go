@@ -42,7 +42,7 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", runtime.TokenStateCompleted)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, serviceTaskErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, serviceTaskErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Catch-all error boundary catches any code and completes handled path", func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", runtime.TokenStateCompleted)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
 			"service_task",
@@ -121,7 +121,7 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "exact_match_end")
 		assertProcessInstanceTokenState(t, processInstance.Key, "exact_match_end", runtime.TokenStateCompleted)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 2)
-		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
 			"service_task",

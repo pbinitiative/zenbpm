@@ -18,6 +18,8 @@ type FeelinRuntime struct {
 	pool *script.RunnerPool
 }
 
+var _ script.DmnFeelRuntime = (*FeelinRuntime)(nil)
+
 func NewFeelinRuntime(maxVmPoolSize int, minVmPoolSize int) script.FeelRuntime {
 	return &FeelinRuntime{
 		pool: script.NewRunnerPool(FeelinRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
@@ -33,6 +35,27 @@ func (r *FeelinRuntime) UnaryTest(expression string, variableContext map[string]
 	defer r.pool.ReturnRunnerToPool(runner)
 
 	return (*runner.(*FeelinRunner).unaryTest)(expression, variableContext)
+}
+
+func (r *FeelinRuntime) UnaryTestStrict(expression string, variableContext map[string]any) (bool, error) {
+	var runner = r.pool.GetRunnerFromPool()
+	defer r.pool.ReturnRunnerToPool(runner)
+
+	return (*runner.(*FeelinRunner).unaryTestStrict)(expression, variableContext)
+}
+
+func (r *FeelinRuntime) ValidateExpression(expression string) error {
+	var runner = r.pool.GetRunnerFromPool()
+	defer r.pool.ReturnRunnerToPool(runner)
+
+	return (*runner.(*FeelinRunner).validateExpression)(expression)
+}
+
+func (r *FeelinRuntime) ValidateUnaryTest(expression string) error {
+	var runner = r.pool.GetRunnerFromPool()
+	defer r.pool.ReturnRunnerToPool(runner)
+
+	return (*runner.(*FeelinRunner).validateUnaryTest)(expression)
 }
 
 func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]any) (any, error) {
@@ -93,9 +116,12 @@ if (typeof Intl === 'undefined') {
 `
 
 type FeelinRunner struct {
-	vm        *goja.Runtime
-	evalFunc  *func(expression string, variableContext map[string]any) (any, error)
-	unaryTest *func(expression string, variableContext map[string]any) (bool, error)
+	vm                 *goja.Runtime
+	evalFunc           *func(expression string, variableContext map[string]any) (any, error)
+	unaryTest          *func(expression string, variableContext map[string]any) (bool, error)
+	unaryTestStrict    *func(expression string, variableContext map[string]any) (bool, error)
+	validateExpression *func(expression string) error
+	validateUnaryTest  *func(expression string) error
 }
 
 func (r *FeelinRunner) Runner() {}
@@ -110,8 +136,14 @@ func newFeelRunner() *FeelinRunner {
 	if err != nil {
 		panic(err)
 	}
+	if _, err := r.vm.RunString(feelRuntimeExtensions); err != nil {
+		panic(err)
+	}
 	r.exportEvaluate()
 	r.exportUnaryTest()
+	r.exportUnaryTestStrict()
+	r.exportValidateExpression()
+	r.exportValidateUnaryTest()
 	return &r
 }
 
@@ -132,3 +164,66 @@ func (r *FeelinRunner) exportUnaryTest() {
 	}
 	r.unaryTest = &unaryTest
 }
+
+func (r *FeelinRunner) exportUnaryTestStrict() {
+	var unaryTestStrict func(expression string, variableContext map[string]any) (bool, error)
+	err := r.vm.ExportTo(r.vm.Get("unaryTestStrict"), &unaryTestStrict)
+	if err != nil {
+		panic(err)
+	}
+	r.unaryTestStrict = &unaryTestStrict
+}
+
+func (r *FeelinRunner) exportValidateExpression() {
+	var validateExpression func(expression string) error
+	err := r.vm.ExportTo(r.vm.Get("validateExpression"), &validateExpression)
+	if err != nil {
+		panic(err)
+	}
+	r.validateExpression = &validateExpression
+}
+
+func (r *FeelinRunner) exportValidateUnaryTest() {
+	var validateUnaryTest func(expression string) error
+	err := r.vm.ExportTo(r.vm.Get("validateUnaryTest"), &validateUnaryTest)
+	if err != nil {
+		panic(err)
+	}
+	r.validateUnaryTest = &validateUnaryTest
+}
+
+const feelRuntimeExtensions = `
+function unaryTestStrict(expression, context, dialect) {
+  var missingVariables = [];
+  var strictContext = new Proxy(context || {}, {
+    has: function (target, name) {
+      if (Reflect.has(target, name)) {
+        return true;
+      }
+      if (typeof name === 'string' &&
+          !Object.keys(target).some(function (key) {
+            return normalizeContextKey(key) === normalizeContextKey(name);
+          }) &&
+          typeof getBuiltin(name) === 'undefined') {
+        missingVariables.push(name);
+      }
+      return false;
+    }
+  });
+
+  var result = unaryTest(expression, strictContext, dialect);
+  if (missingVariables.length > 0) {
+    var names = Array.from(new Set(missingVariables));
+    throw new Error('unknown variable(s) in unary test: ' + names.join(', '));
+  }
+  return result;
+}
+
+function validateExpression(expression, dialect) {
+  interpreter.evaluate(expression, {}, dialect);
+}
+
+function validateUnaryTest(expression, dialect) {
+  interpreter.unaryTest(expression, {}, dialect);
+}
+`

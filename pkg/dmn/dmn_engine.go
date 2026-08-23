@@ -13,18 +13,31 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
+
+const dmnEngineName = "dmn-engine"
 
 type ZenDmnEngine struct {
 	persistence     storage.DecisionStorage
 	feelRuntime     script.FeelRuntime
 	ownsFeelRuntime bool
+
+	tracer             trace.Tracer
+	evaluationsTotal   metric.Int64Counter
+	evaluationDuration metric.Float64Histogram
 }
 
 type EngineOption = func(*ZenDmnEngine)
@@ -33,6 +46,21 @@ type EngineOption = func(*ZenDmnEngine)
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
+		tracer:      otel.GetTracerProvider().Tracer(dmnEngineName),
+	}
+	meter := otel.GetMeterProvider().Meter(dmnEngineName)
+	var err error
+	engine.evaluationsTotal, err = meter.Int64Counter("dmn_evaluations", metric.WithDescription("Number of DMN decision evaluations"))
+	if err != nil {
+		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluations instrument", "err", err)
+	}
+	engine.evaluationDuration, err = meter.Float64Histogram("dmn_evaluation_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of DMN decision evaluations, milliseconds"),
+		metric.WithExplicitBucketBoundaries(otelPkg.LatencyBucketsMs()...),
+	)
+	if err != nil {
+		hclog.Default().Named(dmnEngineName).Error("Failed to create dmn_evaluation_duration instrument", "err", err)
 	}
 
 	for _, option := range options {
@@ -53,7 +81,9 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 }
 
 // EngineWithFeel sets the FEEL runtime used for expression evaluation and hands
-// its ownership to the caller. It is meant for construction time only (through
+// its ownership to the caller. DMN decision tables require the supplied runtime
+// to implement script.DmnFeelRuntime; incomplete runtimes are rejected during
+// deployment and evaluation. It is meant for construction time only (through
 // NewEngine): applying it to a running engine stops an already owned runtime and
 // with it any FEEL evaluation in flight.
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
@@ -62,6 +92,17 @@ func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 		engine.feelRuntime = feel
 		engine.ownsFeelRuntime = false
 	}
+}
+
+func (engine *ZenDmnEngine) decisionTableFeelRuntime() (script.DmnFeelRuntime, error) {
+	feelRuntime, ok := engine.feelRuntime.(script.DmnFeelRuntime)
+	if !ok {
+		return nil, fmt.Errorf(
+			"configured FEEL runtime %T does not support DMN decision tables: it must implement UnaryTestStrict, ValidateExpression, and ValidateUnaryTest",
+			engine.feelRuntime,
+		)
+	}
+	return feelRuntime, nil
 }
 
 // Stop releases resources created and owned by the DMN engine. A runtime
@@ -111,6 +152,10 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 		DmnChecksum:       md5sum,
 		DmnDefinitionName: definition.Name,
 	}
+	if err := engine.Validate(ctx, &dmnResourceDefinition); err != nil {
+		return nil, nil, err
+	}
+
 	decisionDefinitions := make([]runtime.DecisionDefinition, 0)
 	for _, definition := range definition.Decisions {
 		decisionDefinition := runtime.DecisionDefinition{
@@ -178,16 +223,11 @@ func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 		resultDecisions = append(resultDecisions, decisionDefinition)
 	}
 
-	return &dmnResourceDefinition, resultDecisions, engine.Validate(ctx, &dmnResourceDefinition)
+	return &dmnResourceDefinition, resultDecisions, nil
 }
 
 func (engine *ZenDmnEngine) generateKey() int64 {
 	return engine.persistence.GenerateId()
-}
-
-func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DmnResourceDefinition) error {
-	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
-	return nil
 }
 
 // TODO: improve tests
@@ -279,7 +319,36 @@ func (engine *ZenDmnEngine) evaluateDRD(
 	dmnResourceDefinition *runtime.DmnResourceDefinition,
 	decisionDefinition *runtime.DecisionDefinition,
 	inputVariableContext map[string]interface{},
-) (*EvaluatedDRDResult, error) {
+) (_ *EvaluatedDRDResult, retErr error) {
+	start := time.Now()
+	// stable span name keeps the tracing backend operation index bounded;
+	// the decision id is carried by the zenbpm.decision.id attribute
+	ctx, evalSpan := engine.tracer.Start(ctx, "dmn.evaluate-decision", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeDecisionID, decisionDefinition.Id),
+		attribute.Int64(otelPkg.AttributeDecisionKey, decisionDefinition.Key),
+		attribute.String(otelPkg.AttributeDrdID, dmnResourceDefinition.Id),
+	))
+	defer func() {
+		outcome := "success"
+		if retErr != nil {
+			outcome = "error"
+			evalSpan.RecordError(retErr)
+			evalSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		if engine.evaluationsTotal != nil {
+			engine.evaluationsTotal.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("decision_id", decisionDefinition.Id),
+				attribute.String("outcome", outcome),
+			))
+		}
+		if engine.evaluationDuration != nil {
+			engine.evaluationDuration.Record(ctx, float64(time.Since(start))/float64(time.Millisecond), metric.WithAttributes(
+				attribute.String("decision_id", decisionDefinition.Id),
+			))
+		}
+		evalSpan.End()
+	}()
+
 	result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, decisionDefinition.Id, inputVariableContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate DecisionDefinition %s in DmnResourceDefinition %s:%d: %w",
@@ -337,7 +406,15 @@ func (engine *ZenDmnEngine) evaluateDecision(
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
 	}
+	return engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, foundDecision, inputVariableContext)
+}
 
+func (engine *ZenDmnEngine) evaluateResolvedDecision(
+	ctx context.Context,
+	dmnResourceDefinition *runtime.DmnResourceDefinition,
+	foundDecision *dmn.TDecision,
+	inputVariableContext map[string]interface{},
+) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	evaluatedDependencies := make([]EvaluatedDecisionResult, 0)
 
 	localVariableContext := make(map[string]interface{})
@@ -351,27 +428,44 @@ func (engine *ZenDmnEngine) evaluateDecision(
 			requiredDecisionRef := requirement.RequiredResource.(dmn.TRequiredDecision).Href
 
 			requiredDecisionId := strings.TrimPrefix(requiredDecisionRef, "#")
-			result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, requiredDecisionId, inputVariableContext)
+			requiredDecision := findDecisionDefinition(dmnResourceDefinition, requiredDecisionId)
+			if requiredDecision == nil {
+				return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: requiredDecisionId}
+			}
+			result, dependencies, err := engine.evaluateResolvedDecision(ctx, dmnResourceDefinition, requiredDecision, inputVariableContext)
 			if err != nil {
-				return result, dependencies, err
+				return EvaluatedDecisionResult{}, nil, err
 			}
-
-			for key, outputVariable := range result.DecisionOutput {
-				localVariableContext[key] = outputVariable
+			// DecisionOutput is always keyed by the decision id, regardless of decision type.
+			requiredDecisionValue := result.DecisionOutput[requiredDecision.Id]
+			requiredDecisionVariableName := requiredDecisionId
+			if requiredDecision.LiteralExpression != nil {
+				requiredDecisionVariableName = requiredDecision.Variable.Name
 			}
+			localVariableContext[requiredDecisionVariableName] = requiredDecisionValue
 			evaluatedDependencies = append(evaluatedDependencies, result)
 			evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 		case dmn.TRequiredInput:
 			requiredInputRef := requirement.RequiredResource.(dmn.TRequiredInput).Href
 
 			requiredInputId := strings.TrimPrefix(requiredInputRef, "#")
+			foundRequiredInput := false
 
 			for _, input := range dmnResourceDefinition.Definitions.InputData {
 				if input.Id == requiredInputId {
-					if _, ok := inputVariableContext[input.Name]; !ok {
-						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", input.Name)
+					foundRequiredInput = true
+					requiredInputName := input.Variable.Name
+					if requiredInputName == "" {
+						requiredInputName = input.Name
 					}
+					if _, ok := inputVariableContext[requiredInputName]; !ok {
+						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", requiredInputName)
+					}
+					break
 				}
+			}
+			if !foundRequiredInput {
+				return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input %s not found", requiredInputId)
 			}
 		default:
 			return EvaluatedDecisionResult{}, nil, fmt.Errorf("unsupported information requirement resource type: %T", requirement.RequiredResource)
@@ -382,29 +476,26 @@ func (engine *ZenDmnEngine) evaluateDecision(
 	var matchedRules []EvaluatedRule
 	var evaluatedInputs []EvaluatedInput
 	var err error
-	var decisionName string
 
-	if foundDecision.Name != "" {
-		decisionName = foundDecision.Name
-	} else {
-		decisionName = foundDecision.Id
-	}
-
+	// The top-level DecisionOutput is always keyed by the decision id, regardless
+	// of decision type, so requiring decisions and API consumers can rely on a
+	// single, uniform keying convention.
 	var decisionType dmn.EvaluatedDecisionType
 	if foundDecision.DecisionTable != nil {
-		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, decisionName, localVariableContext)
+		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
 		decisionType = dmn.DecisionTable
 	} else if foundDecision.LiteralExpression != nil {
-		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, decisionName, localVariableContext)
+		literalOutput, err := engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
+		decisionOutput = map[string]interface{}{foundDecision.Id: literalOutput[foundDecision.Variable.Name]}
 		decisionType = dmn.LiteralExpression
 	} else if foundDecision.Context != nil {
-		decisionOutput, err = engine.evaluateContext(foundDecision.Context, decisionName, localVariableContext)
+		decisionOutput, err = engine.evaluateContext(foundDecision.Context, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
@@ -500,6 +591,10 @@ func normalizeFeelStringLiteral(expr string) string {
 }
 
 func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLiteralExpression, variable *dmn.TVariable, decisionId string, localVariableContext map[string]interface{}) (map[string]any, error) {
+	if variable == nil {
+		return nil, fmt.Errorf("literal expression decision %s has no result variable", decisionId)
+	}
+
 	var resultValue any
 	var err error
 	switch literalExpression.ExpressionLanguage {
@@ -583,6 +678,11 @@ func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLi
 }
 
 func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTable, decisionId string, localVariableContext map[string]interface{}) (map[string]interface{}, []EvaluatedRule, []EvaluatedInput, error) {
+	feelRuntime, err := engine.decisionTableFeelRuntime()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	//TODO: move to parsing checks
 	if len(decisionTable.Outputs) > 1 && !isUnique(decisionTable.Outputs) {
 		return nil, nil, nil, fmt.Errorf("decision table contains more than one output and all of them have to have unique names, decision id %s", decisionId)
@@ -592,7 +692,7 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 	for i, input := range decisionTable.Inputs {
 		originalInputExpr := input.InputExpression.Text
 		normalizedInputExpr := normalizeFeelStringLiteral(originalInputExpr)
-		value, err := engine.feelRuntime.Evaluate(normalizedInputExpr, localVariableContext)
+		value, err := feelRuntime.Evaluate(normalizedInputExpr, localVariableContext)
 		if err != nil {
 			if normalizedInputExpr != originalInputExpr {
 				return nil, nil, nil, fmt.Errorf("error while evaluating expression \"%s\" (normalized: \"%s\") with variables %s: %v", originalInputExpr, normalizedInputExpr, localVariableContext, err)
@@ -616,12 +716,10 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
 			cellMatchVariables["?"] = evaluatedInputs[i].InputValue
-			if inputEntry.Text == "" {
-				inputEntry.Text = "-"
-			}
-			match, err := engine.feelRuntime.UnaryTest(inputEntry.Text, cellMatchVariables)
+			expression := normalizeUnaryTestExpression(inputEntry.Text)
+			match, err := feelRuntime.UnaryTestStrict(expression, cellMatchVariables)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", inputEntry.Text, cellMatchVariables, err)
+				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", expression, cellMatchVariables, err)
 			}
 			if !match {
 				allColumnsMatch = false
@@ -634,7 +732,7 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 			for i, output := range decisionTable.Outputs {
 				originalOutputExpr := rule.OutputEntry[i].Text
 				normalizedOutputExpr := normalizeFeelStringLiteral(originalOutputExpr)
-				value, err := engine.feelRuntime.Evaluate(normalizedOutputExpr, localVariableContext)
+				value, err := feelRuntime.Evaluate(normalizedOutputExpr, localVariableContext)
 				if err != nil {
 					if normalizedOutputExpr != originalOutputExpr {
 						return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" (normalized: \"%s\") with variables %s: %v", originalOutputExpr, normalizedOutputExpr, localVariableContext, err)

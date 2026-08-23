@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -51,7 +50,7 @@ func (engine *Engine) createInternalTask(
 		if !ok {
 			assigneeStr = fmt.Sprintf("%v", assigneeResult)
 		}
-		job.Assignee = ptr.To(assigneeStr)
+		job.Assignee = new(assigneeStr)
 	}
 
 	err := batch.SaveJob(ctx, job)
@@ -127,7 +126,7 @@ func (engine *Engine) createInternalTask(
 				jobError = newEngineErrorf("failing internal job with message: %s", err)
 			} else {
 				job.State = runtime.ActivityStateCompleted
-				batch.UpdateOutputFlowElementInstance(ctx,
+				if updateErr := batch.UpdateOutputFlowElementInstance(ctx,
 					runtime.FlowElementInstance{
 						Key:                currentToken.ElementInstanceKey,
 						ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -137,10 +136,28 @@ func (engine *Engine) createInternalTask(
 						OutputVariables:    output,
 						CompletedAt:        new(time.Now()),
 					},
-				)
+				); updateErr != nil {
+					job.State = runtime.ActivityStateFailed
+					jobError = newEngineErrorf("failed to update flow element instance for internal job: %s", updateErr)
+				}
 			}
-			batch.SaveJob(ctx, job)
-			engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+		}
+		if job.State == runtime.ActivityStateCompleted {
+			if err := batch.SaveJob(ctx, job); err != nil {
+				return runtime.ActivityStateFailed, fmt.Errorf("failed to save terminal state of internal job %d: %w", job.Key, err)
+			}
+		}
+		switch job.State {
+		case runtime.ActivityStateCompleted:
+			if engine.metrics != nil && engine.metrics.JobsCompleted != nil {
+				engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "completed")
+		case runtime.ActivityStateFailed:
+			if engine.metrics != nil && engine.metrics.JobsFailed != nil {
+				engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
+			}
+			engine.recordJobLifetime(ctx, job, "failed")
 		}
 	}
 

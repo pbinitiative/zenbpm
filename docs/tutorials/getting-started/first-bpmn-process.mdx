@@ -12,10 +12,6 @@ import TabItem from '@theme/TabItem';
 
 With the engine running from the [previous chapter](run-the-engine), you'll now put it to work — talking to it over its REST and gRPC APIs, exactly as your own code will. By the end you'll have deployed a process, written a worker that does real work, and watched an instance run to completion.
 
-{/* TODO: restore once the UI/platform docs land.
-If you'd rather deploy and run processes visually, start with the [ZenBPM UI documentation](/ui) or the [Getting Started platform basics](/platform) instead — this page uses only the terminal and code.
-*/}
-
 :::info New to BPM?
 The engine executes business processes described as **BPMN** diagrams. A **process definition** is the blueprint; a running copy of it is a **process instance**; a **worker** is a program *you* write that carries out a step. That's enough for this tutorial — for the full picture, see [BPM Concepts](../../explanation/bpm-concepts).
 
@@ -28,7 +24,7 @@ You'll run a minimal process (`first-bpmn-process.bpmn`): a single service task,
 
 {/* Rendered from getting-started/02-first-bpmn-process/first-bpmn-process.bpmn via bpmn-to-image.
     Keep the .bpmn source next to the SVG so the figure always matches the real process. */}
-![The first BPMN process: Start → Log Greeting (service task) → Done](../assets/images/first-bpmn-process.svg)
+![The first BPMN process: Start → Log Greeting (service task) → Done](../assets/images/first-bpmn-process.png)
 
 That "the engine creates a job and waits for your worker" mechanic is the heart of ZenBPM — this tutorial exists mainly to make it concrete.
 
@@ -40,7 +36,7 @@ That "the engine creates a job and waits for your worker" mechanic is the heart 
 
 ## Step 1: Deploy a process {#step-1-deploy-a-process}
 
-A **process definition** is a `.bpmn` file. This chapter's process is `first-bpmn-process.bpmn` in the repo you cloned. From `getting-started/`, move into the chapter folder:
+A **process definition** is a `.bpmn` file. This chapter's process is (`first-bpmn-process.bpmn`) in the repo you cloned. From `getting-started/`, move into the chapter folder:
 
 ```bash
 cd 02-first-bpmn-process
@@ -302,7 +298,7 @@ docker compose down
 ## Next steps {#next-steps}
 
 - **Understand the model.** [BPM Concepts](../../explanation/bpm-concepts) — definitions, instances, tokens, and the job/worker mechanic in one short read.
-- **A realistic process.** The [Commission Payout example](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/processes/02-commission-payout) adds user tasks and an exclusive gateway.
+- **Service tasks.** Look at the detailed  [Service Task](../../reference/bpmn/supported-elements/activities/tasks/service-task) reference overview.
 - **More workers.** [`examples/workers/`](https://github.com/pbinitiative/zenbpm-examples/tree/main/examples/workers) shows several workers in one Go project.
 - **The APIs in full.** [REST (OpenAPI)](../../static/openapi) and the [gRPC proto](/zenbpm.proto).
 - **Engine internals.** [Architecture](/category/architecture).

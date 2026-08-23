@@ -31,7 +31,7 @@ const countActiveSubProcessInstances = `-- name: CountActiveSubProcessInstances 
 SELECT
     CAST(COUNT(*) AS INTEGER)
 FROM
-    process_instance AS child
+    process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
     INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
 WHERE
     et.process_instance_key = ?1
@@ -46,6 +46,11 @@ type CountActiveSubProcessInstancesParams struct {
 	ReadyState         int64 `json:"ready_state"`
 }
 
+// Pinned to idx_process_instance_parent_execution_token so the planner drives
+// from execution_token (filtered by process_instance_key) and probes child by
+// parent_process_execution_token, instead of starting from process_instance
+// filtered by state (which the new generic idx_process_instance_state would
+// otherwise prefer). See TestHotPathIndexes.
 func (q *Queries) CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countActiveSubProcessInstances,
 		arg.ProcessInstanceKey,
@@ -321,7 +326,7 @@ const findInactiveInstancesToDelete = `-- name: FindInactiveInstancesToDelete :m
 SELECT
     pi.key
 FROM
-    process_instance AS pi
+    process_instance AS pi INDEXED BY idx_process_instance_cleanup
     LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
     LEFT JOIN process_instance AS parent_pi ON et.process_instance_key = parent_pi.key
 WHERE
@@ -344,6 +349,10 @@ type FindInactiveInstancesToDeleteParams struct {
 	Limit    int64         `json:"limit"`
 }
 
+// Pinned to idx_process_instance_cleanup so SQLite uses the partial range index on
+// history_delete_sec for terminal states. Without the hint the planner (which never
+// sees ANALYZE stats in production) picks the generic idx_process_instance_state and
+// scans every terminal instance on every cleanup pass. See TestHotPathIndexes.
 func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, arg FindInactiveInstancesToDeleteParams) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, findInactiveInstancesToDelete, arg.CurrUnix, arg.Limit)
 	if err != nil {

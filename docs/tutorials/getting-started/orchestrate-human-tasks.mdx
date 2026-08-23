@@ -22,9 +22,9 @@ The engine running locally and the examples repo cloned, as set up in [Run the e
 
 A minimal **approval** process: a request comes in, a person approves or rejects it, done.
 
-![The Approval process: Request received → Approve request (user task) → Done](../assets/images/approval-process.svg)
+![The Approval process: Request received → Approve request (user task) → Done](../assets/images/approval-process.png)
 
-This chapter's process is `approval.bpmn`. From `getting-started/`, move into the chapter folder:
+This chapter's process is `approval-process.bpmn`. From `getting-started/`, move into the chapter folder:
 
 ```bash
 cd 03-orchestrate-human-tasks
@@ -39,7 +39,7 @@ Deploy the process and start an instance, exactly as in the previous tutorial:
 ```bash
 # Deploy
 curl -X POST http://localhost:8080/v1/process-definitions \
-  -F "resource=@approval.bpmn"
+  -F "resource=@approval-process.bpmn"
 # -> note the returned processDefinitionKey
 
 # Start an instance
@@ -70,6 +70,7 @@ curl "http://localhost:8080/v1/jobs?jobType=user-task&state=active"
 <TabItem value="java" label="Java">
 
 ```java
+// zenbpm: the injected ZenbpmClientService (see Client Libraries) that supplies the configured ApiClient.
 // JobApi is generated from the OpenAPI spec; construct it with the ApiClient.
 // verify: exact method/param names against the generated JobApi.
 JobApi jobApi = new JobApi(zenbpm.getApiClient());
@@ -83,6 +84,9 @@ JobPartitionPage jobs = jobApi.getJobs(
     /* sortBy */ null,
     /* sortOrder */ null
 );
+
+// jobApi and jobKey are reused in the assign/complete examples below.
+Long jobKey = jobs.getPartitions().get(0).getItems().get(0).getKey();
 ```
 
 </TabItem>
@@ -90,6 +94,7 @@ JobPartitionPage jobs = jobApi.getJobs(
 
 ```go
 // verify: exact params/struct names against the generated zenclient.
+ctx := context.Background()
 restClient, _ := zenclient.NewClient("http://localhost:8080/v1")
 jobType := "user-task"
 state := zenclient.JobStateActive
@@ -97,6 +102,12 @@ resp, _ := restClient.GetJobs(ctx, &zenclient.GetJobsParams{
     JobType: &jobType,
     State:   &state,
 })
+defer resp.Body.Close()
+
+// ctx, restClient, and jobKey are reused in the assign/complete examples below.
+var jobs zenclient.JobPartitionPage
+json.NewDecoder(resp.Body).Decode(&jobs)
+jobKey := jobs.Partitions[0].Items[0].Key
 ```
 
 </TabItem>
@@ -121,6 +132,7 @@ curl -X POST http://localhost:8080/v1/jobs/<JOB_KEY>/assign \
 <TabItem value="java" label="Java">
 
 ```java
+// Reuses jobApi and jobKey from Step 2.
 // verify: DTO name (AssignJobRequest) against the generated client.
 jobApi.assignJob(jobKey, new AssignJobRequest().assignee("john.doe"));
 ```
@@ -129,6 +141,7 @@ jobApi.assignJob(jobKey, new AssignJobRequest().assignee("john.doe"));
 <TabItem value="go" label="Go">
 
 ```go
+// Reuses restClient, ctx, and jobKey from Step 2.
 // verify: request body type name against the generated zenclient.
 restClient.AssignJob(ctx, jobKey, zenclient.AssignJobJSONRequestBody{
     Assignee: "john.doe",
@@ -157,6 +170,7 @@ curl -X POST http://localhost:8080/v1/jobs/<JOB_KEY>/complete \
 <TabItem value="java" label="Java">
 
 ```java
+// Reuses jobApi and jobKey from Step 2.
 // verify: DTO name (CompleteJobRequest) against the generated client.
 jobApi.completeJob(jobKey, new CompleteJobRequest()
     .variables(Map.of("approved", true)));
@@ -166,6 +180,7 @@ jobApi.completeJob(jobKey, new CompleteJobRequest()
 <TabItem value="go" label="Go">
 
 ```go
+// Reuses restClient, ctx, and jobKey from Step 2.
 // verify: request body type name against the generated zenclient.
 restClient.CompleteJob(ctx, jobKey, zenclient.CompleteJobJSONRequestBody{
     Variables: &map[string]any{"approved": true},

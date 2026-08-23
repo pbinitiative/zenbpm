@@ -41,6 +41,8 @@ type Cluster struct {
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 	Script      Script      `yaml:"script" json:"script"`
+	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
+	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
 }
 
 type ClusterRaft struct {
@@ -58,7 +60,7 @@ type ClusterRaft struct {
 	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_RAFT_BOOTSTRAP_EXPECT" env-default:"1"`
 	// Maximum time for bootstrap process
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"CLUSTER_RAFT_EXPECT_BOOTSTRAP_TIMEOUT" env-default:"10s"`
-	// Bootstrap              bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`
+	// Bootstrap bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`
 }
 
 type GrpcServer struct {
@@ -68,6 +70,8 @@ type GrpcServer struct {
 type HttpServer struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
+	// MaxRequestBodyBytes bounds request buffering by the OpenAPI validator.
+	MaxRequestBodyBytes int64 `yaml:"maxRequestBodyBytes" json:"maxRequestBodyBytes" env:"REST_API_MAX_REQUEST_BODY_BYTES" env-default:"10485760"`
 	// LogMode controls request logging: "errors" (default, status >= 400 only),
 	// "all" (every request) or "off" (no request logging).
 	LogMode string `yaml:"logMode" json:"logMode" env:"REST_API_LOG_MODE" env-default:"errors"`
@@ -94,6 +98,9 @@ type Tracing struct {
 	Name            string   `yaml:"name" json:"name" env:"TRACING_APP_NAME" env-default:"ZenBPM"` // application identifier
 	TransferHeaders []string `yaml:"transferHeaders" json:"transferHeaders" env:"TRACING_TRANSFER_HEADERS"`
 	Endpoint        string   `yaml:"endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	// SamplerRatio controls the fraction of new traces that get sampled (0.0 - 1.0).
+	// Child spans follow the sampling decision of their parent (ParentBased sampler).
+	SamplerRatio float64 `yaml:"samplerRatio" json:"samplerRatio" env:"TRACING_SAMPLER_RATIO" env-default:"1.0"`
 }
 
 type Persistence struct {
@@ -129,6 +136,9 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("invalid httpServer.logMode %q, supported: %s, %s, %s",
 			c.HttpServer.LogMode, LogModeErrors, LogModeAll, LogModeOff)
+	}
+	if c.HttpServer.MaxRequestBodyBytes <= 0 {
+		return fmt.Errorf("httpServer.maxRequestBodyBytes must be greater than zero, got %d", c.HttpServer.MaxRequestBodyBytes)
 	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv

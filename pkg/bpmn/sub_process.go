@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -15,6 +16,34 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func (engine *Engine) resolveChildBusinessKey(parentBusinessKey, expression *string, variables map[string]interface{}) (*string, error) {
+	if expression == nil {
+		if parentBusinessKey == nil {
+			return nil, nil
+		}
+		inheritedBusinessKey := *parentBusinessKey
+		return &inheritedBusinessKey, nil
+	}
+	trimmedExpression := strings.TrimSpace(*expression)
+	if trimmedExpression == "" {
+		emptyBusinessKey := ""
+		return &emptyBusinessKey, nil
+	}
+	if (trimmedExpression)[0] != '=' {
+		return nil, fmt.Errorf("business key expression must start with '='")
+	}
+
+	result, err := engine.evaluateExpression(*expression, variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate business key expression: %w", err)
+	}
+	businessKey, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("business key expression must evaluate to a string, got %T", result)
+	}
+	return &businessKey, nil
+}
 
 func (engine *Engine) createCallActivity(
 	ctx context.Context,
@@ -29,7 +58,15 @@ func (engine *Engine) createCallActivity(
 	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
-	batch.SaveFlowElementInstance(ctx,
+	businessKey, err := engine.resolveChildBusinessKey(
+		instance.ProcessInstance().BusinessKey,
+		element.GetBusinessKey(),
+		callActivityVarHolder.ExecutionScopeSnapshot(),
+	)
+	if err != nil {
+		return runtime.ActivityStateFailed, err
+	}
+	if err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -40,7 +77,9 @@ func (engine *Engine) createCallActivity(
 			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
-	)
+	); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist flow element instance for call activity %s: %w", element.GetId(), err)
+	}
 
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
@@ -55,9 +94,7 @@ func (engine *Engine) createCallActivity(
 		&runtime.CallActivityInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, businessKey),
 		})
 	if err != nil {
 		return runtime.ActivityStateFailed, err
@@ -88,8 +125,16 @@ func (engine *Engine) createSubProcess(
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
 	}
+	businessKey, err := engine.resolveChildBusinessKey(
+		instance.ProcessInstance().BusinessKey,
+		element.GetBusinessKey(),
+		subProcessVariableHolder.ExecutionScopeSnapshot(),
+	)
+	if err != nil {
+		return runtime.ActivityStateFailed, err
+	}
 
-	batch.SaveFlowElementInstance(ctx,
+	if err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -100,7 +145,9 @@ func (engine *Engine) createSubProcess(
 			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
-	)
+	); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist flow element instance for sub process %s: %w", element.GetId(), err)
+	}
 
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(element.StartEvents))
 	for _, startEvent := range element.StartEvents {
@@ -118,9 +165,7 @@ func (engine *Engine) createSubProcess(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.Id,
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, businessKey),
 		},
 	)
 	if err != nil {
@@ -207,7 +252,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return nil
 	}
 	ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", updatedParentToken.ElementId), trace.WithAttributes(
-		attribute.String(otelPkg.AttributeElementId, updatedParentToken.ElementId),
+		attribute.String(otelPkg.AttributeElementID, updatedParentToken.ElementId),
 		attribute.Int64(otelPkg.AttributeElementKey, updatedParentToken.ElementInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, updatedParentToken.Key),
 	))
@@ -265,7 +310,9 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 				return fmt.Errorf("failed to handle simple transition for parent instance  %d: %w", parentInstance.ProcessInstance().Key, err)
 			}
 			for _, tok := range tokens {
-				batch.SaveToken(ctx, tok)
+				if err = batch.SaveToken(ctx, tok); err != nil {
+					return fmt.Errorf("failed to save token %d for parent instance %d: %w", tok.Key, parentInstance.ProcessInstance().Key, err)
+				}
 			}
 		}
 	}
@@ -338,7 +385,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 		return nil
 	}
 	ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", updatedParentToken.ElementId), trace.WithAttributes(
-		attribute.String(otelPkg.AttributeElementId, updatedParentToken.ElementId),
+		attribute.String(otelPkg.AttributeElementID, updatedParentToken.ElementId),
 		attribute.Int64(otelPkg.AttributeElementKey, updatedParentToken.ElementInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, updatedParentToken.Key),
 	))
@@ -380,9 +427,13 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	}
 
 	for _, tok := range tokens {
-		batch.SaveToken(ctx, tok)
+		if err = batch.SaveToken(ctx, tok); err != nil {
+			return fmt.Errorf("failed to save token %d for parent instance %d: %w", tok.Key, parentInstance.ProcessInstance().Key, err)
+		}
 	}
-	batch.SaveProcessInstance(ctx, parentInstance)
+	if err = batch.SaveProcessInstance(ctx, parentInstance); err != nil {
+		return fmt.Errorf("failed to save parent process instance %d: %w", parentInstance.ProcessInstance().Key, err)
+	}
 	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
 		ElementType:     string(parentElement.GetType()),

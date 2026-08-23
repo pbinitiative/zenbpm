@@ -122,6 +122,13 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
 		assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.Variables["order"])
 		assert.Equal(t, float64(123), instance.Variables["testVar"])
+
+		assertExactProcessInstanceHistoryStates(t, instance.Key,
+			completedFlowElementHistory("StartEvent_1"),
+			completedFlowElementHistory("Flow_1pv0o34"),
+			completedFlowElementHistory("service-task-1"),
+			activeFlowElementHistory("user-task-2"),
+		)
 	})
 
 	t.Run("read process instance jobs", func(t *testing.T) {
@@ -141,6 +148,7 @@ func TestStartProcessInstanceOnElementsWithResponse404Response(t *testing.T) {
 		response, _ := app.restClient.StartProcessInstanceOnElementsWithResponse(t.Context(),
 			zenclient.StartProcessInstanceOnElementsJSONRequestBody{
 				ProcessDefinitionKey: nonExistingProcessDefinitionKey,
+				StartingElementIds:   []string{"non-existing-element"},
 			})
 		assert.NotNil(t, response.JSON404)
 		assert.Equal(t, "NOT_FOUND", response.JSON404.Code)

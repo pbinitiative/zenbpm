@@ -1,12 +1,14 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -15,7 +17,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
 
@@ -30,10 +31,19 @@ import (
 type Server struct {
 	ctx context.Context
 	proto.UnimplementedZenBpmServer
-	node   *cluster.ZenNode
-	addr   string // Address this server is listening on
-	server *grpc.Server
-	logger hclog.Logger
+	jobManager jobManager
+	addr       string // Address this server is listening on
+	server     *grpc.Server
+	logger     hclog.Logger
+}
+
+type jobManager interface {
+	AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error
+	RemoveClient(context.Context, jobmanager.ClientID)
+	AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
+	RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
+	CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error
+	FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error
 }
 
 // NewServer returns a new instance of ZenBpm GRPC server
@@ -49,11 +59,11 @@ func NewServer(ctx context.Context, node *cluster.ZenNode, addr string) *Server 
 		grpc.ChainStreamInterceptor(recovery.StreamServerInterceptor()),
 	)
 	server := &Server{
-		node:   node,
-		addr:   addr,
-		server: grpcServer,
-		ctx:    ctx,
-		logger: hclog.Default().Named("public-grpc-server"),
+		jobManager: node.JobManager,
+		addr:       addr,
+		server:     grpcServer,
+		ctx:        ctx,
+		logger:     hclog.Default().Named("public-grpc-server"),
 	}
 	proto.RegisterZenBpmServer(grpcServer, server)
 
@@ -89,15 +99,18 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 		clientID = jobmanager.ClientID(uuid.New().String())
 	}
 	clientCh := make(chan jobmanager.Job)
-	err := s.node.JobManager.AddClient(stream.Context(), clientID, clientCh)
+	err := s.jobManager.AddClient(stream.Context(), clientID, clientCh)
 	if err != nil {
 		return fmt.Errorf("failed to add client: %w", err)
 	}
+	defer s.jobManager.RemoveClient(s.ctx, clientID)
 	sendMu := &sync.Mutex{}
+	recvDone := make(chan struct{})
 	safego.Go("grpc-job-stream-recv", safego.DefaultLogger, func() {
+		defer close(recvDone)
 		s.recvClientRequests(stream, clientID, sendMu)
 	})
-	s.sendClientJobs(stream, clientCh, clientID, sendMu)
+	s.sendClientJobs(stream, clientCh, recvDone, sendMu)
 	return nil
 }
 
@@ -121,55 +134,67 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Complete:
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
-				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
+				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
 					},
-				})
+				}) {
+					return
+				}
 				continue
 			}
-			err = s.node.JobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
+			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
-				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				s.logger.Error("failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
+				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to complete job: %s", err)),
+						Message: new("Failed to complete job"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
 					},
-				})
+				}) {
+					return
+				}
 				continue
 			}
 		case *proto.JobStreamRequest_Fail:
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
-				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
+				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
+						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
 					},
-				})
+				}) {
+					return
+				}
 				continue
 			}
-			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
+			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
-				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				s.logger.Error("failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
+				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
-						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
+						Message: new("Failed to process job failure request"),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
 					},
-				})
+				}) {
+					return
+				}
 				continue
 			}
 		case *proto.JobStreamRequest_Subscription:
@@ -177,36 +202,66 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			case proto.StreamSubscriptionRequest_TYPE_UNDEFINED:
 			case proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE:
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
-				s.node.JobManager.AddClientJobSub(stream.Context(), clientID, jobType)
+				if err := s.jobManager.AddClientJobSub(stream.Context(), clientID, jobType); err != nil {
+					s.logger.Error("failed to subscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
+					if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+						Error: &proto.ErrorResult{
+							Code:    nil,
+							Message: new(fmt.Sprintf("Failed to subscribe to job type %s", jobType)),
+						},
+					}) {
+						return
+					}
+					continue
+				}
 			case proto.StreamSubscriptionRequest_TYPE_UNSUBSCRIBE:
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
-				s.node.JobManager.RemoveClientJobSub(stream.Context(), clientID, jobType)
+				if err := s.jobManager.RemoveClientJobSub(stream.Context(), clientID, jobType); err != nil {
+					s.logger.Error("failed to unsubscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
+					if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+						Error: &proto.ErrorResult{
+							Code:    nil,
+							Message: new(fmt.Sprintf("Failed to unsubscribe from job type %s", jobType)),
+						},
+					}) {
+						return
+					}
+					continue
+				}
 			default:
-				_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.GetType()))
+				if !s.sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.GetType())) {
+					return
+				}
 				continue
 			}
 		default:
-			_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(clientReq.Request))
+			if !s.sendJobStreamResponse(stream, sendMu, unknownRequestError(clientReq.Request)) {
+				return
+			}
 			continue
 		}
 	}
 }
 
-func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, clientID jobmanager.ClientID, sendMu *sync.Mutex) {
+func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, recvDone <-chan struct{}, sendMu *sync.Mutex) {
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-stream.Context().Done():
-			s.node.JobManager.RemoveClient(s.ctx, clientID)
 			return
-		case job := <-clientCh:
+		case <-recvDone:
+			return
+		case job, ok := <-clientCh:
+			if !ok {
+				return
+			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 				Job: &proto.WaitingJob{
 					Key:            &job.Key,
 					InstanceKey:    &job.InstanceKey,
 					InputVariables: job.InputVariables,
-					Type:           ptr.To(string(job.Type)),
+					Type:           new(string(job.Type)),
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
 				},
@@ -217,6 +272,14 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			}
 		}
 	}
+}
+
+func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
+	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
+		s.logger.Debug("failed to send job stream response", "err", err)
+		return false
+	}
+	return true
 }
 
 func unknownRequestError(req any) *proto.JobStreamResponse {
@@ -257,4 +320,37 @@ func decodeVariables(raw []byte) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	return vars, nil
+}
+
+func variableKeys(raw []byte) []string {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil
+	}
+
+	keys := map[string]struct{}{}
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			break
+		}
+		key, ok := token.(string)
+		if !ok {
+			break
+		}
+		keys[key] = struct{}{}
+
+		var value json.RawMessage
+		if err = decoder.Decode(&value); err != nil {
+			break
+		}
+	}
+
+	result := make([]string, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	sort.Strings(result)
+	return result
 }

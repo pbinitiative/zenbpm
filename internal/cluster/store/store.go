@@ -18,8 +18,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rsync"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"go.opentelemetry.io/otel/metric"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -40,8 +40,10 @@ type Store struct {
 	bootstrapped    bool
 	notifyingNodes  map[string]raft.Server
 
-	// mutext used by fsm to lock state changes
-	stateMu sync.Mutex
+	// stateMu guards access to state: the fsm takes the write lock when it
+	// replaces state, every reader (including async metric callbacks) must
+	// take the read lock
+	stateMu sync.RWMutex
 	boltDB  *raftboltdb.BoltStore
 
 	layer  *tcp.Layer
@@ -63,6 +65,15 @@ type Store struct {
 
 	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
+
+	// startedAt is the time this store was successfully opened. It backs the
+	// node_uptime_seconds gauge and is only written by Open before the store is
+	// marked as open, so metric callbacks never observe a partially built value.
+	startedAt time.Time
+
+	// metricsRegistration is the otel observable-callback registration created
+	// by RegisterMetrics; released in Close via unregisterMetrics
+	metricsRegistration metric.Registration
 }
 
 type Config struct {
@@ -109,7 +120,7 @@ func DefaultConfig(c config.Cluster) Config {
 func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *Store {
 	s := &Store{
 		cfg:             c,
-		stateMu:         sync.Mutex{},
+		stateMu:         sync.RWMutex{},
 		boltDB:          &raftboltdb.BoltStore{},
 		raft:            &raft.Raft{},
 		logger:          hclog.Default().Named("zenbpm-store"),
@@ -141,7 +152,12 @@ func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *
 	return s
 }
 
+// ClusterState returns a deep copy of the replicated cluster state. It takes
+// the state read lock so it is safe to call concurrently with FSM applies
+// (e.g. from the async otel metrics callback registered in RegisterMetrics).
 func (s *Store) ClusterState() state.Cluster {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
 	return *s.state.DeepCopy()
 }
 
@@ -168,7 +184,7 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 		return fmt.Errorf("failed to marshal NodeChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if f.Error() != nil && f.Response() != nil {
+	if f.Error() != nil {
 		return fmt.Errorf("failed to apply NodeChange message to raft log: %w", f.Error())
 	}
 	return nil
@@ -186,7 +202,7 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 		return fmt.Errorf("failed to marshal NodePartitionChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if f.Error() != nil && f.Response() != nil {
+	if f.Error() != nil {
 		return fmt.Errorf("failed to apply NodePartitionChange message to raft log: %w", f.Error())
 	}
 	return nil
@@ -204,6 +220,7 @@ func (s *Store) Nodes() ([]state.Node, error) {
 	}
 
 	rs := f.Configuration().Servers
+	cs := s.ClusterState()
 	nodes := make([]state.Node, len(rs))
 	for i := range rs {
 		nodes[i] = state.Node{
@@ -211,7 +228,7 @@ func (s *Store) Nodes() ([]state.Node, error) {
 			Addr:     string(rs[i].Address),
 			Suffrage: rs[i].Suffrage,
 		}
-		node, err := s.state.GetNode(string(rs[i].ID))
+		node, err := cs.GetNode(string(rs[i].ID))
 		if err != nil {
 			if errors.Is(err, zenerr.ErrNodeNotFound) {
 				// TODO: decide if we need full node info here or just raft.Server
@@ -278,7 +295,9 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 					}
 				case raft.LeaderObservation:
 					isLeader := signal.LeaderID == raft.ServerID(s.raftID)
-					s.selfLeaderChange(isLeader)
+					if err := s.selfLeaderChange(isLeader); err != nil {
+						s.logger.Error(fmt.Sprintf("failed to handle leadership change: %s", err.Error()))
+					}
 					if isLeader {
 						s.logger.Info(fmt.Sprintf("this node (ID=%s) is now Leader", s.raftID))
 					} else {
@@ -318,8 +337,8 @@ func (s *Store) addNewNode(node raft.Server) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(node.ID)),
-		Addr:   ptr.To(string(node.Address)),
+		NodeId: new(string(node.ID)),
+		Addr:   new(string(node.Address)),
 		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -342,7 +361,7 @@ func (s *Store) shutdownNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(nodeId)),
+		NodeId: new(string(nodeId)),
 		State:  proto.NodeState_NODE_STATE_SHUTDOWN.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -360,7 +379,7 @@ func (s *Store) resumeNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: ptr.To(string(nodeId)),
+		NodeId: new(string(nodeId)),
 		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
@@ -397,8 +416,8 @@ func (s *Store) selfLeaderChange(leader bool) error {
 
 	s.logger.Info("this node is now leader")
 	err := s.WriteNodeChange(&proto.NodeChange{
-		NodeId:   ptr.To(s.raftID),
-		Addr:     ptr.To(s.Addr()),
+		NodeId:   new(s.raftID),
+		Addr:     new(s.Addr()),
 		State:    proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:     proto.Role_ROLE_TYPE_LEADER.Enum(),
 		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),
@@ -415,6 +434,8 @@ func (s *Store) PartitionLeaderWithID(partition uint32) (string, string) {
 	if !s.open.Load() {
 		return "", ""
 	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
 	partitionInfo, ok := s.state.Partitions[partition]
 	if !ok {
 		return "", ""

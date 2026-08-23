@@ -48,10 +48,13 @@ WHERE
 LIMIT @size OFFSET @offset;
 
 -- name: FindProcessInstanceJobsInState :many
+-- Pinned to idx_fk_job_process_instance_key. The planner currently picks it correctly, but
+-- pinning here makes the contract explicit and prevents the generic idx_job_execution_token_state
+-- from shadowing it under different data distributions. See TestHotPathIndexes.
 SELECT
     *
 FROM
-    job
+    job INDEXED BY idx_fk_job_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND state IN (sqlc.slice('states'));

@@ -78,6 +78,15 @@ func TestReceiveTaskBoundaryWithTimer(t *testing.T) {
 		active, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, bpmnruntime.ActivityStateActive)
 		require.NoError(t, err)
 		require.Empty(t, active, "receive task message subscription should be terminated after the interrupting timer fires")
+
+		assertExactCompletedProcessInstanceHistory(t, instance.Key, []string{
+			"StartEvent_1",
+			"Flow_1xwsg77",
+			receiveTaskElement,
+			"GiveUpTimer_15clklw",
+			"Flow_0k7ypez",
+			"GiveUpEndEvent_1pcopap",
+		})
 	})
 }
 

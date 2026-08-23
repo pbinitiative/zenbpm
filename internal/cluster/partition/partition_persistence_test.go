@@ -29,7 +29,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/stretchr/testify/assert"
@@ -92,7 +91,7 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 		return &zenproto.FindActiveMessageResponse{
 			Error: &zenproto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, status.Error(codes.NotFound, err.Error())
 	}
@@ -243,7 +242,7 @@ func TestNewDBRejectsNegativeCacheSizes(t *testing.T) {
 
 func TestRqLiteStorage(t *testing.T) {
 	partition, conf, clientMgr, tStore, ts := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-rq-lite-db")
 
@@ -264,7 +263,7 @@ func TestRqLiteStorage(t *testing.T) {
 
 func TestRunUpMigrations(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
@@ -290,7 +289,7 @@ func TestRunUpMigrations(t *testing.T) {
 
 func TestRunRollbackMigration(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetupWithTestMigration(t)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
@@ -323,7 +322,7 @@ func TestRunRollbackMigration(t *testing.T) {
 
 func TestDataCleanup(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-data-cleanup")
 	const cleanupBatchSize = 10
@@ -444,9 +443,9 @@ func TestDataCleanup(t *testing.T) {
 		timer := runtime.Timer{
 			ElementId:            "timer-elem",
 			Key:                  r2 + 80,
-			ElementInstanceKey:   ptr.To(r2 + 81),
+			ElementInstanceKey:   new(r2 + 81),
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   ptr.To(inst2.ProcessInstance().Key),
+			ProcessInstanceKey:   new(inst2.ProcessInstance().Key),
 			TimerState:           runtime.TimerStateCreated,
 			CreatedAt:            time.Now(),
 			DueAt:                time.Now().Add(1 * time.Hour),
@@ -687,6 +686,102 @@ func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {
 	require.False(t, childWithoutTTLRow.HistoryTtlSec.Valid)
 }
 
+func TestSaveProcessInstanceExplicitBusinessKeyOverridesContext(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-business-key-override")
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "business-key-override-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="business-key-override-process" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	emptyBusinessKey := ""
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			BusinessKey:    &emptyBusinessKey,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	ctx := appcontext.WithBusinessKey(t.Context(), "context-business-key")
+	require.NoError(t, db.SaveProcessInstance(ctx, &instance))
+
+	row, err := db.Queries.GetProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, row.BusinessKey.Valid)
+	assert.Equal(t, "", row.BusinessKey.String)
+}
+
+func TestSaveChildProcessInstanceDoesNotUseContextBusinessKey(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-child-business-key-context")
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "child-business-key-context-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="child-business-key-context-process" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	parent := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &parent))
+
+	parentToken := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: db.GenerateId(),
+		ElementId:          "sub-process",
+		ProcessInstanceKey: parent.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	require.NoError(t, db.SaveToken(t.Context(), parentToken))
+
+	child := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           parentToken,
+		ParentProcessTargetElementInstanceKey: parentToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          parentToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	ctx := appcontext.WithBusinessKey(t.Context(), "context-business-key")
+	require.NoError(t, db.SaveProcessInstance(ctx, &child))
+
+	row, err := db.Queries.GetProcessInstance(t.Context(), child.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.False(t, row.BusinessKey.Valid)
+}
+
 func queryCount(t *testing.T, db *DB, query string) int64 {
 	row := db.QueryRowContext(t.Context(), query)
 	var count int64
@@ -814,8 +909,8 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 			return &zenproto.FindActiveMessageResponse{
 				Key:                  &pointer.MessageSubscriptionKey,
 				ElementId:            nil,
-				ProcessDefinitionKey: ptr.To(int64(1)),
-				ProcessInstanceKey:   ptr.To(int64(1)),
+				ProcessDefinitionKey: new(int64(1)),
+				ProcessInstanceKey:   new(int64(1)),
 				Name:                 &pointer.Name,
 				State:                &pointer.State,
 				CorrelationKey:       &pointer.CorrelationKey,
@@ -1078,7 +1173,7 @@ func testFindProcessInstancesPageFiltersAndSort(t *testing.T, db *DB) {
 
 func TestGetLatestDecisionDefinitionById(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-decision-def")
 

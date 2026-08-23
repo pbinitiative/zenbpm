@@ -27,6 +27,14 @@ REVIVE ?= $(LOCALBIN)/revive
 PATH := $(LOCALBIN):$(PATH)
 
 PACKAGE_NAME ?= github.com/pbinitiative/zenbpm
+BUILD_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_BRANCH ?= $(or $(shell git branch --show-current 2>/dev/null),unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+APP_VERSION ?= $(shell tr -d '\r\n' < VERSION)
+LOCAL_DOCKER_IMAGE ?= zenbpm:local
+BUILD_LDFLAGS = -X $(PACKAGE_NAME)/internal/buildinfo.commit=$(BUILD_COMMIT) \
+	-X $(PACKAGE_NAME)/internal/buildinfo.branch=$(BUILD_BRANCH) \
+	-X $(PACKAGE_NAME)/internal/buildinfo.buildTime=$(BUILD_TIME)
 ## Tool Versions
 SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 33.4
@@ -135,6 +143,9 @@ PROTOC_ARCH:=-$(ARCH)
 ifeq ("$(ARCH)", "amd64")
 	PROTOC_ARCH=-x86_64
 endif
+ifeq ("$(ARCH)", "arm64")
+	PROTOC_ARCH=-aarch_64
+endif
 ifeq ("$(OS)", "darwin")
 	PROTOC_OS:=osx
 else ifeq ("$(OS)", "windows")
@@ -233,7 +244,7 @@ errcheck: $(ERRCHECK) ## Run errcheck and write text, SARIF, and HTML reports.
 revive: $(REVIVE) ## Run revive and write JSON, SARIF, and HTML reports.
 	@mkdir -p $(REVIVE_REPORT_DIR)
 	@set +e; \
-	$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
+	$(REVIVE) -config revive.toml -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
 	status=$$?; \
 	set -e; \
 	if [ $$status -ne 0 ] && [ ! -s $(REVIVE_JSON_REPORT) ]; then \
@@ -263,25 +274,26 @@ codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written 
 run: ## Start this project locally with dev configuration
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "$(BUILD_LDFLAGS)" cmd/zenbpm/*.go
 
 .PHONY: run1
 run1: ## Start 1st node
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node1.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "$(BUILD_LDFLAGS)" cmd/zenbpm/*.go
 
 .PHONY: run2
 run2: ## Start 2nd node
 	export PROFILE=DEV; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
-	go run cmd/zenbpm/*.go
+	go run -ldflags "$(BUILD_LDFLAGS)" cmd/zenbpm/*.go
 
 
 .PHONY: start-monitoring
 start-monitoring: ## Start monitoring stack
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
-	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus  --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name alertmanager -p 9093:9093 -v ./scripts/alertmanager.yml:/etc/alertmanager/alertmanager.yml prom/alertmanager --config.file=/etc/alertmanager/alertmanager.yml
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml -v ./scripts/prometheus-rules.yml:/etc/prometheus/prometheus-rules.yml prom/prometheus  --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
 	@# Host CPU / memory / disk usage + disk I/O. On Linux this reports the real host;
 	@# on macOS Docker Desktop it reports the Docker VM (see scripts/prometheus.yml).
@@ -291,6 +303,7 @@ start-monitoring: ## Start monitoring stack
 stop-monitoring:
 	@docker stop grafana
 	@docker stop prometheus
+	@docker stop alertmanager
 	@docker stop jaeger
 	@docker stop node-exporter
 
@@ -403,24 +416,48 @@ test-dmntest:
 
 ##@ Build
 
+.PHONY: validate-version-sync
+validate-version-sync: ## Validate that VERSION matches the OpenAPI version
+	@scripts/ci/validate-version-sync.sh
+
+.PHONY: test-ci-scripts
+test-ci-scripts: ## Test release CI scripts without network access
+	@scripts/ci/tests/release-orchestrator-test.sh
+
 .PHONY: build
-build: generate ## Build the project
-	go build -o zenbpm cmd/zenbpm/main.go
+build: validate-version-sync generate ## Build the project
+	go build -ldflags "$(BUILD_LDFLAGS)" -o zenbpm cmd/zenbpm/main.go
+
+.PHONY: docker-build-local
+docker-build-local: ## Build the local Docker image with build metadata
+	@docker build \
+		--build-arg BUILD_COMMIT="$(BUILD_COMMIT)" \
+		--build-arg BUILD_BRANCH="$(BUILD_BRANCH)" \
+		--build-arg BUILD_TIME="$(BUILD_TIME)" \
+		--file Dockerfile.local \
+		--tag "$(LOCAL_DOCKER_IMAGE)" \
+		.
 
 .PHONY: release-dry-run
-release-dry-run:
+release-dry-run: validate-version-sync
 	@docker run \
 		--rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish
 
 .PHONY: release-dev
-release-dev:
+release-dev: validate-version-sync
 	@if [ -z "$${RELEASE_TAG:-}" ]; then \
 		echo "\033[91mRELEASE_TAG is required for dev release\033[0m";\
+		exit 1;\
+	fi
+	@if [ -z "$(BUILD_BRANCH)" ] || [ "$(BUILD_BRANCH)" = "unknown" ]; then \
+		echo "\033[91mBUILD_BRANCH is required for dev release\033[0m";\
 		exit 1;\
 	fi
 	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
@@ -439,6 +476,8 @@ release-dev:
 		-e GOMODCACHE=/go/pkg/mod \
 		-e IMAGE_NAME \
 		-e RELEASE_TAG \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
 		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
 		-e GORELEASER_RELEASE_DISABLE=true \
 		-e GORELEASER_DOCKER_LATEST=false \
@@ -447,9 +486,17 @@ release-dev:
 		release --clean --skip=validate
 
 .PHONY: release
-release:
+release: validate-version-sync
+	@if [ -z "$${RELEASE_TAG:-}" ]; then \
+		echo "\033[91mRELEASE_TAG is required for release\033[0m";\
+		exit 1;\
+	fi
 	@if [ ! -f ".release-env" ]; then \
 		echo "\033[91m.release-env is required for release\033[0m";\
+		exit 1;\
+	fi
+	@if [ -z "$(BUILD_BRANCH)" ] || [ "$(BUILD_BRANCH)" = "unknown" ]; then \
+		echo "\033[91mBUILD_BRANCH is required for release\033[0m";\
 		exit 1;\
 	fi
 	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
@@ -460,6 +507,10 @@ release:
 		-e DOCKER_BUILDKIT=1 \
 		-e GOCACHE=/root/.cache/go-build \
 		-e GOMODCACHE=/go/pkg/mod \
+		-e RELEASE_TAG \
+		-e APP_VERSION="$(APP_VERSION)" \
+		-e BUILD_BRANCH="$(BUILD_BRANCH)" \
+		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
 		-e GORELEASER_RELEASE_DISABLE=false \
 		-e GORELEASER_DOCKER_LATEST=true \
 		-v /var/run/docker.sock:/var/run/docker.sock \

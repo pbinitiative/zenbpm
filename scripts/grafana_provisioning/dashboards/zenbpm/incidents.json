@@ -1,0 +1,122 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum by(element_id) (rate(incidents_created_total[$__rate_interval]))", "legendFormat": "created {{element_id}}", "refId": "A" },
+        { "expr": "sum(rate(incidents_resolved_total[$__rate_interval]))", "legendFormat": "resolved", "refId": "B" }
+      ],
+      "title": "Incidents created / resolved",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(increase(incidents_created_total[24h])) - sum(increase(incidents_resolved_total[24h]))", "legendFormat": "net change (24h window)", "refId": "A" }
+      ],
+      "title": "Net incident change (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(jobs_failed_total[$__rate_interval])) / sum(rate(jobs_created_total[$__rate_interval]))", "legendFormat": "failure ratio", "refId": "A" }
+      ],
+      "title": "Job failure ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "topk(10, sum by(type) (rate(jobs_failed_total[$__rate_interval])))", "legendFormat": "{{type}}", "refId": "A" }
+      ],
+      "title": "Top failing job types",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum by(message_name) (rate(message_correlation_failed_total[$__rate_interval]))", "legendFormat": "failed {{message_name}}", "refId": "A" },
+        { "expr": "sum(rate(messages_correlated_total[$__rate_interval]))", "legendFormat": "correlated", "refId": "B" }
+      ],
+      "title": "Message correlation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(timers_scheduled_total[$__rate_interval]))", "legendFormat": "scheduled", "refId": "A" },
+        { "expr": "sum(rate(timers_fired_total[$__rate_interval]))", "legendFormat": "fired", "refId": "B" },
+        { "expr": "sum(rate(timers_cancelled_total[$__rate_interval]))", "legendFormat": "cancelled", "refId": "C" }
+      ],
+      "title": "Timers",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum by(decision_id, outcome) (rate(dmn_evaluations_total[$__rate_interval]))", "legendFormat": "{{decision_id}} {{outcome}}", "refId": "A" }
+      ],
+      "title": "DMN evaluations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(dmn_evaluation_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by(le) (rate(dmn_evaluation_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p99", "refId": "B" }
+      ],
+      "title": "DMN evaluation duration",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["zenbpm", "incidents"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timezone": "browser",
+  "title": "ZenBPM Incidents & Errors",
+  "uid": "zenbpm-incidents",
+  "version": 1
+}

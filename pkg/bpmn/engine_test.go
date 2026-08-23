@@ -41,7 +41,11 @@ func TestMain(m *testing.M) {
 	}()
 
 	bpmnEngine = NewEngine(EngineWithStorage(engineStorage))
-	bpmnEngine.Start(context.Background())
+	if err := bpmnEngine.Start(context.Background()); err != nil {
+		fmt.Printf("failed to start bpmn engine: %s\n", err)
+		exitCode = 1
+		return
+	}
 
 	// Run the tests
 	exitCode = m.Run()

@@ -49,11 +49,18 @@ type TActivity struct {
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+	In     *extensions.TIn         `xml:"extensionElements>in"`
 }
 
 func (task TActivity) GetInputMapping() []extensions.TIoMapping  { return task.Input }
 func (task TActivity) GetOutputMapping() []extensions.TIoMapping { return task.Output }
 func (task TActivity) GetMultiInstance() *TMultiInstance         { return task.MultiInstance }
+func (task TActivity) GetBusinessKey() *string {
+	if task.In == nil {
+		return nil
+	}
+	return task.In.BusinessKey
+}
 
 type TTask struct {
 	TActivity

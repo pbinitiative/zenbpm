@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_message_end_event_payload" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="message_end_event_payload" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_prepare</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_prepare" sourceRef="start_event" targetRef="prepare_publication" />
+    <bpmn:serviceTask id="prepare_publication">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="message-end-event-prepare" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_to_prepare</bpmn:incoming>
+      <bpmn:outgoing>Flow_prepare_to_message_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_prepare_to_message_end" sourceRef="prepare_publication" targetRef="message_end_event" />
+    <bpmn:endEvent id="message_end_event">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="orders.completed" retries="3" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=orderId" target="orderId" />
+          <zenbpm:input source="=amount" target="amount" />
+          <zenbpm:input source="=approved" target="approved" />
+          <zenbpm:input source="=businessKey" target="correlationId" />
+          <zenbpm:input source="=messageId" target="messageId" />
+          <zenbpm:input source="=customerName" target="customerName" />
+          <zenbpm:input source="=occurredAt" target="occurredAt" />
+          <zenbpm:input source="=optionalNote" target="optionalNote" />
+          <zenbpm:input source="=&#34;order.completed&#34;" target="messageType" />
+          <zenbpm:input source="=occurredAt" target="emittedAt" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_prepare_to_message_end</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_payload" />
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_message_end_event_payload">
+    <bpmndi:BPMNPlane id="BPMNPlane_message_end_event_payload" bpmnElement="message_end_event_payload">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="120" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="prepare_publication_di" bpmnElement="prepare_publication">
+        <dc:Bounds x="250" y="98" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="message_end_event_di" bpmnElement="message_end_event">
+        <dc:Bounds x="410" y="120" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_prepare_di" bpmnElement="Flow_start_to_prepare">
+        <di:waypoint x="186" y="138" />
+        <di:waypoint x="250" y="138" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_prepare_to_message_end_di" bpmnElement="Flow_prepare_to_message_end">
+        <di:waypoint x="350" y="138" />
+        <di:waypoint x="410" y="138" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

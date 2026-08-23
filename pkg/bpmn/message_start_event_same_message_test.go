@@ -24,6 +24,8 @@ import (
 func TestCreateInstance_ManualStart_OnEventDrivenStartEvent_WithFailingEventSubprocessSubscription(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
+	metricsEngine, metricsReader := newMetricsTestEngine(t)
+	engine.metrics = metricsEngine.metrics
 	require.NoError(t, engine.Start(t.Context()))
 	defer engine.Stop()
 
@@ -79,6 +81,7 @@ func TestCreateInstance_ManualStart_OnEventDrivenStartEvent_WithFailingEventSubp
 		"incident message must not contain the broken %%!w(<nil>) formatting verb")
 	assert.Nil(t, incidents[0].ResolvedAt, "incident must be unresolved")
 	assert.Zero(t, incidents[0].Token.Key, "subscription-creation incidents are not tied to an execution token")
+	assert.Equal(t, int64(1), counterValue(t, metricsReader, "incidents_created"))
 
 	// Make the previously missing correlation-key variable available and resolve the incident.
 	// Resolving this tokenless incident must recreate the event-subprocess subscription without

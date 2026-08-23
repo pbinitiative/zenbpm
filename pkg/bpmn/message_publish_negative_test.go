@@ -16,8 +16,9 @@ func TestPublishMessageByName_NoMatchingSubscription(t *testing.T) {
 	t.Run("unknown message name returns not-found", func(t *testing.T) {
 		store := inmemory.NewStorage()
 		engine := NewEngine(EngineWithStorage(store))
-		engine.Start(t.Context())
+		startErr := engine.Start(t.Context())
 		defer engine.Stop()
+		require.NoError(t, startErr)
 
 		err := engine.PublishMessageByName(t.Context(), "totally-unknown-message", nil, nil)
 		require.Error(t, err)
@@ -30,8 +31,9 @@ func TestPublishMessageByName_NoMatchingSubscription(t *testing.T) {
 	t.Run("definition loaded but RegisterProcessDefinitionSubscriptions never called", func(t *testing.T) {
 		store := inmemory.NewStorage()
 		engine := NewEngine(EngineWithStorage(store))
-		engine.Start(t.Context())
+		startErr := engine.Start(t.Context())
 		defer engine.Stop()
+		require.NoError(t, startErr)
 
 		// Load the BPMN but skip RegisterProcessDefinitionSubscriptions — no
 		// DefinitionMessageSubscription is created, so the publishing must fail.
@@ -49,8 +51,9 @@ func TestPublishMessageByName_NoMatchingSubscription(t *testing.T) {
 	t.Run("publish by non-existent subscription key returns not-found", func(t *testing.T) {
 		store := inmemory.NewStorage()
 		engine := NewEngine(EngineWithStorage(store))
-		engine.Start(t.Context())
+		startErr := engine.Start(t.Context())
 		defer engine.Stop()
+		require.NoError(t, startErr)
 
 		subsBefore := len(store.MessageSubscriptions)
 		err := engine.PublishMessageByKey(t.Context(), int64(0xdeadbeef), nil)

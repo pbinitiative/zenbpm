@@ -8,6 +8,7 @@
     <bpmn:intermediateCatchEvent id="msg" name="msg">
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
+          <zenbpm:input source="= inputFoo" target="mappedInputFoo" />
           <zenbpm:output source="= foo" target="mappedFoo" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>

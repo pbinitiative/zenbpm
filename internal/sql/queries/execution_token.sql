@@ -19,10 +19,13 @@ FROM
 WHERE state = @state;
 
 -- name: GetTokensForProcessInstance :many
+-- Pinned to idx_fk_execution_token_process_instance_key. The newer idx_execution_token_state
+-- is a generic state index that the planner would otherwise prefer for the leading state IN (...),
+-- causing a partition-wide scan for one process instance's tokens.
 SELECT
     *
 FROM
-    execution_token
+    execution_token INDEXED BY idx_fk_execution_token_process_instance_key
 WHERE process_instance_key = @process_instance_key
     AND state IN (sqlc.slice('states'));
 

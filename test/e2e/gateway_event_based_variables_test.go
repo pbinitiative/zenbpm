@@ -62,6 +62,11 @@ func TestEventBasedGatewayVariables(t *testing.T) {
 			"mapped_process_seed":    "seed-value",
 			"mapped_static_message":  "static-message",
 		}
+		assertFlowElementInputVariables(t, processInstance.Key, eventBasedGatewayMessageElementId, map[string]any{
+			"correlationKey":    correlationKey,
+			"input_scoped_seed": "seed-value",
+			"process_seed":      "seed-value",
+		})
 		assertFlowElementInputVariables(t, processInstance.Key, eventBasedGatewayMessageTaskId, expectedVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, expectedVariables)
 	})
@@ -102,8 +107,9 @@ func deployEventBasedGatewayMappingDefinition(t testing.TB) int64 {
 		`<bpmn:intermediateCatchEvent id="catch_message">
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
+          <zenbpm:input source="=process_seed" target="input_scoped_seed" />
           <zenbpm:output source="=event_payload" target="mapped_message_payload" />
-          <zenbpm:output source="=process_seed" target="mapped_process_seed" />
+          <zenbpm:output source="=input_scoped_seed" target="mapped_process_seed" />
           <zenbpm:output source="=&#34;static-message&#34;" target="mapped_static_message" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>`,

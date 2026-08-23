@@ -54,7 +54,7 @@ Prefer `number` for numeric decisions: FEEL arithmetic does not guarantee which 
 
 ## Result shape
 
-The result is a single value under the variable name. A decision `totalPrice` with `<variable name="total" />` returns `{"total": 4500}` to a requiring decision, which reads it as `totalPrice.total`; the process-facing result of the evaluation is the value `4500` itself. See [DMN engine](../dmn-engine.md#result-of-an-evaluation).
+The result is a single value under the variable name. A decision `totalPrice` with `<variable name="total" />` produces `{"total": 4500}` and a requiring decision reads the value as `total`; the process-facing result of the evaluation is the value `4500` itself. Prefer using the decision id as the variable name to avoid collisions between required literal expressions. See [DMN engine](../dmn-engine.md#result-of-an-evaluation).
 
 ## Related documentation
 

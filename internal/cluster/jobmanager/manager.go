@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
@@ -52,6 +53,9 @@ type JobManager struct {
 	serverCancel context.CancelFunc
 	loader       JobLoader
 	completer    JobCompleter
+	// started guards cluster state driven reconciliation until the job server and
+	// client are running.
+	started atomic.Bool
 }
 
 type Job struct {
@@ -92,6 +96,7 @@ func (m *JobManager) Start() {
 	m.server = newJobServer(NodeId(m.store.NodeID()), m.loader, m.completer)
 	m.server.startServer(m.serverCtx)
 	m.client.startClient()
+	m.started.Store(true)
 }
 
 func (m *JobManager) AddClient(ctx context.Context, clientId ClientID, clientRcv chan Job) error {
@@ -102,12 +107,12 @@ func (m *JobManager) RemoveClient(ctx context.Context, clientId ClientID) {
 	m.client.removeClient(ctx, clientId)
 }
 
-func (m *JobManager) AddClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.addJobSub(ctx, clientId, jobType)
+func (m *JobManager) AddClientJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	return m.client.addJobSub(ctx, clientID, jobType)
 }
 
-func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientId ClientID, jobType JobType) {
-	m.client.removeJobSub(ctx, clientId, jobType)
+func (m *JobManager) RemoveClientJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	return m.client.removeJobSub(ctx, clientID, jobType)
 }
 
 func (m *JobManager) AddNodeSubscription(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {
@@ -160,6 +165,13 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 	// TODO: multiple nodes
 	// m.OnPartitionRoleChange(ctx)
 	m.currentPartitionRoles = newPartitionLeaders
+	// Partition leaders are registered in the cluster state asynchronously, so a
+	// partition can become available after the manager has been started. Without
+	// this reconciliation the node would never open a job stream to that
+	// partition leader and no job would ever be distributed to the workers.
+	if m.started.Load() {
+		m.client.reconcileNodeSubscriptions()
+	}
 }
 
 // OnPartitionRoleChange is a callback function called when cluster state changes its partition leaders
@@ -195,7 +207,7 @@ func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
 		m.serverCtx = nil
 		m.server = nil
 	}
-	m.client.updateNodeSubs(ctx)
+	m.client.reconcileNodeSubscriptions()
 }
 
 // OnJobRejected is a server callback function called when client rejects job

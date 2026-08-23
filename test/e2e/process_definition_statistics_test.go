@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -255,7 +254,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("search filter", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				Search: ptr.To("service-task"),
+				Search: new("service-task"),
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
@@ -271,13 +270,13 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 
 		allVersions, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				OnlyLatest: ptr.To(false),
+				OnlyLatest: new(false),
 			})
 		assert.NoError(t, err)
 
 		latestOnly, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				OnlyLatest: ptr.To(true),
+				OnlyLatest: new(true),
 			})
 		assert.NoError(t, err)
 		assert.LessOrEqual(t, latestOnly.JSON200.TotalCount, allVersions.JSON200.TotalCount)
@@ -286,8 +285,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("sort by version desc", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				SortBy:    ptr.To(zenclient.GetProcessDefinitionStatisticsParamsSortByVersion),
-				SortOrder: ptr.To(zenclient.GetProcessDefinitionStatisticsParamsSortOrderDesc),
+				SortBy:    new(zenclient.GetProcessDefinitionStatisticsParamsSortByVersion),
+				SortOrder: new(zenclient.GetProcessDefinitionStatisticsParamsSortOrderDesc),
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
@@ -300,8 +299,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("sort by instanceCount desc", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				SortBy:    ptr.To(zenclient.GetProcessDefinitionStatisticsParamsSortByInstanceCount),
-				SortOrder: ptr.To(zenclient.GetProcessDefinitionStatisticsParamsSortOrderDesc),
+				SortBy:    new(zenclient.GetProcessDefinitionStatisticsParamsSortByInstanceCount),
+				SortOrder: new(zenclient.GetProcessDefinitionStatisticsParamsSortOrderDesc),
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
@@ -314,8 +313,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("bad request for page=0", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				Page: ptr.To(int32(0)),
-				Size: ptr.To(int32(10)),
+				Page: new(int32(0)),
+				Size: new(int32(10)),
 			})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -326,8 +325,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("bad request for size>100", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				Page: ptr.To(int32(1)),
-				Size: ptr.To(int32(101)),
+				Page: new(int32(1)),
+				Size: new(int32(101)),
 			})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -402,7 +401,7 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 	})
 
 	// cleanup: cancel remaining instance
-	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key) //nolint:errcheck
+	cleanupOwnedProcessInstance(t, instance2.Key)
 }
 
 func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
@@ -443,7 +442,7 @@ func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
 			"should count child body tokens, not the parent scope token")
 	})
 
-	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+	cleanupOwnedProcessInstance(t, instance.Key)
 }
 
 func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalActive, totalIncidents int) {

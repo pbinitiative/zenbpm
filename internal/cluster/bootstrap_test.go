@@ -40,7 +40,7 @@ func TestNewBootstrapper(t *testing.T) {
 
 func TestBootstrapperBootDoneImmediately(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		t.Fatalf("client made request")
@@ -62,7 +62,7 @@ func TestBootstrapperBootDoneImmediately(t *testing.T) {
 
 func TestBootstrapperBootTimeout(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		return nil, fmt.Errorf("not a cluster")
 	}
@@ -92,7 +92,7 @@ func TestBootstrapperBootTimeout(t *testing.T) {
 
 func TestBootstrapperBootCanceled(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 
 	done := func() bool {
 		return false
@@ -121,7 +121,7 @@ func TestBootstrapperBootCanceled(t *testing.T) {
 // but is done does not return an error.
 func TestBootstrapperBootCanceledDone(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 
 	done := func() bool {
 		return true
@@ -145,7 +145,7 @@ func TestBootstrapperBootCanceledDone(t *testing.T) {
 
 func TestBootstrapperBootSingleJoin(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 
 	srv.JoinHandler = func(req *proto.JoinRequest) (*proto.JoinResponse, error) {
 		if req == nil {
@@ -180,7 +180,7 @@ func TestBootstrapperBootSingleJoin(t *testing.T) {
 // to join the cluster, and does not send a notify request.
 func TestBootstrapperBootNonVoter(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.JoinHandler = func(req *proto.JoinRequest) (*proto.JoinResponse, error) {
 		if req == nil {
 			t.Fatal("expected join node request, got nil")
@@ -213,7 +213,7 @@ func TestBootstrapperBootNonVoter(t *testing.T) {
 
 func TestBootstrapperBootSingleNotify(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 
 	var gotNR *proto.NotifyRequest
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -254,7 +254,7 @@ func TestBootstrapperBootMultiJoinNotify(t *testing.T) {
 	var srv1JoinC int32
 	var srv1NotifiedC int32
 	srv1 := servertest.NewTestServer()
-	defer srv1.Close()
+	cleanupTestServer(t, srv1)
 
 	srv1.JoinHandler = func(nr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		atomic.AddInt32(&srv1JoinC, 1)
@@ -269,7 +269,7 @@ func TestBootstrapperBootMultiJoinNotify(t *testing.T) {
 	var srv2JoinC int32
 	var srv2NotifiedC int32
 	srv2 := servertest.NewTestServer()
-	defer srv2.Close()
+	cleanupTestServer(t, srv2)
 
 	srv2.JoinHandler = func(nr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		atomic.AddInt32(&srv2JoinC, 1)
@@ -306,4 +306,13 @@ func TestBootstrapperBootMultiJoinNotify(t *testing.T) {
 	if exp, got := cluster.BootDone, bs.Status(); exp != got {
 		t.Fatalf("wrong status, exp %s, got %s", exp, got)
 	}
+}
+
+func cleanupTestServer(t *testing.T, srv *servertest.TestServer) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("failed to close test server: %v", err)
+		}
+	})
 }

@@ -33,7 +33,7 @@ func TestRestServerRecovery(t *testing.T) {
 		responseFromPanicEndpoint, err := http.Get(server.URL + "/panic")
 		require.NoError(t, err)
 
-		defer responseFromPanicEndpoint.Body.Close()
+		defer func() { require.NoError(t, responseFromPanicEndpoint.Body.Close()) }()
 
 		var body public.Error
 		require.NoError(t, json.NewDecoder(responseFromPanicEndpoint.Body).Decode(&body))
@@ -54,9 +54,10 @@ func assertOkEndpoint(t *testing.T, server *httptest.Server) {
 	responseFromOkEndpoint, err := http.Get(server.URL + "/ok")
 	require.NoError(t, err)
 
-	defer responseFromOkEndpoint.Body.Close()
+	defer func() { require.NoError(t, responseFromOkEndpoint.Body.Close()) }()
 
-	body, _ := io.ReadAll(responseFromOkEndpoint.Body)
+	body, err := io.ReadAll(responseFromOkEndpoint.Body)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, responseFromOkEndpoint.StatusCode)
 	assert.Equal(t, "ok", string(body))
 }

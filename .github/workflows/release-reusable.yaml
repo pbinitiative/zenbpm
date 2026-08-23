@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release-tag:
-        description: Image and report tag used by security scanning.
+        description: Authoritative tag used by GoReleaser, images, reports, and the GitHub release.
         required: true
         type: string
       checkout-ref:
@@ -52,7 +52,15 @@ jobs:
         with:
           ref: ${{ inputs.checkout-ref }}
           submodules: 'true'
-      - run: git fetch --prune --unshallow
+          fetch-depth: 0
+      - name: resolve build branch
+        env:
+          REPOSITORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          branch=$(scripts/ci/resolve-build-branch.sh)
+          echo "BUILD_BRANCH=$branch" >> "$GITHUB_ENV"
+      - name: validate version sync
+        run: scripts/ci/validate-version-sync.sh
       - name: setup dependencies
         uses: actions/setup-go@v5
       - name: cache goreleaser go cache
@@ -96,7 +104,7 @@ jobs:
   release_security:
     runs-on: ubuntu-latest
     needs: release
-    if: ${{ always() && inputs.security-scan }}
+    if: ${{ inputs.security-scan && needs.release.result == 'success' }}
     continue-on-error: true
     steps:
       - name: checkout code
@@ -167,7 +175,7 @@ jobs:
     needs:
       - release_security
       - release
-    if: ${{ always() && inputs.notify }}
+    if: ${{ always() && inputs.notify && needs.release.result == 'success' && (needs.release_security.result == 'success' || needs.release_security.result == 'skipped') }}
     continue-on-error: true
     steps:
       - name: checkout code

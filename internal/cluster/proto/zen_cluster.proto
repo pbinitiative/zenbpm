@@ -441,6 +441,7 @@ message CreateInstanceRequest {
 message CreateInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance process = 2;
+  repeated ExecutionToken execution_tokens = 3;
 }
 
 message StartInstanceOnElementIdsRequest {

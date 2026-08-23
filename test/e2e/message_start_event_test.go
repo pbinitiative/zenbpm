@@ -8,7 +8,6 @@ import (
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -407,7 +406,7 @@ func TestMessageStartEvent_SameMessageForInstanceAndSubprocess(t *testing.T) {
 	// event-subprocess message start event resolves to "myKey" once the new instance is created.
 	publishResp, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
 		// instance should be started even on not-null correlation-key because the definition-level subscription should ignore the correlation key for routing
-		CorrelationKey: ptr.To("some-non-existing-correlation-key"),
+		CorrelationKey: new("some-non-existing-correlation-key"),
 		MessageName:    uniqueMessageName,
 		Variables: &map[string]any{
 			"key": "myKey",

@@ -17,11 +17,12 @@ func (d *Dialer) DialGRPC(addr string) (conn net.Conn, retErr error) {
 		return nil, retErr
 	}
 
-	defer func() {
-		if retErr != nil && conn != nil {
-			conn.Close()
+	defer func(connToClose net.Conn) {
+		if retErr != nil && connToClose != nil {
+			// best-effort cleanup on the error path; the dial/write error is returned to the caller
+			_ = connToClose.Close()
 		}
-	}()
+	}(conn)
 
 	// Write a marker byte to indicate message type.
 	if _, err := conn.Write([]byte{d.header}); err != nil {

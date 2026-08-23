@@ -1,0 +1,99 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by(le) (rate(process_instance_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(process_instance_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by(le) (rate(process_instance_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Process instance duration percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by(le) (rate(job_lifetime_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(job_lifetime_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by(le) (rate(job_lifetime_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Job lifetime percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by(le, type) (rate(job_activation_latency_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95 {{type}}", "refId": "A" }
+      ],
+      "title": "Job activation latency (created → distributed)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by(le) (rate(request_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(request_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by(le) (rate(request_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "REST request duration percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(processes_started_total[$__rate_interval]))", "legendFormat": "started/s", "refId": "A" },
+        { "expr": "sum(rate(processes_completed_total[$__rate_interval]))", "legendFormat": "completed/s", "refId": "B" }
+      ],
+      "title": "Process throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "aew9mifcmw0e8d" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(jobs_created_total[$__rate_interval]))", "legendFormat": "created/s", "refId": "A" },
+        { "expr": "sum(rate(jobs_completed_total[$__rate_interval]))", "legendFormat": "completed/s", "refId": "B" },
+        { "expr": "sum(rate(jobs_distributed_total[$__rate_interval]))", "legendFormat": "distributed/s", "refId": "C" }
+      ],
+      "title": "Job throughput",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["zenbpm", "latency"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timezone": "browser",
+  "title": "ZenBPM Latency & Throughput",
+  "uid": "zenbpm-latency",
+  "version": 1
+}

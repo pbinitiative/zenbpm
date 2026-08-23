@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -12,10 +13,24 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+func TestIsExpectedServeError(t *testing.T) {
+	if !isExpectedServeError(net.ErrClosed) {
+		t.Fatal("net.ErrClosed must be treated as an expected shutdown")
+	}
+	if !isExpectedServeError(grpc.ErrServerStopped) {
+		t.Fatal("grpc.ErrServerStopped must be treated as an expected shutdown")
+	}
+	if !isExpectedServeError(errors.New("network connection closed")) {
+		t.Fatal("rqlite mux close must be treated as an expected shutdown")
+	}
+	if isExpectedServeError(errors.New("accept failed")) {
+		t.Fatal("unexpected listener failures must still be reported")
+	}
+}
 
 func TestServer(t *testing.T) {
 	ctx := t.Context()
@@ -46,8 +61,8 @@ func TestServer(t *testing.T) {
 	zsc := proto.NewZenServiceClient(grpcClient)
 
 	_, err = zsc.Notify(ctx, &proto.NotifyRequest{
-		Id:      ptr.To("123"),
-		Address: ptr.To("local-1.cluster"),
+		Id:      new("123"),
+		Address: new("local-1.cluster"),
 	})
 	if err != nil {
 		t.Fatalf("failed to notify server: %s", err)
@@ -57,9 +72,9 @@ func TestServer(t *testing.T) {
 	}
 
 	_, err = zsc.Join(ctx, &proto.JoinRequest{
-		Id:      ptr.To("123"),
-		Address: ptr.To("local-1.cluster"),
-		Voter:   ptr.To(true),
+		Id:      new("123"),
+		Address: new("local-1.cluster"),
+		Voter:   new(true),
 	})
 	if err != nil {
 		t.Fatalf("failed to notify server: %s", err)

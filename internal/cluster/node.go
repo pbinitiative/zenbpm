@@ -11,6 +11,7 @@ import (
 	"hash/fnv"
 	"net"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -112,6 +113,9 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	)
 	if err = node.store.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
+	}
+	if err = node.store.RegisterMetrics(); err != nil {
+		node.logger.Error("Failed to register cluster store metrics", "err", err)
 	}
 
 	node.client = client.NewClientManager(node.store)
@@ -281,7 +285,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 		}
 		items = append(items, &proto.DmnResourceDefinition{
 			Key:                     &def.Key,
-			Version:                 ptr.To(int32(def.Version)),
+			Version:                 new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 			DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 			Definition:              []byte(def.DmnData),
 			DmnDefinitionName:       &def.DmnDefinitionName,
@@ -289,7 +293,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 	}
 	return proto.DmnResourceDefinitionsPage{
 		Items:      items,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: new(int32(totalCount)),
 	}, nil
 }
 
@@ -308,7 +312,7 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 	}
 	return proto.DmnResourceDefinition{
 		Key:                     &def.Key,
-		Version:                 ptr.To(int32(def.Version)),
+		Version:                 new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 		Definition:              []byte(def.DmnData),
 		DmnDefinitionName:       &def.DmnDefinitionName,
@@ -361,7 +365,7 @@ func (node *ZenNode) deployDmnResourceDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
-		Key:  ptr.To(definitionKey),
+		Key:  new(definitionKey),
 		Data: data,
 	})
 
@@ -536,7 +540,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:                                    ptr.To(definitionKey),
+		Key:                                    new(definitionKey),
 		Data:                                   data,
 		ResourceName:                           &resourceName,
 		RegisterProcessDefinitionSubscriptions: &registerProcessDefinitionSubscriptions,
@@ -769,14 +773,14 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 		}
 		resp = append(resp, &proto.ProcessDefinition{
 			Key:         &def.Key,
-			Version:     ptr.To(int32(def.Version)),
+			Version:     new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 			ProcessId:   &def.BpmnProcessID,
 			ProcessName: &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: new(int32(totalCount)),
 	}, nil
 }
 
@@ -795,7 +799,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
-		Version:    ptr.To(int32(def.Version)),
+		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
@@ -816,7 +820,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
-		Version:    ptr.To(int32(def.Version)),
+		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
@@ -1115,7 +1119,7 @@ func (node *ZenNode) CreateInstance(
 	businessKey *string,
 	variables map[string]any,
 	timeToLive *types.TTL,
-) (*proto.ProcessInstance, error) {
+) (*proto.CreateInstanceResponse, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -1164,7 +1168,7 @@ func (node *ZenNode) CreateInstance(
 	if resp.Error != nil {
 		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to create process instance"))
 	}
-	return resp.Process, nil
+	return resp, nil
 }
 
 func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, variables map[string]any) error {
@@ -1305,7 +1309,7 @@ func (node *ZenNode) getJobsForPartition(
 	}
 	var reqState *int64
 	if jobState != nil {
-		reqState = ptr.To(int64(*jobState))
+		reqState = new(int64(*jobState))
 	}
 
 	var sortString string
@@ -1868,6 +1872,42 @@ func (node *ZenNode) GetStatus() state.Cluster {
 	return node.store.ClusterState()
 }
 
+// Health evaluates the readiness of this node in the cluster. Cluster-wide
+// partition health is deliberately excluded: making every node unready when a
+// remote partition is degraded would remove the entire cluster from a load
+// balancer. Cluster-wide deficits and leader loss are exposed by metrics and
+// alerts instead.
+func (node *ZenNode) Health() (bool, []string) {
+	if node.store == nil {
+		return false, []string{"cluster store is not initialized"}
+	}
+	reasons := make([]string, 0)
+	if !node.store.HasLeader() {
+		reasons = append(reasons, "no cluster leader elected")
+	}
+	cs := node.store.ClusterState()
+	reasons = append(reasons, nodeReadinessReasons(cs, node.store.NodeID())...)
+	return len(reasons) == 0, reasons
+}
+
+func nodeReadinessReasons(cs state.Cluster, nodeID string) []string {
+	partitionReasons := make([]string, 0)
+	if self, err := cs.GetNode(nodeID); err != nil {
+		partitionReasons = append(partitionReasons, "node is not registered in the cluster state")
+	} else {
+		if len(self.Partitions) == 0 {
+			partitionReasons = append(partitionReasons, "node has no assigned partitions")
+		}
+		for id, partition := range self.Partitions {
+			if partition.State != state.NodePartitionStateInitialized {
+				partitionReasons = append(partitionReasons, fmt.Sprintf("partition %d on this node is in state %s", id, partition.State))
+			}
+		}
+	}
+	sort.Strings(partitionReasons)
+	return partitionReasons
+}
+
 func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
@@ -1902,21 +1942,47 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 	if len(databases) == 0 {
 		return nil, fmt.Errorf("no partitions where node is a leader were found")
 	}
-	jobsAcc := make([]sql.Job, 0)
 	// hack to not send NULL into sqlite
 	if len(idsToSkip) == 0 {
 		idsToSkip = []int64{0}
 	}
-	for _, db := range databases {
+	return loadJobsWithGlobalLimit(len(databases), count, func(index int, limit int64) ([]sql.Job, error) {
+		db := databases[index]
 		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
-			Limit:   count,
+			Limit:   limit,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.Partition, err)
 		}
+		return jobs, nil
+	})
+}
+
+func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {
+	jobsAcc := make([]sql.Job, 0)
+	if count <= 0 {
+		return jobsAcc, nil
+	}
+	for index := range sourceCount {
+		jobs, err := load(index, count)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(jobs)) > count {
+			jobs = jobs[:count]
+		}
 		jobsAcc = append(jobsAcc, jobs...)
+	}
+	sort.Slice(jobsAcc, func(i, j int) bool {
+		if jobsAcc[i].CreatedAt == jobsAcc[j].CreatedAt {
+			return jobsAcc[i].Key < jobsAcc[j].Key
+		}
+		return jobsAcc[i].CreatedAt < jobsAcc[j].CreatedAt
+	})
+	if int64(len(jobsAcc)) > count {
+		jobsAcc = jobsAcc[:count]
 	}
 	return jobsAcc, nil
 }
@@ -1925,7 +1991,7 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to complete job was not found on the node")
+		return fmt.Errorf("engine to complete job was not found on the node")
 	}
 	err := engine.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
@@ -1947,7 +2013,7 @@ func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message str
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("Engine to fail job was not found on the node")
+		return fmt.Errorf("engine to fail job was not found on the node")
 	}
 	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables)
 	if err != nil {

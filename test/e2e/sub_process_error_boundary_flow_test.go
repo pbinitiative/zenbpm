@@ -58,11 +58,11 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "exact_match_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, subProcessParentExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, subProcessParentExactErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Catch-all error boundary catches any code and completes handled parent path", func(t *testing.T) {
@@ -76,11 +76,11 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactProcessInstanceHistory(t, innerProcess.Key, subProcessChildCatchAllErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildCatchAllErrorBoundaryHistoryAfterHandledFailure)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "catch_all_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, subProcessParentCatchAllErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, subProcessParentCatchAllErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Non-matching error boundary keeps parent and child active and creates child incident", func(t *testing.T) {
@@ -114,11 +114,11 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "exact_match_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 2)
-		assertExactProcessInstanceHistory(t, processInstance.Key, subProcessParentExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, processInstance.Key, subProcessParentExactErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Nested matching error boundary completes nearest matching subprocess", func(t *testing.T) {

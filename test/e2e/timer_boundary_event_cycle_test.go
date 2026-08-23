@@ -5,7 +5,6 @@ import (
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -49,9 +48,9 @@ func TestTimerBoundaryEventNonInterruptingTimeCycle(t *testing.T) {
 	var downstreamJobs []zenclient.Job
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
-			JobType:            ptr.To(downstreamJobType),
-			ProcessInstanceKey: ptr.To(instance.Key),
-			State:              ptr.To(zenclient.JobStateActive),
+			JobType:            new(downstreamJobType),
+			ProcessInstanceKey: new(instance.Key),
+			State:              new(zenclient.JobStateActive),
 		})
 		if !assert.NoError(collect, err) {
 			return
@@ -103,9 +102,9 @@ func TestTimerBoundaryEventNonInterruptingTimeCycle(t *testing.T) {
 
 	// Now complete the main service task job — this should drive the process to Completed.
 	mainJobs, err := getJobs(t, zenclient.GetJobsParams{
-		JobType:            ptr.To(mainJobType),
-		ProcessInstanceKey: ptr.To(instance.Key),
-		State:              ptr.To(zenclient.JobStateActive),
+		JobType:            new(mainJobType),
+		ProcessInstanceKey: new(instance.Key),
+		State:              new(zenclient.JobStateActive),
 	})
 	require.NoError(t, err)
 	mainCollected := collectJobs(mainJobs)
@@ -129,9 +128,9 @@ func assertActiveJobsOfType(t *testing.T, instanceKey int64, jobType string, exp
 	t.Helper()
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
-			JobType:            ptr.To(jobType),
-			ProcessInstanceKey: ptr.To(instanceKey),
-			State:              ptr.To(zenclient.JobStateActive),
+			JobType:            new(jobType),
+			ProcessInstanceKey: new(instanceKey),
+			State:              new(zenclient.JobStateActive),
 		})
 		if !assert.NoError(collect, err) {
 			return

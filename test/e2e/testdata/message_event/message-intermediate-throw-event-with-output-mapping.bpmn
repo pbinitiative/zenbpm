@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_message_intermediate_throw_with_output" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="message-intermediate-throw-with-output" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_throw</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_throw" sourceRef="start_event" targetRef="message_throw_event" />
+    <bpmn:intermediateThrowEvent id="message_throw_event">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="message-intermediate-throw" retries="3" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=payload" target="messagePayload" />
+          <zenbpm:input source="=correlationId" target="messageCorrelationId" />
+          <zenbpm:output source="=deliveryId" target="publicationResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_to_throw</bpmn:incoming>
+      <bpmn:outgoing>Flow_throw_to_end</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="message_definition" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_throw_to_end" sourceRef="message_throw_event" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_throw_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_message_intermediate_throw_with_output">
+    <bpmndi:BPMNPlane id="BPMNPlane_message_intermediate_throw_with_output" bpmnElement="message-intermediate-throw-with-output">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="160" y="100" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="message_throw_event_di" bpmnElement="message_throw_event">
+        <dc:Bounds x="270" y="100" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="380" y="100" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_throw_di" bpmnElement="Flow_start_to_throw">
+        <di:waypoint x="196" y="118" />
+        <di:waypoint x="270" y="118" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_throw_to_end_di" bpmnElement="Flow_throw_to_end">
+        <di:waypoint x="306" y="118" />
+        <di:waypoint x="380" y="118" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

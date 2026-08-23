@@ -16,15 +16,16 @@ import (
 )
 
 func getProcessInstanceJobs(t testing.TB, key int64) ([]public.Job, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d/jobs", key)).
-		DoOk()
+	resp, err := app.restClient.GetProcessInstanceJobsWithResponse(t.Context(), key, &zenclient.GetProcessInstanceJobsParams{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
 	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("failed to read process instance jobs: %s", resp.Status())
+	}
 	jobPage := public.JobPage{}
 
-	err = json.Unmarshal(resp, &jobPage)
+	err = json.Unmarshal(resp.Body, &jobPage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job page: %w", err)
 	}
@@ -118,7 +119,7 @@ func assertProcessInstanceHasNoActiveJobByElementId(t testing.TB, processInstanc
 }
 
 func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {
-	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: ptr.To(zenclient.JobStateActive)})
+	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: new(zenclient.JobStateActive)})
 }
 
 func getJobs(t testing.TB, params zenclient.GetJobsParams) (zenclient.JobPartitionPage, error) {

@@ -121,7 +121,7 @@ const getTokensForProcessInstance = `-- name: GetTokensForProcessInstance :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at
 FROM
-    execution_token
+    execution_token INDEXED BY idx_fk_execution_token_process_instance_key
 WHERE process_instance_key = ?1
     AND state IN (/*SLICE:states*/?)
 `
@@ -131,6 +131,9 @@ type GetTokensForProcessInstanceParams struct {
 	States             []int64 `json:"states"`
 }
 
+// Pinned to idx_fk_execution_token_process_instance_key. The newer idx_execution_token_state
+// is a generic state index that the planner would otherwise prefer for the leading state IN (...),
+// causing a partition-wide scan for one process instance's tokens.
 func (q *Queries) GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error) {
 	query := getTokensForProcessInstance
 	var queryParams []interface{}

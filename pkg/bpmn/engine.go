@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -167,11 +168,13 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 }
 
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
-	_, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch)
+	if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch); err != nil {
+		return fmt.Errorf("failed to cancel process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	// Cancel process instance
 	instance.ProcessInstance().State = runtime.ActivityStateTerminated
-	err = batch.SaveProcessInstance(ctx, instance)
+	err := batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -255,6 +258,9 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
 		}
+		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+			return nil, err
+		}
 		token.State = runtime.TokenStateCanceled
 		err = batch.SaveToken(ctx, token)
 		if err != nil {
@@ -277,17 +283,20 @@ func (engine *Engine) terminateExecutionTokens(
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
 	}
 
+	keysToTerminate := make(map[int64]struct{}, len(elementInstanceKeysToTerminate))
+	for _, key := range elementInstanceKeysToTerminate {
+		keysToTerminate[key] = struct{}{}
+	}
+
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
-		for _, elementInstanceKey := range elementInstanceKeysToTerminate {
-			if activeToken.ElementInstanceKey == elementInstanceKey {
-				err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
-				if err != nil {
-					return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
-				}
-			} else {
-				activeTokensLeft = append(activeTokensLeft, activeToken)
+		if _, terminate := keysToTerminate[activeToken.ElementInstanceKey]; terminate {
+			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
+			if err != nil {
+				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
 			}
+		} else {
+			activeTokensLeft = append(activeTokensLeft, activeToken)
 		}
 	}
 
@@ -330,6 +339,9 @@ func (engine *Engine) terminateExecutionToken(
 		}
 	}
 
+	if err := completeExistingFlowElementInstance(ctx, batch, activeToken); err != nil {
+		return err
+	}
 	activeToken.State = runtime.TokenStateCanceled
 	err = batch.SaveToken(ctx, activeToken)
 	if err != nil {
@@ -375,6 +387,26 @@ func resolveHistoryTTL(ctx context.Context, instance runtime.ProcessInstance) {
 	}
 }
 
+// resolveRootBusinessKey stores the request business key on the runtime object.
+// Child instances receive their resolved key explicitly at their creation site.
+func resolveRootBusinessKey(ctx context.Context, instance runtime.ProcessInstance) {
+	if instance.GetParentProcessInstanceKey() != nil || instance.ProcessInstance().BusinessKey != nil {
+		return
+	}
+	if businessKey, ok := appcontext.BusinessKeyFromContext(ctx); ok {
+		instance.ProcessInstance().BusinessKey = &businessKey
+	}
+}
+
+// newChildProcessInstanceData keeps inherited process-instance metadata consistent
+// across all child-scope creation paths.
+func newChildProcessInstanceData(parent runtime.ProcessInstance, businessKey *string) runtime.ProcessInstanceData {
+	return runtime.ProcessInstanceData{
+		BusinessKey:   businessKey,
+		HistoryTTLSec: parent.ProcessInstance().HistoryTTLSec,
+	}
+}
+
 // createInstance creates a process instance for a given process definition and returns it.
 // Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
@@ -390,10 +422,11 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
+	resolveRootBusinessKey(ctx, instance)
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
@@ -473,6 +506,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
+	resolveRootBusinessKey(ctx, instance)
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
@@ -483,7 +517,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", instance.ProcessInstance().Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
@@ -580,7 +614,15 @@ func (engine *Engine) recordEventSubprocessSubscriptionIncident(
 		ResolvedAt:         nil,
 		// No execution token exists yet for this event subprocess start event; leave zero-value.
 	}
-	return batch.SaveIncident(ctx, incident)
+	if err := batch.SaveIncident(ctx, incident); err != nil {
+		return err
+	}
+	if _, viaEngineBatch := batch.(*EngineBatch); !viaEngineBatch {
+		batch.AddPostFlushAction(ctx, func() {
+			engine.recordIncidentMetric(ctx, incident)
+		})
+	}
+	return nil
 }
 
 /*
@@ -684,8 +726,12 @@ func (engine *Engine) createTimerStartEventTimers(
 			startEvent.GetId(), processDefinitionKey, err)
 	}
 	saved := *timer
+	_, viaEngineBatch := batch.(*EngineBatch)
 	batch.AddPostFlushAction(ctx, func() {
 		engine.timerManager.registerTimer(saved)
+		if !viaEngineBatch {
+			engine.recordTimerMetric(ctx, saved)
+		}
 	})
 	return nil
 }
@@ -751,8 +797,15 @@ func (engine *Engine) getExecutionTokenActivity(
 	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance, *runtime.MultiInstanceInstance:
 		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	case *runtime.SubProcessInstance:
-		parentActivityDefinition := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
-		currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+		// Resolve through the parent sub-process to preserve execution scope.
+		subProcessInstance := instance.(*runtime.SubProcessInstance)
+		rootProcess := &instance.ProcessInstance().Definition.Definitions.Process
+		parentActivityDefinition := rootProcess.GetFlowNodeById(subProcessInstance.ParentProcessTargetElementId)
+		parentSubProcess, ok := parentActivityDefinition.(*bpmn20.TSubProcess)
+		if !ok {
+			return nil, fmt.Errorf("failed to find sub-process activity %s for execution token in process definition", subProcessInstance.ParentProcessTargetElementId)
+		}
+		currentFlowNode = parentSubProcess.GetFlowNodeById(token.ElementId)
 	default:
 		return nil, errors.New("invalid instance type")
 	}
@@ -808,13 +861,12 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		//TODO: input output Variables
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
-		if err := engine.completeFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
 			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
@@ -890,6 +942,19 @@ func (engine *Engine) processFlowNode(
 }
 
 func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
+	if activity, ok := element.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
+		// Multi-instance history is written by startSequentialMultiInstance /
+		// startParallelMultiInstance in the parent process and by each iteration inside
+		// the multi-instance instance, so every create path of an activity that can carry
+		// loop characteristics must persist its own row.
+		//
+		// Returning false here would do more than add a stray row: the final control pass
+		// reuses the last iteration's ElementInstanceKey, and SaveFlowElementInstance is
+		// an upsert, so the generic save would overwrite that iteration's input variables
+		// with nil and break the output collection built from them.
+		return true
+	}
+
 	switch element.(type) {
 	case *bpmn20.TParallelGateway, *bpmn20.TInclusiveGateway:
 		// Synchronizing gateway cycles consume multiple tokens but produce one
@@ -898,6 +963,33 @@ func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
 	default:
 		return false
 	}
+}
+
+func (engine *Engine) completeStartEventFlowElementInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TStartEvent,
+	token runtime.ExecutionToken,
+) error {
+	var outputVariables map[string]any
+	// Unmapped message payload already lives on the process instance. Keep history
+	// compact by recording only an explicitly mapped start-event output.
+	if instance.Type() == runtime.ProcessTypeDefault &&
+		isMessageStartEvent(element) &&
+		len(element.GetOutputMapping()) > 0 {
+		outputVariables = maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables())
+	}
+
+	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                token.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
+		ExecutionTokenKey:  token.Key,
+		OutputVariables:    outputVariables,
+		CompletedAt:        new(time.Now()),
+	})
 }
 
 // completeFlowElementInstance updates the history row keyed by token.ElementInstanceKey.
@@ -918,6 +1010,17 @@ func (engine *Engine) completeFlowElementInstance(
 		ExecutionTokenKey:  token.Key,
 		CompletedAt:        new(time.Now()),
 	})
+}
+
+func completeExistingFlowElementInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	token runtime.ExecutionToken,
+) error {
+	if err := batch.CompleteFlowElementInstance(ctx, token.ElementInstanceKey, time.Now()); err != nil {
+		return fmt.Errorf("failed to complete flow element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
+	}
+	return nil
 }
 
 func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {
@@ -1085,7 +1188,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
 	}
-	batch.UpdateOutputFlowElementInstance(ctx,
+	if err := batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -1095,7 +1198,10 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			OutputVariables:    outputVariables,
 			CompletedAt:        new(time.Now()),
 		},
-	)
+	); err != nil {
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to update flow element instance for business rule %s: %w", element.GetId(), err)
+	}
 
 	return runtime.ActivityStateCompleted, nil
 }
@@ -1129,7 +1235,7 @@ func (engine *Engine) handleElementTransition(
 	case *runtime.DefaultProcessInstance, *runtime.SubProcessInstance, *runtime.CallActivityInstance:
 		return engine.handleDefaultElementTransition(ctx, batch, inst, element, currentToken)
 	case *runtime.MultiInstanceInstance:
-		return engine.handleMultiInstanceElementTransition(ctx, batch, inst, element, currentToken)
+		return engine.calculateMultiInstanceElementTransition(ctx, inst, element, currentToken)
 	default:
 		return nil, fmt.Errorf("unsupported instance type: %T", instance)
 	}

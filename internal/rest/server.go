@@ -1,3 +1,5 @@
+// Package rest exposes the public REST API of a ZenBPM node, including the
+// OpenAPI-generated endpoints, Prometheus metrics and health probes.
 package rest
 
 import (
@@ -16,12 +18,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
@@ -36,24 +39,26 @@ import (
 const (
 	PaginationDefaultPage int32 = 1
 	PaginationDefaultSize int32 = 10
-	PaginationMaxSize     int32 = 100
 )
 
 type Server struct {
 	sync.RWMutex
-	node   *cluster.ZenNode
-	addr   string
-	server *http.Server
+	node      *cluster.ZenNode
+	addr      string
+	server    *http.Server
+	buildInfo buildinfo.Info
 }
 
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
+// NewServer creates the public HTTP server with the supplied build metadata.
+func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.Info) *Server {
 	r := chi.NewRouter()
 	s := Server{
-		node: node,
-		addr: conf.HttpServer.Addr,
+		node:      node,
+		addr:      conf.HttpServer.Addr,
+		buildInfo: buildInfo,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           r,
@@ -66,6 +71,11 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	// mode). It stays off by default because capturing buffers every
 	// request/response body in memory even when it never gets logged.
 	r.Use(chimiddleware.RequestID)
+	// The body limit has to precede the logger: with body capture enabled the
+	// logger tees every request body into memory, so the cap must already be
+	// in place by the time it wraps r.Body. Oversized requests are rejected
+	// downstream (OpenAPIValidator) so the 413 still gets logged.
+	r.Use(middleware.RequestBodyLimit(conf.HttpServer.MaxRequestBodyBytes))
 	r.Use(middleware.Logger(restLogger, &middleware.LoggingOpts{
 		Mode:            middleware.LogMode(conf.HttpServer.LogMode),
 		WithReferer:     true,
@@ -74,13 +84,22 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		LogResponseBody: conf.HttpServer.LogBody,
 		IgnorePaths:     []string{"/system/metrics"},
 	}))
+	r.Use(errortracking.HTTPContext)
 	r.Use(middleware.Recovery())
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
 	r.Use(middleware.StripEmptyQueryParams())
 	r.Route("/v1", func(r chi.Router) {
+		// validate incoming requests against the embedded OpenAPI spec
+		spec, err := public.GetSpec()
+		if err != nil {
+			// the spec is embedded at compile time by oapi-codegen; failing to
+			// load it is a programming error that must be caught at startup.
+			panic(fmt.Errorf("failed to load embedded OpenAPI spec: %w", err))
+		}
+		r.Use(middleware.OpenAPIValidator(spec, "/v1"))
 		// mount generated handler from open-api
-		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
+		h := public.Handler(public.NewStrictHandlerWithOptions(&s, nil, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 				writeError(w, r, http.StatusBadRequest, public.Error{
 					Message: err.Error(),
@@ -88,6 +107,9 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 				})
 			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				// The generated handler can surface different internal errors here, so
+				// leave the code empty and retain GlitchTip's default grouping.
+				errortracking.CaptureUnexpected(r.Context(), "", err)
 				writeError(w, r, http.StatusInternalServerError, public.Error{
 					Message: err.Error(),
 					Code:    "ERROR",
@@ -99,18 +121,67 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	// register system endpoints
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
-		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(200)
-			_, err := w.Write(state)
+		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
+		// (raw cluster state, always 200) for existing consumers; readiness
+		// semantics live exclusively on /system/health/ready below.
+		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
+			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus()), "", " ")
 			if err != nil {
+				restLogger.Error("failed to marshal status", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write(body); err != nil {
 				restLogger.Error("failed to write status", "error", err)
 				return
 			}
 		})
+		// liveness probe: reports only that the process is up. It deliberately does not check raft state
+		// so that a leaderless node is not restarted in a loop by an orchestrator.
+		r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+			writeHealthResponse(w, restLogger, true, nil)
+		})
+		// readiness probe: 503 until the cluster has a leader, this node is
+		// registered and all partitions owned by this node are initialized.
+		r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
+			healthy, reasons := node.Health()
+			writeHealthResponse(w, restLogger, healthy, reasons)
+		})
 	})
 	return &s
+}
+
+// writeHealthResponse writes a minimal health payload with 200/503 semantics
+// usable by kubernetes probes and load balancers.
+func writeHealthResponse(w http.ResponseWriter, logger *slog.Logger, healthy bool, reasons []string) {
+	if reasons == nil {
+		reasons = []string{}
+	}
+	resp := struct {
+		Status  string   `json:"status"`
+		Reasons []string `json:"reasons"`
+	}{
+		Status:  "UP",
+		Reasons: reasons,
+	}
+	code := http.StatusOK
+	if !healthy {
+		resp.Status = "DOWN"
+		code = http.StatusServiceUnavailable
+	}
+	body, err := json.Marshal(resp)
+	if err != nil {
+		logger.Error("failed to marshal health response", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if _, err := w.Write(body); err != nil {
+		logger.Error("failed to write health response", "error", err)
+	}
 }
 
 func (s *Server) Start() net.Listener {
@@ -141,10 +212,12 @@ func (s *Server) TestStartPprofServer(ctx context.Context, request public.TestSt
 
 	err := s.node.StartPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStartPprofServer500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.TestStartPprofServer500JSONResponse(
+			trackInternalServerErrorResponse(ctx, err, public.Error{
+				Code:    "TODO",
+				Message: err.Error(),
+			}),
+		), nil
 	}
 	return public.TestStartPprofServer200Response{}, nil
 }
@@ -152,10 +225,12 @@ func (s *Server) TestStartPprofServer(ctx context.Context, request public.TestSt
 func (s *Server) TestStopPprofServer(ctx context.Context, request public.TestStopPprofServerRequestObject) (public.TestStopPprofServerResponseObject, error) {
 	err := s.node.StopPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStopPprofServer500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.TestStopPprofServer500JSONResponse(
+			trackInternalServerErrorResponse(ctx, err, public.Error{
+				Code:    "TODO",
+				Message: err.Error(),
+			}),
+		), nil
 	}
 	return public.TestStopPprofServer200Response{}, nil
 }
@@ -165,27 +240,10 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
-			public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetDmnResourceDefinitionsParamsSortBy{public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
-				public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId}
-			return public.GetDmnResourceDefinitions400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetDmnResourceDefinitionsParamsSortOrder{public.GetDmnResourceDefinitionsParamsSortOrderAsc, public.GetDmnResourceDefinitionsParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetDmnResourceDefinitions400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
-		request.Params.SortOrder = ptr.To(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
+	if request.Params.SortOrder == nil {
+		request.Params.SortOrder = new(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -205,10 +263,10 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 			case zenerr.ClusterErrorCode:
 				return public.GetDmnResourceDefinitions502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetDmnResourceDefinitions500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDmnResourceDefinitions500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetDmnResourceDefinitions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDmnResourceDefinitions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	items := make([]public.DmnResourceDefinitionSimple, 0)
@@ -243,10 +301,10 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 			case zenerr.NotFoundCode:
 				return public.GetDmnResourceDefinition404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetDmnResourceDefinition500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDmnResourceDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetDmnResourceDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDmnResourceDefinition500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
@@ -255,7 +313,7 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 			Key:                     definition.GetKey(),
 			Version:                 int(definition.GetVersion()),
 		},
-		DmnData: ptr.To(string(definition.GetDefinition())),
+		DmnData: new(string(definition.GetDefinition())),
 	}, nil
 }
 
@@ -271,13 +329,15 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
+			case zenerr.BadRequestCode:
+				return public.CreateDmnResourceDefinition400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ClusterErrorCode:
 				return public.CreateDmnResourceDefinition502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.CreateDmnResourceDefinition500JSONResponse(zerr.ToApiError()), nil
+				return public.CreateDmnResourceDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.CreateDmnResourceDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CreateDmnResourceDefinition500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	if alreadyExisted {
 		return public.CreateDmnResourceDefinition200JSONResponse{
@@ -319,16 +379,16 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			case zenerr.BadRequestCode:
 				return public.EvaluateDecision400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.EvaluateDecision500JSONResponse(zerr.ToApiError()), nil
+				return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	var decisionOutput any
 	err = json.Unmarshal(result.GetDecisionOutput(), &decisionOutput)
 	if err != nil {
-		return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	evaluatedDecisions := make([]public.EvaluatedDecisionResult, 0, len(result.GetEvaluatedDecisions()))
@@ -346,7 +406,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 				}
 				err = json.Unmarshal(evaluatedOutput.GetOutputValue(), &resultEvaluatedOutput.OutputValue)
 				if err != nil {
-					return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+					return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 				}
 				evaluatedOutputs = append(evaluatedOutputs, resultEvaluatedOutput)
 			}
@@ -362,7 +422,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		resultDecisionOutput := make(map[string]any)
 		err = json.Unmarshal(result.GetDecisionOutput(), &resultDecisionOutput)
 		if err != nil {
-			return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+			return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 		}
 
 		evaluatedInputs := make([]public.EvaluatedDecisionInput, 0, len(evaluatedDecision.GetEvaluatedInputs()))
@@ -374,7 +434,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			}
 			err = json.Unmarshal(evaluatedInput.GetInputValue(), &resultEvaluatedInput.InputValue)
 			if err != nil {
-				return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+				return public.EvaluateDecision500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 			}
 			evaluatedInputs = append(evaluatedInputs, resultEvaluatedInput)
 		}
@@ -404,33 +464,18 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 
 	var evaluatedFrom, evaluatedTo *int64
 	if request.Params.EvaluatedFrom != nil {
-		evaluatedFrom = ptr.To(request.Params.EvaluatedFrom.UnixMilli())
+		evaluatedFrom = new(request.Params.EvaluatedFrom.UnixMilli())
 	}
 	if request.Params.EvaluatedTo != nil {
-		evaluatedTo = ptr.To(request.Params.EvaluatedTo.UnixMilli())
+		evaluatedTo = new(request.Params.EvaluatedTo.UnixMilli())
 	}
 	var sortByColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt:
-			sortByColumn = &s
-		default:
-			supportedSortBy := []public.GetDecisionInstancesParamsSortBy{public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt}
-			return public.GetDecisionInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetDecisionInstancesParamsSortOrder{public.GetDecisionInstancesParamsSortOrderAsc, public.GetDecisionInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetDecisionInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
-		request.Params.SortOrder = ptr.To(public.GetDecisionInstancesParamsSortOrderDesc)
+	if request.Params.SortOrder == nil {
+		request.Params.SortOrder = new(public.GetDecisionInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByColumn)
 
@@ -454,10 +499,10 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 			case zenerr.ClusterErrorCode:
 				return public.GetDecisionInstances502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetDecisionInstances500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstances500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetDecisionInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDecisionInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	decisionInstancesPage := public.GetDecisionInstances200JSONResponse{
@@ -474,7 +519,7 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		decisionInstancesPage.Partitions[i] = public.PartitionDecisionInstances{
 			Items:     make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
 			Partition: int(partitionInstances.GetPartitionId()),
-			Count:     ptr.To(len(partitionInstances.GetDecisionInstances())),
+			Count:     new(len(partitionInstances.GetDecisionInstances())),
 		}
 		count += len(partitionInstances.GetDecisionInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
@@ -504,16 +549,16 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 			case zenerr.NotFoundCode:
 				return public.GetDecisionInstance404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetDecisionInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetDecisionInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDecisionInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	var evaluatedDecisions []dmn.EvaluatedDecisionResult
 	if instance.EvaluatedDecisions != nil {
 		err = json.Unmarshal([]byte(*instance.EvaluatedDecisions), &evaluatedDecisions)
 		if err != nil {
-			return public.GetDecisionInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+			return public.GetDecisionInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 		}
 	}
 	var decisionOutput *json.RawMessage
@@ -558,10 +603,11 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			if err != nil {
 				return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
 			}
-			part.Close()
 			break
 		}
-		part.Close()
+		if _, err := io.Copy(io.Discard, part); err != nil {
+			return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to read multipart part %q: %w", part.FormName(), err)).ToApiError()), nil
+		}
 	}
 
 	if !found {
@@ -574,14 +620,14 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
-				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+				return public.CreateProcessDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			case zenerr.BadRequestCode:
 				return public.CreateProcessDefinition400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+				return public.CreateProcessDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.CreateProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CreateProcessDefinition500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	if alreadyExisted {
 		return public.CreateProcessDefinition200JSONResponse{
@@ -606,10 +652,10 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 			case zenerr.NotFoundCode:
 				return public.CompleteJob404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.CompleteJob500JSONResponse(zerr.ToApiError()), nil
+				return public.CompleteJob500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.CompleteJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CompleteJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.CompleteJob201Response{}, nil
 }
@@ -627,10 +673,10 @@ func (s *Server) AssignJob(ctx context.Context, request public.AssignJobRequestO
 			case zenerr.BadRequestCode:
 				return public.AssignJob400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.AssignJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+				return public.AssignJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 			}
 		}
-		return public.AssignJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.AssignJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.AssignJob204Response{}, nil
 }
@@ -650,20 +696,16 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 			case zenerr.ClusterErrorCode:
 				return public.PublishMessage502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.PublishMessage500JSONResponse(zerr.ToApiError()), nil
+				return public.PublishMessage500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.PublishMessage500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.PublishMessage500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.PublishMessage201Response{}, nil
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessDefinitions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 
 	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 
@@ -681,10 +723,10 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 			case zenerr.BadRequestCode:
 				return public.GetProcessDefinitions400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessDefinitions500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessDefinitions500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessDefinitions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessDefinitions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	items := make([]public.ProcessDefinitionSimple, len(definitionsPage.Items))
 	result := public.ProcessDefinitionsPage{
@@ -695,7 +737,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 			Key:             p.GetKey(),
 			Version:         int(p.GetVersion()),
 			BpmnProcessId:   p.GetProcessId(),
-			BpmnProcessName: ptr.To(p.GetProcessName()),
+			BpmnProcessName: new(p.GetProcessName()),
 		}
 		items[i] = processDefinitionSimple
 	}
@@ -723,10 +765,10 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 			case zenerr.BadRequestCode:
 				return public.GetProcessDefinition400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessDefinition500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	return public.GetProcessDefinition200JSONResponse{
@@ -735,7 +777,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 			Key:           definition.GetKey(),
 			Version:       int(definition.GetVersion()),
 		},
-		BpmnData: ptr.To(string(definition.GetDefinition())),
+		BpmnData: new(string(definition.GetDefinition())),
 	}, nil
 }
 
@@ -751,10 +793,10 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 			case zenerr.NotFoundCode:
 				return public.GetProcessDefinitionElementStatistics404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessDefinitionElementStatistics500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessDefinitionElementStatistics500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessDefinitionElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessDefinitionElementStatistics500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	partitions, err := s.node.GetProcessDefinitionElementStatistics(ctx, request.ProcessDefinitionKey)
@@ -767,10 +809,10 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 			case zenerr.BadRequestCode:
 				return public.GetProcessDefinitionElementStatistics400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessDefinitionElementStatistics500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessDefinitionElementStatistics500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessDefinitionElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessDefinitionElementStatistics500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	result := public.ElementStatisticsPartitions{
@@ -808,10 +850,10 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstanceElementStatistics502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceElementStatistics500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceElementStatistics500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceElementStatistics500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	partitions, err := s.node.GetProcessInstanceElementStatistics(ctx, request.ProcessInstanceKey)
@@ -824,10 +866,10 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 			case zenerr.BadRequestCode:
 				return public.GetProcessInstanceElementStatistics400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceElementStatistics500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceElementStatistics500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceElementStatistics500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	result := public.ElementStatisticsPartitions{
@@ -857,10 +899,6 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessDefinitionStatistics400JSONResponse(paginationErr.ToApiError()), nil
-	}
 
 	onlyLatest := false
 	if request.Params.OnlyLatest != nil {
@@ -899,10 +937,10 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 			case zenerr.BadRequestCode:
 				return public.GetProcessDefinitionStatistics400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessDefinitionStatistics500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessDefinitionStatistics500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessDefinitionStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessDefinitionStatistics500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	partitions := make([]public.PartitionProcessDefinitionStatistics, len(partitionedStats))
@@ -915,7 +953,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 				Key:           stat.GetKey(),
 				Version:       int(stat.GetVersion()),
 				BpmnProcessId: stat.GetBpmnProcessId(),
-				Name:          ptr.To(stat.GetBpmnProcessName()),
+				Name:          new(stat.GetBpmnProcessName()),
 				InstanceCounts: public.InstanceCounts{
 					Total:        int(stat.InstanceCounts.GetTotal()),
 					Active:       int(stat.InstanceCounts.GetActive()),
@@ -965,7 +1003,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		), nil
 	}
 
-	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BpmnProcessId, request.Body.BusinessKey, variables, ttl)
+	result, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BpmnProcessId, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
@@ -975,29 +1013,49 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 			case zenerr.NotFoundCode:
 				return public.CreateProcessInstance404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.CreateProcessInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
+	process := result.GetProcess()
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
-
 	if errInstanceState != nil {
-		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+		return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 	}
 
+	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(process.GetType()))
+	if errInstanceType != nil {
+		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+	}
+
+	activeElementInstances := make([]public.ElementInstance, 0, len(result.GetExecutionTokens()))
+	for _, token := range result.GetExecutionTokens() {
+		activeElementInstances = append(activeElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(token.GetCreatedAt()),
+			ElementId:          token.GetElementId(),
+			ElementInstanceKey: token.GetElementInstanceKey(),
+			State:              runtime.TokenState(token.GetState()).String(),
+		})
+	}
+
+	bpmnProcessID := process.GetProcessId()
 	return public.CreateProcessInstance201JSONResponse{
+		ActiveElementInstances: activeElementInstances,
 		ProcessInstancesSimple: public.ProcessInstancesSimple{
+			BpmnProcessId:        &bpmnProcessID,
+			BusinessKey:          request.Body.BusinessKey,
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
 			State:                processInstanceState,
+			ProcessType:          processInstanceType,
 			Variables:            processVars,
 		},
 	}, nil
@@ -1020,25 +1078,25 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 			case zenerr.NotFoundCode:
 				return public.StartProcessInstanceOnElements404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.StartProcessInstanceOnElements500JSONResponse(zerr.ToApiError()), nil
+				return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
 	if errInstanceState != nil {
-		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+		return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 	}
 
 	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(process.GetType()))
 	if errInstanceType != nil {
-		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+		return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 	}
 
 	return public.StartProcessInstanceOnElements201JSONResponse{
@@ -1061,52 +1119,37 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
-		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
-		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetProcessInstancesParamsStateActive:
-			state = ptr.To(int64(runtime.ActivityStateActive))
+			state = new(int64(runtime.ActivityStateActive))
 		case public.GetProcessInstancesParamsStateCompleted:
-			state = ptr.To(int64(runtime.ActivityStateCompleted))
+			state = new(int64(runtime.ActivityStateCompleted))
 		case public.GetProcessInstancesParamsStateTerminated:
-			state = ptr.To(int64(runtime.ActivityStateTerminated))
+			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetProcessInstancesParamsStateFailed:
-			state = ptr.To(int64(runtime.ActivityStateFailed))
+			state = new(int64(runtime.ActivityStateFailed))
 		default:
-			supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
-			), nil
+			// unreachable while the OpenAPI validator enforces the state enum;
+			// guards against the spec and this switch drifting apart.
+			err := zenerr.TechnicalError(
+				fmt.Errorf("unhandled process instance state %q: OpenAPI spec and handler are out of sync", *request.Params.State),
+			)
+			return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, err)), nil
 		}
 	}
 	if request.Params.CreatedFrom != nil {
-		createdFrom = ptr.To(request.Params.CreatedFrom.UnixMilli())
+		createdFrom = new(request.Params.CreatedFrom.UnixMilli())
 	}
 	if request.Params.CreatedTo != nil {
-		createdTo = ptr.To(request.Params.CreatedTo.UnixMilli())
+		createdTo = new(request.Params.CreatedTo.UnixMilli())
 	}
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId}
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
-			), nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.GetProcessInstancesParamsSortOrderAsc, public.GetProcessInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetProcessInstances400JSONResponse(
-				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
-			), nil
-		}
-	} else {
-		request.Params.SortOrder = ptr.To(public.GetProcessInstancesParamsSortOrderDesc)
+	if request.Params.SortOrder == nil {
+		request.Params.SortOrder = new(public.GetProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -1134,10 +1177,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstances502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstances500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	processInstancesPage := public.GetProcessInstances200JSONResponse{
@@ -1161,17 +1204,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			vars := map[string]any{}
 			err = json.Unmarshal(instance.GetVariables(), &vars)
 			if err != nil {
-				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+				return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 			}
 
 			processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(instance.GetState()))
 			if errInstanceState != nil {
-				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+				return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 			}
 
 			processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(instance.GetType()))
 			if errInstanceType != nil {
-				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+				return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 			}
 
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
@@ -1186,7 +1229,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = new(instance.GetParentInstanceKey())
 			}
 		}
 	}
@@ -1206,15 +1249,15 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			case zenerr.NotFoundCode:
 				return public.GetProcessInstance404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	vars := map[string]any{}
 	err = json.Unmarshal(instance.GetVariables(), &vars)
 	if err != nil {
-		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
@@ -1229,17 +1272,17 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 
 	var parentProcessInstanceKey *int64
 	if pKey := instance.GetParentInstanceKey(); pKey != 0 {
-		parentProcessInstanceKey = ptr.To(pKey)
+		parentProcessInstanceKey = new(pKey)
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(instance.GetState()))
 	if errInstanceState != nil {
-		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+		return public.GetProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 	}
 
 	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(instance.GetType()))
 	if errInstanceType != nil {
-		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+		return public.GetProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 	}
 
 	return &public.GetProcessInstance200JSONResponse{
@@ -1260,55 +1303,34 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 
 func (s *Server) GetChildProcessInstances(ctx context.Context, request public.GetChildProcessInstancesRequestObject) (public.GetChildProcessInstancesResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetChildProcessInstances400JSONResponse(paginationErr.ToApiError()), nil
-	}
 
 	var state *int64
 	if request.Params.State != nil {
-		supportedStates := [...]public.GetChildProcessInstancesParamsState{public.GetChildProcessInstancesParamsStateActive, public.GetChildProcessInstancesParamsStateCompleted, public.GetChildProcessInstancesParamsStateTerminated, public.GetChildProcessInstancesParamsStateFailed}
-		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
-		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetChildProcessInstancesParamsStateActive:
-			state = ptr.To(int64(runtime.ActivityStateActive))
+			state = new(int64(runtime.ActivityStateActive))
 		case public.GetChildProcessInstancesParamsStateCompleted:
-			state = ptr.To(int64(runtime.ActivityStateCompleted))
+			state = new(int64(runtime.ActivityStateCompleted))
 		case public.GetChildProcessInstancesParamsStateTerminated:
-			state = ptr.To(int64(runtime.ActivityStateTerminated))
+			state = new(int64(runtime.ActivityStateTerminated))
 		case public.GetChildProcessInstancesParamsStateFailed:
-			state = ptr.To(int64(runtime.ActivityStateFailed))
+			state = new(int64(runtime.ActivityStateFailed))
 		default:
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates),
-			}, nil
+			// unreachable while the OpenAPI validator enforces the state enum;
+			// guards against the spec and this switch drifting apart.
+			err := zenerr.TechnicalError(
+				fmt.Errorf("unhandled process instance state %q: OpenAPI spec and handler are out of sync", *request.Params.State),
+			)
+			return public.GetChildProcessInstances500JSONResponse(trackInternalServerError(ctx, err)), nil
 		}
 	}
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
-		switch *request.Params.SortBy {
-		case public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState:
-			sortByDbColumn = &s
-		default:
-			supportedSortBy := []public.GetChildProcessInstancesParamsSortBy{public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState}
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
-			}, nil
-		}
+		sortByDbColumn = &s
 	}
-	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetChildProcessInstancesParamsSortOrder{public.GetChildProcessInstancesParamsSortOrderAsc, public.GetChildProcessInstancesParamsSortOrderDesc}
-		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetChildProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
-			}, nil
-		}
-	} else {
-		request.Params.SortOrder = ptr.To(public.GetChildProcessInstancesParamsSortOrderDesc)
+	if request.Params.SortOrder == nil {
+		request.Params.SortOrder = new(public.GetChildProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -1353,20 +1375,22 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 			vars := map[string]any{}
 			err = json.Unmarshal(instance.GetVariables(), &vars)
 			if err != nil {
-				return public.GetChildProcessInstances500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
+				return public.GetChildProcessInstances500JSONResponse(
+					trackInternalServerErrorResponse(ctx, err, public.Error{
+						Code:    "TODO",
+						Message: err.Error(),
+					}),
+				), nil
 			}
 
 			processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(instance.GetState()))
 			if errInstanceState != nil {
-				return public.GetChildProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+				return public.GetChildProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 			}
 
 			processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(instance.GetType()))
 			if errInstanceType != nil {
-				return public.GetChildProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+				return public.GetChildProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 			}
 
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
@@ -1381,7 +1405,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = new(instance.GetParentInstanceKey())
 			}
 		}
 	}
@@ -1401,10 +1425,10 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 			case zenerr.NotFoundCode:
 				return public.UpdateProcessInstanceVariables404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.UpdateProcessInstanceVariables500JSONResponse(zerr.ToApiError()), nil
+				return public.UpdateProcessInstanceVariables500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.UpdateProcessInstanceVariables500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.UpdateProcessInstanceVariables500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	if process.GetState() != int64(runtime.ActivityStateActive) && process.GetState() != int64(runtime.ActivityStateFailed) {
 		return public.UpdateProcessInstanceVariables409JSONResponse(
@@ -1423,10 +1447,10 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 			case zenerr.NotFoundCode:
 				return public.UpdateProcessInstanceVariables404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.UpdateProcessInstanceVariables500JSONResponse(zerr.ToApiError()), nil
+				return public.UpdateProcessInstanceVariables500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.UpdateProcessInstanceVariables500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.UpdateProcessInstanceVariables500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	return public.UpdateProcessInstanceVariables204Response{}, nil
@@ -1443,15 +1467,15 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 			case zenerr.NotFoundCode:
 				return public.DeleteProcessInstanceVariable404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.DeleteProcessInstanceVariable500JSONResponse(zerr.ToApiError()), nil
+				return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	existingVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &existingVars)
 	if err != nil {
-		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	_, exists := existingVars[request.VariableName]
 	if !exists {
@@ -1472,10 +1496,10 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 			case zenerr.ClusterErrorCode:
 				return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.DeleteProcessInstanceVariable500JSONResponse(zerr.ToApiError()), nil
+				return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	return public.DeleteProcessInstanceVariable204Response{}, nil
@@ -1494,10 +1518,10 @@ func (s *Server) CancelProcessInstance(ctx context.Context, request public.Cance
 			case zenerr.ConflictCode:
 				return public.CancelProcessInstance409JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.CancelProcessInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.CancelProcessInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.CancelProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.CancelProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.CancelProcessInstance204Response{}, nil
 }
@@ -1514,10 +1538,10 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 			case zenerr.ClusterErrorCode:
 				return public.GetHistory502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetHistory500JSONResponse(zerr.ToApiError()), nil
+				return public.GetHistory500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetHistory500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetHistory500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	resp := make([]public.FlowElementHistory, len(flow.Flow))
 	for i, flowNode := range flow.Flow {
@@ -1534,7 +1558,7 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 		inputVars := map[string]any{}
 		if len(flowNode.GetInputVariables()) > 0 {
 			if err := json.Unmarshal(flowNode.GetInputVariables(), &inputVars); err != nil {
-				return public.GetHistory500JSONResponse(zenerr.TechnicalError(fmt.Errorf("failed to unmarshal input variables for flow element %d: %w", key, err)).ToApiError()), nil
+				return public.GetHistory500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(fmt.Errorf("failed to unmarshal input variables for flow element %d: %w", key, err)))), nil
 			}
 		}
 		if inputVars == nil {
@@ -1545,7 +1569,7 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 		if len(flowNode.GetOutputVariables()) > 0 {
 			vars := map[string]any{}
 			if err := json.Unmarshal(flowNode.GetOutputVariables(), &vars); err != nil {
-				return public.GetHistory500JSONResponse(zenerr.TechnicalError(fmt.Errorf("failed to unmarshal output variables for flow element %d: %w", key, err)).ToApiError()), nil
+				return public.GetHistory500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(fmt.Errorf("failed to unmarshal output variables for flow element %d: %w", key, err)))), nil
 			}
 			if vars != nil {
 				outputVars = &vars
@@ -1585,16 +1609,16 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstanceJobs502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceJobs500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceJobs500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceJobs500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	resp := make([]public.Job, len(jobs.Jobs))
 	for i, job := range jobs.Jobs {
 		mappedJob, err := s.mapProtoJob(job)
 		if err != nil {
-			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+			return public.GetProcessInstanceJobs500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 		}
 		resp[i] = mappedJob
 	}
@@ -1613,10 +1637,8 @@ func validateEventSubscriptionState(state *public.EventSubscriptionState, allowe
 	if state == nil {
 		return nil
 	}
-	for _, a := range allowed {
-		if *state == a {
-			return nil
-		}
+	if slices.Contains(allowed, *state) {
+		return nil
 	}
 	validValues := make([]string, len(allowed))
 	for i, a := range allowed {
@@ -1628,9 +1650,6 @@ func validateEventSubscriptionState(state *public.EventSubscriptionState, allowe
 
 func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, request public.GetProcessInstanceMessageSubscriptionsRequestObject) (public.GetProcessInstanceMessageSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateTerminated},
 		"message"); stateErr != nil {
@@ -1645,10 +1664,10 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstanceMessageSubscriptions502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceMessageSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	var items []public.MessageSubscription
@@ -1658,7 +1677,7 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 		for _, sub := range partitionSubscriptions.GetItems() {
 			subState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(sub.GetState()))
 			if stateErr != nil {
-				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(stateErr))), nil
 			}
 			var correlationKey *string
 			if ck := sub.GetCorrelationKey(); ck != "" {
@@ -1693,9 +1712,6 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 
 func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, request public.GetProcessInstanceTimerSubscriptionsRequestObject) (public.GetProcessInstanceTimerSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceTimerSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateWithdrawn},
 		"timer"); stateErr != nil {
@@ -1710,16 +1726,16 @@ func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, reque
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstanceTimerSubscriptions502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceTimerSubscriptions500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceTimerSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	items := make([]public.TimerSubscription, len(resp.Items))
 	for i, t := range resp.Items {
 		tState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(t.GetState()))
 		if stateErr != nil {
-			return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+			return public.GetProcessInstanceTimerSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(stateErr))), nil
 		}
 		var dueDate *time.Time
 		if v := t.GetDueAt(); v != 0 {
@@ -1750,9 +1766,6 @@ func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, reque
 
 func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, request public.GetProcessInstanceErrorSubscriptionsRequestObject) (public.GetProcessInstanceErrorSubscriptionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
-		return public.GetProcessInstanceErrorSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
-	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
 		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateWithdrawn},
 		"error"); stateErr != nil {
@@ -1767,16 +1780,16 @@ func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, reque
 			case zenerr.ClusterErrorCode:
 				return public.GetProcessInstanceErrorSubscriptions502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zerr.ToApiError()), nil
+				return public.GetProcessInstanceErrorSubscriptions500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetProcessInstanceErrorSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	items := make([]public.ErrorSubscription, len(resp.Items))
 	for i, sub := range resp.Items {
 		subState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(sub.GetState()))
 		if stateErr != nil {
-			return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+			return public.GetProcessInstanceErrorSubscriptions500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(stateErr))), nil
 		}
 		var errorCode *string
 		if ec := sub.GetErrorCode(); ec != "" {
@@ -1810,11 +1823,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	if request.Params.State != nil {
 		switch *request.Params.State {
 		case public.JobStateActive:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = new(runtime.ActivityStateActive)
 		case public.JobStateCompleted:
-			reqState = ptr.To(runtime.ActivityStateCompleted)
+			reqState = new(runtime.ActivityStateCompleted)
 		case public.JobStateTerminated:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = new(runtime.ActivityStateActive)
 		default:
 			supportedStates := [...]public.JobState{public.JobStateActive, public.JobStateCompleted, public.JobStateTerminated}
 			return public.GetJobs400JSONResponse(
@@ -1832,10 +1845,10 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			case zenerr.ClusterErrorCode:
 				return public.GetJobs502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetJobs500JSONResponse(zerr.ToApiError()), nil
+				return public.GetJobs500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetJobs500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	jobsPage := public.GetJobs200JSONResponse{
@@ -1858,7 +1871,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		for k, job := range partitionJobs.GetJobs() {
 			mappedJob, err := s.mapProtoJob(job)
 			if err != nil {
-				return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+				return public.GetJobs500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 			}
 			jobsPage.Partitions[i].Items[k] = mappedJob
 		}
@@ -1879,15 +1892,15 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 			case zenerr.NotFoundCode:
 				return public.GetJob404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetJob500JSONResponse(zerr.ToApiError()), nil
+				return public.GetJob500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	mappedJob, err := s.mapProtoJob(job)
 	if err != nil {
-		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.GetJob200JSONResponse(mappedJob), nil
 }
@@ -1906,10 +1919,10 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 			case zenerr.NotFoundCode:
 				return public.FailJob404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.FailJob500JSONResponse(zerr.ToApiError()), nil
+				return public.FailJob500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.FailJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.FailJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.FailJob204Response{}, nil
 }
@@ -2112,10 +2125,10 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			case zenerr.ClusterErrorCode:
 				return public.GetIncidents502JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetIncidents500JSONResponse(zerr.ToApiError()), nil
+				return public.GetIncidents500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.GetIncidents500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetIncidents500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	resp := make([]public.Incident, len(incidents.Incidents))
@@ -2127,7 +2140,7 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			CreatedAt:          time.UnixMilli(incident.GetCreatedAt()),
 			ResolvedAt: func() *time.Time {
 				if incident.ResolvedAt != nil {
-					return ptr.To(time.UnixMilli(incident.GetResolvedAt()))
+					return new(time.UnixMilli(incident.GetResolvedAt()))
 				}
 				return nil
 			}(),
@@ -2159,10 +2172,10 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 			case zenerr.NotFoundCode:
 				return public.ResolveIncident404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.ResolveIncident500JSONResponse(zerr.ToApiError()), nil
+				return public.ResolveIncident500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.ResolveIncident500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.ResolveIncident500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	return public.ResolveIncident201Response{}, nil
@@ -2202,16 +2215,16 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			case zenerr.NotFoundCode:
 				return public.ModifyProcessInstance404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.ModifyProcessInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.ModifyProcessInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
 		}
-		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.ModifyProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.ModifyProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
 	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
@@ -2226,12 +2239,12 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 
 	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(process.GetType()))
 	if errInstanceType != nil {
-		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+		return public.ModifyProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 	}
 
 	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
 	if errInstanceState != nil {
-		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+		return public.ModifyProcessInstance500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceState))), nil
 	}
 
 	return public.ModifyProcessInstance201JSONResponse{
@@ -2249,14 +2262,23 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 	}, nil
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {
+func writeError(w http.ResponseWriter, _ *http.Request, status int, resp interface{}) {
 	w.WriteHeader(status)
 	body, err := json.Marshal(resp)
 	if err != nil {
 		log.Error("Server error: %s", err)
-	} else {
-		w.Write(body)
+	} else if _, err := w.Write(body); err != nil {
+		log.Error("Failed to write error response body: %s", err)
 	}
+}
+
+func trackInternalServerError(ctx context.Context, err *zenerr.ZenError) public.Error {
+	return trackInternalServerErrorResponse(ctx, err, err.ToApiError())
+}
+
+func trackInternalServerErrorResponse(ctx context.Context, err error, response public.Error) public.Error {
+	errortracking.CaptureUnexpected(ctx, "", err)
+	return response
 }
 
 func defaultPagination(page **int32, size **int32) {
@@ -2268,16 +2290,6 @@ func defaultPagination(page **int32, size **int32) {
 		s := PaginationDefaultSize
 		*size = &s
 	}
-}
-
-func validatePagination(page, size int32) *zenerr.ZenError {
-	if page < 1 {
-		return zenerr.BadRequest(fmt.Errorf("page must be >= 1, got %d", page))
-	}
-	if size < 1 || size > PaginationMaxSize {
-		return zenerr.BadRequest(fmt.Errorf("size must be between 1 and %d, got %d", PaginationMaxSize, size))
-	}
-	return nil
 }
 
 func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {
@@ -2315,7 +2327,7 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 		responseEvaluatedDecisions = append(responseEvaluatedDecisions, public.EvaluatedDecision{
 			DecisionId:   &evaluatedDecision.DecisionId,
 			DecisionName: &evaluatedDecision.DecisionName,
-			DecisionType: ptr.To(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
+			DecisionType: new(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
 			Inputs:       &responseEvaluatedInputs,
 			MatchedRules: &responseMatchedRules,
 			Outputs:      nil, // TODO What should be here? Total matchedRules outputs?

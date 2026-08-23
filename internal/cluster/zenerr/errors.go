@@ -5,7 +5,6 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 var (
@@ -36,6 +35,9 @@ const (
 	NotFoundCode
 	BadRequestCode
 	ConflictCode
+	MethodNotAllowedCode
+	UnsupportedMediaTypeCode
+	PayloadTooLargeCode
 )
 
 func (zenErrorCode ZenErrorCode) ToString() string {
@@ -52,6 +54,12 @@ func (zenErrorCode ZenErrorCode) ToString() string {
 		return "BAD_REQUEST"
 	case ConflictCode:
 		return "CONFLICT"
+	case MethodNotAllowedCode:
+		return "METHOD_NOT_ALLOWED"
+	case UnsupportedMediaTypeCode:
+		return "UNSUPPORTED_MEDIA_TYPE"
+	case PayloadTooLargeCode:
+		return "PAYLOAD_TOO_LARGE"
 	default:
 		return "UNKNOWN_ERROR"
 	}
@@ -92,8 +100,8 @@ func Join(new error, original *ZenError) *ZenError {
 
 func (zenError *ZenError) ToProtoError() *proto.ErrorResult {
 	return &proto.ErrorResult{
-		Code:    (*uint32)(ptr.To(zenError.Code)),
-		Message: ptr.To(zenError.err.Error()),
+		Code:    (*uint32)(new(zenError.Code)),
+		Message: new(zenError.err.Error()),
 	}
 }
 

@@ -3,7 +3,6 @@ package e2e
 import (
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
@@ -11,10 +10,11 @@ import (
 func TestMessageEndEvent(t *testing.T) {
 	var instance zenclient.ProcessInstance
 	var jobToComplete zenclient.Job
-	definition, err := deployGetDefinition(t, "message_end_event.bpmn", "message_end_event")
+	var err error
+	definitionKey := deployTestDataProcessDefinitionKey(t, messageEndEventBasicPath)
 
 	t.Run("create process instance with message end event", func(t *testing.T) {
-		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definitionKey, map[string]any{
 			"instVar": "instVarValue",
 		})
 		assert.NoError(t, err)
@@ -45,7 +45,7 @@ func TestMessageEndEvent(t *testing.T) {
 	})
 
 	t.Run("the state of corresponding job should be COMPLETED", func(t *testing.T) {
-		jobsPartitionPage, err := getJobs(t, zenclient.GetJobsParams{JobType: ptr.To("message-end-event-task-1")})
+		jobsPartitionPage, err := getJobs(t, zenclient.GetJobsParams{JobType: new("message-end-event-task-1")})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobsPartitionPage)
 		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)

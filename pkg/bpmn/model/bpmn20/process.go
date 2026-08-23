@@ -23,6 +23,11 @@ type TFlowElementsContainer struct {
 	// Catches any XML element not matched by the fields above.
 	// Used to detect unsupported BPMN elements at validation time.
 	UnknownElements []TUnknownElement `xml:",any"`
+
+	// Subtree indices built by ResolveReferences; IDs and slice membership must remain
+	// unchanged afterward. Boundary events are intentionally excluded.
+	flowNodesByID     map[string]FlowNode
+	internalTasksByID map[string]InternalTask
 }
 
 // TUnknownElement captures any XML element not explicitly handled by TFlowElementsContainer.
@@ -43,129 +48,22 @@ type TProcess struct {
 	DefinitionalCollaborationRef string `xml:"definitionalCollaborationRef,attr"`
 }
 
-func (p *TProcess) GetInternalTaskById(id string) InternalTask {
-	for _, e := range p.ServiceTasks {
-		if e.GetId() == id {
-			return &e
-		}
+// GetFlowNodeById returns a flow node from this process subtree.
+// Boundary events are excluded. ResolveReferences must be called first.
+func (p *TProcess) GetFlowNodeById(id string) FlowNode {
+	if id == "" {
+		return nil
 	}
-	for _, e := range p.UserTasks {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.BusinessRuleTask {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.SendTask {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.IntermediateThrowEvent {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.EndEvents {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.SubProcess {
-		if res := e.GetInternalTaskById(id); res != nil {
-			return res
-		}
-	}
-
-	return nil
+	return p.flowNodesByID[id]
 }
 
-func (p *TProcess) GetFlowNodeById(id string) FlowNode {
-	for _, e := range p.StartEvents {
-		if e.GetId() == id {
-			return &e
-		}
+// GetInternalTaskById returns an internal task from this process subtree.
+// ResolveReferences must be called first.
+func (p *TProcess) GetInternalTaskById(id string) InternalTask {
+	if id == "" {
+		return nil
 	}
-	for _, e := range p.EndEvents {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.ServiceTasks {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.UserTasks {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.BusinessRuleTask {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.SendTask {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.ReceiveTask {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.ParallelGateway {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.ExclusiveGateway {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.EventBasedGateway {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.InclusiveGateway {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.IntermediateCatchEvent {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.IntermediateThrowEvent {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.CallActivity {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.SubProcess {
-		if e.GetId() == id {
-			return &e
-		}
-	}
-	for _, e := range p.SubProcess {
-		if res := e.GetFlowNodeById(id); res != nil {
-			return res
-		}
-	}
-
-	return nil
+	return p.internalTasksByID[id]
 }
 
 // GetSubprocessAndStartEventById recursively searches for a start event by ID within this process and all nested subprocesses.

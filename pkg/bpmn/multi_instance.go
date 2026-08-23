@@ -52,6 +52,22 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 			if err != nil {
 				return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 			}
+
+			// The start helpers only report Completed for an empty input collection. No
+			// multi-instance instance is created in that case, so the parent continuation
+			// that normally completes this history row never runs.
+			outputVariables := emptyMultiInstanceOutputVariables(element)
+			if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+				Key:                currentToken.ElementInstanceKey,
+				ProcessInstanceKey: instance.ProcessInstance().Key,
+				ElementId:          element.GetId(),
+				ElementType:        string(element.GetType()),
+				ExecutionTokenKey:  currentToken.Key,
+				OutputVariables:    outputVariables,
+				CompletedAt:        new(time.Now()),
+			}); err != nil {
+				return nil, fmt.Errorf("failed to complete %s history %d: %w", element.GetType(), activity.GetKey(), err)
+			}
 			return tokens, nil
 		default:
 			return []runtime.ExecutionToken{}, fmt.Errorf("unsupported activity state: %s", activityState)
@@ -79,7 +95,9 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		return []runtime.ExecutionToken{}, fmt.Errorf("multi instance input collection under key %q has unexpected type %T", inputElementName, inputCollectionVariable)
 	}
 
-	//TODO (n^2) — replaces with iteration index tracked on MultiInstanceInstance
+	// The history count is the iteration index. Each iteration is flushed before
+	// another token is processed, except for activities that complete synchronously;
+	// that path passes the known +1 count directly to the transition handler below.
 	multiInstancesAlreadyStarted, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return []runtime.ExecutionToken{}, err
@@ -121,7 +139,15 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleMultiInstanceElementTransition(ctx, batch, multiInstance, element, currentToken)
+		// The current history row is still queued in this batch, so account for it
+		// explicitly instead of trying to infer an unflushed row from persistence.
+		tokens, err := engine.calculateMultiInstanceElementTransitionWithStartedIterations(
+			ctx,
+			multiInstance,
+			element,
+			currentToken,
+			multiInstancesAlreadyStarted+1,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +203,8 @@ func (engine *Engine) startParallelMultiInstance(
 	}
 
 	if len(inputCollection) == 0 {
-		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		outputVariables := emptyMultiInstanceOutputVariables(element)
+		instance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 		return runtime.ActivityStateCompleted, nil
 	}
 
@@ -196,9 +223,7 @@ func (engine *Engine) startParallelMultiInstance(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.GetId(),
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, instance.ProcessInstance().BusinessKey),
 		},
 	)
 	if err != nil {
@@ -240,7 +265,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 
 	flowElementInput := variableHolder.ExecutionScopeSnapshot()
 	flowElementInput[element.GetMultiInstance().LoopCharacteristics.InputElementName] = inputCollection
-	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
@@ -250,9 +275,13 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
+	if err != nil {
+		return runtime.ActivityStateFailed, err
+	}
 
 	if len(inputCollection) == 0 {
-		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		outputVariables := emptyMultiInstanceOutputVariables(element)
+		instance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 		return runtime.ActivityStateCompleted, nil
 	}
 
@@ -266,9 +295,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.GetId(),
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, instance.ProcessInstance().BusinessKey),
 		},
 	)
 	if err != nil {
@@ -315,7 +342,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		return nil
 	}
 	ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", updatedParentToken.ElementId), trace.WithAttributes(
-		attribute.String(otelPkg.AttributeElementId, updatedParentToken.ElementId),
+		attribute.String(otelPkg.AttributeElementID, updatedParentToken.ElementId),
 		attribute.Int64(otelPkg.AttributeElementKey, updatedParentToken.ElementInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, updatedParentToken.Key),
 	))
@@ -336,11 +363,11 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
 	}
 
-	outputCollection, err := engine.collectMultiInstanceOutputCollection(ctx, instance.ProcessInstance().Key, parentElement, parentInstance.ProcessInstance().Key)
+	outputVariables, err := engine.collectMultiInstanceOutputVariables(ctx, instance.ProcessInstance().Key, parentElement, parentInstance.ProcessInstance().Key)
 	if err != nil {
 		return err
 	}
-	parentInstance.ProcessInstance().VariableHolder.SetLocalVariable(parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName, outputCollection)
+	parentInstance.ProcessInstance().VariableHolder.SetLocalVariables(outputVariables)
 
 	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
 	if err != nil {
@@ -354,7 +381,10 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	}
 
 	for _, tok := range tokens {
-		batch.SaveToken(ctx, tok)
+		err := batch.SaveToken(ctx, tok)
+		if err != nil {
+			return err
+		}
 	}
 	err = batch.SaveProcessInstance(ctx, parentInstance)
 	if err != nil {
@@ -366,7 +396,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		ElementId:          parentElement.GetId(),
 		ElementType:        string(parentElement.GetType()),
 		ExecutionTokenKey:  updatedParentToken.Key,
-		OutputVariables:    map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		OutputVariables:    outputVariables,
 		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
@@ -385,12 +415,17 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	return nil
 }
 
-func (engine *Engine) collectMultiInstanceOutputCollection(
+func (engine *Engine) collectMultiInstanceOutputVariables(
 	ctx context.Context,
 	multiInstanceProcessKey int64,
 	parentElement bpmn20.Activity,
 	parentProcessInstanceKey int64,
-) ([]interface{}, error) {
+) (map[string]any, error) {
+	outputCollectionName := parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName
+	if outputCollectionName == "" {
+		return nil, nil
+	}
+
 	elementInstances, err := engine.persistence.GetFlowElementInstancesByProcessInstanceKey(ctx, multiInstanceProcessKey, false)
 
 	if err != nil {
@@ -413,7 +448,21 @@ func (engine *Engine) collectMultiInstanceOutputCollection(
 		outputCollection = append(outputCollection, evaluatedOutput)
 	}
 
-	return outputCollection, nil
+	return multiInstanceOutputVariables(outputCollectionName, outputCollection), nil
+}
+
+func multiInstanceOutputVariables(outputCollectionName string, outputCollection []interface{}) map[string]any {
+	if outputCollectionName == "" {
+		return nil
+	}
+	return map[string]any{outputCollectionName: outputCollection}
+}
+
+func emptyMultiInstanceOutputVariables(element bpmn20.Activity) map[string]any {
+	return multiInstanceOutputVariables(
+		element.GetMultiInstance().LoopCharacteristics.OutputCollectionName,
+		[]interface{}{},
+	)
 }
 
 func (engine *Engine) buildActivityOutputEvaluationScope(elementInstance runtime.FlowElementInstance, element bpmn20.Activity) (map[string]any, error) {
@@ -437,11 +486,33 @@ func (engine *Engine) buildActivityOutputEvaluationScope(elementInstance runtime
 	return scope, nil
 }
 
-func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
-	batch *EngineBatch,
+func (engine *Engine) calculateMultiInstanceElementTransition(ctx context.Context,
 	instance *runtime.MultiInstanceInstance,
 	element bpmn20.FlowNode,
 	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
+	startedIterations, err := engine.countStartedMultiInstanceIterations(ctx, instance, element)
+	if err != nil {
+		return nil, err
+	}
+	return engine.calculateMultiInstanceElementTransitionWithStartedIterations(
+		ctx,
+		instance,
+		element,
+		currentToken,
+		startedIterations,
+	)
+}
+
+// calculateMultiInstanceElementTransitionWithStartedIterations calculates the token
+// transition after one multi-instance iteration finished. startedIterations includes
+// the iteration that has just finished; synchronous callers pass the known count
+// because its current history row is still unflushed.
+func (engine *Engine) calculateMultiInstanceElementTransitionWithStartedIterations(ctx context.Context,
+	instance *runtime.MultiInstanceInstance,
+	element bpmn20.FlowNode,
+	currentToken runtime.ExecutionToken,
+	startedIterations int64,
 ) ([]runtime.ExecutionToken, error) {
 	multiInstanceElement, ok := element.(bpmn20.Activity)
 	if !ok || multiInstanceElement.GetMultiInstance() == nil {
@@ -466,8 +537,21 @@ func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
 	multiInstanceInputCollectionLength := len(multiInstanceCollection)
 
 	if multiInstanceElement.GetMultiInstance().IsSequential {
+		if startedIterations > int64(multiInstanceInputCollectionLength) {
+			currentToken.State = runtime.TokenStateFailed
+			return []runtime.ExecutionToken{currentToken}, fmt.Errorf(
+				"multi-instance process %d started %d iterations for an input collection of length %d",
+				instance.ProcessInstance().Key,
+				startedIterations,
+				multiInstanceInputCollectionLength,
+			)
+		}
 		currentToken.State = runtime.TokenStateRunning
-		currentToken.ElementInstanceKey = engine.generateKey()
+		// The last iteration keeps its element instance key so that the final control
+		// pass through handleMultiInstanceActivity does not open a new history entry.
+		if startedIterations < int64(multiInstanceInputCollectionLength) {
+			currentToken.ElementInstanceKey = engine.generateKey()
+		}
 		return []runtime.ExecutionToken{currentToken}, nil
 	}
 
@@ -480,12 +564,31 @@ func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
 	isLastIteration := len(completedTokens) == multiInstanceInputCollectionLength-1
 	if isLastIteration {
 		currentToken.State = runtime.TokenStateRunning
-		currentToken.ElementInstanceKey = engine.generateKey()
 		return []runtime.ExecutionToken{currentToken}, nil
 	}
 
 	currentToken.State = runtime.TokenStateCompleted
 	return []runtime.ExecutionToken{currentToken}, nil
+}
+
+// countStartedMultiInstanceIterations reads the iteration index from persisted history.
+// It is used only for sequential external completions, where the just-finished
+// iteration was created in an earlier, already flushed batch.
+func (engine *Engine) countStartedMultiInstanceIterations(
+	ctx context.Context,
+	instance *runtime.MultiInstanceInstance,
+	element bpmn20.FlowNode,
+) (int64, error) {
+	activity, ok := element.(bpmn20.Activity)
+	if !ok || activity.GetMultiInstance() == nil || !activity.GetMultiInstance().IsSequential {
+		return 0, nil
+	}
+	processInstanceKey := instance.ProcessInstance().Key
+	startedIterations, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, processInstanceKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count started iterations of multi-instance process %d: %w", processInstanceKey, err)
+	}
+	return startedIterations, nil
 }
 
 func sortFlowElementInstancesSortByCreatedAtAndKey(elementInstances []runtime.FlowElementInstance, parentElementId string) []runtime.FlowElementInstance {

@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"go.opentelemetry.io/otel/codes"
@@ -35,6 +36,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	ctx, completeTimerSpan := engine.tracer.Start(ctx, fmt.Sprintf("timer:%d", timer.Key))
 	defer func() {
 		if r := recover(); r != nil {
+			errortracking.CapturePanic(ctx, r, "timer.trigger")
 			panicErr := fmt.Errorf("failed to process timer, panic recovered: %v\n%s", r, debug.Stack())
 			engine.logger.Error(panicErr.Error())
 			retErr = panicErr
@@ -80,6 +82,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	// Make sure the instance locks held by the batch are released on every error path. Clear after a successful Flush (or a previous Clear) is a no-op.
 	defer func() {
 		if r := recover(); r != nil {
+			errortracking.CapturePanic(ctx, r, "timer.trigger_token")
 			resInstance = nil
 			tokens = nil
 			retErr = fmt.Errorf("failed to trigger timer %d, panic recovered: %v\n%s", timer.Key, r, debug.Stack())

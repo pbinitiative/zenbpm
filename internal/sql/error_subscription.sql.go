@@ -35,7 +35,7 @@ const findProcessInstanceErrorSubscriptions = `-- name: FindProcessInstanceError
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, error_code, state, created_at, execution_token
 FROM
-    error_subscription
+    error_subscription INDEXED BY idx_fk_error_subscription_process_instance_key
 WHERE
     process_instance_key = ?1
   AND state = ?2
@@ -46,6 +46,10 @@ type FindProcessInstanceErrorSubscriptionsParams struct {
 	State              int64 `json:"state"`
 }
 
+// Pinned to idx_fk_error_subscription_process_instance_key. The planner currently picks it
+// correctly, but pinning here makes the contract explicit and prevents the generic
+// idx_error_subscription_execution_token_state from shadowing it under different data
+// distributions. See TestHotPathIndexes.
 func (q *Queries) FindProcessInstanceErrorSubscriptions(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsParams) ([]ErrorSubscription, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceErrorSubscriptions, arg.ProcessInstanceKey, arg.State)
 	if err != nil {
@@ -84,7 +88,7 @@ SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, error_code, state, created_at, execution_token,
     COUNT(*) OVER () AS total_count
 FROM
-    error_subscription
+    error_subscription INDEXED BY idx_fk_error_subscription_process_instance_key
 WHERE
     process_instance_key = ?1
     AND COALESCE(?2, state) = state
@@ -112,6 +116,8 @@ type FindProcessInstanceErrorSubscriptionsPageRow struct {
 	TotalCount           int64          `json:"total_count"`
 }
 
+// Pinned to idx_fk_error_subscription_process_instance_key. See note on
+// FindProcessInstanceErrorSubscriptions.
 func (q *Queries) FindProcessInstanceErrorSubscriptionsPage(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsPageParams) ([]FindProcessInstanceErrorSubscriptionsPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceErrorSubscriptionsPage,
 		arg.ProcessInstanceKey,

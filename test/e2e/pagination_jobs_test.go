@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +23,7 @@ func TestGlobalJobsPagination(t *testing.T) {
 
 			return func() {
 				for _, key := range instanceKeys {
-					app.restClient.CancelProcessInstanceWithResponse(t.Context(), key) //nolint:errcheck
+					cleanupOwnedProcessInstance(t, key)
 				}
 			}
 		},
@@ -33,8 +32,8 @@ func TestGlobalJobsPagination(t *testing.T) {
 			resp, err := app.restClient.GetJobsWithResponse(t.Context(),
 				&zenclient.GetJobsParams{
 					JobType: &jobType,
-					Page:    ptr.To(int32(page)),
-					Size:    ptr.To(int32(size)),
+					Page:    new(int32(page)),
+					Size:    new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -93,15 +92,15 @@ func TestProcessInstanceJobsPagination(t *testing.T) {
 			require.NotZero(t, subInstanceKey, "sub-instance key must be set after jobs appear")
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), parentKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, parentKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {
 			resp, err := app.restClient.GetProcessInstanceJobsWithResponse(t.Context(),
 				subInstanceKey,
 				&zenclient.GetProcessInstanceJobsParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -151,7 +150,7 @@ func waitForGlobalJobsCount(t *testing.T, jobType string, required int) {
 		resp, err := app.restClient.GetJobsWithResponse(t.Context(),
 			&zenclient.GetJobsParams{
 				JobType: &jobType,
-				Size:    ptr.To(int32(100)),
+				Size:    new(int32(100)),
 			})
 		if err != nil || resp.JSON200 == nil {
 			return false
@@ -185,7 +184,7 @@ func waitForSubInstanceJobs(t *testing.T, jobType string, jobCount int, subInsta
 		resp, err := app.restClient.GetJobsWithResponse(t.Context(),
 			&zenclient.GetJobsParams{
 				JobType: &jobType,
-				Size:    ptr.To(int32(100)),
+				Size:    new(int32(100)),
 			})
 		if err != nil || resp.JSON200 == nil {
 			return false

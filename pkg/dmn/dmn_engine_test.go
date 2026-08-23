@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	dmnModel "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	dmnRuntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +22,125 @@ import (
 
 var dmnEngine *ZenDmnEngine
 var engineStorage *inmemory.Storage
+
+func TestDecisionOutputIsKeyedByDecisionID(t *testing.T) {
+	t.Run("decision table", func(t *testing.T) {
+		engine := NewEngine()
+		resourceDefinition := requiredDecisionResourceDefinition()
+
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "riskDecision", nil)
+
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{
+			"riskDecision": map[string]interface{}{"risk": "LOW"},
+		}, result.DecisionOutput)
+	})
+
+	t.Run("literal expression", func(t *testing.T) {
+		engine := NewEngine()
+		resourceDefinition := requiredLiteralExpressionResourceDefinition()
+
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "riskDecision", nil)
+
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"riskDecision": "LOW"}, result.DecisionOutput)
+	})
+
+	t.Run("context with display name differing from id", func(t *testing.T) {
+		engine := NewEngine()
+		resourceDefinition := requiredContextResourceDefinition()
+
+		result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "contextDecision", nil)
+
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"contextDecision": "LOW"}, result.DecisionOutput)
+	})
+}
+
+func TestEvaluateDecisionSupportsRequiredDecisionTableID(t *testing.T) {
+	engine := NewEngine()
+	resourceDefinition := requiredDecisionResourceDefinition()
+
+	result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "approvalDecision", nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"approvalDecision": map[string]interface{}{"approved": true},
+	}, result.DecisionOutput)
+}
+
+func TestEvaluateDecisionSupportsRequiredLiteralExpressionVariableName(t *testing.T) {
+	engine := NewEngine()
+	resourceDefinition := requiredLiteralExpressionResourceDefinition()
+
+	result, _, err := engine.evaluateDecision(t.Context(), resourceDefinition, "approvalDecision", nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"approvalDecision": map[string]interface{}{"approved": true},
+	}, result.DecisionOutput)
+}
+
+func TestEvaluateDecisionReportsRequiredInputVariableName(t *testing.T) {
+	resourceDefinition := requiredInputResourceDefinition([]dmnModel.TInputData{{
+		Id:       "annualIncomeInput",
+		Name:     "Annual income",
+		Variable: dmnModel.TVariable{Name: "annualIncome"},
+	}})
+
+	_, _, err := NewEngine().evaluateDecision(t.Context(), resourceDefinition, "inputDecision", nil)
+
+	assert.EqualError(t, err, "required input missing for annualIncome")
+}
+
+func TestEvaluateDecisionRejectsUnknownRequiredInput(t *testing.T) {
+	resourceDefinition := requiredInputResourceDefinition(nil)
+
+	_, _, err := NewEngine().evaluateDecision(t.Context(), resourceDefinition, "inputDecision", nil)
+
+	assert.EqualError(t, err, "required input annualIncomeInput not found")
+}
+
+func TestEvaluateDecisionReturnsZeroValuesForRequiredDecisionError(t *testing.T) {
+	resourceDefinition := &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:                "literalDecision",
+					Name:              "Literal Decision",
+					LiteralExpression: &dmnModel.TLiteralExpression{},
+				},
+				{
+					Id: "requiringDecision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#literalDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{},
+				},
+			},
+		},
+	}
+
+	result, dependencies, err := NewEngine().evaluateDecision(t.Context(), resourceDefinition, "requiringDecision", nil)
+
+	assert.EqualError(t, err, "literal expression decision literalDecision has no result variable")
+	assert.Equal(t, EvaluatedDecisionResult{}, result)
+	assert.Nil(t, dependencies)
+}
+
+func TestEvaluateLiteralExpressionRejectsMissingResultVariable(t *testing.T) {
+	engine := NewEngine()
+
+	result, err := engine.evaluateLiteralExpression(
+		&dmnModel.TLiteralExpression{},
+		nil,
+		"literalDecision",
+		nil,
+	)
+
+	assert.EqualError(t, err, "literal expression decision literalDecision has no result variable")
+	assert.Nil(t, result)
+}
 
 func TestMain(m *testing.M) {
 	// setup
@@ -199,7 +320,11 @@ func TestLoadingExecutingLatestDecisionDefinitionWillResultInCorrectResult(t *te
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"canAutoLiquidate": true}, result.DecisionOutput)
-
+	if assert.Len(t, result.EvaluatedDecisions, 1) {
+		assert.Equal(t, map[string]interface{}{
+			"example_canAutoLiquidateRule": map[string]interface{}{"canAutoLiquidate": true},
+		}, result.EvaluatedDecisions[0].DecisionOutput)
+	}
 }
 
 func TestLoadingExecutingLatestDecisionDefinitionWithSpecifiedIdWillResultInCorrectResult(t *testing.T) {
@@ -333,6 +458,130 @@ func TestBulkEvaluateDRD(t *testing.T) {
 	}
 }
 
+func TestFindAndEvaluateDRDNonExistingDecisionWrapsStorageErrNotFound(t *testing.T) {
+	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+
+	_, err := engine.FindAndEvaluateDRD(t.Context(), "latest", "non-existing-decision-id", "", nil)
+
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, storage.ErrNotFound), "error should wrap storage.ErrNotFound so the cluster layer can detect it as a 404")
+}
+
+func requiredDecisionResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:   "riskDecision",
+					Name: "RiskDecision",
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Outputs: []dmnModel.TOutput{{
+							Name: "risk",
+						}},
+						Rules: []dmnModel.TRule{{
+							OutputEntry: []dmnModel.TOutputEntry{{Text: `"LOW"`}},
+						}},
+					},
+				},
+				{
+					Id:   "approvalDecision",
+					Name: "ApprovalDecision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#riskDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Inputs: []dmnModel.TInput{{
+							InputExpression: dmnModel.TInputExpression{Text: "riskDecision.risk"},
+						}},
+						Outputs: []dmnModel.TOutput{{
+							Name: "approved",
+						}},
+						Rules: []dmnModel.TRule{{
+							InputEntry:  []dmnModel.TInputEntry{{Text: `"LOW"`}},
+							OutputEntry: []dmnModel.TOutputEntry{{Text: "true"}},
+						}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func requiredInputResourceDefinition(inputData []dmnModel.TInputData) *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			InputData: inputData,
+			Decisions: []dmnModel.TDecision{{
+				Id: "inputDecision",
+				InformationRequirement: []dmnModel.TInformationRequirement{{
+					RequiredResource: dmnModel.TRequiredInput{Href: "#annualIncomeInput"},
+				}},
+				DecisionTable: &dmnModel.TDecisionTable{},
+			}},
+		},
+	}
+}
+
+func requiredLiteralExpressionResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{
+				{
+					Id:   "riskDecision",
+					Name: "Risk Decision",
+					Variable: &dmnModel.TVariable{
+						Name:    "riskResult",
+						TypeRef: dmnModel.TypeRefString,
+					},
+					LiteralExpression: &dmnModel.TLiteralExpression{
+						Text: dmnModel.Text{Text: `"LOW"`},
+					},
+				},
+				{
+					Id:   "approvalDecision",
+					Name: "Approval Decision",
+					InformationRequirement: []dmnModel.TInformationRequirement{{
+						RequiredResource: dmnModel.TRequiredDecision{Href: "#riskDecision"},
+					}},
+					DecisionTable: &dmnModel.TDecisionTable{
+						HitPolicy: dmnModel.HitPolicyFirst,
+						Inputs: []dmnModel.TInput{{
+							InputExpression: dmnModel.TInputExpression{Text: "riskResult"},
+						}},
+						Outputs: []dmnModel.TOutput{{
+							Name: "approved",
+						}},
+						Rules: []dmnModel.TRule{{
+							InputEntry:  []dmnModel.TInputEntry{{Text: `"LOW"`}},
+							OutputEntry: []dmnModel.TOutputEntry{{Text: "true"}},
+						}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func requiredContextResourceDefinition() *dmnRuntime.DmnResourceDefinition {
+	return &dmnRuntime.DmnResourceDefinition{
+		Definitions: dmnModel.TDefinitions{
+			Decisions: []dmnModel.TDecision{{
+				Id:   "contextDecision",
+				Name: "Context Decision",
+				Context: &dmnModel.TContext{
+					ContextEntries: []dmnModel.TContextEntry{{
+						LiteralExpression: &dmnModel.TLiteralExpression{
+							Text: dmnModel.Text{Text: `"LOW"`},
+						},
+					}},
+				},
+			}},
+		},
+	}
+}
+
 func loadBulkTestConfigs() ([]configuration, error) {
 	files, err := os.ReadDir(filepath.Join(".", "test-data", "bulk-evaluation-test"))
 	if err != nil {
@@ -370,13 +619,4 @@ func loadBulkTestConfigs() ([]configuration, error) {
 	}
 
 	return configurations, nil
-}
-
-func TestFindAndEvaluateDRDNonExistingDecisionWrapsStorageErrNotFound(t *testing.T) {
-	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
-
-	_, err := engine.FindAndEvaluateDRD(t.Context(), "latest", "non-existing-decision-id", "", nil)
-
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, storage.ErrNotFound), "error should wrap storage.ErrNotFound so the cluster layer can detect it as a 404")
 }

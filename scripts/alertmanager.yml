@@ -1,0 +1,26 @@
+# Alertmanager configuration for the local ZenBPM monitoring stack.
+#
+# The default receiver is a "blackhole" (no notifiers), so the local stack
+# does not continuously log delivery failures. Alerts remain visible in the
+# Alertmanager UI (port 9093). To actually deliver alerts, uncomment the
+# webhook below (and start a listener on that port) or replace it with your
+# real notification channel (Slack, PagerDuty, e-mail, ...) in production.
+
+route:
+  receiver: default
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: default
+      matchers:
+        - severity = "critical"
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    # webhook_configs:
+    #   # Point this at your alert gateway and uncomment to enable delivery.
+    #   - url: http://host.docker.internal:9099/alerts
+    #     send_resolved: true

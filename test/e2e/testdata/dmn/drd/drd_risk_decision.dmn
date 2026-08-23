@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="riskPricing" name="Risk pricing" namespace="http://example.com/dmn/risk-pricing">
+  <inputData id="annualIncomeInput" name="Annual income">
+    <variable id="annualIncomeVariable" name="annualIncome" typeRef="number" />
+  </inputData>
+  <inputData id="latePaymentsInput" name="Late payments">
+    <variable id="latePaymentsVariable" name="latePayments" typeRef="number" />
+  </inputData>
+  <decision id="riskClass" name="Risk class">
+    <informationRequirement id="requirementAnnualIncome">
+      <requiredInput href="#annualIncomeInput" />
+    </informationRequirement>
+    <informationRequirement id="requirementLatePayments">
+      <requiredInput href="#latePaymentsInput" />
+    </informationRequirement>
+    <decisionTable id="riskClassTable" hitPolicy="FIRST">
+      <input id="riskIncomeInput" label="Annual income">
+        <inputExpression id="riskIncomeExpression" typeRef="number">
+          <text>annualIncome</text>
+        </inputExpression>
+      </input>
+      <input id="riskLatePaymentsInput" label="Late payments">
+        <inputExpression id="riskLatePaymentsExpression" typeRef="number">
+          <text>latePayments</text>
+        </inputExpression>
+      </input>
+      <output id="riskClassOutput" label="Risk class" name="riskClass" typeRef="string" />
+      <rule id="riskClassLowRule">
+        <inputEntry id="riskClassLowIncome">
+          <text>&gt;= 60000</text>
+        </inputEntry>
+        <inputEntry id="riskClassLowLatePayments">
+          <text>0</text>
+        </inputEntry>
+        <outputEntry id="riskClassLowOutput">
+          <text>"LOW"</text>
+        </outputEntry>
+      </rule>
+      <rule id="riskClassMediumRule">
+        <inputEntry id="riskClassMediumIncome">
+          <text>&gt;= 30000</text>
+        </inputEntry>
+        <inputEntry id="riskClassMediumLatePayments">
+          <text>&lt;= 2</text>
+        </inputEntry>
+        <outputEntry id="riskClassMediumOutput">
+          <text>"MEDIUM"</text>
+        </outputEntry>
+      </rule>
+      <rule id="riskClassHighRule">
+        <inputEntry id="riskClassHighIncome">
+          <text>-</text>
+        </inputEntry>
+        <inputEntry id="riskClassHighLatePayments">
+          <text>-</text>
+        </inputEntry>
+        <outputEntry id="riskClassHighOutput">
+          <text>"HIGH"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="interestRate" name="Interest rate">
+    <informationRequirement id="requirementRiskClass">
+      <requiredDecision href="#riskClass" />
+    </informationRequirement>
+    <decisionTable id="interestRateTable">
+      <input id="interestRateRiskInput" label="Risk class">
+        <inputExpression id="interestRateRiskExpression" typeRef="string">
+          <text>riskClass.riskClass</text>
+        </inputExpression>
+      </input>
+      <output id="interestRateOutput" label="Interest rate (%)" name="interestRate" typeRef="number" />
+      <rule id="interestRateLowRule">
+        <inputEntry id="interestRateLowInput">
+          <text>"LOW"</text>
+        </inputEntry>
+        <outputEntry id="interestRateLowOutput">
+          <text>4.9</text>
+        </outputEntry>
+      </rule>
+      <rule id="interestRateMediumRule">
+        <inputEntry id="interestRateMediumInput">
+          <text>"MEDIUM"</text>
+        </inputEntry>
+        <outputEntry id="interestRateMediumOutput">
+          <text>7.5</text>
+        </outputEntry>
+      </rule>
+      <rule id="interestRateHighRule">
+        <inputEntry id="interestRateHighInput">
+          <text>"HIGH"</text>
+        </inputEntry>
+        <outputEntry id="interestRateHighOutput">
+          <text>11.5</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="riskPricingDiagram">
+      <dmndi:DMNShape id="annualIncomeShape" dmnElementRef="annualIncomeInput">
+        <dc:Bounds height="45" width="125" x="80" y="360" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="latePaymentsShape" dmnElementRef="latePaymentsInput">
+        <dc:Bounds height="45" width="125" x="335" y="360" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="riskClassShape" dmnElementRef="riskClass">
+        <dc:Bounds height="80" width="180" x="180" y="210" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="interestRateShape" dmnElementRef="interestRate">
+        <dc:Bounds height="80" width="180" x="180" y="50" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="annualIncomeEdge" dmnElementRef="requirementAnnualIncome">
+        <di:waypoint x="142.5" y="360" />
+        <di:waypoint x="225" y="290" />
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="latePaymentsEdge" dmnElementRef="requirementLatePayments">
+        <di:waypoint x="397.5" y="360" />
+        <di:waypoint x="315" y="290" />
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="riskClassEdge" dmnElementRef="requirementRiskClass">
+        <di:waypoint x="270" y="210" />
+        <di:waypoint x="270" y="130" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

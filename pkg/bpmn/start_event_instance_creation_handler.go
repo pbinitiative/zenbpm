@@ -22,8 +22,9 @@ type startEventInstanceCreationTrigger struct {
 	processDefinitionKey int64
 	// elementId is the BPMN id of the start event that owns the trigger.
 	elementId string
-	// inputVariables are the variables passed to the newly created process instance
-	// (e.g. message payload). For timers this is empty.
+	// inputVariables are the trigger variables (e.g. a message payload). Message
+	// start-event output mappings are applied before these variables are passed to
+	// the new instance. For timers this is empty.
 	inputVariables map[string]any
 	// refresh re-reads the trigger state under the trigger lock and reports whether activation
 	// should be skipped (because a concurrent publisher/timer-fire has already consumed it).
@@ -42,10 +43,11 @@ type startEventInstanceCreationTrigger struct {
 // process-definition-level start event (message or timer). It:
 //  1. serializes concurrent fires of the same trigger,
 //  2. re-validates the trigger via t.refresh (silently no-ops if already consumed),
-//  3. marks the original trigger as consumed in a batch,
-//  4. re-creates a fresh subscription/timer (Active/Created state) for the same start event so that the next event can fire another process instance,
-//  5. flushes the batch (so that even if instance creation later fails the trigger is not re-fired and the renewal is persisted), and
-//  6. creates the new process instance.
+//  3. resolves the start event and evaluates its output mapping, leaving the trigger intact if the mapping fails,
+//  4. marks the original trigger as consumed in a batch,
+//  5. re-creates a fresh subscription/timer (Active/Created state) for the same start event so that the next event can fire another process instance,
+//  6. flushes the batch (so that even if instance creation later fails the trigger is not re-fired and the renewal is persisted), and
+//  7. creates the new process instance.
 func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t startEventInstanceCreationTrigger) error {
 	engine.runningInstances.lockInstance(t.triggerKey)
 	defer engine.runningInstances.unlockInstance(t.triggerKey)
@@ -58,6 +60,27 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return nil
 	}
 
+	// Look up the process definition + start event so we can evaluate the output mapping and renew the
+	// trigger. A failed lookup does NOT abort here: the consumption below must still be flushed so that a
+	// trigger pointing at a missing definition/element does not get re-fired forever.
+	processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, t.processDefinitionKey)
+	var startEvent *bpmn20.TStartEvent
+	if pdErr == nil {
+		startEvent = findStartEventById(&processDefinition.Definitions.Process, t.elementId)
+	}
+
+	// The output mapping is evaluated BEFORE the trigger is consumed. Evaluation is pure (it writes
+	// nothing to the batch), so a deterministic definition-level error — e.g. a mapping source the payload
+	// does not satisfy — fails without consuming the subscription. The message payload therefore stays
+	// replayable instead of being dropped with neither a process instance nor an incident to show for it.
+	instanceVariables := t.inputVariables
+	if startEvent != nil && isMessageStartEvent(startEvent) {
+		instanceVariables, err = engine.mapStartEventTriggerVariables(*startEvent, t.inputVariables)
+		if err != nil {
+			return fmt.Errorf("failed to apply output mappings for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
+		}
+	}
+
 	batch := engine.persistence.NewBatch()
 
 	// Mark the original trigger as consumed BEFORE attempting to create the process instance.
@@ -67,16 +90,9 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return err
 	}
 
-	// Look up the process definition + start event so we can renew the trigger. If either lookup fails we still
-	// flush the consumption above so that the original trigger does not get re-fired forever.
-	processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, t.processDefinitionKey)
-	var startEvent *bpmn20.TStartEvent
-	if pdErr == nil {
-		startEvent = findStartEventById(&processDefinition.Definitions.Process, t.elementId)
-		if startEvent != nil {
-			if renewErr := engine.renewStartEventTrigger(ctx, batch, processDefinition, *startEvent, t.inFlightTriggeredTimerKey); renewErr != nil {
-				return renewErr
-			}
+	if startEvent != nil {
+		if renewErr := engine.renewStartEventTrigger(ctx, batch, processDefinition, *startEvent, t.inFlightTriggeredTimerKey); renewErr != nil {
+			return renewErr
 		}
 	}
 
@@ -96,11 +112,35 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return fmt.Errorf("failed to find start event %q on process definition %d", t.elementId, t.processDefinitionKey)
 	}
 
-	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, t.inputVariables, nil); err != nil {
+	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, instanceVariables, nil); err != nil {
 		return fmt.Errorf("failed to create process instance for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
 	}
 
 	return nil
+}
+
+func (engine *Engine) mapStartEventTriggerVariables(startEvent bpmn20.TStartEvent, inputVariables map[string]any) (map[string]any, error) {
+	instanceVariableHolder := runtime.NewVariableHolder(nil, map[string]any{})
+	triggerVariableHolder := runtime.NewVariableHolder(&instanceVariableHolder, inputVariables)
+
+	instanceVariables, err := triggerVariableHolder.PropagateMappedOutputsOrAll(
+		startEvent.GetOutputMapping(),
+		inputVariables,
+		engine.evaluateExpression,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return instanceVariables, nil
+}
+
+func isMessageStartEvent(startEvent *bpmn20.TStartEvent) bool {
+	for _, eventDefinition := range startEvent.EventDefinitions {
+		if _, ok := eventDefinition.(bpmn20.TMessageEventDefinition); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // renewStartEventTrigger re-creates the trigger on the given start event so that subsequent firings
@@ -232,6 +272,10 @@ func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context,
 			if err := batch.SaveTimer(ctx, current); err != nil {
 				return fmt.Errorf("failed to update timer state for timer %d: %w", current.Key, err)
 			}
+			consumed := current
+			batch.AddPostFlushAction(ctx, func() {
+				engine.recordTimerMetric(ctx, consumed)
+			})
 			return nil
 		},
 	})

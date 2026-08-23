@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_business_key_child_scopes" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="call_activity_business_key_no_override" name="Call activity no override business key" isExecutable="true">
+    <bpmn:startEvent id="subprocess-start">
+      <bpmn:outgoing>Flow_1vp9qpm</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:endEvent id="subprocess-end">
+      <bpmn:incoming>Flow_196jomu</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_196jomu" sourceRef="service_task" targetRef="subprocess-end" />
+    <bpmn:sequenceFlow id="Flow_1vp9qpm" sourceRef="subprocess-start" targetRef="service_task" />
+    <bpmn:callActivity id="service_task">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="business-key-called-process" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1vp9qpm</bpmn:incoming>
+      <bpmn:outgoing>Flow_196jomu</bpmn:outgoing>
+    </bpmn:callActivity>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_business_key_child_scopes">
+    <bpmndi:BPMNPlane id="BPMNPlane_business_key_child_scopes" bpmnElement="call_activity_business_key_no_override">
+      <bpmndi:BPMNShape id="subprocess-start_di" bpmnElement="subprocess-start">
+        <dc:Bounds x="202" y="432" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="subprocess-end_di" bpmnElement="subprocess-end">
+        <dc:Bounds x="502" y="432" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1xe1n9o_di" bpmnElement="service_task">
+        <dc:Bounds x="320" y="410" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_196jomu_di" bpmnElement="Flow_196jomu">
+        <di:waypoint x="420" y="450" />
+        <di:waypoint x="502" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1vp9qpm_di" bpmnElement="Flow_1vp9qpm">
+        <di:waypoint x="238" y="450" />
+        <di:waypoint x="320" y="450" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

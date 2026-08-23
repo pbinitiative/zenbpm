@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -87,7 +86,7 @@ func (j *Joiner) join(targetAddr, id, addr string, suf rqproto.Suffrage) (string
 	req := &proto.JoinRequest{
 		Id:      &id,
 		Address: &addr,
-		Voter:   ptr.To(suf == rqproto.Suffrage_VOTER),
+		Voter:   new(suf == rqproto.Suffrage_VOTER),
 	}
 
 	// Attempt to join.

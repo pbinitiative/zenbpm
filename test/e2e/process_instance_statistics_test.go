@@ -17,9 +17,9 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("active token exists while blocked at service task at element `service-task-1`", func(t *testing.T) {
-		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		instance, err := createProcessInstance(t, new(definition.Key), map[string]any{"testVar": 1})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		defer cleanupOwnedProcessInstance(t, instance.Key)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
 		require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 		def, err := deployGetUniqueDefinition(t, "business_rule/simple-business-rule-task-local.bpmn")
 		require.NoError(t, err)
 
-		instance, err := createProcessInstance(t, ptr.To(def.Key), map[string]any{})
+		instance, err := createProcessInstance(t, new(def.Key), map[string]any{})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -54,13 +54,13 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 	})
 
 	t.Run("statistics are scoped to the given process instance", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		instance1, err := createProcessInstance(t, new(definition.Key), map[string]any{"testVar": 1})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance1.Key)
+		defer cleanupOwnedProcessInstance(t, instance1.Key)
 
-		instance2, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 2})
+		instance2, err := createProcessInstance(t, new(definition.Key), map[string]any{"testVar": 2})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key)
+		defer cleanupOwnedProcessInstance(t, instance2.Key)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance1.Key)
 		require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 	})
 
 	t.Run("active count is zero after instance is cancelled", func(t *testing.T) {
-		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		instance, err := createProcessInstance(t, new(definition.Key), map[string]any{"testVar": 1})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -96,7 +96,7 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 		incidentDef, err := deployGetUniqueDefinition(t, "exclusive-gateway-with-condition.bpmn")
 		require.NoError(t, err)
 
-		instance, err := createProcessInstance(t, ptr.To(incidentDef.Key), map[string]any{"price": 0})
+		instance, err := createProcessInstance(t, new(incidentDef.Key), map[string]any{"price": 0})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -114,11 +114,11 @@ func TestGetProcessInstanceElementStatisticsCompletedAndTerminated(t *testing.T)
 		require.NoError(t, err)
 
 		testInputCollection := []string{"a", "b", "c"}
-		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{
+		instance, err := createProcessInstance(t, new(definition.Key), map[string]any{
 			"testInputCollection": testInputCollection,
 		})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+		defer cleanupOwnedProcessInstance(t, instance.Key)
 
 		require.Eventually(t, func() bool {
 			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -157,7 +157,7 @@ func TestGetProcessInstanceElementStatisticsCompletedAndTerminated(t *testing.T)
 		definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
 		require.NoError(t, err)
 
-		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		instance, err := createProcessInstance(t, new(definition.Key), map[string]any{"testVar": 1})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -181,7 +181,7 @@ func TestGetProcessInstanceElementStatisticsCompletedAndTerminated(t *testing.T)
 		termDef, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
 		require.NoError(t, err)
 
-		instance, err := createProcessInstance(t, ptr.To(termDef.Key), map[string]any{})
+		instance, err := createProcessInstance(t, new(termDef.Key), map[string]any{})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
@@ -201,11 +201,11 @@ func TestGetProcessInstanceElementStatisticsMultiInstance(t *testing.T) {
 	t.Run("parallel multi-instance shows body tokens not scope token", func(t *testing.T) {
 		testInputCollection := []string{"a", "b", "c"}
 		testInputCollectionLen := len(testInputCollection)
-		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{
+		instance, err := createProcessInstance(t, new(definition.Key), map[string]any{
 			"testInputCollection": testInputCollection,
 		})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+		defer cleanupOwnedProcessInstance(t, instance.Key)
 		var lastError error
 		var activeByElement map[string]int
 
@@ -237,11 +237,11 @@ func TestGetProcessInstanceElementStatisticsMultiInstance(t *testing.T) {
 		seqDef, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
 		require.NoError(t, err)
 
-		instance, err := createProcessInstance(t, ptr.To(seqDef.Key), map[string]any{
+		instance, err := createProcessInstance(t, new(seqDef.Key), map[string]any{
 			"testInputCollection": []string{"a", "b", "c"},
 		})
 		require.NoError(t, err)
-		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+		defer cleanupOwnedProcessInstance(t, instance.Key)
 
 		require.Eventually(t, func() bool {
 			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)

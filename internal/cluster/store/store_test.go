@@ -15,6 +15,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"github.com/stretchr/testify/require"
 )
 
 // Test_NonOpenStore tests that a non-open Store handles public methods correctly.
@@ -23,8 +24,8 @@ func TestNonOpenStore(t *testing.T) {
 		NodeId: random.String(),
 	}
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, s.Close(true)) }()
+	defer func() { require.NoError(t, ln.Close()) }()
 
 	if err := s.Stepdown(false); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
@@ -67,8 +68,8 @@ func TestOpenStoreSingleNode(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, s.Close(true)) }()
+	defer func() { require.NoError(t, ln.Close()) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -111,8 +112,8 @@ func TestStoreRestartSingleNode(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func(store *Store) { require.NoError(t, store.Close(true)) }(s)
+	defer func(listener net.Listener) { require.NoError(t, listener.Close()) }(ln)
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -146,8 +147,8 @@ func TestStoreRestartSingleNode(t *testing.T) {
 	}
 
 	s, ln = newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func(store *Store) { require.NoError(t, store.Close(true)) }(s)
+	defer func(listener net.Listener) { require.NoError(t, listener.Close()) }(ln)
 	if err = s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -157,16 +158,13 @@ func TestStoreRestartSingleNode(t *testing.T) {
 		t.Fatalf("Error waiting for leader: %s", err)
 	}
 	// wait until fsm applies the log to the state
-	testPoll(t, func() bool {
+	require.Eventually(t, func() bool {
 		testNode, ok := s.state.Nodes[testNodeId]
 		if !ok {
-			t.Error("expected testNode was not found in the store")
+			return false
 		}
-		if testNode.State != state.NodeState(proto.NodeState_NODE_STATE_ERROR) {
-			t.Error("testNode is in a wrong state")
-		}
-		return true
-	}, 100*time.Millisecond, 5*time.Second)
+		return testNode.State == state.NodeState(proto.NodeState_NODE_STATE_ERROR)
+	}, 5*time.Second, 100*time.Millisecond, "expected testNode to be found in the store in error state")
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot
@@ -179,8 +177,8 @@ func TestSingleNodeSnapshot(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, s.Close(true)) }()
+	defer func() { require.NoError(t, ln.Close()) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -198,11 +196,13 @@ func TestSingleNodeSnapshot(t *testing.T) {
 
 	testNodeId := "test-node"
 
-	s.WriteNodeChange(&proto.NodeChange{
+	if err := s.WriteNodeChange(&proto.NodeChange{
 		NodeId: &testNodeId,
 		State:  proto.NodeState_NODE_STATE_ERROR.Enum(),
 		Role:   proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
-	})
+	}); err != nil {
+		t.Fatalf("failed to write node change: %s", err)
+	}
 
 	// Snap the node and write to disk.
 	f := s.raft.Snapshot()
@@ -215,7 +215,6 @@ func TestSingleNodeSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create snapshot file: %s", err.Error())
 	}
-	defer snapFile.Close()
 
 	fsm := NewFSM(s)
 	snapshot, err := fsm.Snapshot()
@@ -236,7 +235,7 @@ func TestSingleNodeSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open snapshot file: %s", err.Error())
 	}
-	defer snapFile.Close()
+	defer func(file *os.File) { require.NoError(t, file.Close()) }(snapFile)
 	if err := fsm.Restore(snapFile); err != nil {
 		t.Fatalf("failed to restore snapshot from disk: %s", err.Error())
 	}
@@ -296,10 +295,11 @@ func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	if c.Addr != "" {
 		addr = c.Addr
 	}
-	mux, _, err := network.NewNodeMux(addr)
+	mux, muxLn, err := network.NewNodeMux(addr)
 	if err != nil {
 		t.Fatalf("failed to start network mux: %s", err)
 	}
+	t.Cleanup(func() { require.NoError(t, muxLn.Close()) })
 	ln := network.NewZenBpmRaftListener(mux)
 	raftTn := tcp.NewLayer(ln, network.NewZenBpmRaftDialer())
 

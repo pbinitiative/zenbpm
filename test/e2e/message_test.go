@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
@@ -203,8 +202,8 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
-			State:              ptr.To(zenclient.JobStateActive),
-			ProcessInstanceKey: ptr.To(instance.Key),
+			State:              new(zenclient.JobStateActive),
+			ProcessInstanceKey: new(instance.Key),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(jobs.Partitions))
@@ -217,8 +216,8 @@ func TestRestApiMessage(t *testing.T) {
 		assert.Equal(t, 201, response.StatusCode())
 
 		jobs, err = getJobs(t, zenclient.GetJobsParams{
-			State:              ptr.To(zenclient.JobStateActive),
-			ProcessInstanceKey: ptr.To(instance.Key),
+			State:              new(zenclient.JobStateActive),
+			ProcessInstanceKey: new(instance.Key),
 		})
 		assert.NoError(t, err)
 
@@ -228,8 +227,8 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 
 		jobs, err = getJobs(t, zenclient.GetJobsParams{
-			State:              ptr.To(zenclient.JobStateActive),
-			ProcessInstanceKey: ptr.To(instance.Key),
+			State:              new(zenclient.JobStateActive),
+			ProcessInstanceKey: new(instance.Key),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(jobs.Partitions))

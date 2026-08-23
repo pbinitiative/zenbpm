@@ -1,3 +1,4 @@
+// Package server implements the cluster-facing Zen BPM service.
 package server
 
 import (
@@ -31,6 +32,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/validation"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
@@ -105,15 +107,24 @@ func (s *Server) Open() error {
 		grpc.ChainStreamInterceptor(grpcrecovery.StreamServerInterceptor()),
 	)
 	proto.RegisterZenServiceServer(srv, s)
-	go srv.Serve(s.ln)
+	go func() {
+		if err := srv.Serve(s.ln); err != nil && !isExpectedServeError(err) {
+			log.Error("zen cluster service stopped serving: %s", err)
+		}
+	}()
 	log.Info("zen cluster service listening on %s", s.addr)
 	return nil
 }
 
+func isExpectedServeError(err error) bool {
+	return errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, grpc.ErrServerStopped) ||
+		err.Error() == "network connection closed"
+}
+
 // Close closes the Server.
 func (s *Server) Close() error {
-	s.ln.Close()
-	return nil
+	return s.ln.Close()
 }
 
 func (s *Server) Notify(ctx context.Context, req *proto.NotifyRequest) (*proto.NotifyResponse, error) {
@@ -301,6 +312,23 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 
+	activeTokens, err := engine.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		err := zenerr.TechnicalError(fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err))
+		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
+	}
+	responseTokens := make([]*proto.ExecutionToken, 0, len(activeTokens))
+	for _, token := range activeTokens {
+		responseTokens = append(responseTokens, &proto.ExecutionToken{
+			Key:                &token.Key,
+			ElementInstanceKey: &token.ElementInstanceKey,
+			ElementId:          &token.ElementId,
+			ProcessInstanceKey: &token.ProcessInstanceKey,
+			CreatedAt:          new(token.CreatedAt.UnixMilli()),
+			State:              new(int64(token.State)),
+		})
+	}
+
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
 			Key:               &instance.ProcessInstance().Key,
@@ -313,6 +341,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			BusinessKey:       instance.ProcessInstance().BusinessKey,
 			Type:              new(int64(instance.Type())),
 		},
+		ExecutionTokens: responseTokens,
 	}, nil
 }
 
@@ -603,12 +632,18 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 			definition, err = bpmnEngine.GetDmnEngine().ParseDmnFromBytes("", req.Data)
 			if err != nil {
 				return &proto.DeployDmnResourceDefinitionResponse{
-					Error: zenerr.TechnicalError(fmt.Errorf("failed to parse request data: %w", err)).ToProtoError(),
+					Error: zenerr.BadRequest(fmt.Errorf("failed to parse request data: %w", err)).ToProtoError(),
 				}, nil
 			}
 		}
 		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, definition, req.GetData(), req.GetKey())
 		if err != nil {
+			var validationErr *validation.Error
+			if errors.As(err, &validationErr) {
+				return &proto.DeployDmnResourceDefinitionResponse{
+					Error: zenerr.BadRequest(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
+				}, nil
+			}
 			return &proto.DeployDmnResourceDefinitionResponse{
 				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
 			}, nil
@@ -1876,8 +1911,9 @@ func timerStateToActivityState(timerState int64) (int64, error) {
 	case runtime.TimerStateCancelled:
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
-		log.Error("unknown timer state: %d", timerState)
-		return 0, fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
+		err := fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
+		log.Error("%s", err)
+		return 0, err
 	}
 }
 
@@ -1888,7 +1924,8 @@ func errorStateToActivityState(errorState int64) (int64, error) {
 	case runtime.ErrorStateCancelled:
 		return int64(runtime.ActivityStateWithdrawn), nil
 	default:
-		log.Error("errorStateToActivityState: unrecognized ErrorState %d; filtering disabled", errorState)
-		return 0, fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
+		err := fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
+		log.Error("%s", err)
+		return 0, err
 	}
 }

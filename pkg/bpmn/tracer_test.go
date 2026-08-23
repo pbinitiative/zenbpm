@@ -37,7 +37,7 @@ func TestTracer(t *testing.T) {
 
 	parent.End()
 
-	tracerprovider.ForceFlush(ctx)
+	assert.NoError(t, tracerprovider.ForceFlush(ctx))
 	spans := exporter.GetSpans()
 	for _, span := range spans {
 		if span.SpanContext.TraceID() == parent.SpanContext().TraceID() {

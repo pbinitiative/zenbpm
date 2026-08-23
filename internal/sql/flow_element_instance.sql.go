@@ -11,6 +11,22 @@ import (
 	"strings"
 )
 
+const completeFlowElementInstance = `-- name: CompleteFlowElementInstance :exec
+UPDATE flow_element_instance
+SET completed_at = COALESCE(completed_at, ?1)
+WHERE key = ?2
+`
+
+type CompleteFlowElementInstanceParams struct {
+	CompletedAt sql.NullInt64 `json:"completed_at"`
+	Key         int64         `json:"key"`
+}
+
+func (q *Queries) CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error {
+	_, err := q.db.ExecContext(ctx, completeFlowElementInstance, arg.CompletedAt, arg.Key)
+	return err
+}
+
 const countFlowElementInstances = `-- name: CountFlowElementInstances :one
 SELECT
     count(*)
@@ -132,33 +148,6 @@ WHERE
 
 func (q *Queries) GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error) {
 	row := q.db.QueryRowContext(ctx, getFlowElementInstanceByKey, key)
-	var i FlowElementInstance
-	err := row.Scan(
-		&i.Key,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.ExecutionTokenKey,
-		&i.CreatedAt,
-		&i.InputVariables,
-		&i.OutputVariables,
-		&i.CompletedAt,
-		&i.ElementType,
-	)
-	return i, err
-}
-
-const getFlowElementInstanceByTokenKey = `-- name: GetFlowElementInstanceByTokenKey :one
-SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at, element_type
-FROM
-    flow_element_instance
-WHERE
-    execution_token_key = ?1
-ORDER BY created_at DESC
-`
-
-func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error) {
-	row := q.db.QueryRowContext(ctx, getFlowElementInstanceByTokenKey, executionTokenKey)
 	var i FlowElementInstance
 	err := row.Scan(
 		&i.Key,

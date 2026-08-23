@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
@@ -25,15 +24,15 @@ func TestChildProcessesPagination(t *testing.T) {
 			require.NotZero(t, subInstanceKey, "multiInstance sub-instance key must be set after children appear")
 
 			return func() {
-				app.restClient.CancelProcessInstanceWithResponse(t.Context(), parentKey) //nolint:errcheck
+				cleanupOwnedProcessInstance(t, parentKey)
 			}
 		},
 		FetchPage: func(t *testing.T, page, size int) (int, int, int, int) {
 			resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 				subInstanceKey,
 				&zenclient.GetChildProcessInstancesParams{
-					Page: ptr.To(int32(page)),
-					Size: ptr.To(int32(size)),
+					Page: new(int32(page)),
+					Size: new(int32(size)),
 				})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode())
@@ -72,7 +71,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "page must be >= 1, got 0")
+		require.Contains(t, resp.JSON400.Message, `parameter "page" in query has an error`)
 	})
 
 	t.Run("negative size", func(t *testing.T) {
@@ -84,7 +83,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got -5")
+		require.Contains(t, resp.JSON400.Message, `parameter "size" in query has an error`)
 	})
 
 	t.Run("oversized size", func(t *testing.T) {
@@ -96,7 +95,7 @@ func TestChildProcessesInvalidPagination(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		require.NotNil(t, resp.JSON400)
-		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got 101")
+		require.Contains(t, resp.JSON400.Message, `parameter "size" in query has an error`)
 	})
 }
 
@@ -106,8 +105,7 @@ func deployChildProcessDefinitions(t *testing.T) zenclient.ProcessDefinitionSimp
 	_, err := deployGetDefinition(t, "multi_instance_call_activity_process.bpmn", "Multi_Instance_Call_Activity_Process")
 	require.NoError(t, err)
 
-	def, err := deployGetUniqueDefinition(t, "pagination-test-parallel-call-activity.bpmn")
-	require.NoError(t, err)
+	def := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/pagination-test-parallel-call-activity.bpmn")
 	require.NotZero(t, def.Key)
 	return def
 }
@@ -133,7 +131,7 @@ func waitForAllChildInstances(t *testing.T, parentKey int64, childCount int, sub
 		if *subInstanceKey == 0 {
 			resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 				parentKey, &zenclient.GetChildProcessInstancesParams{
-					Size: ptr.To(int32(10)),
+					Size: new(int32(10)),
 				})
 			if err != nil || resp.JSON200 == nil {
 				return false
@@ -152,7 +150,7 @@ func waitForAllChildInstances(t *testing.T, parentKey int64, childCount int, sub
 		}
 		resp2, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(),
 			*subInstanceKey, &zenclient.GetChildProcessInstancesParams{
-				Size: ptr.To(int32(100)),
+				Size: new(int32(100)),
 			})
 		if err != nil || resp2.JSON200 == nil {
 			return false

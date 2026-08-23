@@ -168,9 +168,9 @@ func assertSequentialMultiInstanceErrorBoundaryHandledFlow(t testing.TB, parentK
 	waitForTwoProcessInstanceStates(t, parentKey, zenclient.ProcessInstanceStateCompleted, childKey, zenclient.ProcessInstanceStateTerminated)
 	assertProcessInstanceTokenState(t, childKey, "service_task", runtime.TokenStateCanceled)
 	assertProcessInstanceErrorSubscriptionsCountIsZero(t, childKey)
-	assertExactProcessInstanceHistory(t, childKey, childHistory)
+	assertExactCompletedProcessInstanceHistory(t, childKey, childHistory)
 
 	assertProcessInstanceIsCompleted(t, parentKey, handledEndID)
 	assertProcessInstanceErrorSubscriptionCount(t, parentKey, 0, subscriptionCount)
-	assertExactProcessInstanceHistory(t, parentKey, parentHistory)
+	assertExactCompletedProcessInstanceHistory(t, parentKey, parentHistory)
 }

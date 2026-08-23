@@ -10,7 +10,13 @@ import (
 )
 
 type Querier interface {
+	CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	// Pinned to idx_process_instance_parent_execution_token so the planner drives
+	// from execution_token (filtered by process_instance_key) and probes child by
+	// parent_process_execution_token, instead of starting from process_instance
+	// filtered by state (which the new generic idx_process_instance_state would
+	// otherwise prefer). See TestHotPathIndexes.
 	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
@@ -47,6 +53,10 @@ type Querier interface {
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error)
+	// Pinned to idx_process_instance_cleanup so SQLite uses the partial range index on
+	// history_delete_sec for terminal states. Without the hint the planner (which never
+	// sees ANALYZE stats in production) picks the generic idx_process_instance_state and
+	// scans every terminal instance on every cleanup pass. See TestHotPathIndexes.
 	FindInactiveInstancesToDelete(ctx context.Context, arg FindInactiveInstancesToDeleteParams) ([]int64, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
 	FindIncidents(ctx context.Context, arg FindIncidentsParams) ([]Incident, error)
@@ -72,21 +82,43 @@ type Querier interface {
 	// directly associated unresolved incident. Each instance is counted once,
 	// regardless of its state or number of unresolved incidents.
 	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
+	// Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 	FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error)
+	// Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 	FindProcessDefinitionTimersInStateByElement(ctx context.Context, arg FindProcessDefinitionTimersInStateByElementParams) ([]Timer, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)
 	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
 	FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error)
+	// Pinned to idx_fk_error_subscription_process_instance_key. The planner currently picks it
+	// correctly, but pinning here makes the contract explicit and prevents the generic
+	// idx_error_subscription_execution_token_state from shadowing it under different data
+	// distributions. See TestHotPathIndexes.
 	FindProcessInstanceErrorSubscriptions(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsParams) ([]ErrorSubscription, error)
+	// Pinned to idx_fk_error_subscription_process_instance_key. See note on
+	// FindProcessInstanceErrorSubscriptions.
 	FindProcessInstanceErrorSubscriptionsPage(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsPageParams) ([]FindProcessInstanceErrorSubscriptionsPageRow, error)
 	FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error)
+	// Pinned to idx_fk_job_process_instance_key. The planner currently picks it correctly, but
+	// pinning here makes the contract explicit and prevents the generic idx_job_execution_token_state
+	// from shadowing it under different data distributions. See TestHotPathIndexes.
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
+	// Pinned to idx_fk_message_subscription_process_instance_key. The planner currently picks it
+	// correctly, but pinning here makes the contract explicit and prevents the generic
+	// idx_message_subscription_execution_token_state from shadowing it under different data
+	// distributions. See TestHotPathIndexes.
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
+	// Pinned to idx_fk_message_subscription_process_instance_key. See note on
+	// FindProcessInstanceMessageSubscriptions.
 	FindProcessInstanceMessageSubscriptionsPage(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsPageParams) ([]FindProcessInstanceMessageSubscriptionsPageRow, error)
+	// Pinned to idx_fk_timer_process_instance_key. The newer idx_timer_state_due_at is a
+	// generic (state, due_at) index that the planner would otherwise prefer for the leading
+	// state = ?, causing a partition-wide scan for one process instance's timers.
 	FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error)
+	// Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 	FindProcessInstanceTimersInStateByElement(ctx context.Context, arg FindProcessInstanceTimersInStateByElementParams) ([]Timer, error)
+	// Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 	FindProcessInstanceTimersPage(ctx context.Context, arg FindProcessInstanceTimersPageParams) ([]FindProcessInstanceTimersPageRow, error)
 	// workaround for sqlc which does not replace params in order by
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error)
@@ -101,7 +133,6 @@ type Querier interface {
 	GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error)
 	GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)
-	GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error)
 	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)
 	// https://github.com/sqlc-dev/sqlc/issues/2452
 	GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInStateByTokenKeyParams) ([]Job, error)
@@ -110,6 +141,9 @@ type Querier interface {
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
+	// Pinned to idx_fk_execution_token_process_instance_key. The newer idx_execution_token_state
+	// is a generic state index that the planner would otherwise prefer for the leading state IN (...),
+	// causing a partition-wide scan for one process instance's tokens.
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)

@@ -71,6 +71,7 @@ func (s *Store) Open() (retErr error) {
 	})
 	s.raft.RegisterObserver(s.observer)
 
+	s.startedAt = time.Now()
 	s.observerClose, s.observerDone = s.observe()
 	return nil
 }
@@ -414,6 +415,12 @@ func (s *Store) Close(wait bool) (retErr error) {
 	if !s.open.Load() {
 		// Protect against closing already-closed resource, such as channels.
 		return nil
+	}
+
+	// release the otel callback registration so the global meter provider
+	// does not keep this closed store alive
+	if err := s.unregisterMetrics(); err != nil {
+		s.logger.Warn(fmt.Sprintf("failed to unregister store metrics: %s", err))
 	}
 
 	close(s.observerClose)

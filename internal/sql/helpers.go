@@ -4,7 +4,6 @@ import (
 	"database/sql"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 func ToNullString[S ~string](p *S) sql.NullString {
@@ -57,5 +56,5 @@ func SortString[O ~string, B ~string](sortOrder *O, sortBy *B) *Sort {
 		return nil
 	}
 
-	return ptr.To(Sort(string(*sortBy) + "_" + order))
+	return new(Sort(string(*sortBy) + "_" + order))
 }

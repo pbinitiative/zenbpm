@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
@@ -81,7 +82,11 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return nil
 	}
 
-	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, &batch, instance, startEventDef, t.inputVariables)
+	propagatedVariables, businessKey, err := engine.resolveEventSubprocessActivationData(instance, subProcessDef, startEventDef, t.inputVariables)
+	if err != nil {
+		return err
+	}
+	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, &batch, instance, startEventDef, propagatedVariables)
 	if err != nil {
 		return err
 	}
@@ -90,7 +95,7 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return nil
 	}
 
-	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, &batch, instance, subProcessDef, startEventDef, variableHolder, tokens)
+	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, &batch, instance, subProcessDef, startEventDef, variableHolder, businessKey, tokens)
 	if err != nil {
 		return err
 	}
@@ -142,9 +147,41 @@ func resolveEventSubprocessDefs(instance runtime.ProcessInstance, elementId stri
 	return subProcessDef, startEventDef, nil
 }
 
+// resolveEventSubprocessActivationData evaluates start-event output mappings and the child business key without
+// mutating the parent scope. Validation therefore completes before an interrupting event subprocess cancels anything.
+func (engine *Engine) resolveEventSubprocessActivationData(
+	instance runtime.ProcessInstance,
+	subProcessDef *bpmn20.TSubProcess,
+	startEventDef *bpmn20.TStartEvent,
+	inputVariables map[string]any,
+) (map[string]any, *string, error) {
+	parentVariables := maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables())
+	detachedParent := runtime.NewVariableHolder(nil, parentVariables)
+	variableHolder := runtime.NewVariableHolder(&detachedParent, nil)
+	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(startEventDef.GetOutputMapping(), inputVariables, engine.evaluateExpression)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	for k, v := range propagatedVariables {
+		variableHolder.SetLocalVariable(k, v)
+	}
+
+	businessKeyVariables := instance.ProcessInstance().VariableHolder.ExecutionScopeSnapshot()
+	maps.Copy(businessKeyVariables, variableHolder.LocalVariables())
+	businessKey, err := engine.resolveChildBusinessKey(
+		instance.ProcessInstance().BusinessKey,
+		subProcessDef.GetBusinessKey(),
+		businessKeyVariables,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	return propagatedVariables, businessKey, nil
+}
+
 // prepareParentForEventSubprocess handles all mutations to the parent process instance that must happen before the
-// event subprocess can be created: optionally interrupts the parent, propagates trigger variables and saves the
-// updated parent instance. It also fetches and returns the parent's currently active tokens.
+// event subprocess can be created: optionally interrupts the parent, applies validated trigger variables and saves
+// the updated parent instance. It also fetches and returns the parent's currently active tokens.
 //
 // omitTokenKeys are excluded from the interrupting cancellation. Callers that want a token to complete normally
 // (rather than be canceled) while still interrupting every other branch of the scope pass its key here — e.g. the
@@ -154,7 +191,7 @@ func (engine *Engine) prepareParentForEventSubprocess(
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	startEventDef *bpmn20.TStartEvent,
-	inputVariables map[string]any,
+	propagatedVariables map[string]any,
 	omitTokenKeys ...int64,
 ) (runtime.VariableHolder, []runtime.ExecutionToken, error) {
 	if startEventDef.IsInterrupting {
@@ -164,10 +201,7 @@ func (engine *Engine) prepareParentForEventSubprocess(
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(startEventDef.GetOutputMapping(), inputVariables, engine.evaluateExpression)
-	if err != nil {
-		return runtime.VariableHolder{}, nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
+	instance.ProcessInstance().VariableHolder.SetLocalVariables(propagatedVariables)
 	// Make sure the propagated variables are also visible inside the event subprocess itself.
 	for k, v := range propagatedVariables {
 		variableHolder.SetLocalVariable(k, v)
@@ -192,6 +226,7 @@ func (engine *Engine) buildEventSubprocessInstance(
 	subProcessDef *bpmn20.TSubProcess,
 	startEventDef *bpmn20.TStartEvent,
 	variableHolder runtime.VariableHolder,
+	businessKey *string,
 	tokens []runtime.ExecutionToken,
 ) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	startingFlowNodes := []bpmn20.FlowNode{startEventDef}
@@ -214,9 +249,7 @@ func (engine *Engine) buildEventSubprocessInstance(
 			ParentProcessExecutionToken:           tokens[0],
 			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey,
 			ParentProcessTargetElementId:          subProcessDef.Id,
-			ProcessInstanceData: runtime.ProcessInstanceData{
-				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
-			},
+			ProcessInstanceData:                   newChildProcessInstanceData(instance, businessKey),
 		},
 	)
 	if err != nil {

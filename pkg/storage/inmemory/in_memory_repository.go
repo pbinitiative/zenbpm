@@ -123,7 +123,7 @@ func (mem *Storage) NewBatch() storage.Batch {
 
 var _ storage.DecisionDefinitionStorageReader = &Storage{}
 
-func (mem *Storage) GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetLatestDecisionDefinitionById(_ context.Context, decisionId string) (dmnruntime.DecisionDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DecisionDefinition, 0)
@@ -142,7 +142,7 @@ func (mem *Storage) GetLatestDecisionDefinitionById(ctx context.Context, decisio
 	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
 }
 
-func (mem *Storage) GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetDecisionDefinitionsById(_ context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DecisionDefinition, 0)
@@ -154,7 +154,7 @@ func (mem *Storage) GetDecisionDefinitionsById(ctx context.Context, decisionId s
 	return res, nil
 }
 
-func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(_ context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DecisionDefinition, 0)
@@ -173,7 +173,7 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Con
 	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
 }
 
-func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(_ context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DecisionDefinition, 0)
@@ -192,7 +192,7 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ct
 	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
 }
 
-func (mem *Storage) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(_ context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	for _, dd := range mem.DecisionDefinitions {
@@ -205,7 +205,7 @@ func (mem *Storage) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx con
 
 var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
-func (mem *Storage) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+func (mem *Storage) SaveDecisionDefinition(_ context.Context, decision dmnruntime.DecisionDefinition) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.DecisionDefinitions[decision.Key] = decision
@@ -214,7 +214,7 @@ func (mem *Storage) SaveDecisionDefinition(ctx context.Context, decision dmnrunt
 
 var _ storage.DmnResourceDefinitionStorageWriter = &Storage{}
 
-func (mem *Storage) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+func (mem *Storage) SaveDmnResourceDefinition(_ context.Context, definition dmnruntime.DmnResourceDefinition) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.DmnResourceDefinitions[definition.Key] = definition
@@ -223,7 +223,7 @@ func (mem *Storage) SaveDmnResourceDefinition(ctx context.Context, definition dm
 
 var _ storage.DecisionInstanceStorageWriter = &Storage{}
 
-func (mem *Storage) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
+func (mem *Storage) SaveDecisionInstance(_ context.Context, result dmnruntime.DecisionInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.DecisionInstances[result.Key] = result
@@ -232,7 +232,7 @@ func (mem *Storage) SaveDecisionInstance(ctx context.Context, result dmnruntime.
 
 var _ storage.DecisionInstanceStorageReader = &Storage{}
 
-func (mem *Storage) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error) {
+func (mem *Storage) FindDecisionInstanceByKey(_ context.Context, key int64) (dmnruntime.DecisionInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	for _, result := range mem.DecisionInstances {
@@ -247,7 +247,7 @@ var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
 var _ storage.DmnResourceDefinitionStorageReader = &Storage{}
 
-func (mem *Storage) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
+func (mem *Storage) FindLatestDmnResourceDefinitionById(_ context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DmnResourceDefinition, 0)
@@ -267,7 +267,7 @@ func (mem *Storage) FindLatestDmnResourceDefinitionById(ctx context.Context, dmn
 	return dmnruntime.DmnResourceDefinition{}, storage.ErrNotFound
 }
 
-func (mem *Storage) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error) {
+func (mem *Storage) FindDmnResourceDefinitionByKey(_ context.Context, dmnResourceDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res, ok := mem.DmnResourceDefinitions[dmnResourceDefinitionKey]
@@ -277,7 +277,7 @@ func (mem *Storage) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResou
 	return res, nil
 }
 
-func (mem *Storage) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
+func (mem *Storage) FindDmnResourceDefinitionsById(_ context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]dmnruntime.DmnResourceDefinition, 0)
@@ -296,7 +296,7 @@ func (mem *Storage) FindDmnResourceDefinitionsById(ctx context.Context, dmnResou
 
 var _ storage.ProcessDefinitionStorageReader = &Storage{}
 
-func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (bpmnruntime.ProcessDefinition, error) {
+func (mem *Storage) FindLatestProcessDefinitionById(_ context.Context, processDefinitionId string) (bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	var res bpmnruntime.ProcessDefinition
@@ -317,7 +317,7 @@ func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, process
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (bpmnruntime.ProcessDefinition, error) {
+func (mem *Storage) FindProcessDefinitionByKey(_ context.Context, processDefinitionKey int64) (bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res, ok := mem.ProcessDefinitions[processDefinitionKey]
@@ -327,7 +327,7 @@ func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	return res, nil
 }
 
-func (mem *Storage) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.ProcessDefinition, error) {
+func (mem *Storage) FindAllProcessDefinitions(_ context.Context) ([]bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ProcessDefinition, 0, len(mem.ProcessDefinitions))
@@ -337,7 +337,7 @@ func (mem *Storage) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntim
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
+func (mem *Storage) FindProcessDefinitionsById(_ context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ProcessDefinition, 0)
@@ -356,7 +356,7 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 
-func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
+func (mem *Storage) SaveProcessDefinition(_ context.Context, definition bpmnruntime.ProcessDefinition) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.ProcessDefinitions[definition.Key] = definition
@@ -365,7 +365,7 @@ func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnru
 
 var _ storage.ProcessInstanceStorageReader = &Storage{}
 
-func (mem *Storage) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
+func (mem *Storage) RefreshProcessInstance(_ context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	dbInstance, ok := mem.ProcessInstances[processInstance.ProcessInstance().Key]
@@ -411,7 +411,7 @@ func (mem *Storage) RefreshProcessInstance(ctx context.Context, processInstance 
 	return nil
 }
 
-func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
+func (mem *Storage) FindProcessInstanceByKey(_ context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res, ok := mem.ProcessInstances[processInstanceKey]
@@ -421,7 +421,7 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(_ context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ProcessInstance, 0)
@@ -464,7 +464,7 @@ func (mem *Storage) HasActiveSubProcessInstance(_ context.Context, processInstan
 	return false, nil
 }
 
-func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
+func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(_ context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ProcessInstance, 0)
@@ -486,7 +486,7 @@ func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(c
 
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
-func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
+func (mem *Storage) SaveProcessInstance(_ context.Context, processInstance bpmnruntime.ProcessInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.ProcessInstances[processInstance.ProcessInstance().Key] = processInstance
@@ -495,7 +495,7 @@ func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpm
 
 var _ storage.TimerStorageReader = &Storage{}
 
-func (mem *Storage) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, error) {
+func (mem *Storage) GetTimer(_ context.Context, timerKey int64) (bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	if timer, ok := mem.Timers[timerKey]; ok {
@@ -504,7 +504,7 @@ func (mem *Storage) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.T
 	return bpmnruntime.Timer{}, storage.ErrNotFound
 }
 
-func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindTokenActiveTimerSubscriptions(_ context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -520,7 +520,7 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindProcessInstanceTimers(_ context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -536,7 +536,7 @@ func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstan
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindProcessDefinitionTimers(_ context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -552,7 +552,7 @@ func (mem *Storage) FindProcessDefinitionTimers(ctx context.Context, processDefi
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceTimersByElement(ctx context.Context, processInstanceKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindProcessInstanceTimersByElement(_ context.Context, processInstanceKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -568,7 +568,7 @@ func (mem *Storage) FindProcessInstanceTimersByElement(ctx context.Context, proc
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionTimersByElement(ctx context.Context, processDefinitionKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindProcessDefinitionTimersByElement(_ context.Context, processDefinitionKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -588,7 +588,7 @@ func (mem *Storage) FindProcessDefinitionTimersByElement(ctx context.Context, pr
 	return res, nil
 }
 
-func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
+func (mem *Storage) FindTimersTo(_ context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
@@ -606,14 +606,14 @@ func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnrunt
 
 var _ storage.TimerStorageWriter = &Storage{}
 
-func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
+func (mem *Storage) SaveTimer(_ context.Context, timer bpmnruntime.Timer) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.Timers[timer.GetKey()] = timer
 	return nil
 }
 
-func (mem *Storage) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+func (mem *Storage) DeleteProcessDefinitionsTimers(_ context.Context, processDefinitionKeys []int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
@@ -634,7 +634,7 @@ func (mem *Storage) DeleteProcessDefinitionsTimers(ctx context.Context, processD
 
 var _ storage.JobStorageReader = &Storage{}
 
-func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
+func (mem *Storage) FindActiveJobsByType(_ context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Job, 0)
@@ -647,7 +647,7 @@ func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([
 	return res, nil
 }
 
-func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
+func (mem *Storage) FindJobByJobKey(_ context.Context, jobKey int64) (bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	var res bpmnruntime.Job
@@ -658,7 +658,7 @@ func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 	return res, nil
 }
 
-func (mem *Storage) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
+func (mem *Storage) GetJobsInStateByTokenKey(_ context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Job, 0)
@@ -677,7 +677,7 @@ func (mem *Storage) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64
 	return res, nil
 }
 
-func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
+func (mem *Storage) FindPendingProcessInstanceJobs(_ context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Job, 0)
@@ -695,7 +695,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 
 var _ storage.JobStorageWriter = &Storage{}
 
-func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
+func (mem *Storage) SaveJob(_ context.Context, job bpmnruntime.Job) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.Jobs[job.GetKey()] = job
@@ -704,7 +704,7 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
-func (mem *Storage) FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindMessageSubscriptionByKey(_ context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	var res bpmnruntime.MessageSubscription
@@ -743,7 +743,7 @@ func getMessageSubscriptionCorrelationKey(sub bpmnruntime.MessageSubscription) (
 }
 
 // FindTokenMessageSubscriptions implements storage.Storage.
-func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindTokenMessageSubscriptions(_ context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.MessageSubscription, 0)
@@ -759,7 +759,7 @@ func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindProcessInstanceMessageSubscriptions(_ context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.MessageSubscription, 0)
@@ -776,7 +776,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
-func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindMessageSubscriptionByName(_ context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	var match bpmnruntime.MessageSubscription
@@ -804,7 +804,7 @@ func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name stri
 	return match, nil
 }
 
-func (mem *Storage) FindDefinitionMessageSubscription(ctx context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindDefinitionMessageSubscription(_ context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	for _, sub := range mem.MessageSubscriptions {
@@ -823,7 +823,7 @@ func (mem *Storage) FindDefinitionMessageSubscription(ctx context.Context, proce
 	return nil, storage.ErrNotFound
 }
 
-func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
+func (mem *Storage) FindIncidentsByExecutionTokenKey(_ context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Incident, 0)
@@ -836,7 +836,7 @@ func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, execut
 	return res, nil
 }
 
-func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
+func (mem *Storage) FindIncidentByKey(_ context.Context, key int64) (bpmnruntime.Incident, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	incident, ok := mem.Incidents[key]
@@ -846,7 +846,7 @@ func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnrunti
 	return mem.hydrateIncidentToken(incident), nil
 }
 
-func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
+func (mem *Storage) FindIncidentsByProcessInstanceKey(_ context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Incident, 0)
@@ -874,7 +874,7 @@ func (mem *Storage) hydrateIncidentToken(incident bpmnruntime.Incident) bpmnrunt
 
 var _ storage.MessageStorageWriter = &Storage{}
 
-func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
+func (mem *Storage) SaveMessageSubscription(_ context.Context, subscription bpmnruntime.MessageSubscription) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	// Match the SQL backend's semantics:
@@ -910,7 +910,7 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 	return nil
 }
 
-func (mem *Storage) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+func (mem *Storage) DeleteProcessDefinitionsMessageSubscriptions(_ context.Context, processDefinitionKeys []int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
@@ -931,7 +931,7 @@ func (mem *Storage) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Con
 
 var _ storage.TokenStorageReader = &Storage{}
 
-func (mem *Storage) GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetCompletedTokensForProcessInstance(_ context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ExecutionToken, 0)
@@ -943,7 +943,7 @@ func (mem *Storage) GetCompletedTokensForProcessInstance(ctx context.Context, pr
 	return res, nil
 }
 
-func (mem *Storage) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetTokenByKey(_ context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	if result, ok := mem.ExecutionTokens[key]; ok {
@@ -953,7 +953,7 @@ func (mem *Storage) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.E
 }
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
-func (mem *Storage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetActiveTokensForProcessInstance(_ context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ExecutionToken, 0)
@@ -965,7 +965,7 @@ func (mem *Storage) GetActiveTokensForProcessInstance(ctx context.Context, proce
 	return res, nil
 }
 
-func (mem *Storage) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetAllTokensForProcessInstance(_ context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ExecutionToken, 0)
@@ -978,7 +978,7 @@ func (mem *Storage) GetAllTokensForProcessInstance(ctx context.Context, processI
 }
 
 // GetActiveTokensForPartition implements storage.Storage.
-func (mem *Storage) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetRunningTokens(_ context.Context) ([]bpmnruntime.ExecutionToken, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	activeTokens := make([]bpmnruntime.ExecutionToken, 0)
@@ -993,7 +993,7 @@ func (mem *Storage) GetRunningTokens(ctx context.Context) ([]bpmnruntime.Executi
 var _ storage.TokenStorageWriter = &Storage{}
 
 // SaveToken implements storage.Storage.
-func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
+func (mem *Storage) SaveToken(_ context.Context, token bpmnruntime.ExecutionToken) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.ExecutionTokens[token.Key] = token
@@ -1002,7 +1002,7 @@ func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionTo
 
 var _ storage.FlowElementInstanceReader = &Storage{}
 
-func (mem *Storage) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
+func (mem *Storage) GetFlowElementInstancesByTokenKey(_ context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
@@ -1014,7 +1014,7 @@ func (mem *Storage) GetFlowElementInstancesByTokenKey(ctx context.Context, token
 	return flowElementInstances, nil
 }
 
-func (mem *Storage) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int64, error) {
+func (mem *Storage) GetFlowElementInstanceCountByProcessInstanceKey(_ context.Context, processInstanceKey int64) (int64, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
@@ -1026,7 +1026,7 @@ func (mem *Storage) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.
 	return int64(len(flowElementInstances)), nil
 }
 
-func (mem *Storage) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
+func (mem *Storage) GetFlowElementInstancesByProcessInstanceKey(_ context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
@@ -1046,7 +1046,7 @@ func (mem *Storage) GetFlowElementInstancesByProcessInstanceKey(ctx context.Cont
 	return flowElementInstances, nil
 }
 
-func (mem *Storage) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
+func (mem *Storage) GetFlowElementInstanceByKey(_ context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	if result, ok := mem.FlowElementInstance[key]; ok {
@@ -1057,14 +1057,19 @@ func (mem *Storage) GetFlowElementInstanceByKey(ctx context.Context, key int64) 
 
 var _ storage.FlowElementInstanceWriter = &Storage{}
 
-func (mem *Storage) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+func (mem *Storage) SaveFlowElementInstance(_ context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	if existing, exists := mem.FlowElementInstance[flowElementInstance.Key]; exists {
+		// Mirror SQL: INSERT ... ON CONFLICT DO UPDATE SET input_variables.
+		existing.InputVariables = flowElementInstance.InputVariables
+		flowElementInstance = existing
+	}
 	mem.FlowElementInstance[flowElementInstance.Key] = flowElementInstance
 	return nil
 }
 
-func (mem *Storage) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+func (mem *Storage) UpdateOutputFlowElementInstance(_ context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	elementInstance, exists := mem.FlowElementInstance[flowElementInstance.Key]
@@ -1082,7 +1087,21 @@ func (mem *Storage) UpdateOutputFlowElementInstance(ctx context.Context, flowEle
 	return nil
 }
 
-func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
+func (mem *Storage) CompleteFlowElementInstance(_ context.Context, key int64, completedAt time.Time) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
+	elementInstance, exists := mem.FlowElementInstance[key]
+	if !exists || elementInstance.CompletedAt != nil {
+		return nil
+	}
+
+	elementInstance.CompletedAt = &completedAt
+	mem.FlowElementInstance[key] = elementInstance
+	return nil
+}
+
+func (mem *Storage) SaveIncident(_ context.Context, incident bpmnruntime.Incident) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.Incidents[incident.Key] = incident
@@ -1091,7 +1110,7 @@ func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incid
 
 var _ storage.ErrorSubscriptionStorageWriter = &Storage{}
 
-func (mem *Storage) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
+func (mem *Storage) SaveErrorSubscription(_ context.Context, subscription bpmnruntime.ErrorSubscription) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.ErrorSubscriptions[subscription.GetKey()] = subscription
@@ -1100,7 +1119,7 @@ func (mem *Storage) SaveErrorSubscription(ctx context.Context, subscription bpmn
 
 var _ storage.ErrorSubscriptionStorageReader = &Storage{}
 
-func (mem *Storage) FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+func (mem *Storage) FindTokenErrorSubscriptions(_ context.Context, tokenKey int64, _ bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ErrorSubscription, 0)
@@ -1116,7 +1135,7 @@ func (mem *Storage) FindTokenErrorSubscriptions(ctx context.Context, tokenKey in
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+func (mem *Storage) FindProcessInstanceErrorSubscriptions(_ context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.ErrorSubscription, 0)
@@ -1141,15 +1160,15 @@ type StorageBatch struct {
 
 var _ storage.Batch = &StorageBatch{}
 
-func (b *StorageBatch) AddPostFlushAction(ctx context.Context, f func()) {
+func (b *StorageBatch) AddPostFlushAction(_ context.Context, f func()) {
 	b.postFlushActions = append(b.postFlushActions, f)
 }
 
-func (b *StorageBatch) AddPreFlushAction(ctx context.Context, f func() error) {
+func (b *StorageBatch) AddPreFlushAction(_ context.Context, f func() error) {
 	b.preFlushActions = append(b.preFlushActions, f)
 }
 
-func (b *StorageBatch) Flush(ctx context.Context) error {
+func (b *StorageBatch) Flush(_ context.Context) error {
 	dbCopy := b.db.Copy()
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
@@ -1247,6 +1266,13 @@ func (b *StorageBatch) SaveFlowElementInstance(ctx context.Context, historyItem 
 func (b *StorageBatch) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.UpdateOutputFlowElementInstance(ctx, flowElementInstance)
+	})
+	return nil
+}
+
+func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.CompleteFlowElementInstance(ctx, key, completedAt)
 	})
 	return nil
 }

@@ -18,7 +18,7 @@ const attemptInterval = 1 * time.Second
 
 func TestSingleJoinOK(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		if jr == nil {
 			t.Fatal("join request is nil")
@@ -45,7 +45,7 @@ func TestSingleJoinOK(t *testing.T) {
 
 func TestSingleJoinZeroAttempts(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.GlobalHandler = func() error {
 		t.Fatalf("handler should not have been called")
 		return nil
@@ -61,7 +61,7 @@ func TestSingleJoinZeroAttempts(t *testing.T) {
 
 func TestSingleJoinFail(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		return &proto.JoinResponse{}, fmt.Errorf("bad request")
 	}
@@ -76,7 +76,7 @@ func TestSingleJoinFail(t *testing.T) {
 
 func TestSingleJoinCancel(t *testing.T) {
 	srv := servertest.NewTestServer()
-	defer srv.Close()
+	cleanupTestServer(t, srv)
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		return &proto.JoinResponse{}, fmt.Errorf("bad request")
 	}
@@ -98,13 +98,13 @@ func TestSingleJoinCancel(t *testing.T) {
 
 func TestDoubleJoinOKSecondNode(t *testing.T) {
 	srv1 := servertest.NewTestServer()
-	defer srv1.Close()
+	cleanupTestServer(t, srv1)
 	srv1.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		return &proto.JoinResponse{}, fmt.Errorf("bad request")
 	}
 
 	srv2 := servertest.NewTestServer()
-	defer srv2.Close()
+	cleanupTestServer(t, srv2)
 	srv2.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
 		return &proto.JoinResponse{}, nil
 	}

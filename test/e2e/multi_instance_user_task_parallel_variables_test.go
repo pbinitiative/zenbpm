@@ -24,6 +24,9 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
 			"results": []interface{}{},
 		})
+		history := getFlowElementInstancesByElementId(t, processInstance.Key, "user_task")
+		require.Len(t, history, 1)
+		require.NotNil(t, history[0].CompletedAt, "empty multi-instance activity history must be completed")
 	})
 
 	t.Run("empty input collection initializes empty output collection in parent scope", func(t *testing.T) {
@@ -40,6 +43,9 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 			"approvers": []interface{}{},
 			"results":   []interface{}{},
 		})
+		history := getFlowElementInstancesByElementId(t, processInstance.Key, "user_task")
+		require.Len(t, history, 1)
+		require.NotNil(t, history[0].CompletedAt, "empty multi-instance activity history must be completed")
 	})
 
 	t.Run("input element propagates to each concurrent iteration job", func(t *testing.T) {
@@ -83,8 +89,10 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
 
 		flowElements := getFlowElementInstancesByElementId(t, firstChild.Key, "user_task")
+		require.Len(t, flowElements, 2, "history must contain exactly one entry per multi-instance iteration")
 		approversInFlowElements := make([]string, 0, 2)
 		for _, flowElement := range flowElements {
+			require.NotNil(t, flowElement.CompletedAt, "every multi-instance history entry must be completed")
 			approver, ok := flowElement.InputVariables["approver"].(string)
 			if !ok {
 				continue

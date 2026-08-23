@@ -177,7 +177,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 
 	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, instance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 
@@ -207,7 +207,7 @@ mainLoop:
 			continue
 		}
 		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", currentToken.ElementId), trace.WithAttributes(
-			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
+			attribute.String(otelPkg.AttributeElementID, currentToken.ElementId),
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
@@ -216,8 +216,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -230,8 +229,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -240,13 +238,16 @@ mainLoop:
 			continue
 		}
 
+		if saveErr := batch.saveTokens(ctx, updatedTokens); saveErr != nil {
+			saveErr = fmt.Errorf("failed to save updated tokens for process instance %d: %w", instance.ProcessInstance().Key, saveErr)
+			runErr = errors.Join(runErr, saveErr)
+			engine.logger.Warn("failed to save updated tokens", "processInstance", instance.ProcessInstance().Key, "err", saveErr)
+			endErrorSpan(tokenSpan, saveErr)
+			return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
+		}
 		for _, tok := range updatedTokens {
-			switch tok.State {
-			case runtime.TokenStateRunning:
-				batch.SaveToken(ctx, tok)
+			if tok.State == runtime.TokenStateRunning {
 				runningExecutionTokens = append(runningExecutionTokens, tok)
-			default:
-				batch.SaveToken(ctx, tok)
 			}
 		}
 
@@ -258,8 +259,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to save process instance after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -274,8 +274,7 @@ mainLoop:
 				if err != nil {
 					runErr = errors.Join(runErr, err)
 					engine.logger.Warn("failed to handle parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-					batch.WriteTokenIncident(ctx, currentToken, instance, err)
-					incidentError := batch.Flush(ctx)
+					incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 					if incidentError != nil {
 						err = errors.Join(err, incidentError)
 						runErr = errors.Join(runErr, incidentError)
@@ -288,8 +287,7 @@ mainLoop:
 			if err != nil {
 				runErr = errors.Join(runErr, err)
 				engine.logger.Warn("failed to flush after processing parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-				batch.WriteTokenIncident(ctx, currentToken, instance, err)
-				incidentError := batch.Flush(ctx)
+				incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 				if incidentError != nil {
 					err = errors.Join(err, incidentError)
 					runErr = errors.Join(runErr, incidentError)
@@ -305,8 +303,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to flush after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			batch.WriteTokenIncident(ctx, currentToken, instance, err)
-			incidentError := batch.Flush(ctx)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -319,9 +316,7 @@ mainLoop:
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		engine.exportEndProcessEvent(*process, instance)
-		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
-		))
+		engine.recordProcessInstanceEnd(ctx, instance)
 	}
 
 	if runErr != nil {
@@ -329,6 +324,28 @@ mainLoop:
 	}
 
 	return nil
+}
+
+// recordProcessInstanceEnd increments the ended-processes counter and records
+// the instance duration histogram. It is shared by RunProcessInstance and the
+// failure paths that persist a terminal instance state outside of it (e.g.
+// message publication failures), so every terminal transition is measured.
+func (engine *Engine) recordProcessInstanceEnd(ctx context.Context, instance runtime.ProcessInstance) {
+	if engine == nil || engine.metrics == nil {
+		return
+	}
+	pi := instance.ProcessInstance()
+	if engine.metrics.ProcessesEnded != nil {
+		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("bpmn_process_id", pi.Definition.BpmnProcessId),
+		))
+	}
+	if engine.metrics.ProcessInstanceDuration != nil && !pi.CreatedAt.IsZero() {
+		engine.metrics.ProcessInstanceDuration.Record(ctx, float64(time.Since(pi.CreatedAt))/float64(time.Millisecond), metric.WithAttributes(
+			attribute.String("bpmn_process_id", pi.Definition.BpmnProcessId),
+			attribute.String("state", pi.State.String()),
+		))
+	}
 }
 
 func endErrorSpan(tokenSpan trace.Span, err error) {
@@ -404,6 +421,10 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 		return instance, fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	return instance, nil
+}
+
+func (engine *Engine) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	return engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 }
 
 func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (runtime.ProcessInstance, error) {
@@ -501,7 +522,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, processInstance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.ProcessInstance().Definition.Key),
 	))
 	defer createSpan.End()
@@ -575,7 +596,7 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("delete-instance-variable:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.ProcessInstance().Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.String(otelPkg.AttributeProcessID, processInstance.ProcessInstance().Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.ProcessInstance().Definition.Key),
 	))
 	defer createSpan.End()

@@ -77,3 +77,23 @@ if err != nil {
     return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 }
 ```
+
+## Errors originating outside of handlers
+
+Not every API error is produced by a handler. The OpenAPI request-validation
+middleware (`internal/rest/middleware.OpenAPIValidator`) rejects invalid
+requests before they reach a handler and answers with the same `Error` JSON
+shape. Its `code` values come from the same `zenerr.ZenErrorCode` vocabulary
+(`ZenErrorCode.ToString()`), so middleware and handlers can never drift apart:
+
+| HTTP status | `code` |
+|---|---|
+| 400 | `BAD_REQUEST` |
+| 404 | `NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 413 | `PAYLOAD_TOO_LARGE` |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` |
+| anything else | `TECHNICAL_ERROR` |
+
+When you add a new error code that the middleware should emit, add it to
+`zenerr.ZenErrorCode` first and map it in `errorCodeForStatus`.

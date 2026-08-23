@@ -79,8 +79,9 @@ func TestFindStartTime_ValidDateTime(t *testing.T) {
 func TestTimerEventSubprocessInterrupting_LoadAndParse(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
@@ -91,8 +92,9 @@ func TestTimerEventSubprocessInterrupting_LoadAndParse(t *testing.T) {
 func TestTimerEventSubprocessNonInterrupting_LoadAndParse(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-non-interrupting.bpmn")
 	require.NoError(t, err)
@@ -102,8 +104,9 @@ func TestTimerEventSubprocessNonInterrupting_LoadAndParse(t *testing.T) {
 func TestTimerEventSubprocessNestedInterrupting_LoadAndParse(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-nested-interrupting.bpmn")
 	require.NoError(t, err)
@@ -113,8 +116,9 @@ func TestTimerEventSubprocessNestedInterrupting_LoadAndParse(t *testing.T) {
 func TestTimerStartEventProcess_LoadAndParse(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -212,8 +216,9 @@ func TestInMemoryStorage_FindProcessInstanceTimers_NilProcessInstanceKey(t *test
 func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(200*time.Millisecond))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
@@ -255,8 +260,9 @@ func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *test
 func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(200*time.Millisecond))
-	engine.Start(t.Context())
+	startErr := engine.Start(t.Context())
 	defer engine.Stop()
+	require.NoError(t, startErr)
 
 	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,12 +14,12 @@ func TestToNullString(t *testing.T) {
 		assert.Equal(t, "", got.String)
 	})
 	t.Run("non-nil pointer yields valid", func(t *testing.T) {
-		got := ToNullString(ptr.To("hello"))
+		got := ToNullString(new("hello"))
 		assert.True(t, got.Valid)
 		assert.Equal(t, "hello", got.String)
 	})
 	t.Run("empty string is still valid", func(t *testing.T) {
-		got := ToNullString(ptr.To(""))
+		got := ToNullString(new(""))
 		assert.True(t, got.Valid)
 		assert.Equal(t, "", got.String)
 	})
@@ -33,12 +32,12 @@ func TestToNullInt64(t *testing.T) {
 		assert.Equal(t, int64(0), got.Int64)
 	})
 	t.Run("non-nil pointer yields valid", func(t *testing.T) {
-		got := ToNullInt64(ptr.To(int64(42)))
+		got := ToNullInt64(new(int64(42)))
 		assert.True(t, got.Valid)
 		assert.Equal(t, int64(42), got.Int64)
 	})
 	t.Run("zero value is still valid when pointer is non-nil", func(t *testing.T) {
-		got := ToNullInt64(ptr.To(int64(0)))
+		got := ToNullInt64(new(int64(0)))
 		assert.True(t, got.Valid)
 		assert.Equal(t, int64(0), got.Int64)
 	})

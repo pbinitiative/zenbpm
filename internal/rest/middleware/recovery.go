@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"github.com/pbinitiative/zenbpm/internal/errortracking"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
@@ -24,6 +25,7 @@ func Recovery() func(next http.Handler) http.Handler {
 				if recovery == http.ErrAbortHandler {
 					panic(recovery)
 				}
+				errortracking.CapturePanic(r.Context(), recovery, "rest.handler")
 				log.Errorf(r.Context(),
 					"panic recovered in HTTP handler %s %s: %v\n%s",
 					r.Method, r.URL.Path, recovery, debug.Stack(),

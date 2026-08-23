@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_business_key_called_process" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="call_activity_business_key_called_process" name="Call activity business key called process" isExecutable="true">
+    <bpmn:startEvent id="called-start">
+      <bpmn:outgoing>called-start-to-service-task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="called-start-to-service-task" sourceRef="called-start" targetRef="called-service-task" />
+    <bpmn:serviceTask id="called-service-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="business-key-called-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>called-start-to-service-task</bpmn:incoming>
+      <bpmn:outgoing>called-service-task-to-end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="called-service-task-to-end" sourceRef="called-service-task" targetRef="called-end" />
+    <bpmn:endEvent id="called-end">
+      <bpmn:incoming>called-service-task-to-end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_business_key_called_process">
+    <bpmndi:BPMNPlane id="BPMNPlane_business_key_called_process" bpmnElement="call_activity_business_key_called_process">
+      <bpmndi:BPMNShape id="called-start_di" bpmnElement="called-start">
+        <dc:Bounds x="170" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="called-service-task_di" bpmnElement="called-service-task">
+        <dc:Bounds x="270" y="100" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="called-end_di" bpmnElement="called-end">
+        <dc:Bounds x="470" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="called-start-to-service-task_di" bpmnElement="called-start-to-service-task">
+        <di:waypoint x="206" y="140" />
+        <di:waypoint x="270" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="called-service-task-to-end_di" bpmnElement="called-service-task-to-end">
+        <di:waypoint x="400" y="140" />
+        <di:waypoint x="470" y="140" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

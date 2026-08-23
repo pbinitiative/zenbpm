@@ -27,12 +27,13 @@ Top-level configuration object.
 
 Defines settings for the public **REST API server**.
 
-| Field     | Type   | Env Variable       | Default  | Description                                                                |
-|-----------|--------|--------------------|----------|----------------------------------------------------------------------------|
-| `context` | string | `REST_API_CONTEXT` | `/`      | Base context path for the API                                              |
-| `addr`    | string | `REST_API_ADDR`    | `:8080`  | Address the server binds to                                                |
-| `logMode` | string | `REST_API_LOG_MODE`| `errors` | Which requests are logged: `errors` (status >= 400 only), `all`, or `off`  |
-| `logBody` | bool   | `REST_API_LOG_BODY`| `false`  | Include request/response bodies in logged requests. Buffers every body in memory, so keep off on busy servers |
+| Field                 | Type   | Env Variable                        | Default    | Description                                                                |
+|-----------------------|--------|-------------------------------------|------------|----------------------------------------------------------------------------|
+| `context`             | string | `REST_API_CONTEXT`                  | `/`        | Base context path for the API                                              |
+| `addr`                | string | `REST_API_ADDR`                     | `:8080`    | Address the server binds to                                                |
+| `maxRequestBodyBytes` | int64  | `REST_API_MAX_REQUEST_BODY_BYTES`   | `10485760` | Maximum request body size for `/v1` endpoints (10 MiB); larger bodies receive HTTP 413 |
+| `logMode`             | string | `REST_API_LOG_MODE`                 | `errors`   | Which requests are logged: `errors` (status >= 400 only), `all`, or `off`  |
+| `logBody`             | bool   | `REST_API_LOG_BODY`                 | `false`    | Include request/response bodies in logged requests. Buffers every body in memory, so keep off on busy servers |
 
 ---
 
@@ -113,6 +114,21 @@ Distributed tracing settings using OpenTelemetry.
 | `name`           | string   | `TRACING_APP_NAME`            | `ZenBPM` | Application name for tracing                      |
 | `transferHeaders`| []string | `TRACING_TRANSFER_HEADERS`    | —        | HTTP headers to propagate through trace context   |
 | `endpoint`       | string   | `OTEL_EXPORTER_OTLP_ENDPOINT` | —        | OTLP exporter endpoint (e.g., for Jaeger/Tempo)   |
+| `samplerRatio`   | float64  | `TRACING_SAMPLER_RATIO`       | `1.0`    | Fraction of new traces sampled (0.0 - 1.0); child spans follow their parent's sampling decision |
+
+---
+
+## Error Tracking: GlitchTip
+
+ZenBPM reports recovered panics and explicitly marked invariant violations to GlitchTip. Error tracking uses environment variables rather than the application configuration file so it can initialize before configuration parsing.
+
+| Env Variable         | Default                 | Description                                                                         |
+|----------------------|-------------------------|-------------------------------------------------------------------------------------|
+| `SENTRY_ENABLED`     | `true`                  | Master switch for error reporting. Set to `false` to disable it even when DSN is set. |
+| `SENTRY_DSN`         | —                       | GlitchTip project DSN. Error reporting is disabled when it is unset or empty.       |
+| `SENTRY_ENVIRONMENT` | Current `PROFILE` value | Deployment environment attached to each event.                                      |
+
+The application build version is attached as the GlitchTip release. Sentry performance tracing and automatic log forwarding are disabled because ZenBPM uses OpenTelemetry for tracing and reports only actionable unexpected errors.
 
 ---
 
@@ -123,6 +139,7 @@ name: zenbpm
 httpServer:
   context: /
   addr: :8080
+  maxRequestBodyBytes: 10485760
 grpcServer:
   addr: :9090
 cluster:

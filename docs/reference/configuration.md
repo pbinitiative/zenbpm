@@ -57,6 +57,7 @@ Settings related to **clustering**, **internal communication**, and **Raft** con
 | `addr`       | string        | `CLUSTER_RAFT_ADDR`       | `:8090`    | Bind address for internal Raft communication            |
 | `adv`        | string        | `CLUSTER_RAFT_ADV`        | (same as `addr`) | Advertised Raft address                          |
 | `raft`       | `ClusterRaft` | —                         | —          | Raft-specific cluster settings                          |
+| `cdc`        | `CDC`         | —                         | —          | Change Data Capture output settings                     |
 | `persistence`| `Persistence` | —                         | —          | Persistence and caching configuration                   |
 
 ---
@@ -77,6 +78,122 @@ Raft consensus and cluster joining settings.
 
 ---
 
+### RqLite Change Data Capture
+
+Output settings for exporting RqLite changes from voting partition nodes.
+
+| Field       | Type   | Env Variable            | Default  | Description                                                        |
+|-------------|--------|-------------------------|----------|--------------------------------------------------------------------|
+| `enabled`   | bool   | `RQLITE_CDC_ENABLED`    | `false`  | Enables RqLite CDC export                                          |
+| `output`    | string | `RQLITE_CDC_OUTPUT`     | —        | HTTP(S) endpoint, `stdout`, or advanced JSON output settings path  |
+| `serviceId` | string | `RQLITE_CDC_SERVICE_ID` | `zenbpm` | Base service identifier; ZenBPM appends the partition suffix       |
+
+CDC is disabled by default. Enable it on every voting RqLite partition node:
+
+```yaml
+cluster:
+  cdc:
+    enabled: true
+    output: https://consumer.example.com/rqlite/cdc
+    serviceId: orders-production-v1
+```
+
+The equivalent environment configuration is:
+
+```bash
+RQLITE_CDC_ENABLED=true
+RQLITE_CDC_OUTPUT=https://consumer.example.com/rqlite/cdc
+RQLITE_CDC_SERVICE_ID=orders-production-v1
+```
+
+`RQLITE_CDC_ENABLED` is the authoritative switch. When it is unset or `false`,
+CDC is disabled even if an output is present. When it is `true`, the output is
+passed to rqlite as an HTTP(S) endpoint, the special value `stdout`, or a path
+to an advanced JSON output settings file. Invalid files, endpoints, or TLS
+settings fail startup.
+
+#### Initial data and replica consistency
+
+CDC does not create an initial snapshot or backfill. Rows already present in
+SQLite when CDC is enabled are not emitted; only changes captured after CDC
+starts are sent. Seed a new consumer with an explicit export or other backfill,
+and reconcile that baseline with subsequent CDC events.
+
+All voting replicas of a partition must use the same endpoint and compatible
+CDC settings. In practice, deploy the same effective configuration, including
+the service identifier (`serviceId` or advanced `service_id`), `table_filter`,
+`row_ids_only`, and TLS and delivery settings, to every voting replica. Only the
+current leader transmits events, while acknowledged high-water marks are shared
+with followers. If replicas use different endpoints or filtering settings, a
+leader change can split the stream between consumers or cause a follower to
+discard events acknowledged through a different endpoint. CDC is rejected on
+non-voting nodes.
+
+#### Endpoint cutover
+
+ZenBPM publishes to one CDC endpoint and does not provide built-in dual delivery
+or backfill. Prefer a stable, durable receiver URL and change its downstream
+routing when moving consumers. The receiver can retain events while the new
+consumer is seeded and then forward them without changing the ZenBPM nodes.
+
+If the endpoint must change in ZenBPM itself, do not roll the change through a
+live cluster. Instead:
+
+1. Pause writes that can produce CDC events.
+2. Let the old endpoint acknowledge all outstanding deliveries for every
+   partition, and verify its durable ledger is caught up.
+3. Stop the voting replicas, apply the same new endpoint and compatible CDC
+   settings to all of them, and restart them without allowing a mixed-config
+   replica set to serve writes or elect a leader.
+4. Resume writes only after every voting replica is using the new configuration.
+
+The new endpoint receives only post-cutover changes. Copy or backfill the
+existing state separately if it needs a complete projection.
+
+#### Stable service identifiers
+
+`cluster.cdc.serviceId` configures the base identifier for direct endpoint and
+`stdout` outputs. It defaults to `zenbpm`; ZenBPM appends `-partition-N`, so a
+base value of `orders-production-v1` emits
+`orders-production-v1-partition-1` for partition 1.
+
+An advanced rqlite CDC output settings file can also set `service_id`. For
+example:
+
+```json
+{
+  "endpoint": "https://consumer.example.com/rqlite/cdc",
+  "service_id": "orders-production-v1"
+}
+```
+
+Point every node at the file through the CDC output setting:
+
+```bash
+RQLITE_CDC_ENABLED=true
+RQLITE_CDC_OUTPUT=/etc/zenbpm/rqlite-cdc-output.json
+```
+
+Use an absolute path and make the file and any referenced TLS files available
+on every voting node. A non-empty `service_id` in this file takes precedence
+over `cluster.cdc.serviceId` and `RQLITE_CDC_SERVICE_ID`. This preserves the
+advanced output file as the authoritative source for its delivery settings.
+
+Keep the effective base identifier (`serviceId` or advanced `service_id`)
+identical on all replicas and stable across restarts, leader changes, scaling,
+node replacement, and endpoint cutovers while the same Raft history continues.
+Choose a new unique base value before starting with fresh storage, cloning an
+environment, or resetting or rewinding Raft history. Those operations can reuse
+Raft indexes; retaining the old identifier could make an existing consumer
+ledger mistake new changes for duplicates.
+
+CDC batches may be delivered more than once. Consumers should acknowledge only
+durably stored events and deduplicate each transaction group by
+`(service_id, payload.index)`. If a consumer splits `events` into separate
+records, it must add the event's array position to that key.
+
+---
+
 ### Persistence Configuration: `Persistence`
 
 Configuration for caching and storage.
@@ -88,67 +205,8 @@ Configuration for caching and storage.
 | `procDefCacheSize`   | int         | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions      |
 | `decDefCacheTTL`     | types.TTL   | `PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS`  | `24h`       | TTL for cached dmn resource definitions       |
 | `decDefCacheSize`    | int         | `PERSISTENCE_DEC_DEF_CACHE_SIZE`         | `200`       | Max number of cached dmn resource definitions |
-| `cdcEnabled`         | bool        | `RQLITE_CDC_ENABLED`                     | `false`     | Enables RqLite CDC                            |
-| `cdc`                | string      | `RQLITE_CDC_CONFIG`                      | —           | RqLite CDC endpoint, `stdout`, or JSON configuration file |
 | `rqlite`             | `*RqLite`   | —                                        | —           | Configuration for embedded RQLite database    |
 | `migration`          | `Migration` | —                                        | —           | Configuration for SQL migration               |
-
-#### RqLite Change Data Capture
-
-CDC is disabled by default. Enable it on every voting RqLite partition node by
-setting `cluster.persistence.cdcEnabled` (or `RQLITE_CDC_ENABLED`) to `true`
-and providing `cluster.persistence.cdc` (or `RQLITE_CDC_CONFIG`). The `cdc`
-value accepts an HTTP(S) endpoint, `stdout` for local debugging, or a path to
-an RqLite CDC JSON configuration file.
-
-```yaml
-cluster:
-  persistence:
-    cdcEnabled: true
-    cdc: /etc/zenbpm/cdc.json
-```
-
-The equivalent environment configuration is:
-
-```bash
-RQLITE_CDC_ENABLED=true
-RQLITE_CDC_CONFIG=/etc/zenbpm/cdc.json
-```
-
-Example `/etc/zenbpm/cdc.json`:
-
-```json
-{
-  "endpoint": "https://consumer.example.com/rqlite/cdc",
-  "service_id": "environment-a",
-  "table_filter": "^(process_instance|job)$",
-  "row_ids_only": false
-}
-```
-
-The optional rqlite `service_id` identifies the ZenBPM data source. ZenBPM emits
-it as `<service_id>-partition-N`, because each partition is a separate
-RqLite/Raft cluster with its own event index. If `service_id` is omitted,
-ZenBPM uses the backward-compatible default `zenbpm-partition-N`. A custom
-`service_id` therefore requires a JSON configuration file; the endpoint-only
-and `stdout` forms use the default.
-
-All replicas of one logical ZenBPM cluster must use the same `service_id`.
-Choose a globally unique value for every environment so a downstream consumer
-can map it to the correct tenant and environment. Keep it unchanged across
-restarts, failovers, scaling, and replacement of a node that rejoins the
-existing cluster. Assign a new value when creating fresh storage, cloning an
-environment, or restoring data in a way that resets or rewinds the Raft
-history. The default is convenient for existing single-cluster installations
-but is not globally unique.
-
-CDC batches may be delivered more than once. Consumers should acknowledge only
-durably stored events and deduplicate each transaction group by
-`(service_id, payload.index)`. If a consumer splits `events` into separate
-records, it must add the event's array position to that key.
-
-
----
 
 #### SQL Migration Configuration: `Migration`
 

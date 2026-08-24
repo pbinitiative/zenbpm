@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
@@ -10,14 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestControllerCDCConfiguration(t *testing.T) {
-	t.Run("applies public cdc config when enabled", func(t *testing.T) {
+func TestControllerCDCOutput(t *testing.T) {
+	t.Run("applies public cdc settings when enabled", func(t *testing.T) {
 		tStore := newCDCControllerTestStore()
 		clientMgr := client.NewClientManager(tStore)
 		controller, err := NewController(nil, config.Cluster{
-			Persistence: config.Persistence{
-				CDCEnabled: true,
-				CDC:        "stdout",
+			CDC: config.CDC{
+				Enabled:   true,
+				Output:    "https://example.com/cdc",
+				ServiceID: "configured-source",
 			},
 		})
 		require.NoError(t, err)
@@ -27,18 +31,18 @@ func TestControllerCDCConfiguration(t *testing.T) {
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
 		require.NotNil(t, controller.persistenceConfig.RqLite)
-		assert.Equal(t, "stdout", controller.persistenceConfig.RqLite.CDCConfig)
+		assert.Equal(t, "https://example.com/cdc", controller.cdcOutput)
+		assert.Equal(t, "configured-source", controller.cdcServiceID)
 	})
 
-	t.Run("preserves nested cdc config when enabled", func(t *testing.T) {
+	t.Run("accepts an advanced cdc output file", func(t *testing.T) {
 		tStore := newCDCControllerTestStore()
 		clientMgr := client.NewClientManager(tStore)
-		rqLiteConfig := newCDCControllerRqLiteConfig(t, tStore)
-		rqLiteConfig.CDCConfig = "stdout"
+		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":"https://example.com/cdc","max_batch_size":25}`)
 		controller, err := NewController(nil, config.Cluster{
-			Persistence: config.Persistence{
-				CDCEnabled: true,
-				RqLite:     rqLiteConfig,
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  cdcOutputPath,
 			},
 		})
 		require.NoError(t, err)
@@ -47,39 +51,20 @@ func TestControllerCDCConfiguration(t *testing.T) {
 		})
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
-		assert.Equal(t, "stdout", controller.persistenceConfig.RqLite.CDCConfig)
+		assert.Equal(t, cdcOutputPath, controller.cdcOutput)
 	})
 
-	t.Run("public cdc config overrides nested config", func(t *testing.T) {
+	t.Run("clears cdc output when disabled", func(t *testing.T) {
 		tStore := newCDCControllerTestStore()
 		clientMgr := client.NewClientManager(tStore)
 		rqLiteConfig := newCDCControllerRqLiteConfig(t, tStore)
-		rqLiteConfig.CDCConfig = "stdout"
-		controller, err := NewController(nil, config.Cluster{
-			Persistence: config.Persistence{
-				CDCEnabled: true,
-				CDC:        "https://example.com/cdc",
-				RqLite:     rqLiteConfig,
-			},
-		})
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, controller.Stop())
-		})
-
-		require.NoError(t, controller.Start(tStore, clientMgr))
-		assert.Equal(t, "https://example.com/cdc", controller.persistenceConfig.RqLite.CDCConfig)
-	})
-
-	t.Run("clears all cdc config when disabled", func(t *testing.T) {
-		tStore := newCDCControllerTestStore()
-		clientMgr := client.NewClientManager(tStore)
-		rqLiteConfig := newCDCControllerRqLiteConfig(t, tStore)
-		rqLiteConfig.CDCConfig = "stdout"
 		rqLiteConfig.RaftNonVoter = true
 		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Output:    "https://example.com/cdc",
+				ServiceID: "configured-source",
+			},
 			Persistence: config.Persistence{
-				CDC:    "https://example.com/cdc",
 				RqLite: rqLiteConfig,
 			},
 		})
@@ -89,15 +74,22 @@ func TestControllerCDCConfiguration(t *testing.T) {
 		})
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
-		assert.Empty(t, controller.persistenceConfig.RqLite.CDCConfig)
+		assert.Empty(t, controller.cdcOutput)
+		assert.Empty(t, controller.cdcServiceID)
 	})
 
-	t.Run("rejects enabled cdc without config", func(t *testing.T) {
+	t.Run("rejects enabled cdc on a non-voting node", func(t *testing.T) {
 		tStore := newCDCControllerTestStore()
 		clientMgr := client.NewClientManager(tStore)
+		rqLiteConfig := newCDCControllerRqLiteConfig(t, tStore)
+		rqLiteConfig.RaftNonVoter = true
 		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  "https://example.com/cdc",
+			},
 			Persistence: config.Persistence{
-				CDCEnabled: true,
+				RqLite: rqLiteConfig,
 			},
 		})
 		require.NoError(t, err)
@@ -106,7 +98,108 @@ func TestControllerCDCConfiguration(t *testing.T) {
 		})
 
 		err = controller.Start(tStore, clientMgr)
-		require.EqualError(t, err, "failed to start controller, persistence config validation failed: CDC configuration is required when CDC is enabled")
+		require.EqualError(t, err, "failed to start controller, rqLite config validation failed: CDC cannot be enabled on non-voting nodes")
+		assert.False(t, controller.handleClusterChanges)
+	})
+
+	t.Run("rejects enabled cdc without output", func(t *testing.T) {
+		tStore := newCDCControllerTestStore()
+		clientMgr := client.NewClientManager(tStore)
+		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{Enabled: true},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, controller.Stop())
+		})
+
+		err = controller.Start(tStore, clientMgr)
+		require.EqualError(t, err, "failed to start controller, CDC output validation failed: CDC output is required when CDC is enabled")
+		assert.False(t, controller.handleClusterChanges)
+	})
+
+	t.Run("rejects a missing advanced cdc output file", func(t *testing.T) {
+		tStore := newCDCControllerTestStore()
+		clientMgr := client.NewClientManager(tStore)
+		cdcOutputPath := filepath.Join(t.TempDir(), "missing-cdc-output.json")
+		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  cdcOutputPath,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, controller.Stop())
+		})
+
+		err = controller.Start(tStore, clientMgr)
+		require.ErrorContains(t, err, "failed to start controller, CDC output validation failed: failed to load CDC output:")
+		require.ErrorContains(t, err, "missing-cdc-output.json")
+		assert.False(t, controller.handleClusterChanges)
+	})
+
+	t.Run("rejects malformed advanced cdc output", func(t *testing.T) {
+		tStore := newCDCControllerTestStore()
+		clientMgr := client.NewClientManager(tStore)
+		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":`)
+		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  cdcOutputPath,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, controller.Stop())
+		})
+
+		err = controller.Start(tStore, clientMgr)
+		require.ErrorContains(t, err, "failed to start controller, CDC output validation failed: failed to load CDC output:")
+		require.ErrorContains(t, err, "unexpected end of JSON input")
+		assert.False(t, controller.handleClusterChanges)
+	})
+
+	t.Run("rejects an unsupported cdc endpoint", func(t *testing.T) {
+		tStore := newCDCControllerTestStore()
+		clientMgr := client.NewClientManager(tStore)
+		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":"ftp://example.com/cdc"}`)
+		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  cdcOutputPath,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, controller.Stop())
+		})
+
+		err = controller.Start(tStore, clientMgr)
+		require.EqualError(t, err, `failed to start controller, CDC output validation failed: failed to validate CDC output endpoint: cdc: unsupported scheme "ftp"`)
+		assert.False(t, controller.handleClusterChanges)
+	})
+
+	t.Run("rejects invalid cdc output tls settings", func(t *testing.T) {
+		tStore := newCDCControllerTestStore()
+		clientMgr := client.NewClientManager(tStore)
+		missingCAPath := filepath.Join(t.TempDir(), "missing-ca.pem")
+		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":"https://example.com/cdc","tls":{"ca_cert_file":`+fmt.Sprintf("%q", missingCAPath)+`}}`)
+		controller, err := NewController(nil, config.Cluster{
+			CDC: config.CDC{
+				Enabled: true,
+				Output:  cdcOutputPath,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, controller.Stop())
+		})
+
+		err = controller.Start(tStore, clientMgr)
+		require.ErrorContains(t, err, "failed to start controller, CDC output validation failed: failed to build CDC output TLS settings:")
+		require.ErrorContains(t, err, "missing-ca.pem")
+		assert.False(t, controller.handleClusterChanges)
 	})
 }
 
@@ -128,4 +221,11 @@ func newCDCControllerRqLiteConfig(t *testing.T, tStore *ControllerTestStore) *co
 		RaftAddr: tStore.addr,
 		RaftAdv:  tStore.addr,
 	}
+}
+
+func writeCDCControllerOutput(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "cdc-output.json")
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+	return path
 }

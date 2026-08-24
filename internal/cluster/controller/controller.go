@@ -38,6 +38,8 @@ type Controller struct {
 	client                  *client.ClientManager
 	Config                  config.Cluster
 	persistenceConfig       config.Persistence
+	cdcOutput               string
+	cdcServiceID            string
 	mux                     *tcp.Mux
 	logger                  hclog.Logger
 	clusterChangesMu        sync.RWMutex
@@ -103,19 +105,25 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses)
 		persistenceConfig.RqLite = &defaultConfig
 	}
-	if err := persistenceConfig.Validate(); err != nil {
-		return fmt.Errorf("failed to start controller, persistence config validation failed: %w", err)
+	if err := c.Config.ValidateCDC(); err != nil {
+		return fmt.Errorf("failed to start controller, CDC output validation failed: %w", err)
 	}
-	if persistenceConfig.CDCEnabled {
-		persistenceConfig.RqLite.CDCConfig = persistenceConfig.CDC
-	} else {
-		persistenceConfig.RqLite.CDCConfig = ""
+	cdcOutput := ""
+	cdcServiceID := ""
+	if c.Config.CDC.Enabled {
+		cdcOutput = c.Config.CDC.Output
+		cdcServiceID = c.Config.CDC.ServiceID
 	}
 	err := persistenceConfig.RqLite.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to start controller, rqLite config validation failed: %w", err)
 	}
+	if cdcOutput != "" && persistenceConfig.RqLite.RaftNonVoter {
+		return errors.New("failed to start controller, rqLite config validation failed: CDC cannot be enabled on non-voting nodes")
+	}
 	c.persistenceConfig = persistenceConfig
+	c.cdcOutput = cdcOutput
+	c.cdcServiceID = cdcServiceID
 	c.clusterChangesMu.Lock()
 	c.handleClusterChanges = true
 	c.clusterChangesMu.Unlock()
@@ -297,7 +305,7 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	partitionConf.RqLite = &rqLiteConf
 	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionID)
 	partitionConf.RqLite.DataPath = filepath.Join(c.Config.Raft.Dir, fmt.Sprintf("partition-%d", partitionID))
-	partitionNode, err := partition.StartZenPartitionNode(c.lifecycleCtx, c.mux, partitionConf, c.client, partitionID, partition.PartitionChangesCallbacks{
+	partitionNode, err := partition.StartZenPartitionNode(c.lifecycleCtx, c.mux, partitionConf, c.cdcOutput, c.cdcServiceID, c.client, partitionID, partition.PartitionChangesCallbacks{
 		AddNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionID)
 		},

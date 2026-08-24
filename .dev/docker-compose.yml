@@ -1,0 +1,39 @@
+name: zenbpm-local
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    container_name: zenbpm-local-db-v18
+    environment:
+      POSTGRES_DB: zenbpm_cdc
+      POSTGRES_USER: zenbpm
+      POSTGRES_PASSWORD: zenbpm
+    ports:
+      - "127.0.0.1:5445:5432"
+    volumes:
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/001-reporting.sql:ro
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zenbpm -d zenbpm_cdc"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  redpanda-connect:
+    image: docker.redpanda.com/redpandadata/connect:4.103.2
+    container_name: zenbpm-local-redpandadata-connect-v4
+    entrypoint: ["/redpanda-connect"]
+    command: ["-c", "/etc/redpanda-connect/redpanda-connect.yaml"]
+    environment:
+      POSTGRES_DSN: postgres://zenbpm:zenbpm@postgres:5432/zenbpm_cdc?sslmode=disable
+    ports:
+      - "127.0.0.1:4195:4195"
+    volumes:
+      - ./redpanda-connect.yaml:/etc/redpanda-connect/redpanda-connect.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped

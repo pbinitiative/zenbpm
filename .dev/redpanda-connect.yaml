@@ -1,0 +1,97 @@
+http:
+  enabled: true
+  address: 0.0.0.0:4195
+  debug_endpoints: false
+
+logger:
+  level: INFO
+  format: json
+  add_timestamp: true
+  static_fields:
+    service: redpanda-connect
+
+error_handling:
+  strict: true
+
+input:
+  http_server:
+    path: /cdc
+    allowed_verbs:
+      - POST
+    # Keep this above rqlite's default 5s transmit timeout.
+    timeout: 10s
+    sync_response:
+      status: "200"
+      headers:
+        Content-Type: application/json
+
+pipeline:
+  processors:
+    - mapping: |
+        let service_id = this.service_id
+        let node_id = this.node_id
+
+        root = this.payload.map_each(payload_item -> payload_item.events.enumerated().map_each(event_item -> {
+            "service_id": $service_id,
+            "node_id": $node_id,
+            "raft_index": payload_item.index,
+            "commit_timestamp_ms": payload_item.commit_timestamp,
+            "event_position": event_item.index,
+            "operation": event_item.value.op,
+            "table_name": event_item.value.table,
+            "old_row_id": event_item.value.old_row_id,
+            "new_row_id": event_item.value.new_row_id,
+            "before": event_item.value.before,
+            "after": event_item.value.after,
+            "error": event_item.value.error,
+            "event": event_item.value
+          })
+        ).flatten()
+    - unarchive:
+        format: json_array
+    - mapping: |
+        root = if this.operation == "DELETE" {
+          deleted()
+        } else {
+          this
+        }
+
+output:
+  sql_raw:
+    driver: postgres
+    dsn: ${POSTGRES_DSN}
+    query: |
+      SELECT reporting.apply_cdc_event(
+        $1,
+        $2,
+        $3::numeric,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10::jsonb,
+        $11::jsonb,
+        NULLIF($12::text, ''),
+        $13::jsonb
+      );
+    args_mapping: |
+      root = [
+        this.service_id,
+        this.node_id,
+        this.raft_index,
+        this.commit_timestamp_ms,
+        this.event_position,
+        this.operation,
+        this.table_name,
+        this.old_row_id,
+        this.new_row_id,
+        if this.before == null { null } else { this.before.string() },
+        if this.after == null { null } else { this.after.string() },
+        this.error.or("").string(),
+        this.event.string()
+      ]
+    max_in_flight: 1
+
+shutdown_timeout: 30s

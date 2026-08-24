@@ -9,37 +9,43 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestCDCConfiguration(t *testing.T) {
-	t.Run("loads enabled cdc from yaml", func(t *testing.T) {
+func TestCDCOutput(t *testing.T) {
+	t.Run("loads enabled cdc settings from yaml", func(t *testing.T) {
 		var cfg Config
 		err := yaml.Unmarshal([]byte(`
 cluster:
-  persistence:
-    cdcEnabled: true
-    cdc: /etc/zenbpm/cdc.json
+  cdc:
+    enabled: true
+    output: https://example.com/cdc
+    serviceId: source-a
 `), &cfg)
 
 		require.NoError(t, err)
-		require.True(t, cfg.Cluster.Persistence.CDCEnabled)
-		require.Equal(t, "/etc/zenbpm/cdc.json", cfg.Cluster.Persistence.CDC)
+		require.True(t, cfg.Cluster.CDC.Enabled)
+		require.Equal(t, "https://example.com/cdc", cfg.Cluster.CDC.Output)
+		require.Equal(t, "source-a", cfg.Cluster.CDC.ServiceID)
 	})
 
-	t.Run("loads enabled cdc from environment", func(t *testing.T) {
+	t.Run("loads enabled cdc settings from environment", func(t *testing.T) {
 		t.Setenv("RQLITE_CDC_ENABLED", "true")
-		t.Setenv("RQLITE_CDC_CONFIG", "https://example.com/cdc")
+		t.Setenv("RQLITE_CDC_OUTPUT", "https://example.com/cdc")
+		t.Setenv("RQLITE_CDC_SERVICE_ID", "source-b")
 
 		var cfg Config
 		require.NoError(t, cleanenv.ReadEnv(&cfg))
-		require.True(t, cfg.Cluster.Persistence.CDCEnabled)
-		require.Equal(t, "https://example.com/cdc", cfg.Cluster.Persistence.CDC)
+		require.True(t, cfg.Cluster.CDC.Enabled)
+		require.Equal(t, "https://example.com/cdc", cfg.Cluster.CDC.Output)
+		require.Equal(t, "source-b", cfg.Cluster.CDC.ServiceID)
 	})
 
-	t.Run("disables cdc by default", func(t *testing.T) {
-		unsetCDCEnabledEnv(t)
+	t.Run("applies cdc defaults", func(t *testing.T) {
+		unsetEnv(t, "RQLITE_CDC_ENABLED")
+		unsetEnv(t, "RQLITE_CDC_SERVICE_ID")
 
 		var cfg Config
 		require.NoError(t, cleanenv.ReadEnv(&cfg))
-		require.False(t, cfg.Cluster.Persistence.CDCEnabled)
+		require.False(t, cfg.Cluster.CDC.Enabled)
+		require.Equal(t, "zenbpm", cfg.Cluster.CDC.ServiceID)
 	})
 
 	t.Run("environment can disable yaml cdc", func(t *testing.T) {
@@ -47,31 +53,31 @@ cluster:
 		var cfg Config
 		require.NoError(t, yaml.Unmarshal([]byte(`
 cluster:
-  persistence:
-    cdcEnabled: true
-    cdc: /etc/zenbpm/cdc.json
+  cdc:
+    enabled: true
+    output: https://example.com/cdc
 `), &cfg))
 
 		require.NoError(t, cleanenv.ReadEnv(&cfg))
-		require.False(t, cfg.Cluster.Persistence.CDCEnabled)
+		require.False(t, cfg.Cluster.CDC.Enabled)
 	})
 
-	t.Run("rejects enabled cdc without configuration", func(t *testing.T) {
-		err := (Persistence{CDCEnabled: true}).Validate()
+	t.Run("rejects enabled cdc without output", func(t *testing.T) {
+		err := (Cluster{CDC: CDC{Enabled: true}}).ValidateCDC()
 
-		require.EqualError(t, err, "CDC configuration is required when CDC is enabled")
+		require.EqualError(t, err, "CDC output is required when CDC is enabled")
 	})
 }
 
-func unsetCDCEnabledEnv(t *testing.T) {
+func unsetEnv(t *testing.T, name string) {
 	t.Helper()
-	value, wasSet := os.LookupEnv("RQLITE_CDC_ENABLED")
-	require.NoError(t, os.Unsetenv("RQLITE_CDC_ENABLED"))
+	value, wasSet := os.LookupEnv(name)
+	require.NoError(t, os.Unsetenv(name))
 	t.Cleanup(func() {
 		if wasSet {
-			require.NoError(t, os.Setenv("RQLITE_CDC_ENABLED", value))
+			require.NoError(t, os.Setenv(name, value))
 			return
 		}
-		require.NoError(t, os.Unsetenv("RQLITE_CDC_ENABLED"))
+		require.NoError(t, os.Unsetenv(name))
 	})
 }

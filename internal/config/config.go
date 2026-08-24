@@ -12,6 +12,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/rqlite/rqlite/v10/cdc"
 )
 
 // TODO: add support for discovery modes
@@ -39,10 +40,49 @@ type Cluster struct {
 	// inter communication advertise address. If not set, same as internal communication bind address
 	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV" env-default:"localhost:8090"`
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
+	CDC         CDC         `yaml:"cdc" json:"cdc"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 	Script      Script      `yaml:"script" json:"script"`
 	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
+}
+
+type CDC struct {
+	Enabled   bool   `yaml:"enabled" json:"enabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
+	Output    string `yaml:"output" json:"output" env:"RQLITE_CDC_OUTPUT"`
+	ServiceID string `yaml:"serviceId" json:"serviceId" env:"RQLITE_CDC_SERVICE_ID" env-default:"zenbpm"`
+}
+
+func (c Cluster) ValidateCDC() error {
+	if !c.CDC.Enabled {
+		return nil
+	}
+
+	cdcOutput := c.CDC.Output
+	if cdcOutput == "" {
+		return errors.New("CDC output is required when CDC is enabled")
+	}
+
+	cdcConfig, err := cdc.NewConfig(cdcOutput)
+	if err != nil {
+		return fmt.Errorf("failed to load CDC output: %w", err)
+	}
+	tlsConfig, err := cdcConfig.TLSConfig()
+	if err != nil {
+		return fmt.Errorf("failed to build CDC output TLS settings: %w", err)
+	}
+	// NewSink performs the same endpoint check as cdc.NewService. Constructing
+	// and closing it does not issue a network request.
+	sink, err := cdc.NewSink(cdc.SinkConfig{
+		Endpoint:        cdcConfig.Endpoint,
+		TLSConfig:       tlsConfig,
+		TransmitTimeout: cdcConfig.TransmitTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to validate CDC output endpoint: %w", err)
+	}
+	_ = sink.Close()
+	return nil
 }
 
 type ClusterRaft struct {
@@ -109,17 +149,8 @@ type Persistence struct {
 	ProcDefCacheSize   int       `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
 	DecDefCacheTTL     types.TTL `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
 	DecDefCacheSize    int       `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
-	CDCEnabled         bool      `yaml:"cdcEnabled" json:"cdcEnabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
-	CDC                string    `yaml:"cdc" json:"cdc" env:"RQLITE_CDC_CONFIG"`
 	RqLite             *RqLite   `yaml:"rqlite" json:"rqlite"`
 	Migration          Migration `yaml:"migration" json:"migration"`
-}
-
-func (c Persistence) Validate() error {
-	if !c.CDCEnabled || c.CDC != "" || (c.RqLite != nil && c.RqLite.CDCConfig != "") {
-		return nil
-	}
-	return errors.New("CDC configuration is required when CDC is enabled")
 }
 
 type Migration struct {
@@ -149,7 +180,7 @@ func (c *Config) validate() error {
 	if c.HttpServer.MaxRequestBodyBytes <= 0 {
 		return fmt.Errorf("httpServer.maxRequestBodyBytes must be greater than zero, got %d", c.HttpServer.MaxRequestBodyBytes)
 	}
-	if err := c.Cluster.Persistence.Validate(); err != nil {
+	if err := c.Cluster.ValidateCDC(); err != nil {
 		return err
 	}
 	if c.Cluster.NodeId == "" {

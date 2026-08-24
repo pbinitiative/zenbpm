@@ -30,10 +30,6 @@ type RqLite struct {
 	// AutoRestoreFile is the path to the auto-restore file. May not be set.
 	AutoRestoreFile string `filepath:"true" yaml:"autoRestoreFile" json:"autoRestoreFile" env:"RQLITE_AUTO_RESTORE_FILE"`
 
-	// CDCConfig is an HTTP endpoint, "stdout", or the path to a rqlite CDC
-	// configuration file. If empty, CDC is disabled.
-	CDCConfig string `yaml:"cdcConfig" json:"cdcConfig" env:"RQLITE_CDC_CONFIG"`
-
 	// HTTPx509CACert is the path to the CA certificate file for when this node verifies
 	// other certificates for any HTTP communications. May not be set.
 	HTTPx509CACert string `filepath:"true" yaml:"httpx509CACert" json:"httpx509CACert" env:"RQLITE_HTTP_X509_CA_CERT"`
@@ -231,10 +227,6 @@ func (c *RqLite) Validate() error {
 	if c.BootstrapExpect > 0 && c.RaftNonVoter {
 		return errors.New("bootstrapping only applicable to voting nodes")
 	}
-	if c.CDCConfig != "" && c.RaftNonVoter {
-		return errors.New("CDC cannot be enabled on non-voting nodes")
-	}
-
 	// Join parameters OK?
 	if c.JoinAddrs != "" {
 		addrs := strings.Split(c.JoinAddrs, ",")

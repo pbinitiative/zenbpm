@@ -1,5 +1,6 @@
 ---
 sidebar_position: 1
+sidebar_label: Introduction
 ---
 
 # ZenBPM - Go BPMN Engine
@@ -34,7 +35,7 @@ Business Process Model and Notation (BPMN) is a graphical representation for spe
 - **Persistence**: Durable state storage using rqlite
 - **Observability**: Integrated with OpenTelemetry for tracing and metrics
 
-## Getting Started
+## Running ZenBPM
 
 ### Installation
 

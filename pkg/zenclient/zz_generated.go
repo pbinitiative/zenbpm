@@ -994,10 +994,11 @@ type PageMetadata struct {
 
 // PartitionDecisionInstances defines model for PartitionDecisionInstances.
 type PartitionDecisionInstances struct {
-	// Count Total decision instances in this partition
-	Count     *int                      `json:"count,omitempty"`
 	Items     []DecisionInstanceSummary `json:"items"`
 	Partition int                       `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionElementStatistics defines model for PartitionElementStatistics.
@@ -1011,18 +1012,27 @@ type PartitionElementStatistics struct {
 type PartitionJobs struct {
 	Items     []Job `json:"items"`
 	Partition int   `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionProcessDefinitionStatistics defines model for PartitionProcessDefinitionStatistics.
 type PartitionProcessDefinitionStatistics struct {
 	Items     []ProcessDefinitionStatistics `json:"items"`
 	Partition int                           `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
 	Items     []ProcessInstancesSimple `json:"items"`
 	Partition int                      `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionedPageMetadata defines model for PartitionedPageMetadata.

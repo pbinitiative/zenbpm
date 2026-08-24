@@ -517,9 +517,9 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		decisionInstancesPage.Partitions[i] = public.PartitionDecisionInstances{
-			Items:     make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
-			Partition: int(partitionInstances.GetPartitionId()),
-			Count:     new(len(partitionInstances.GetDecisionInstances())),
+			Items:      make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
+			Partition:  int(partitionInstances.GetPartitionId()),
+			TotalCount: int(partitionInstances.GetTotalCount()),
 		}
 		count += len(partitionInstances.GetDecisionInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
@@ -965,8 +965,9 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 			}
 		}
 		partitions[i] = public.PartitionProcessDefinitionStatistics{
-			Items:     items,
-			Partition: int(partition.GetPartitionId()),
+			Items:      items,
+			Partition:  int(partition.GetPartitionId()),
+			TotalCount: int(partition.GetTotalCount()),
 		}
 		count += len(partition.Statistics)
 		totalCount += int(partition.GetTotalCount())
@@ -1195,8 +1196,9 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
-			Items:     make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
-			Partition: int(partitionInstances.GetPartitionId()),
+			Items:      make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
+			Partition:  int(partitionInstances.GetPartitionId()),
+			TotalCount: int(partitionInstances.GetTotalCount()),
 		}
 		count += len(partitionInstances.GetInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
@@ -1366,8 +1368,9 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
-			Items:     make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
-			Partition: int(partitionInstances.GetPartitionId()),
+			Items:      make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
+			Partition:  int(partitionInstances.GetPartitionId()),
+			TotalCount: int(partitionInstances.GetTotalCount()),
 		}
 		count += len(partitionInstances.GetInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
@@ -1863,11 +1866,12 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	totalCount := int32(0)
 	for i, partitionJobs := range jobs {
 		jobsPage.Partitions[i] = public.PartitionJobs{
-			Items:     make([]public.Job, len(partitionJobs.GetJobs())),
-			Partition: int(partitionJobs.GetPartitionId()),
+			Items:      make([]public.Job, len(partitionJobs.GetJobs())),
+			Partition:  int(partitionJobs.GetPartitionId()),
+			TotalCount: int(partitionJobs.GetTotalCount()),
 		}
 		count += len(partitionJobs.GetJobs())
-		totalCount += *partitionJobs.TotalCount
+		totalCount += partitionJobs.GetTotalCount()
 		for k, job := range partitionJobs.GetJobs() {
 			mappedJob, err := s.mapProtoJob(job)
 			if err != nil {

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestRestApiJob drives a Service Task through the public REST API (list, complete, get) and asserts the persisted BPMN ElementType is returned on each job representation.
 func TestRestApiJob(t *testing.T) {
 	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
@@ -37,6 +38,7 @@ func TestRestApiJob(t *testing.T) {
 		assert.NotEmpty(t, jobToComplete.Key)
 		assert.NotEmpty(t, jobToComplete.ProcessInstanceKey)
 		assert.Equal(t, zenclient.JobStateActive, jobToComplete.State)
+		assert.Equal(t, "SERVICE_TASK", jobToComplete.ElementType)
 
 		jobsProcessInstance, err = getProcessInstance(t, jobToComplete.ProcessInstanceKey)
 		assert.NoError(t, err)
@@ -111,6 +113,7 @@ func TestRestApiJob(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 200, job.StatusCode())
 		assert.Equal(t, jobKey, job.JSON200.Key)
+		assert.Equal(t, "SERVICE_TASK", job.JSON200.ElementType)
 	})
 
 }

@@ -842,6 +842,7 @@ func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisio
 	}, nil
 }
 
+// GetProcessInstanceJobs returns a paginated set of jobs belonging to the requested process instance.
 func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProcessInstanceJobsRequest) (*proto.GetProcessInstanceJobsResponse, error) {
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
@@ -878,6 +879,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			ElementId:          &job.ElementID,
 			ProcessInstanceKey: &job.ProcessInstanceKey,
 			Type:               &job.Type,
+			ElementType:        &job.ElementType,
 			State:              new(job.State),
 			CreatedAt:          &job.CreatedAt,
 			InputVariables:     []byte(job.InputVariables),
@@ -962,6 +964,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 	}, nil
 }
 
+// GetJobs returns a paginated set of jobs across the requested partitions, filtered by the request criteria.
 func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto.GetJobsResponse, error) {
 	resp := make([]*proto.PartitionedJobs, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
@@ -1007,6 +1010,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				ElementId:          new(job.ElementID),
 				ElementInstanceKey: new(job.ElementInstanceKey),
 				Type:               new(job.Type),
+				ElementType:        new(job.ElementType),
 				CreatedAt:          new(job.CreatedAt),
 				State:              new(job.State),
 				Assignee:           a,
@@ -1026,6 +1030,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 	}, nil
 }
 
+// GetJob returns a single job by its key.
 func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
 	partitionId := zenflake.GetPartitionId(req.GetJobKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
@@ -1062,6 +1067,7 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 			ElementId:          &job.ElementID,
 			ProcessInstanceKey: &job.ProcessInstanceKey,
 			Type:               &job.Type,
+			ElementType:        &job.ElementType,
 			State:              &job.State,
 			CreatedAt:          &job.CreatedAt,
 			Assignee:           assignee,

@@ -66,6 +66,7 @@ type Job struct {
 	State          int64
 	ElementID      string
 	CreatedAt      int64
+	ElementType    string
 	ClientID       ClientID
 }
 

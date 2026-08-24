@@ -94,6 +94,7 @@ type Job struct {
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
 	OutputVariables    sql.NullString `json:"output_variables"`
+	ElementType        string         `json:"element_type"`
 }
 
 type MessageSubscription struct {

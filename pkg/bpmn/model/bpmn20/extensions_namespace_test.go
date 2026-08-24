@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -215,4 +216,39 @@ func TestUnmarshalZenbpmExtensions_MultiInstanceLoopCharacteristics(t *testing.T
 	assert.Equal(t, "approver", mi.LoopCharacteristics.InputElementName)
 	assert.Equal(t, "results", mi.LoopCharacteristics.OutputCollectionName)
 	assert.Equal(t, "=approver", mi.LoopCharacteristics.OutputElementExpression)
+}
+
+// TestUnmarshalZenbpmExtensions_UserTaskTaskDefinition verifies that a User
+// Task exposes its configured job type through GetTaskType, falling back to
+// the default "user-task-type" when zenbpm:taskDefinition is missing or has
+// an empty type attribute. Whitespace-only types are preserved as configured.
+func TestUnmarshalZenbpmExtensions_UserTaskTaskDefinition(t *testing.T) {
+	tests := []struct {
+		name      string
+		extension string
+		wantType  string
+	}{
+		{name: "configured", extension: `<zenbpm:taskDefinition type="approval" />`, wantType: "approval"},
+		{name: "missing", extension: ``, wantType: "user-task-type"},
+		{name: "empty", extension: `<zenbpm:taskDefinition type="" />`, wantType: "user-task-type"},
+		{name: "whitespace is configured", extension: `<zenbpm:taskDefinition type=" " />`, wantType: " "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="` + zenbpmNS + `">
+  <bpmn:process id="process" isExecutable="true">
+    <bpmn:userTask id="approve">
+      <bpmn:extensionElements>` + tt.extension + `</bpmn:extensionElements>
+    </bpmn:userTask>
+  </bpmn:process>
+</bpmn:definitions>`
+
+			var definitions TDefinitions
+			require.NoError(t, xml.Unmarshal([]byte(source), &definitions))
+			require.Len(t, definitions.Process.UserTasks, 1)
+			assert.Equal(t, tt.wantType, definitions.Process.UserTasks[0].GetTaskType())
+		})
+	}
 }

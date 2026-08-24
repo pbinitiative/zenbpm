@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     key BIGINT PRIMARY KEY,
     element_instance_key BIGINT NOT NULL,
     element_id TEXT NOT NULL,
+    element_type TEXT NOT NULL DEFAULT '',
     process_instance_key BIGINT NOT NULL,
     type TEXT NOT NULL,
     state BIGINT NOT NULL,

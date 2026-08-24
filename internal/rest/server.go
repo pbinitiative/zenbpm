@@ -1960,6 +1960,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 	return public.Job{
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
+		ElementType:        job.GetElementType(),
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
 		ElementInstanceKey: job.GetElementInstanceKey(),

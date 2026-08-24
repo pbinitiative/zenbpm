@@ -28,6 +28,7 @@ func (engine *Engine) createInternalTask(
 	}
 	job := runtime.Job{
 		ElementId:          currentToken.ElementId,
+		ElementType:        string(element.GetType()),
 		ElementInstanceKey: currentToken.ElementInstanceKey,
 		ProcessInstanceKey: currentToken.ProcessInstanceKey,
 		Key:                engine.generateKey(),

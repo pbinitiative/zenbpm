@@ -1621,6 +1621,7 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer
 
 var _ storage.JobStorageReader = &DB{}
 
+// GetJobsInStateByTokenKey returns the jobs attached to an execution token whose state is in the supplied set.
 func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
 	int64States := make([]int64, len(states))
 	for _, s := range states {
@@ -1654,6 +1655,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
+			ElementType:        job.ElementType,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
 			Key:                job.Key,
@@ -1690,6 +1692,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 	return res, nil
 }
 
+// FindActiveJobsByType returns all jobs in an active state whose worker-routing Type matches jobType.
 func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	jobs, err := rq.Queries.FindActiveJobsByType(ctx, jobType)
 	if err != nil {
@@ -1716,6 +1719,7 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
+			ElementType:        job.ElementType,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
 			Type:               job.Type,
@@ -1753,6 +1757,7 @@ token:
 	return res, nil
 }
 
+// FindJobByJobKey returns the job identified by jobKey.
 func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
 	var res bpmnruntime.Job
 	job, err := rq.Queries.FindJobByJobKey(ctx, jobKey)
@@ -1790,6 +1795,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 	}
 	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
+		ElementType:        job.ElementType,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		Key:                job.Key,
@@ -1810,6 +1816,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 	return res, nil
 }
 
+// FindPendingProcessInstanceJobs returns the pending jobs owned by the given process instance.
 func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
 	dbJobs, err := rq.Queries.FindProcessInstanceJobsInState(ctx, sql.FindProcessInstanceJobsInStateParams{
 		ProcessInstanceKey: processInstanceKey,
@@ -1835,6 +1842,7 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
+			ElementType:        job.ElementType,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
 			Key:                job.Key,
@@ -1876,6 +1884,7 @@ func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, rq.Queries, job)
 }
 
+// SaveJobWith persists job using the supplied sql.Queries handle.
 func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
 	inputVariableBytes, err := json.Marshal(job.InputVariables)
 	if err != nil {
@@ -1895,6 +1904,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 	err = db.SaveJob(ctx, sql.SaveJobParams{
 		Key:                job.GetKey(),
 		ElementID:          job.ElementId,
+		ElementType:        job.ElementType,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		Type:               job.Type,

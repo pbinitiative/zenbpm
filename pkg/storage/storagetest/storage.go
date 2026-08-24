@@ -178,6 +178,7 @@ func getProcessInstance(r int64, d bpmnruntime.ProcessDefinition, jobs ...bpmnru
 func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job {
 	return bpmnruntime.Job{
 		ElementId:          fmt.Sprintf("job-%d", key),
+		ElementType:        "USER_TASK",
 		ElementInstanceKey: key + 200,
 		ProcessInstanceKey: piKey,
 		Key:                key,

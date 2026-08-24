@@ -292,6 +292,36 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	assert.Equal(t, 1, len(incidents))
 }
 
+// TestCustomUserTaskJobTypePreservesBPMNElementType asserts that a User Task configured with zenbpm:taskDefinition persists both the configured worker-routing Type and the BPMN ElementType ("USER_TASK") on the created Job.
+func TestCustomUserTaskJobTypePreservesBPMNElementType(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromBytes(t.Context(), []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="custom-user-task-job-type" isExecutable="true">
+    <bpmn:startEvent id="start">
+      <bpmn:outgoing>to-approval</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="to-approval" sourceRef="start" targetRef="approve" />
+    <bpmn:userTask id="approve">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="approval" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>to-approval</bpmn:incoming>
+    </bpmn:userTask>
+  </bpmn:process>
+</bpmn:definitions>`), engine.generateKey())
+	require.NoError(t, err)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, "approval", jobs[0].Type)
+	assert.Equal(t, "USER_TASK", jobs[0].ElementType)
+}
+
 func TestTaskTypeHandler(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()

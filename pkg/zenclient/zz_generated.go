@@ -892,6 +892,9 @@ type Job struct {
 	ElementId          string    `json:"elementId"`
 	ElementInstanceKey int64     `json:"elementInstanceKey"`
 
+	// ElementType BPMN element type that created the job
+	ElementType string `json:"elementType"`
+
 	// InputVariables Variables provided to the job at creation/activation time (from BPMN input mappings)
 	InputVariables map[string]interface{} `json:"inputVariables"`
 	Key            int64                  `json:"key"`
@@ -903,7 +906,9 @@ type Job struct {
 	// Retries Remaining retries
 	Retries *int     `json:"retries,omitempty"`
 	State   JobState `json:"state"`
-	Type    string   `json:"type"`
+
+	// Type Configurable worker-routing type
+	Type string `json:"type"`
 }
 
 // JobPage defines model for JobPage.

@@ -2,6 +2,7 @@ package sql
 
 import (
 	databaseSQL "database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,12 +53,16 @@ func TestReportingSchemaParity(t *testing.T) {
 	})
 }
 
-func migratedSQLiteSchema() (map[string]reportingSchemaTable, error) {
+func migratedSQLiteSchema() (_ map[string]reportingSchemaTable, resultErr error) {
 	db, err := databaseSQL.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, fmt.Errorf("open in-memory SQLite database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close in-memory SQLite database: %w", err))
+		}
+	}()
 	db.SetMaxOpenConns(1)
 
 	migrations, err := GetUpMigrations(DefaultMigrationsDir)
@@ -85,8 +90,11 @@ func migratedSQLiteSchema() (map[string]reportingSchemaTable, error) {
 	for rows.Next() {
 		var tableName string
 		if err := rows.Scan(&tableName); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("scan runtime table name: %w", err)
+			scanErr := fmt.Errorf("scan runtime table name: %w", err)
+			if closeErr := rows.Close(); closeErr != nil {
+				scanErr = errors.Join(scanErr, fmt.Errorf("close runtime table rows after scan failure: %w", closeErr))
+			}
+			return nil, scanErr
 		}
 		tableNames = append(tableNames, tableName)
 	}
@@ -108,13 +116,17 @@ func migratedSQLiteSchema() (map[string]reportingSchemaTable, error) {
 	return schema, nil
 }
 
-func sqliteTableColumns(db *databaseSQL.DB, tableName string) (reportingSchemaTable, error) {
+func sqliteTableColumns(db *databaseSQL.DB, tableName string) (_ reportingSchemaTable, resultErr error) {
 	quotedTableName := `"` + strings.ReplaceAll(tableName, `"`, `""`) + `"`
 	rows, err := db.Query("PRAGMA table_info(" + quotedTableName + ")")
 	if err != nil {
 		return nil, fmt.Errorf("inspect SQLite table %s: %w", tableName, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close SQLite column rows for table %s: %w", tableName, err))
+		}
+	}()
 
 	columns := reportingSchemaTable{}
 	for rows.Next() {

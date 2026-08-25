@@ -50,7 +50,11 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 		}))
 		defer receiver.Close()
 
-		partition, server := prepareCDCPartitionTestSetup(t, receiver.URL, "configured-source")
+		partition, server := prepareCDCPartitionTestSetup(t, config.CDC{
+			Enabled:   true,
+			Output:    receiver.URL,
+			ServiceID: "configured-source",
+		})
 		defer func() {
 			require.NoError(t, partition.Stop())
 			require.NoError(t, server.Close())
@@ -66,8 +70,6 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 		received := make(chan cdcjson.CDCMessagesEnvelope, 1)
 		receiverErrors := make(chan error, 1)
 		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer r.Body.Close()
-
 			var envelope cdcjson.CDCMessagesEnvelope
 			if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
 				select {
@@ -92,7 +94,11 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 		)
 		require.NoError(t, os.WriteFile(cdcOutputPath, []byte(cdcOutput), 0o600))
 
-		partition, server := prepareCDCPartitionTestSetup(t, cdcOutputPath, "configured-source")
+		partition, server := prepareCDCPartitionTestSetup(t, config.CDC{
+			Enabled:   true,
+			Output:    cdcOutputPath,
+			ServiceID: "configured-source",
+		})
 		defer func() {
 			require.NoError(t, partition.Stop())
 			require.NoError(t, server.Close())
@@ -128,7 +134,7 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 	})
 }
 
-func prepareCDCPartitionTestSetup(t *testing.T, cdcOutput string, cdcServiceID string) (*ZenPartitionNode, *servertest.TestServer) {
+func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenPartitionNode, *servertest.TestServer) {
 	t.Helper()
 	ctx := context.Background()
 	mux, muxListener, err := network.NewNodeMux("")
@@ -167,12 +173,11 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcOutput string, cdcServiceID s
 	}
 	clientManager := client.NewClientManager(tStore)
 
-	partition, err := startZenPartitionNodeWithCDCOutput(
+	partition, err := startZenPartitionNodeWithCDCConfig(
 		ctx,
 		mux,
 		persistenceConfig,
-		cdcOutput,
-		cdcServiceID,
+		cdcConfig,
 		clientManager,
 		1,
 		PartitionChangesCallbacks{},

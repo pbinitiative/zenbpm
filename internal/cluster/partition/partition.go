@@ -164,15 +164,15 @@ const (
 	partitionMeter string = "partition"
 )
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, cdcOutput string, cdcServiceID string, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
-	return startZenPartitionNodeWithCDCOutput(ctx, mux, persistenceConfig, cdcOutput, cdcServiceID, client, partition, callbacks, zenState, defaultDBOptions())
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, cdcConfig config.CDC, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
+	return startZenPartitionNodeWithCDCConfig(ctx, mux, persistenceConfig, cdcConfig, client, partition, callbacks, zenState, defaultDBOptions())
 }
 
 func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (_ *ZenPartitionNode, err error) {
-	return startZenPartitionNodeWithCDCOutput(ctx, mux, persistenceConfig, "", "", client, partition, callbacks, zenState, dbOpts)
+	return startZenPartitionNodeWithCDCConfig(ctx, mux, persistenceConfig, config.CDC{}, client, partition, callbacks, zenState, dbOpts)
 }
 
-func startZenPartitionNodeWithCDCOutput(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, cdcOutput string, cdcServiceID string, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (_ *ZenPartitionNode, err error) {
+func startZenPartitionNodeWithCDCConfig(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, cdcConfig config.CDC, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (_ *ZenPartitionNode, err error) {
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
@@ -273,8 +273,8 @@ func startZenPartitionNodeWithCDCOutput(ctx context.Context, mux *tcp.Mux, persi
 	}
 	zpn.clusterClient = clstrClient
 
-	if cdcOutput != "" {
-		cdcService, err := zpn.createCDCService(cfg, cdcOutput, cdcServiceID, str, clstrServ, clstrClient, partition)
+	if cdcConfig.Output != "" {
+		cdcService, err := zpn.createCDCService(cfg, cdcConfig, str, clstrServ, clstrClient, partition)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CDC service: %w", err)
 		}
@@ -455,19 +455,18 @@ func (zpn *ZenPartitionNode) stop() error {
 
 func (zpn *ZenPartitionNode) createCDCService(
 	cfg *config.RqLite,
-	cdcOutput string,
-	cdcServiceID string,
+	cdcSettings config.CDC,
 	str *store.Store,
 	clstrServ *cluster.Service,
 	clstrClient *cluster.Client,
 	partition uint32,
 ) (*cdc.Service, error) {
-	cdcConfig, err := cdc.NewConfig(cdcOutput)
+	cdcConfig, err := cdc.NewConfig(cdcSettings.Output)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load CDC output: %w", err)
 	}
 
-	cdcConfig.ServiceID = partitionCDCServiceID(cdcConfig.ServiceID, cdcServiceID, partition)
+	cdcConfig.ServiceID = partitionCDCServiceID(cdcConfig.ServiceID, cdcSettings.ServiceID, partition)
 
 	cdcCluster := cdc.NewCDCCluster(str, clstrServ, clstrClient)
 	cdcService, err := cdc.NewService(cfg.NodeID, cfg.DataPath, cdcCluster, cdcConfig)

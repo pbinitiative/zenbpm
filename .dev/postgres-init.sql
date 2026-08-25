@@ -348,6 +348,9 @@ DECLARE
     v_affected_rows BIGINT;
     v_upsert_sql TEXT;
 BEGIN
+    -- Reporting intentionally retains historical rows after source cleanup.
+    -- Redpanda Connect filters DELETE events, and direct callers follow the
+    -- same contract without recording or applying them.
     IF UPPER(COALESCE(p_operation, '')) = 'DELETE' THEN
         RETURN FALSE;
     END IF;

@@ -49,6 +49,8 @@ pipeline:
         ).flatten()
     - unarchive:
         format: json_array
+    # Reporting intentionally retains historical rows after source cleanup.
+    # Acknowledge DELETE events without forwarding them to PostgreSQL.
     - mapping: |
         root = if this.operation == "DELETE" {
           deleted()

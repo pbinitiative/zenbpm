@@ -1,3 +1,4 @@
+// Package config defines and validates ZenBPM runtime configuration.
 package config
 
 import (
@@ -47,12 +48,14 @@ type Cluster struct {
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
 }
 
+// CDC configures the rqlite change data capture output.
 type CDC struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
 	Output    string `yaml:"output" json:"output" env:"RQLITE_CDC_OUTPUT"`
 	ServiceID string `yaml:"serviceId" json:"serviceId" env:"RQLITE_CDC_SERVICE_ID" env-default:"zenbpm"`
 }
 
+// ValidateCDC verifies that an enabled CDC output can be constructed.
 func (c Cluster) ValidateCDC() error {
 	if !c.CDC.Enabled {
 		return nil
@@ -81,7 +84,9 @@ func (c Cluster) ValidateCDC() error {
 	if err != nil {
 		return fmt.Errorf("failed to validate CDC output endpoint: %w", err)
 	}
-	_ = sink.Close()
+	if err := sink.Close(); err != nil {
+		return fmt.Errorf("failed to close CDC output sink: %w", err)
+	}
 	return nil
 }
 

@@ -31,8 +31,11 @@ func TestControllerCDCOutput(t *testing.T) {
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
 		require.NotNil(t, controller.persistenceConfig.RqLite)
-		assert.Equal(t, "https://example.com/cdc", controller.cdcOutput)
-		assert.Equal(t, "configured-source", controller.cdcServiceID)
+		assert.Equal(t, config.CDC{
+			Enabled:   true,
+			Output:    "https://example.com/cdc",
+			ServiceID: "configured-source",
+		}, controller.cdcConfig)
 	})
 
 	t.Run("accepts an advanced cdc output file", func(t *testing.T) {
@@ -51,7 +54,10 @@ func TestControllerCDCOutput(t *testing.T) {
 		})
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
-		assert.Equal(t, cdcOutputPath, controller.cdcOutput)
+		assert.Equal(t, config.CDC{
+			Enabled: true,
+			Output:  cdcOutputPath,
+		}, controller.cdcConfig)
 	})
 
 	t.Run("clears cdc output when disabled", func(t *testing.T) {
@@ -74,8 +80,7 @@ func TestControllerCDCOutput(t *testing.T) {
 		})
 
 		require.NoError(t, controller.Start(tStore, clientMgr))
-		assert.Empty(t, controller.cdcOutput)
-		assert.Empty(t, controller.cdcServiceID)
+		assert.Empty(t, controller.cdcConfig)
 	})
 
 	t.Run("rejects enabled cdc on a non-voting node", func(t *testing.T) {

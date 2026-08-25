@@ -1,0 +1,8 @@
+{
+  "label": "Getting Started",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Get up and running with the ZenBPM engine: start it, deploy and run your first BPMN process, then orchestrate a human task."
+  }
+}

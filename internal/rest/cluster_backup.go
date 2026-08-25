@@ -28,5 +28,8 @@ func (s *Server) handleClusterRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(report)
+	if err := json.NewEncoder(w).Encode(report); err != nil {
+		// the status line is already written; the client sees a truncated body
+		log.Error("failed to write cluster restore report: %v", err)
+	}
 }

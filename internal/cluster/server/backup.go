@@ -193,24 +193,25 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 
 	pr, pw := io.Pipe()
 	go func() {
+		// Close and CloseWithError on an io.PipeWriter always return nil.
 		for {
 			chunk, err := stream.Recv()
 			if err == io.EOF {
-				pw.Close()
+				_ = pw.Close()
 				return
 			}
 			if err != nil {
-				pw.CloseWithError(err)
+				_ = pw.CloseWithError(err)
 				return
 			}
 			if d := chunk.GetData(); len(d) > 0 {
 				if _, err := pw.Write(d); err != nil {
-					pw.CloseWithError(err)
+					_ = pw.CloseWithError(err)
 					return
 				}
 			}
 			if chunk.GetEof() {
-				pw.Close()
+				_ = pw.Close()
 				return
 			}
 		}

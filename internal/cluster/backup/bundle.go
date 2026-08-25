@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -82,7 +83,8 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 	defer func() {
 		for _, r := range results {
 			if r.path != "" {
-				os.Remove(r.path)
+				// best-effort cleanup; a leftover spool file is harmless
+				_ = os.Remove(r.path)
 			}
 		}
 	}()
@@ -98,7 +100,7 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 		FormatVersion:   ManifestFormatVersion,
 		ZenBPMVersion:   ZenBPMVersion(),
 		CreatedAtMillis: time.Now().UnixMilli(),
-		PartitionCount:  uint32(len(partitionIDs)),
+		PartitionCount:  uint32(len(partitionIDs)), // #nosec G115 -- partition counts are far below MaxUint32
 		Partitions:      make(map[uint32]PartitionMeta, len(partitionIDs)),
 	}
 
@@ -109,7 +111,8 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 		if err := writeSpoolEntry(tw, PartitionFileName(id), r.path, r.size); err != nil {
 			return nil, err
 		}
-		os.Remove(r.path)
+		// best-effort cleanup; a leftover spool file is harmless
+		_ = os.Remove(r.path)
 		// Mark as consumed so deferred cleanup skips it.
 		r.path = ""
 		results[id] = r
@@ -146,17 +149,17 @@ func spoolPartition(ctx context.Context, spoolDir string, id uint32, fetch Fetch
 	h := sha256.New()
 	res, err := fetch(ctx, id, io.MultiWriter(f, h))
 	if err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name()) // best-effort cleanup on the error path
 		return spoolResult{err: err}
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	if got != res.SHA256 {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name()) // best-effort cleanup on the error path
 		return spoolResult{err: fmt.Errorf("digest mismatch for partition %d: source declared %s, coordinator computed %s", id, res.SHA256, got)}
 	}
 	info, err := f.Stat()
 	if err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name()) // best-effort cleanup on the error path
 		return spoolResult{err: err}
 	}
 	return spoolResult{
@@ -176,7 +179,7 @@ func writeSpoolEntry(tw *tar.Writer, name, path string, size int64) error {
 	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: size}); err != nil {
 		return fmt.Errorf("failed to write tar header for %s: %w", name, err)
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is a spool file this process created via os.CreateTemp
 	if err != nil {
 		return fmt.Errorf("failed to reopen spool %s: %w", filepath.Base(path), err)
 	}
@@ -210,33 +213,38 @@ func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
 			break
 		}
 		if err != nil {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("failed to read bundle (truncated or corrupt tar): %w", err)
 		}
 		var id uint32
 		if hdr.Name == ManifestFileName {
 			if err := json.NewDecoder(tr).Decode(&b.Manifest); err != nil {
-				b.Close()
+				_ = b.Close()
 				return nil, fmt.Errorf("failed to parse manifest: %w", err)
 			}
 			manifestSeen = true
 			continue
 		}
 		if _, err := fmt.Sscanf(hdr.Name, "partition-%d.db.gz", &id); err != nil {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("unexpected bundle entry %q", hdr.Name)
 		}
 		f, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-p%d-*", id))
 		if err != nil {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("failed to create restore spool: %w", err)
 		}
 		h := sha256.New()
-		n, err := io.Copy(io.MultiWriter(f, h), tr)
-		f.Close()
+		// The stream is an operator-supplied backup of whole partition databases,
+		// spooled to disk (not memory) and size-checked against the manifest below,
+		// so its size is unbounded by design.
+		n, err := io.Copy(io.MultiWriter(f, h), tr) // #nosec G110
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
 		if err != nil {
-			os.Remove(f.Name())
-			b.Close()
+			_ = os.Remove(f.Name()) // best-effort cleanup on the error path
+			_ = b.Close()
 			return nil, fmt.Errorf("failed to spool %s: %w", hdr.Name, err)
 		}
 		b.files[id] = f.Name()
@@ -244,30 +252,30 @@ func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
 		sizes[id] = n
 	}
 	if !manifestSeen {
-		b.Close()
+		_ = b.Close()
 		return nil, fmt.Errorf("bundle has no %s (incomplete backup?)", ManifestFileName)
 	}
 	for id, meta := range b.Manifest.Partitions {
 		if _, ok := b.files[id]; !ok {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("bundle is missing file for partition %d", id)
 		}
 		if shas[id] != meta.SHA256 {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("checksum mismatch for partition %d: manifest %s, bundle %s", id, meta.SHA256, shas[id])
 		}
 		if sizes[id] != meta.SizeBytes {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("size mismatch for partition %d", id)
 		}
 		if err := verifySQLiteGzip(b.files[id]); err != nil {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("partition %d: %w", id, err)
 		}
 	}
 	for id := range b.files {
 		if _, ok := b.Manifest.Partitions[id]; !ok {
-			b.Close()
+			_ = b.Close()
 			return nil, fmt.Errorf("bundle contains partition %d not listed in manifest", id)
 		}
 	}
@@ -277,7 +285,7 @@ func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
 // verifySQLiteGzip opens the gzip file at path, checks the SQLite magic header,
 // and drains the stream so gzip verifies its CRC over the whole content.
 func verifySQLiteGzip(path string) error {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is a spool file this process created via os.CreateTemp
 	if err != nil {
 		return err
 	}
@@ -294,8 +302,10 @@ func verifySQLiteGzip(path string) error {
 	if string(head) != "SQLite format 3\x00" {
 		return fmt.Errorf("content is not a valid SQLite database")
 	}
-	// drain to let gzip verify its CRC over the whole stream
-	if _, err := io.Copy(io.Discard, zr); err != nil {
+	// Drain to let gzip verify its CRC over the whole stream. Output is
+	// discarded, so memory use stays constant; the input is a size-checked
+	// partition database spooled on local disk, unbounded by design.
+	if _, err := io.Copy(io.Discard, zr); err != nil { // #nosec G110
 		return fmt.Errorf("gzip stream corrupt: %w", err)
 	}
 	return nil
@@ -308,13 +318,16 @@ func (b *Bundle) PartitionFile(id uint32) (io.ReadCloser, error) {
 	if !ok {
 		return nil, fmt.Errorf("no file for partition %d", id)
 	}
-	return os.Open(path)
+	return os.Open(path) // #nosec G304 -- path is a spool file this process created via os.CreateTemp
 }
 
 // Close removes all spooled partition files.
 func (b *Bundle) Close() error {
+	var err error
 	for _, p := range b.files {
-		os.Remove(p)
+		if removeErr := os.Remove(p); removeErr != nil && !os.IsNotExist(removeErr) {
+			err = errors.Join(err, removeErr)
+		}
 	}
-	return nil
+	return err
 }

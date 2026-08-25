@@ -86,7 +86,7 @@ func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force
 		return nil, fmt.Errorf("invalid backup bundle: %w", err)
 	}
 	defer bundle.Close()
-	if err := bundle.Manifest.Validate(uint32(len(cs.Partitions)), deps.BinarySchemaVersion); err != nil {
+	if err := bundle.Manifest.Validate(uint32(len(cs.Partitions)), deps.BinarySchemaVersion); err != nil { // #nosec G115 -- partition counts are far below MaxUint32
 		return nil, fmt.Errorf("bundle cannot be restored into this cluster: %w", err)
 	}
 

@@ -184,6 +184,26 @@ groups:
           summary: "Goroutine count is growing on {{ $labels.instance }}"
           description: "Goroutines have grown by more than 500 in the last hour; possible goroutine leak."
 
+      # A-T11: CDC delivery backlog
+      # A healthy high-throughput receiver may leave the FIFO continuously
+      # non-empty, so backlog alone is not enough: alert only when delivery
+      # makes no high-watermark progress or the queue keeps growing.
+      - alert: RqliteCdcQueueBacklog
+        expr: |
+          rqlite_cdc_queue_length > 0
+            and
+          (
+            delta(rqlite_cdc_high_watermark[10m]) == 0
+              or
+            deriv(rqlite_cdc_queue_length[10m]) > 0
+          )
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "rqlite CDC delivery is stalled on partition {{ $labels.partition }}"
+          description: "Node {{ $labels.node_id }} has a non-empty CDC queue with no delivery progress or sustained growth. Check rqlite_cdc_endpoint_retries_total, receiver health and available disk space."
+
   # ──────────────────────────────────────────────────────────────────────
   # Business alerts
   # ──────────────────────────────────────────────────────────────────────

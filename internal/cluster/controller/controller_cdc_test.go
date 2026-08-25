@@ -41,7 +41,7 @@ func TestControllerCDCOutput(t *testing.T) {
 	t.Run("accepts an advanced cdc output file", func(t *testing.T) {
 		tStore := newCDCControllerTestStore()
 		clientMgr := client.NewClientManager(tStore)
-		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":"https://example.com/cdc","max_batch_size":25}`)
+		cdcOutputPath := writeCDCControllerOutput(t, `{"endpoint":"https://example.com/cdc","service_id":"advanced-source","max_batch_size":25}`)
 		controller, err := NewController(nil, config.Cluster{
 			CDC: config.CDC{
 				Enabled: true,
@@ -90,8 +90,9 @@ func TestControllerCDCOutput(t *testing.T) {
 		rqLiteConfig.RaftNonVoter = true
 		controller, err := NewController(nil, config.Cluster{
 			CDC: config.CDC{
-				Enabled: true,
-				Output:  "https://example.com/cdc",
+				Enabled:   true,
+				Output:    "https://example.com/cdc",
+				ServiceID: "configured-source",
 			},
 			Persistence: config.Persistence{
 				RqLite: rqLiteConfig,

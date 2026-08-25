@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -52,7 +53,21 @@ type Cluster struct {
 type CDC struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
 	Output    string `yaml:"output" json:"output" env:"RQLITE_CDC_OUTPUT"`
-	ServiceID string `yaml:"serviceId" json:"serviceId" env:"RQLITE_CDC_SERVICE_ID" env-default:"zenbpm"`
+	ServiceID string `yaml:"serviceId" json:"serviceId" env:"RQLITE_CDC_SERVICE_ID"`
+}
+
+// ResolveServiceID returns the effective base CDC service identifier. A service
+// identifier from an advanced rqlite output file takes precedence over the
+// identifier configured directly in ZenBPM.
+func (c CDC) ResolveServiceID(advancedServiceID string) (string, error) {
+	serviceID := advancedServiceID
+	if serviceID == "" {
+		serviceID = c.ServiceID
+	}
+	if strings.TrimSpace(serviceID) == "" {
+		return "", errors.New("CDC service ID is required when CDC is enabled")
+	}
+	return serviceID, nil
 }
 
 // ValidateCDC verifies that an enabled CDC output can be constructed.
@@ -86,6 +101,9 @@ func (c Cluster) ValidateCDC() error {
 	}
 	if err := sink.Close(); err != nil {
 		return fmt.Errorf("failed to close CDC output sink: %w", err)
+	}
+	if _, err := c.CDC.ResolveServiceID(cdcConfig.ServiceID); err != nil {
+		return err
 	}
 	return nil
 }

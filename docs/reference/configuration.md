@@ -86,7 +86,7 @@ Output settings for exporting RqLite changes from voting partition nodes.
 |-------------|--------|-------------------------|----------|--------------------------------------------------------------------|
 | `enabled`   | bool   | `RQLITE_CDC_ENABLED`    | `false`  | Enables RqLite CDC export                                          |
 | `output`    | string | `RQLITE_CDC_OUTPUT`     | —        | HTTP(S) endpoint, `stdout`, or advanced JSON output settings path  |
-| `serviceId` | string | `RQLITE_CDC_SERVICE_ID` | `zenbpm` | Base service identifier; ZenBPM appends the partition suffix       |
+| `serviceId` | string | `RQLITE_CDC_SERVICE_ID` | —        | Required base service identifier; ZenBPM appends the partition suffix |
 
 CDC is disabled by default. Enable it on every voting RqLite partition node:
 
@@ -111,6 +111,8 @@ CDC is disabled even if an output is present. When it is `true`, the output is
 passed to rqlite as an HTTP(S) endpoint, the special value `stdout`, or a path
 to an advanced JSON output settings file. Invalid files, endpoints, or TLS
 settings fail startup.
+CDC startup also fails unless a non-empty service identifier is configured
+through `serviceId`, `RQLITE_CDC_SERVICE_ID`, or an advanced output file.
 
 #### Initial data and replica consistency
 
@@ -152,9 +154,9 @@ existing state separately if it needs a complete projection.
 
 #### Stable service identifiers
 
-`cluster.cdc.serviceId` configures the base identifier for direct endpoint and
-`stdout` outputs. It defaults to `zenbpm`; ZenBPM appends `-partition-N`, so a
-base value of `orders-production-v1` emits
+`cluster.cdc.serviceId` configures the required base identifier for direct
+endpoint and `stdout` outputs. ZenBPM appends `-partition-N`, so a base value of
+`orders-production-v1` emits
 `orders-production-v1-partition-1` for partition 1.
 
 An advanced rqlite CDC output settings file can also set `service_id`. For
@@ -177,7 +179,9 @@ RQLITE_CDC_OUTPUT=/etc/zenbpm/rqlite-cdc-output.json
 Use an absolute path and make the file and any referenced TLS files available
 on every voting node. A non-empty `service_id` in this file takes precedence
 over `cluster.cdc.serviceId` and `RQLITE_CDC_SERVICE_ID`. This preserves the
-advanced output file as the authoritative source for its delivery settings.
+advanced output file as the authoritative source for its delivery settings. If
+the file omits `service_id`, configure the base identifier through
+`cluster.cdc.serviceId` or `RQLITE_CDC_SERVICE_ID` instead.
 
 Keep the effective base identifier (`serviceId` or advanced `service_id`)
 identical on all replicas and stable across restarts, leader changes, scaling,
@@ -191,6 +195,11 @@ CDC batches may be delivered more than once. Consumers should acknowledge only
 durably stored events and deduplicate each transaction group by
 `(service_id, payload.index)`. If a consumer splits `events` into separate
 records, it must add the event's array position to that key.
+
+ZenBPM exports the persistent queue length, endpoint retry count, and confirmed
+high-water mark for every CDC-enabled partition replica through
+`GET /system/metrics`. See the [observability reference](observability.md#partition--rqlite)
+for metric names and the stalled-delivery alert.
 
 ---
 

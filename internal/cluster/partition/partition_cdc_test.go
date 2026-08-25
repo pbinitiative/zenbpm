@@ -26,25 +26,20 @@ import (
 )
 
 func TestZenPartitionNodeCDC(t *testing.T) {
-	t.Run("uses the backward-compatible default service ID", func(t *testing.T) {
-		serviceID := partitionCDCServiceID("", "", 1)
+	t.Run("appends the partition suffix to the service ID", func(t *testing.T) {
+		serviceID := partitionCDCServiceID("orders-production", 1)
 
-		require.Equal(t, "zenbpm-partition-1", serviceID)
+		require.Equal(t, "orders-production-partition-1", serviceID)
 	})
 
-	t.Run("preserves a legacy rqlite service ID", func(t *testing.T) {
-		serviceID := partitionCDCServiceID("legacy-source", "", 2)
+	t.Run("keeps distinct cluster service IDs distinct for the same partition", func(t *testing.T) {
+		firstServiceID := partitionCDCServiceID("orders-production", 2)
+		secondServiceID := partitionCDCServiceID("orders-staging", 2)
 
-		require.Equal(t, "legacy-source-partition-2", serviceID)
+		require.NotEqual(t, firstServiceID, secondServiceID)
 	})
 
-	t.Run("uses the configured fallback service ID", func(t *testing.T) {
-		serviceID := partitionCDCServiceID("", "configured-source", 3)
-
-		require.Equal(t, "configured-source-partition-3", serviceID)
-	})
-
-	t.Run("applies the configured fallback service ID to a direct URL output", func(t *testing.T) {
+	t.Run("applies the configured service ID to a direct URL output", func(t *testing.T) {
 		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))

@@ -69,6 +69,8 @@ type ZenPartitionNode struct {
 	statusMu        sync.Mutex
 	statuses        map[string]httpd.StatusReporter
 	metrics         partitionMetrics
+	cdcMetricsMu    sync.Mutex
+	cdcRetriesSeen  uint64
 	logger          hclog.Logger
 
 	FeelRuntime script.FeelRuntime
@@ -131,6 +133,18 @@ func (zpn *ZenPartitionNode) createMetrics() {
 	if err != nil {
 		zpn.logger.Error("Failed to register meter for snapshotObservationAge", "err", err)
 	}
+	zpn.metrics.cdcQueueLength, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_cdc_queue_length", metric.WithDescription("Number of entries waiting in the persistent CDC FIFO on this partition replica"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for cdcQueueLength", "err", err)
+	}
+	zpn.metrics.cdcHighWatermark, err = otel.Meter(partitionMeter).Int64Gauge("rqlite_cdc_high_watermark", metric.WithDescription("Highest Raft index known to have been delivered by the CDC cluster"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for cdcHighWatermark", "err", err)
+	}
+	zpn.metrics.cdcEndpointRetries, err = otel.Meter(partitionMeter).Int64Counter("rqlite_cdc_endpoint_retries", metric.WithDescription("Number of retries performed while delivering CDC batches to the configured endpoint"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for cdcEndpointRetries", "err", err)
+	}
 }
 
 type PartitionChangesCallbacks struct {
@@ -158,6 +172,18 @@ type partitionMetrics struct {
 	snapshotAge metric.Int64Gauge
 	// snapshotObservationAge reports the time since this process observed a new completed snapshot
 	snapshotObservationAge metric.Int64Gauge
+	// cdcQueueLength reports the number of entries in this replica's persistent CDC FIFO
+	cdcQueueLength metric.Int64Gauge
+	// cdcHighWatermark reports the highest Raft index delivered by the CDC cluster
+	cdcHighWatermark metric.Int64Gauge
+	// cdcEndpointRetries counts endpoint retries performed by this partition replica
+	cdcEndpointRetries metric.Int64Counter
+}
+
+type cdcMetricsSource interface {
+	Stats() (map[string]any, error)
+	HighWatermark() uint64
+	NumEndpointRetries() uint64
 }
 
 const (
@@ -443,6 +469,9 @@ func (zpn *ZenPartitionNode) stop() error {
 		}
 	}
 	if zpn.cdcService != nil {
+		// Capture retries and delivery progress since the observer's final
+		// five-second collection before stopping the service.
+		zpn.updateCDCMetrics(context.Background())
 		// Keep CDC running until Store.Close completes. RqLite performs a
 		// snapshot-on-close and waits for CDC to flush its persistent queue
 		// before taking that snapshot.
@@ -466,7 +495,11 @@ func (zpn *ZenPartitionNode) createCDCService(
 		return nil, fmt.Errorf("failed to load CDC output: %w", err)
 	}
 
-	cdcConfig.ServiceID = partitionCDCServiceID(cdcConfig.ServiceID, cdcSettings.ServiceID, partition)
+	baseServiceID, err := cdcSettings.ResolveServiceID(cdcConfig.ServiceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve CDC service ID: %w", err)
+	}
+	cdcConfig.ServiceID = partitionCDCServiceID(baseServiceID, partition)
 
 	cdcCluster := cdc.NewCDCCluster(str, clstrServ, clstrClient)
 	cdcService, err := cdc.NewService(cfg.NodeID, cfg.DataPath, cdcCluster, cdcConfig)
@@ -488,13 +521,7 @@ func (zpn *ZenPartitionNode) createCDCService(
 	return cdcService, nil
 }
 
-func partitionCDCServiceID(serviceID, fallbackServiceID string, partition uint32) string {
-	if serviceID == "" {
-		serviceID = fallbackServiceID
-	}
-	if serviceID == "" {
-		serviceID = "zenbpm"
-	}
+func partitionCDCServiceID(serviceID string, partition uint32) string {
 	return fmt.Sprintf("%s-partition-%d", serviceID, partition)
 }
 
@@ -670,6 +697,7 @@ func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	ctx := context.Background()
 
 	partitionAttr := metric.WithAttributes(attribute.Int64("partition", int64(zpn.PartitionId)))
+	zpn.updateCDCMetrics(ctx)
 	if zpn.metrics.hasLeader != nil {
 		leaderAddr, _ := zpn.store.LeaderAddr()
 		hasLeader := int64(0)
@@ -724,6 +752,96 @@ func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	zpn.metrics.processInstancesActive.Record(ctx, activeInstances, metric.WithAttributes(
 		attribute.Int64("partition", int64(zpn.PartitionId)),
 	))
+}
+
+func (zpn *ZenPartitionNode) updateCDCMetrics(ctx context.Context) {
+	if zpn.cdcService == nil {
+		return
+	}
+	zpn.recordCDCMetrics(ctx, zpn.cdcService)
+}
+
+func (zpn *ZenPartitionNode) recordCDCMetrics(ctx context.Context, source cdcMetricsSource) {
+	if source == nil {
+		return
+	}
+
+	nodeID := ""
+	if zpn.config != nil {
+		nodeID = zpn.config.NodeID
+	}
+	attrs := metric.WithAttributes(
+		attribute.Int64("partition", int64(zpn.PartitionId)),
+		attribute.String("node_id", nodeID),
+	)
+
+	stats, err := source.Stats()
+	if err != nil {
+		if zpn.logger != nil {
+			zpn.logger.Warn("Failed to retrieve CDC metrics", "partition", zpn.PartitionId, "nodeId", nodeID, "err", err)
+		}
+	} else if zpn.metrics.cdcQueueLength != nil {
+		if queueLength, ok := cdcQueueLength(stats); ok {
+			zpn.metrics.cdcQueueLength.Record(ctx, queueLength, attrs)
+		} else if zpn.logger != nil {
+			zpn.logger.Warn("CDC status did not contain a valid FIFO length", "partition", zpn.PartitionId, "nodeId", nodeID)
+		}
+	}
+
+	if zpn.metrics.cdcHighWatermark != nil {
+		zpn.metrics.cdcHighWatermark.Record(ctx, clampUint64ToInt64(source.HighWatermark()), attrs)
+	}
+	if zpn.metrics.cdcEndpointRetries != nil {
+		if retryDelta := zpn.cdcRetryDelta(source); retryDelta > 0 {
+			zpn.metrics.cdcEndpointRetries.Add(ctx, clampUint64ToInt64(retryDelta), attrs)
+		}
+	}
+}
+
+func (zpn *ZenPartitionNode) cdcRetryDelta(source cdcMetricsSource) uint64 {
+	zpn.cdcMetricsMu.Lock()
+	defer zpn.cdcMetricsMu.Unlock()
+
+	// Read the source counter while holding the lock so concurrent collectors
+	// cannot apply newer and older absolute values out of order.
+	current := source.NumEndpointRetries()
+	previous := zpn.cdcRetriesSeen
+	zpn.cdcRetriesSeen = current
+	if current >= previous {
+		return current - previous
+	}
+	// Treat a lower value as a service-counter reset. The new service's current
+	// value is the complete delta since that reset.
+	return current
+}
+
+func cdcQueueLength(stats map[string]any) (int64, bool) {
+	fifo, ok := stats["fifo"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+
+	switch length := fifo["length"].(type) {
+	case int:
+		if length < 0 {
+			return 0, false
+		}
+		return int64(length), true
+	case int64:
+		return length, length >= 0
+	case uint64:
+		return clampUint64ToInt64(length), true
+	default:
+		return 0, false
+	}
+}
+
+func clampUint64ToInt64(value uint64) int64 {
+	const maxInt64 = uint64(1<<63 - 1)
+	if value > maxInt64 {
+		return int64(maxInt64)
+	}
+	return int64(value)
 }
 
 // dbSizeBytes returns the combined on-disk size of the partition SQLite

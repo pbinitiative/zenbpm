@@ -35,6 +35,7 @@ cluster:
   cdc:
     enabled: true
     output: http://localhost:4195/cdc
+    serviceId: zenbpm-local-development
 ```
 
 Start ZenBPM:

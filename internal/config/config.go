@@ -1,3 +1,4 @@
+// Package config defines and validates ZenBPM runtime configuration.
 package config
 
 import (
@@ -7,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/rqlite/rqlite/v10/cdc"
 )
 
 // TODO: add support for discovery modes
@@ -39,10 +42,70 @@ type Cluster struct {
 	// inter communication advertise address. If not set, same as internal communication bind address
 	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV" env-default:"localhost:8090"`
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
+	CDC         CDC         `yaml:"cdc" json:"cdc"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 	Script      Script      `yaml:"script" json:"script"`
 	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
+}
+
+// CDC configures the rqlite change data capture output.
+type CDC struct {
+	Enabled   bool   `yaml:"enabled" json:"enabled" env:"RQLITE_CDC_ENABLED" env-default:"false"`
+	Output    string `yaml:"output" json:"output" env:"RQLITE_CDC_OUTPUT"`
+	ServiceID string `yaml:"serviceId" json:"serviceId" env:"RQLITE_CDC_SERVICE_ID"`
+}
+
+// ResolveServiceID returns the effective base CDC service identifier. A service
+// identifier from an advanced rqlite output file takes precedence over the
+// identifier configured directly in ZenBPM.
+func (c CDC) ResolveServiceID(advancedServiceID string) (string, error) {
+	serviceID := advancedServiceID
+	if serviceID == "" {
+		serviceID = c.ServiceID
+	}
+	if strings.TrimSpace(serviceID) == "" {
+		return "", errors.New("CDC service ID is required when CDC is enabled")
+	}
+	return serviceID, nil
+}
+
+// ValidateCDC verifies that an enabled CDC output can be constructed.
+func (c Cluster) ValidateCDC() error {
+	if !c.CDC.Enabled {
+		return nil
+	}
+
+	cdcOutput := c.CDC.Output
+	if cdcOutput == "" {
+		return errors.New("CDC output is required when CDC is enabled")
+	}
+
+	cdcConfig, err := cdc.NewConfig(cdcOutput)
+	if err != nil {
+		return fmt.Errorf("failed to load CDC output: %w", err)
+	}
+	tlsConfig, err := cdcConfig.TLSConfig()
+	if err != nil {
+		return fmt.Errorf("failed to build CDC output TLS settings: %w", err)
+	}
+	// NewSink performs the same endpoint check as cdc.NewService. Constructing
+	// and closing it does not issue a network request.
+	sink, err := cdc.NewSink(cdc.SinkConfig{
+		Endpoint:        cdcConfig.Endpoint,
+		TLSConfig:       tlsConfig,
+		TransmitTimeout: cdcConfig.TransmitTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to validate CDC output endpoint: %w", err)
+	}
+	if err := sink.Close(); err != nil {
+		return fmt.Errorf("failed to close CDC output sink: %w", err)
+	}
+	if _, err := c.CDC.ResolveServiceID(cdcConfig.ServiceID); err != nil {
+		return err
+	}
+	return nil
 }
 
 type ClusterRaft struct {
@@ -139,6 +202,9 @@ func (c *Config) validate() error {
 	}
 	if c.HttpServer.MaxRequestBodyBytes <= 0 {
 		return fmt.Errorf("httpServer.maxRequestBodyBytes must be greater than zero, got %d", c.HttpServer.MaxRequestBodyBytes)
+	}
+	if err := c.Cluster.ValidateCDC(); err != nil {
+		return err
 	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv

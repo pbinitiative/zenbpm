@@ -99,6 +99,9 @@ histograms a `_milliseconds` suffix).
 | `rqlite_snapshot_observation_age_seconds` | gauge | `partition` | Time since this process observed a new completed snapshot; `-1` until a snapshot is created after process startup |
 | `rqlite_exec_duration_milliseconds` | histogram | `partition`, `outcome` | Raft-replicated write duration |
 | `rqlite_query_duration_milliseconds` | histogram | `partition`, `outcome` | Read query duration |
+| `rqlite_cdc_queue_length` | gauge | `partition`, `node_id` | Entries waiting in the replica's persistent CDC FIFO. Emitted only while CDC is enabled |
+| `rqlite_cdc_endpoint_retries_total` | counter | `partition`, `node_id` | Endpoint delivery retries performed by this CDC service. Every increment follows a failed delivery attempt |
+| `rqlite_cdc_high_watermark` | gauge | `partition`, `node_id` | Highest Raft index confirmed as delivered by the CDC cluster |
 
 ### Job manager
 
@@ -128,6 +131,9 @@ placeholder webhook receiver). Key alerts:
   were never created (absent series cannot fire `NoPartitionLeader`).
 - **TargetDown, HighErrorRate, RestLatencyDegradation, RqliteExecLatencyDegradation**
 - **RqliteDbSizeLarge, RqliteDbGrowthPrediction, DiskSpaceLow** (fires below 20% free space), **HighCPU, HighMemory**
+- **RqliteCdcQueueBacklog** (warning) — a partition replica's persistent CDC
+  queue is non-empty while its delivery high-water mark is stalled or the
+  queue keeps growing; inspect its endpoint retry counter and receiver health.
 - **ThroughputDrop, RaftLeaderFlapping, GoroutineLeak**
 - **IncidentCreated, HighJobFailureRate, JobBacklogGrowing, StuckProcessInstances, NoJobDistribution**
 

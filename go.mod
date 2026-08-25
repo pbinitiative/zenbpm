@@ -19,6 +19,7 @@ require (
 	github.com/hashicorp/raft v1.7.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea
 	github.com/ilyakaznacheev/cleanenv v1.5.0
+	github.com/mattn/go-sqlite3 v1.14.47
 	github.com/navsmb/datetime v0.2.0
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
 	github.com/oapi-codegen/runtime v1.6.0
@@ -97,7 +98,6 @@ require (
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
-	github.com/mattn/go-sqlite3 v1.14.47 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
@@ -134,5 +134,5 @@ require (
 
 replace (
 	github.com/armon/go-metrics => github.com/hashicorp/go-metrics v0.5.1
-	github.com/mattn/go-sqlite3 => github.com/rqlite/go-sqlite3 v1.47.0
+	github.com/mattn/go-sqlite3 => github.com/rqlite/go-sqlite3 v1.48.0
 )

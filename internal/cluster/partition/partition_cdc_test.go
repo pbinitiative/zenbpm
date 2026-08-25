@@ -140,7 +140,7 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 		muxListener.Addr().String(),
 		t.TempDir(),
 		[]string{muxListener.Addr().String()},
-		1,
+		1, // single-node test
 	)
 	persistenceConfig := config.Persistence{
 		RqLite:           &rqLiteConfig,

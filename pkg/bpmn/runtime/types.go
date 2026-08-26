@@ -129,6 +129,12 @@ type ProcessInstanceData struct {
 	// the parent runtime object; for instances loaded from the DB it is read back
 	// from the persisted value.
 	HistoryTTLSec *int64
+	// ExecutionDepth is how deep this process instance sits in the parent-child
+	// chain (call activities, sub processes, multi-instance bodies). The upmost
+	// parent process instance has depth 0 and each child instance has its
+	// parent's depth incremented by one. It is used to detect potential infinite
+	// loops of process instances recursively spawning child instances.
+	ExecutionDepth int64
 }
 
 func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {

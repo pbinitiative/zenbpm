@@ -145,6 +145,14 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 	b.postFlushActions = []func(){}
 }
 
+// discardWrites drops all buffered writes and pre/post flush actions while keeping the instance locks held by the batch.
+// It is used when a partially prepared mutation set must be replaced by incident bookkeeping.
+func (b *EngineBatch) discardWrites() {
+	b.b = b.engine.persistence.NewBatch()
+	b.preFlushActions = []func() error{}
+	b.postFlushActions = []func(){}
+}
+
 func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, cause error) error {
 	incidentBatch := b.engine.persistence.NewBatch()
 	token.State = bpmnruntime.TokenStateFailed

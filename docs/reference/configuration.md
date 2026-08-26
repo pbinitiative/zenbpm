@@ -59,6 +59,17 @@ Settings related to **clustering**, **internal communication**, and **Raft** con
 | `raft`       | `ClusterRaft` | —                         | —          | Raft-specific cluster settings                          |
 | `cdc`        | `CDC`         | —                         | —          | Change Data Capture output settings                     |
 | `persistence`| `Persistence` | —                         | —          | Persistence and caching configuration                   |
+| `engine`     | `Engine`      | —                         | —          | BPMN engine behaviour settings                          |
+
+---
+
+### Engine Configuration: `Engine`
+
+Behaviour settings for the BPMN engines running on the node partitions.
+
+| Field               | Type  | Env Variable                        | Default | Description                                                                                                                                                                                            |
+|---------------------|-------|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `maxExecutionDepth` | int64 | `CLUSTER_ENGINE_MAX_EXECUTION_DEPTH`| `100`   | Maximum allowed execution depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
 
 ---
 

@@ -97,6 +97,9 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, &batch, instance, subProcessDef, startEventDef, variableHolder, businessKey, tokens)
 	if err != nil {
+		if errors.Is(err, ErrMaxExecutionDepthExceeded) {
+			return engine.writeEventSubprocessExecutionDepthIncident(ctx, &batch, t, tokens[0], instance, err)
+		}
 		return err
 	}
 
@@ -130,6 +133,30 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	if err := batch.Flush(ctx); err != nil {
 		return errors.Join(newEngineErrorf("failed to flush event subprocess activation batch: %s", err), err)
+	}
+	return nil
+}
+
+func (engine *Engine) writeEventSubprocessExecutionDepthIncident(
+	ctx context.Context,
+	batch *EngineBatch,
+	trigger eventSubprocessTrigger,
+	token runtime.ExecutionToken,
+	instance runtime.ProcessInstance,
+	cause error,
+) error {
+	// Drop the partially prepared activation writes, record an incident on the parent,
+	// and consume the trigger in the same batch. The trigger must not remain active or a
+	// due timer/message could repeatedly attempt the rejected activation.
+	batch.discardWrites()
+	if err := batch.WriteTokenIncident(ctx, token, instance, cause); err != nil {
+		return errors.Join(cause, err)
+	}
+	if err := trigger.markConsumed(ctx, batch); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to consume execution depth trigger: %w", err))
+	}
+	if err := batch.Flush(ctx); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to flush execution depth incident batch: %w", err))
 	}
 	return nil
 }

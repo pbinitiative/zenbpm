@@ -12,16 +12,13 @@ import (
 func TestGetFlowElementInstanceHistory(t *testing.T) {
 	cleanProcessInstances(t)
 
-	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
+	multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
+
+	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity/call-activity-simple.bpmn")
+	_, err := deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
-	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
-	assert.NoError(t, err)
-	_, err = deployDefinition(t, "simple_task.bpmn")
-	assert.NoError(t, err)
-
-	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
-	assert.NoError(t, err)
+	subprocessDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_sub_process_task.bpmn")
 
 	var instance1Key int64
 	var instance2Key int64
@@ -49,7 +46,21 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		instance3Key = instance3.Key
 	})
 
-	time.Sleep(500 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		history1, err := app.restClient.GetHistoryWithResponse(t.Context(), instance1Key, &zenclient.GetHistoryParams{})
+		if err != nil || history1.JSON200 == nil || history1.JSON200.TotalCount != 3 {
+			return false
+		}
+		history2, err := app.restClient.GetHistoryWithResponse(t.Context(), instance2Key, &zenclient.GetHistoryParams{})
+		if err != nil || history2.JSON200 == nil || history2.JSON200.TotalCount != 3 {
+			return false
+		}
+		history3, err := app.restClient.GetHistoryWithResponse(t.Context(), instance3Key, &zenclient.GetHistoryParams{})
+		if err != nil || history3.JSON200 == nil || history3.JSON200.TotalCount != 3 {
+			return false
+		}
+		return true
+	}, 15*time.Second, 100*time.Millisecond, "all process instances should reach expected history size")
 
 	t.Run("get history multiInstance", func(t *testing.T) {
 		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance1Key, &zenclient.GetHistoryParams{})
@@ -127,8 +138,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 func TestGetFlowElementHistoryCompletedAtAndVariables(t *testing.T) {
 	cleanProcessInstances(t)
 
-	definition, err := deployGetUniqueDefinition(t, "simple_task.bpmn")
-	assert.NoError(t, err)
+	definition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_task.bpmn")
 
 	instance, err := createProcessInstance(t, &definition.Key, nil)
 	assert.NoError(t, err)
@@ -182,8 +192,7 @@ func TestGetFlowElementHistoryCompletedAtAndVariables(t *testing.T) {
 func TestGetFlowElementHistoryElementType(t *testing.T) {
 	cleanProcessInstances(t)
 
-	definition, err := deployGetUniqueDefinition(t, "simple_task.bpmn")
-	assert.NoError(t, err)
+	definition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_task.bpmn")
 
 	instance, err := createProcessInstance(t, &definition.Key, nil)
 	assert.NoError(t, err)

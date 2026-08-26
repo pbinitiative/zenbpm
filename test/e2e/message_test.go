@@ -59,8 +59,7 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 	})
 	t.Run("publish message multiInstance process", func(t *testing.T) {
-		multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
-		assert.NoError(t, err)
+		multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
 
 		instance, err = createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
@@ -90,8 +89,7 @@ func TestRestApiMessage(t *testing.T) {
 	})
 
 	t.Run("publish message multiInstance receive task process", func(t *testing.T) {
-		multiInstanceDefinition, err := deployGetUniqueDefinition(t, "receive_task/multi_instance_receive_task.bpmn")
-		assert.NoError(t, err)
+		multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/receive_task/multi_instance_receive_task.bpmn")
 
 		instance, err = createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
@@ -121,8 +119,7 @@ func TestRestApiMessage(t *testing.T) {
 	})
 
 	t.Run("publish message call activity", func(t *testing.T) {
-		callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
-		assert.NoError(t, err)
+		callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity/call-activity-simple.bpmn")
 		_, err = deployDefinition(t, "simple_task.bpmn")
 		assert.NoError(t, err)
 
@@ -155,8 +152,7 @@ func TestRestApiMessage(t *testing.T) {
 	})
 
 	t.Run("publish message subprocess", func(t *testing.T) {
-		subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
-		assert.NoError(t, err)
+		subprocessDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/simple_sub_process_task.bpmn")
 
 		instance, err = createProcessInstance(t, &subprocessDefinition.Key, map[string]any{
 			"testVar": 123,
@@ -187,8 +183,7 @@ func TestRestApiMessage(t *testing.T) {
 	})
 
 	t.Run("publish message - in loop test", func(t *testing.T) {
-		def, err := deployGetUniqueDefinition(t, "message-boundary-task-loop.bpmn")
-		assert.NoError(t, err)
+		def := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/message-boundary-task-loop.bpmn")
 
 		instance, err := createProcessInstance(t, &def.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},

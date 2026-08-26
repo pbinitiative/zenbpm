@@ -53,6 +53,12 @@ type Engine struct {
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
 
+	// maxExecutionDepth is the maximum allowed execution depth of a process instance in the parent-child chain
+	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
+	// stops execution and raises an incident, protecting the engine from infinite loops of recursively spawned
+	// process instances. Values <= 0 disable the check. Defaults to DefaultMaxExecutionDepth.
+	maxExecutionDepth int64
+
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
 
@@ -70,6 +76,10 @@ type Engine struct {
 }
 
 type EngineOption = func(*Engine)
+
+// DefaultMaxExecutionDepth is the default maximum execution depth of a process
+// instance in the parent-child chain. It can be overridden via EngineWithMaxExecutionDepth.
+const DefaultMaxExecutionDepth int64 = 100
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
@@ -100,6 +110,7 @@ func NewEngine(options ...EngineOption) Engine {
 		metrics:              metrics,
 		feelRuntime:          feelRuntime,
 		jsRuntime:            jsRuntime,
+		maxExecutionDepth:    DefaultMaxExecutionDepth,
 		dmnEngine:            dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
@@ -160,6 +171,12 @@ func EngineWithPollTimerDelay(d time.Duration) EngineOption {
 func EngineWithDefinitionSubscriptionRecoveryFilter(filter func(runtime.ProcessDefinition) bool) EngineOption {
 	return func(engine *Engine) {
 		engine.recoverDefinitionSubscriptions = filter
+	}
+}
+
+func EngineWithMaxExecutionDepth(maxDepth int64) EngineOption {
+	return func(engine *Engine) {
+		engine.maxExecutionDepth = maxDepth
 	}
 }
 
@@ -402,9 +419,31 @@ func resolveRootBusinessKey(ctx context.Context, instance runtime.ProcessInstanc
 // across all child-scope creation paths.
 func newChildProcessInstanceData(parent runtime.ProcessInstance, businessKey *string) runtime.ProcessInstanceData {
 	return runtime.ProcessInstanceData{
-		BusinessKey:   businessKey,
-		HistoryTTLSec: parent.ProcessInstance().HistoryTTLSec,
+		BusinessKey:    businessKey,
+		HistoryTTLSec:  parent.ProcessInstance().HistoryTTLSec,
+		ExecutionDepth: parent.ProcessInstance().ExecutionDepth + 1,
 	}
+}
+
+// ErrMaxExecutionDepthExceeded is wrapped into the error returned by validateExecutionDepth when a child process instance
+// would exceed the configured maximum execution depth. Callers that trigger child-instance creation outside of
+// token processing (e.g. message/timer event subprocess activation) use it to translate the failure into an incident.
+var ErrMaxExecutionDepthExceeded = errors.New("maximum execution depth exceeded")
+
+// validateExecutionDepth guards every child-instance creation path against potential infinite loops
+// of process instances recursively spawning child instances (e.g. a call activity calling its own process).
+// The returned error wraps ErrMaxExecutionDepthExceeded.
+func (engine *Engine) validateExecutionDepth(instance runtime.ProcessInstance) error {
+	if engine.maxExecutionDepth <= 0 {
+		return nil
+	}
+	if depth := instance.ProcessInstance().ExecutionDepth; depth > engine.maxExecutionDepth {
+		return fmt.Errorf(
+			"potential infinite loop detected: creating process instance of process %s would exceed the maximum allowed execution depth of %d; check the process model for recursively called processes or raise the configured limit: %w",
+			instance.ProcessInstance().Definition.BpmnProcessId, engine.maxExecutionDepth, ErrMaxExecutionDepthExceeded,
+		)
+	}
+	return nil
 }
 
 // createInstance creates a process instance for a given process definition and returns it.
@@ -423,6 +462,9 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
+	if err := engine.validateExecutionDepth(instance); err != nil {
+		return nil, nil, err
+	}
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -507,6 +549,9 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
+	if err := engine.validateExecutionDepth(instance); err != nil {
+		return nil, nil, err
+	}
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {

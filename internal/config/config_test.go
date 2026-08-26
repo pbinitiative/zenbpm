@@ -111,3 +111,62 @@ func TestHttpServerMaxRequestBodyBytesValidation(t *testing.T) {
 		t.Errorf("expected request body limit validation error, got: %v", err)
 	}
 }
+
+func TestEngineMaxExecutionDepthDefault(t *testing.T) {
+	unsetEngineDepthEnv(t)
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxExecutionDepth != 100 {
+		t.Errorf("expected default MaxExecutionDepth 100, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	}
+}
+
+func TestEngineMaxExecutionDepthFromEnv(t *testing.T) {
+	t.Setenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH", "37")
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxExecutionDepth != 37 {
+		t.Errorf("expected MaxExecutionDepth 37, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	}
+}
+
+func TestEngineMaxExecutionDepthFromYAML(t *testing.T) {
+	unsetEngineDepthEnv(t)
+	configFile := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(configFile, []byte("cluster:\n  engine:\n    maxExecutionDepth: 42\n"), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	var c Config
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	if c.Cluster.Engine.MaxExecutionDepth != 42 {
+		t.Errorf("expected MaxExecutionDepth 42, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	}
+}
+
+func unsetEngineDepthEnv(t *testing.T) {
+	t.Helper()
+	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH")
+	t.Cleanup(func() {
+		if wasSet {
+			if err := os.Setenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH", value); err != nil {
+				t.Errorf("failed to restore CLUSTER_ENGINE_MAX_EXECUTION_DEPTH: %v", err)
+			}
+			return
+		}
+		if err := os.Unsetenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH"); err != nil {
+			t.Errorf("failed to unset CLUSTER_ENGINE_MAX_EXECUTION_DEPTH during cleanup: %v", err)
+		}
+	})
+	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH"); err != nil {
+		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_EXECUTION_DEPTH: %v", err)
+	}
+}

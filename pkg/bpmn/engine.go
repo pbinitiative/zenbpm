@@ -434,13 +434,28 @@ var ErrMaxExecutionDepthExceeded = errors.New("maximum execution depth exceeded"
 // of process instances recursively spawning child instances (e.g. a call activity calling its own process).
 // The returned error wraps ErrMaxExecutionDepthExceeded.
 func (engine *Engine) validateExecutionDepth(instance runtime.ProcessInstance) error {
+	return engine.validateExecutionDepthValue(
+		instance.ProcessInstance().ExecutionDepth,
+		instance.ProcessInstance().Definition.BpmnProcessId,
+	)
+}
+
+// validateChildExecutionDepth checks a prospective child before callers mutate its parent scope.
+func (engine *Engine) validateChildExecutionDepth(parent runtime.ProcessInstance) error {
+	return engine.validateExecutionDepthValue(
+		parent.ProcessInstance().ExecutionDepth+1,
+		parent.ProcessInstance().Definition.BpmnProcessId,
+	)
+}
+
+func (engine *Engine) validateExecutionDepthValue(depth int64, bpmnProcessID string) error {
 	if engine.maxExecutionDepth <= 0 {
 		return nil
 	}
-	if depth := instance.ProcessInstance().ExecutionDepth; depth > engine.maxExecutionDepth {
+	if depth > engine.maxExecutionDepth {
 		return fmt.Errorf(
 			"potential infinite loop detected: creating process instance of process %s would exceed the maximum allowed execution depth of %d; check the process model for recursively called processes or raise the configured limit: %w",
-			instance.ProcessInstance().Definition.BpmnProcessId, engine.maxExecutionDepth, ErrMaxExecutionDepthExceeded,
+			bpmnProcessID, engine.maxExecutionDepth, ErrMaxExecutionDepthExceeded,
 		)
 	}
 	return nil

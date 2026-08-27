@@ -3,3 +3,23 @@
 -- parent process instance has execution_depth = 0. Used to detect
 -- potential infinite loops of process instances spawning child instances.
 ALTER TABLE process_instance ADD COLUMN execution_depth integer NOT NULL DEFAULT 0;
+
+WITH RECURSIVE process_instance_depth(key, execution_depth) AS (
+	SELECT key, 0
+	FROM process_instance
+	WHERE parent_process_execution_token IS NULL
+
+	UNION ALL
+
+	SELECT child.key, parent.execution_depth + 1
+	FROM process_instance AS child
+	JOIN execution_token AS parent_token ON parent_token.key = child.parent_process_execution_token
+	JOIN process_instance_depth AS parent ON parent.key = parent_token.process_instance_key
+)
+UPDATE process_instance
+SET execution_depth = (
+	SELECT calculated.execution_depth
+	FROM process_instance_depth AS calculated
+	WHERE calculated.key = process_instance.key
+)
+WHERE key IN (SELECT key FROM process_instance_depth);

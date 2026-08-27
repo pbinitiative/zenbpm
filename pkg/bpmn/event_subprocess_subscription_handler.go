@@ -86,6 +86,12 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 	if err != nil {
 		return err
 	}
+	if err := engine.validateChildExecutionDepth(instance); err != nil {
+		if errors.Is(err, ErrMaxExecutionDepthExceeded) {
+			return engine.writeEventSubprocessExecutionDepthIncident(ctx, &batch, t, instance, err)
+		}
+		return err
+	}
 	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, &batch, instance, startEventDef, propagatedVariables)
 	if err != nil {
 		return err
@@ -97,9 +103,6 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, &batch, instance, subProcessDef, startEventDef, variableHolder, businessKey, tokens)
 	if err != nil {
-		if errors.Is(err, ErrMaxExecutionDepthExceeded) {
-			return engine.writeEventSubprocessExecutionDepthIncident(ctx, &batch, t, tokens[0], instance, err)
-		}
 		return err
 	}
 
@@ -141,16 +144,23 @@ func (engine *Engine) writeEventSubprocessExecutionDepthIncident(
 	ctx context.Context,
 	batch *EngineBatch,
 	trigger eventSubprocessTrigger,
-	token runtime.ExecutionToken,
 	instance runtime.ProcessInstance,
 	cause error,
 ) error {
-	// Drop the partially prepared activation writes, record an incident on the parent,
-	// and consume the trigger in the same batch. The trigger must not remain active or a
-	// due timer/message could repeatedly attempt the rejected activation.
+	// Consume the rejected trigger to prevent repeated attempts, but leave the incident
+	// tokenless: no execution token owns an event-subprocess start subscription. Resolving
+	// a tokenless event-subprocess incident recreates the subscription/timer.
 	batch.discardWrites()
-	if err := batch.WriteTokenIncident(ctx, token, instance, cause); err != nil {
-		return errors.Join(cause, err)
+	incident := runtime.Incident{
+		Key:                engine.generateKey(),
+		ElementInstanceKey: engine.generateKey(),
+		ElementId:          trigger.elementId,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		Message:            cause.Error(),
+		CreatedAt:          time.Now(),
+	}
+	if err := batch.SaveIncident(ctx, incident); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to save execution depth incident: %w", err))
 	}
 	if err := trigger.markConsumed(ctx, batch); err != nil {
 		return errors.Join(cause, fmt.Errorf("failed to consume execution depth trigger: %w", err))

@@ -1210,6 +1210,8 @@ func findChildMultiInstanceInstance(t *testing.T, parentInstanceKey int64) runti
 func waitForProcessCompletion(t *testing.T, instanceKey int64, timeout, interval time.Duration) {
 	t.Helper()
 	assert.Eventually(t, func() bool {
+		bpmnEngine.runningInstances.lockInstance(instanceKey)
+		defer bpmnEngine.runningInstances.unlockInstance(instanceKey)
 		processInstance, findErr := engineStorage.FindProcessInstanceByKey(t.Context(), instanceKey)
 		return findErr == nil && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
 	}, timeout, interval)

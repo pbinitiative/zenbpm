@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -31,12 +32,12 @@ func TestRecursiveCallActivityStopsAtMaxExecutionDepthAndCreatesIncident(t *test
 	assert.Equal(t, int64(0), rootInstance.ProcessInstance().ExecutionDepth)
 
 	// wait until the engine detects the loop and raises an incident
-	incident := waitForExecutionDepthIncident(t, store, 5*time.Second)
+	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
 	assert.Equal(t, "recursiveCallActivity", incident.ElementId)
-	assertExecutionDepthIncident(t, store, incident, maxDepth)
+	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
 
 	// the chain must stop at depth == maxDepth: root (0) plus maxDepth children
-	instances := store.ProcessInstancesSnapshot()
+	instances := processInstancesSnapshot(t, engine, store)
 	assert.Len(t, instances, int(maxDepth)+1)
 	seenDepths := make(map[int64]int, len(instances))
 	for _, pi := range instances {
@@ -214,8 +215,8 @@ func TestNestedPlainSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testi
 	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
 
 	// the innermost subprocess would run at depth 3 (> maxDepth) and must be rejected
-	incident := waitForExecutionDepthIncident(t, store, 5*time.Second)
-	assertExecutionDepthIncident(t, store, incident, maxDepth)
+	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
+	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
 }
 
 // TestMultiInstanceSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that creating a
@@ -234,8 +235,8 @@ func TestMultiInstanceSubProcessExceedingMaxExecutionDepthCreatesIncident(t *tes
 	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
 
 	// the multi-instance child runs at depth 1, its subprocess body would run at depth 2 (> maxDepth)
-	incident := waitForExecutionDepthIncident(t, store, 5*time.Second)
-	assertExecutionDepthIncident(t, store, incident, maxDepth)
+	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
+	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
 }
 
 // TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
@@ -258,10 +259,17 @@ func TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t
 
 	// the event subprocess would run at depth 2 (> maxDepth); the publish itself must succeed
 	correlationKey := "correlation-key-msg-nested-depth"
-	require.NoError(t, engine.PublishMessageByName(t.Context(), "messageNestedDepthRef", &correlationKey, map[string]any{}))
+	require.NoError(t, engine.PublishMessageByName(t.Context(), "messageNestedDepthRef", &correlationKey, map[string]any{
+		"rejectedPayload": "must-not-propagate",
+	}))
 
-	incident := waitForExecutionDepthIncident(t, store, 5*time.Second)
-	assertExecutionDepthIncident(t, store, incident, maxDepth)
+	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
+	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	assert.Zero(t, incident.Token.Key, "event-subprocess depth incidents must not resume an unrelated token")
+	assert.Equal(t, "eventSubprocessMessageEvent_010eof4", incident.ElementId)
+	parentSnapshot, err := processInstanceSnapshot(t, engine, store, subProcessChild.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.Nil(t, parentSnapshot.ProcessInstance().GetVariable("rejectedPayload"), "rejected trigger variables must not mutate the parent")
 
 	activeSubscriptions, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
 	require.NoError(t, err)
@@ -269,6 +277,12 @@ func TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t
 	completedSubscriptions, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateCompleted)
 	require.NoError(t, err)
 	assert.Len(t, completedSubscriptions, 1)
+
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	activeSubscriptions, err = store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
+	require.NoError(t, err)
+	require.Len(t, activeSubscriptions, 1, "resolving the incident must recreate the consumed message subscription")
+	assert.Equal(t, incident.ElementId, activeSubscriptions[0].MessageSubscription().ElementId)
 }
 
 // TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
@@ -291,8 +305,9 @@ func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 
 	// the non-interrupting timer start event (PT1S) fires on its own; the event subprocess
 	// would run at depth 2 (> maxDepth) and must be rejected with an incident
-	incident := waitForExecutionDepthIncident(t, store, 15*time.Second)
-	assertExecutionDepthIncident(t, store, incident, maxDepth)
+	incident := waitForExecutionDepthIncident(t, engine, store, 15*time.Second)
+	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	assert.Zero(t, incident.Token.Key, "event-subprocess depth incidents must not resume an unrelated token")
 
 	createdTimers, err := store.FindProcessInstanceTimers(t.Context(), subProcessChild.ProcessInstance().Key, runtime.TimerStateCreated)
 	require.NoError(t, err)
@@ -307,6 +322,12 @@ func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 		return time.Since(started) >= 2500*time.Millisecond &&
 			executionDepthIncidentCount(t, store, incident.ProcessInstanceKey) == incidentCount
 	}, 3*time.Second, 100*time.Millisecond, "a consumed timer must not create repeated execution-depth incidents")
+
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	createdTimers, err = store.FindProcessInstanceTimers(t.Context(), subProcessChild.ProcessInstance().Key, runtime.TimerStateCreated)
+	require.NoError(t, err)
+	require.Len(t, createdTimers, 1, "resolving the incident must recreate the consumed timer")
+	assert.Equal(t, incident.ElementId, createdTimers[0].ElementId)
 }
 
 // TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
@@ -322,14 +343,14 @@ func TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
 
-	subProcessChild := waitForChildInstanceOfTypeInStore(t, store, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
+	subProcessChild := waitForChildInstanceOfTypeInStore(t, engine, store, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
 
 	job := waitForPendingJobInStore(t, store, subProcessChild.ProcessInstance().Key)
 	// the error event subprocess would run at depth 2 (> maxDepth); the job fail must succeed
 	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
 
-	incident := waitForExecutionDepthIncident(t, store, 5*time.Second)
+	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
 	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed execution depth of %d", maxDepth))
 
 	// the job carrying the incident must have been failed instead of activating the event subprocess
@@ -355,11 +376,11 @@ func startEngineWithMaxExecutionDepth(t *testing.T, maxDepth int64, extraOptions
 
 // waitForExecutionDepthIncident waits for and returns the first unresolved incident in the
 // given store whose message reports a potential infinite loop (max execution depth breach).
-func waitForExecutionDepthIncident(t *testing.T, store *inmemory.Storage, timeout time.Duration) runtime.Incident {
+func waitForExecutionDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, timeout time.Duration) runtime.Incident {
 	t.Helper()
 	var incident runtime.Incident
 	require.Eventually(t, func() bool {
-		for _, pi := range store.ProcessInstancesSnapshot() {
+		for _, pi := range processInstancesSnapshot(t, engine, store) {
 			incidents, findErr := store.FindIncidentsByProcessInstanceKey(t.Context(), pi.ProcessInstance().Key)
 			if findErr != nil {
 				continue
@@ -390,15 +411,19 @@ func executionDepthIncidentCount(t *testing.T, store *inmemory.Storage, processI
 }
 
 // assertExecutionDepthIncident asserts that the given incident reports the configured maximum
-// execution depth and that the instance carrying it (the instance that attempted to spawn the
-// too-deep child) sits at exactly maxDepth and has been marked failed.
-func assertExecutionDepthIncident(t *testing.T, store *inmemory.Storage, incident runtime.Incident, maxDepth int64) {
+// execution depth and that the instance carrying it sits at exactly maxDepth. Token-bound
+// incidents fail that instance; recoverable event-subprocess subscription incidents do not.
+func assertExecutionDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, incident runtime.Incident, maxDepth int64) {
 	t.Helper()
 	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed execution depth of %d", maxDepth))
-	failedInstance, err := store.FindProcessInstanceByKey(t.Context(), incident.ProcessInstanceKey)
+	failedInstance, err := processInstanceSnapshot(t, engine, store, incident.ProcessInstanceKey)
 	require.NoError(t, err)
 	assert.Equal(t, maxDepth, failedInstance.ProcessInstance().ExecutionDepth)
-	assert.Equal(t, runtime.ActivityStateFailed, failedInstance.ProcessInstance().State)
+	if incident.Token.Key == 0 {
+		assert.NotEqual(t, runtime.ActivityStateFailed, failedInstance.ProcessInstance().State)
+	} else {
+		assert.Equal(t, runtime.ActivityStateFailed, failedInstance.ProcessInstance().State)
+	}
 }
 
 // waitForPendingJobInStore waits for and returns the first pending job of the given process
@@ -435,16 +460,16 @@ func waitForActiveJobByTypeInStore(t *testing.T, store *inmemory.Storage, jobTyp
 // whose parent execution token belongs to the given parent process instance.
 func waitForChildInstanceOfType(t *testing.T, parentInstanceKey int64, processType runtime.ProcessType, timeout time.Duration) runtime.ProcessInstance {
 	t.Helper()
-	return waitForChildInstanceOfTypeInStore(t, engineStorage, parentInstanceKey, processType, timeout)
+	return waitForChildInstanceOfTypeInStore(t, &bpmnEngine, engineStorage, parentInstanceKey, processType, timeout)
 }
 
 // waitForChildInstanceOfTypeInStore waits for and returns a child process instance of the given
 // type in the given store whose parent execution token belongs to the given parent process instance.
-func waitForChildInstanceOfTypeInStore(t *testing.T, store *inmemory.Storage, parentInstanceKey int64, processType runtime.ProcessType, timeout time.Duration) runtime.ProcessInstance {
+func waitForChildInstanceOfTypeInStore(t *testing.T, engine *Engine, store *inmemory.Storage, parentInstanceKey int64, processType runtime.ProcessType, timeout time.Duration) runtime.ProcessInstance {
 	t.Helper()
 	var found runtime.ProcessInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range store.ProcessInstancesSnapshot() {
+		for _, pi := range processInstancesSnapshot(t, engine, store) {
 			if pi.Type() != processType {
 				continue
 			}
@@ -467,4 +492,34 @@ func waitForChildInstanceOfTypeInStore(t *testing.T, store *inmemory.Storage, pa
 		return false
 	}, timeout, 50*time.Millisecond, "expected a %s child instance under parent %d", processType, parentInstanceKey)
 	return found
+}
+
+func processInstancesSnapshot(t *testing.T, engine *Engine, store *inmemory.Storage) []runtime.ProcessInstance {
+	t.Helper()
+	liveInstances := store.ProcessInstancesSnapshot()
+	snapshots := make([]runtime.ProcessInstance, 0, len(liveInstances))
+	for _, live := range liveInstances {
+		snapshot, err := processInstanceSnapshot(t, engine, store, live.ProcessInstance().Key)
+		if err == nil {
+			snapshots = append(snapshots, snapshot)
+		}
+	}
+	return snapshots
+}
+
+func processInstanceSnapshot(t *testing.T, engine *Engine, store *inmemory.Storage, key int64) (runtime.ProcessInstance, error) {
+	t.Helper()
+	engine.runningInstances.lockInstance(key)
+	defer engine.runningInstances.unlockInstance(key)
+
+	live, err := store.FindProcessInstanceByKey(t.Context(), key)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := processInstanceWithState(live, live.ProcessInstance().State)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.ProcessInstance().VariableHolder = runtime.NewVariableHolder(nil, maps.Clone(live.ProcessInstance().VariableHolder.LocalVariables()))
+	return snapshot, nil
 }

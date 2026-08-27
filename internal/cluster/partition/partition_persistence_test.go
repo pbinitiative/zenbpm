@@ -945,7 +945,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 			VariableHolder: runtime.VariableHolder{},
 			CreatedAt:      time.Now(),
 			State:          runtime.ActivityStateActive,
-			ExecutionDepth: 0,
+			NestingDepth:   0,
 		},
 	}
 
@@ -971,7 +971,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 			VariableHolder: runtime.VariableHolder{},
 			CreatedAt:      time.Now(),
 			State:          runtime.ActivityStateActive,
-			ExecutionDepth: 1,
+			NestingDepth:   1,
 		},
 	}
 
@@ -980,13 +980,13 @@ func testInstanceParent(t *testing.T, db *DB) {
 	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ProcessTypeDefault, dbInst1.Type())
-	assert.Equal(t, int64(0), dbInst1.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), dbInst1.ProcessInstance().NestingDepth)
 
 	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ProcessTypeCallActivity, dbInst2.Type())
 	assert.NotNil(t, dbInst2.(*runtime.CallActivityInstance).ParentProcessExecutionToken)
-	assert.Equal(t, int64(1), dbInst2.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), dbInst2.ProcessInstance().NestingDepth)
 
 	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		SortByOrder:             ssql.NullString{String: "", Valid: false},

@@ -86,9 +86,9 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 	if err != nil {
 		return err
 	}
-	if err := engine.validateChildExecutionDepth(instance); err != nil {
-		if errors.Is(err, ErrMaxExecutionDepthExceeded) {
-			return engine.writeEventSubprocessExecutionDepthIncident(ctx, &batch, t, instance, err)
+	if err := engine.validateChildProcessInstanceNestingDepth(instance); err != nil {
+		if errors.Is(err, ErrMaxProcessInstanceNestingDepthExceeded) {
+			return engine.writeEventSubprocessNestingDepthIncident(ctx, &batch, t, instance, err)
 		}
 		return err
 	}
@@ -140,7 +140,7 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 	return nil
 }
 
-func (engine *Engine) writeEventSubprocessExecutionDepthIncident(
+func (engine *Engine) writeEventSubprocessNestingDepthIncident(
 	ctx context.Context,
 	batch *EngineBatch,
 	trigger eventSubprocessTrigger,
@@ -160,13 +160,13 @@ func (engine *Engine) writeEventSubprocessExecutionDepthIncident(
 		CreatedAt:          time.Now(),
 	}
 	if err := batch.SaveIncident(ctx, incident); err != nil {
-		return errors.Join(cause, fmt.Errorf("failed to save execution depth incident: %w", err))
+		return errors.Join(cause, fmt.Errorf("failed to save process instance nesting depth incident: %w", err))
 	}
 	if err := trigger.markConsumed(ctx, batch); err != nil {
-		return errors.Join(cause, fmt.Errorf("failed to consume execution depth trigger: %w", err))
+		return errors.Join(cause, fmt.Errorf("failed to consume process instance nesting depth trigger: %w", err))
 	}
 	if err := batch.Flush(ctx); err != nil {
-		return errors.Join(cause, fmt.Errorf("failed to flush execution depth incident batch: %w", err))
+		return errors.Join(cause, fmt.Errorf("failed to flush process instance nesting depth incident batch: %w", err))
 	}
 	return nil
 }

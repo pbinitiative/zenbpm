@@ -117,7 +117,7 @@ func (q *Queries) FindActiveInstances(ctx context.Context) ([]int64, error) {
 
 const findActiveProcessInstancesByDefinitionKeyAndStartElementId = `-- name: FindActiveProcessInstancesByDefinitionKeyAndStartElementId :many
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, execution_depth
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, nesting_depth
 FROM
     process_instance
 WHERE
@@ -154,7 +154,7 @@ func (q *Queries) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
-			&i.ExecutionDepth,
+			&i.NestingDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -172,7 +172,7 @@ func (q *Queries) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx
 const findChildProcessInstancesPage = `-- name: FindChildProcessInstancesPage :many
 WITH paged AS (
 SELECT
-    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.execution_depth, pd.bpmn_process_id,
+    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
     execution_token AS parent_token
@@ -381,7 +381,7 @@ const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 WITH process_instance_candidates AS (
     -- Use the definition/created_at index only when both parts of its prefix
     -- are selective.
-    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.execution_depth, pd.bpmn_process_id
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pd.bpmn_process_id
     FROM
         process_instance AS pi
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -403,7 +403,7 @@ WITH process_instance_candidates AS (
 
     -- Preserve the sequential scan for listings without an index-selective
     -- definition and lower time bound. The branches are mutually exclusive.
-    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.execution_depth, pd.bpmn_process_id
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pd.bpmn_process_id
     FROM
         process_instance AS pi NOT INDEXED
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -435,7 +435,7 @@ WITH process_instance_candidates AS (
 ),
 paged AS (
 SELECT
-    process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.execution_depth, process_instance_candidates.bpmn_process_id,
+    process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.nesting_depth, process_instance_candidates.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
     process_instance_candidates
@@ -642,7 +642,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 
 const findProcessesByParentExecutionToken = `-- name: FindProcessesByParentExecutionToken :many
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, execution_depth
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, nesting_depth
 FROM
     process_instance
 WHERE
@@ -672,7 +672,7 @@ func (q *Queries) FindProcessesByParentExecutionToken(ctx context.Context, paren
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
-			&i.ExecutionDepth,
+			&i.NestingDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -786,7 +786,7 @@ func (q *Queries) GetElementStatisticsByProcessInstanceKey(ctx context.Context, 
 
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, execution_depth
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec, start_element_id, nesting_depth
 FROM
     process_instance
 WHERE
@@ -810,13 +810,13 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.HistoryTtlSec,
 		&i.HistoryDeleteSec,
 		&i.StartElementID,
-		&i.ExecutionDepth,
+		&i.NestingDepth,
 	)
 	return i, err
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id, execution_depth)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id, nesting_depth)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
@@ -838,7 +838,7 @@ type SaveProcessInstanceParams struct {
 	ProcessType                           int64          `json:"process_type"`
 	BusinessKey                           sql.NullString `json:"business_key"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
-	ExecutionDepth                        int64          `json:"execution_depth"`
+	NestingDepth                          int64          `json:"nesting_depth"`
 }
 
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
@@ -854,7 +854,7 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.ProcessType,
 		arg.BusinessKey,
 		arg.StartElementID,
-		arg.ExecutionDepth,
+		arg.NestingDepth,
 	)
 	return err
 }

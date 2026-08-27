@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExecutionDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
+func TestNestingDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 	db, err := stdsql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
@@ -35,20 +35,20 @@ func TestExecutionDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	migration, err := readMigrationFile(DefaultMigrationsDir, "0013_process_instance_execution_depth.up.sql")
+	migration, err := readMigrationFile(DefaultMigrationsDir, "0013_process_instance_nesting_depth.up.sql")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, string(migration))
 	require.NoError(t, err)
 
-	rows, err := db.QueryContext(ctx, "SELECT key, execution_depth FROM process_instance ORDER BY key")
+	rows, err := db.QueryContext(ctx, "SELECT key, nesting_depth FROM process_instance ORDER BY key")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rows.Close()) }()
 
 	actual := make(map[int64]int64)
 	for rows.Next() {
-		var key, depth int64
-		require.NoError(t, rows.Scan(&key, &depth))
-		actual[key] = depth
+		var key, nestingDepth int64
+		require.NoError(t, rows.Scan(&key, &nestingDepth))
+		actual[key] = nestingDepth
 	}
 	require.NoError(t, rows.Err())
 	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 2, 4: 0}, actual)

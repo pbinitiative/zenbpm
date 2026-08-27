@@ -52,10 +52,10 @@ type Cluster struct {
 
 // Engine configures the behaviour of the BPMN engines running on the node partitions.
 type Engine struct {
-	// MaxExecutionDepth is the maximum allowed execution depth of a process instance in the parent-child chain
+	// MaxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). When a child process instance exceeds the limit,
 	// the engine stops its creation and raises an incident describing a potential infinite loop. Values <= 0 disable the check.
-	MaxExecutionDepth int64 `yaml:"maxExecutionDepth" json:"maxExecutionDepth" env:"CLUSTER_ENGINE_MAX_EXECUTION_DEPTH" env-default:"100"`
+	MaxProcessInstanceNestingDepth int64 `yaml:"maxProcessInstanceNestingDepth" json:"maxProcessInstanceNestingDepth" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH" env-default:"100"`
 }
 
 // CDC configures the rqlite change data capture output.

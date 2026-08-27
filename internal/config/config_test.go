@@ -112,34 +112,34 @@ func TestHttpServerMaxRequestBodyBytesValidation(t *testing.T) {
 	}
 }
 
-func TestEngineMaxExecutionDepthDefault(t *testing.T) {
-	unsetEngineDepthEnv(t)
+func TestEngineMaxProcessInstanceNestingDepthDefault(t *testing.T) {
+	unsetEngineMaxProcessInstanceNestingDepthEnv(t)
 
 	var c Config
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
-	if c.Cluster.Engine.MaxExecutionDepth != 100 {
-		t.Errorf("expected default MaxExecutionDepth 100, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	if c.Cluster.Engine.MaxProcessInstanceNestingDepth != 100 {
+		t.Errorf("expected default MaxProcessInstanceNestingDepth 100, got %d", c.Cluster.Engine.MaxProcessInstanceNestingDepth)
 	}
 }
 
-func TestEngineMaxExecutionDepthFromEnv(t *testing.T) {
-	t.Setenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH", "37")
+func TestEngineMaxProcessInstanceNestingDepthFromEnv(t *testing.T) {
+	t.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH", "37")
 
 	var c Config
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
-	if c.Cluster.Engine.MaxExecutionDepth != 37 {
-		t.Errorf("expected MaxExecutionDepth 37, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	if c.Cluster.Engine.MaxProcessInstanceNestingDepth != 37 {
+		t.Errorf("expected MaxProcessInstanceNestingDepth 37, got %d", c.Cluster.Engine.MaxProcessInstanceNestingDepth)
 	}
 }
 
-func TestEngineMaxExecutionDepthFromYAML(t *testing.T) {
-	unsetEngineDepthEnv(t)
+func TestEngineMaxProcessInstanceNestingDepthFromYAML(t *testing.T) {
+	unsetEngineMaxProcessInstanceNestingDepthEnv(t)
 	configFile := t.TempDir() + "/config.yaml"
-	if err := os.WriteFile(configFile, []byte("cluster:\n  engine:\n    maxExecutionDepth: 42\n"), 0o600); err != nil {
+	if err := os.WriteFile(configFile, []byte("cluster:\n  engine:\n    maxProcessInstanceNestingDepth: 42\n"), 0o600); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
@@ -147,26 +147,26 @@ func TestEngineMaxExecutionDepthFromYAML(t *testing.T) {
 	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 		t.Fatalf("failed to read YAML config: %v", err)
 	}
-	if c.Cluster.Engine.MaxExecutionDepth != 42 {
-		t.Errorf("expected MaxExecutionDepth 42, got %d", c.Cluster.Engine.MaxExecutionDepth)
+	if c.Cluster.Engine.MaxProcessInstanceNestingDepth != 42 {
+		t.Errorf("expected MaxProcessInstanceNestingDepth 42, got %d", c.Cluster.Engine.MaxProcessInstanceNestingDepth)
 	}
 }
 
-func unsetEngineDepthEnv(t *testing.T) {
+func unsetEngineMaxProcessInstanceNestingDepthEnv(t *testing.T) {
 	t.Helper()
-	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH")
+	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH")
 	t.Cleanup(func() {
 		if wasSet {
-			if err := os.Setenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH", value); err != nil {
-				t.Errorf("failed to restore CLUSTER_ENGINE_MAX_EXECUTION_DEPTH: %v", err)
+			if err := os.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH", value); err != nil {
+				t.Errorf("failed to restore CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH: %v", err)
 			}
 			return
 		}
-		if err := os.Unsetenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH"); err != nil {
-			t.Errorf("failed to unset CLUSTER_ENGINE_MAX_EXECUTION_DEPTH during cleanup: %v", err)
+		if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH"); err != nil {
+			t.Errorf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH during cleanup: %v", err)
 		}
 	})
-	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_EXECUTION_DEPTH"); err != nil {
-		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_EXECUTION_DEPTH: %v", err)
+	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH"); err != nil {
+		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH: %v", err)
 	}
 }

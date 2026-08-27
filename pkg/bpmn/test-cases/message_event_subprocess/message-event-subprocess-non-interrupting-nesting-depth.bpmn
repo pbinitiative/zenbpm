@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_msgNestedDepth1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
-  <bpmn:process id="Process_msgNestedDepth1" isExecutable="true">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_msgNestingDepth1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="Process_msgNestingDepth1" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0ygq7kv</bpmn:outgoing>
     </bpmn:startEvent>
@@ -18,7 +18,7 @@
       <bpmn:sequenceFlow id="Flow_1na2t7w" sourceRef="Event_0w7k593" targetRef="ServiceTaskA_1dv8s8j" />
       <bpmn:serviceTask id="ServiceTaskA_1dv8s8j" name="taskA">
         <bpmn:extensionElements>
-          <zenbpm:taskDefinition type="msgDepthSubProcessJobType" />
+          <zenbpm:taskDefinition type="msgNestingDepthSubProcessJobType" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_1na2t7w</bpmn:incoming>
         <bpmn:outgoing>Flow_1bzf0qp</bpmn:outgoing>
@@ -40,7 +40,7 @@
         <bpmn:sequenceFlow id="Flow_1jx8d33" sourceRef="ServiceTaskB_00m7f5d" targetRef="Event_1e8ggec" />
         <bpmn:serviceTask id="ServiceTaskB_00m7f5d" name="taskB">
           <bpmn:extensionElements>
-            <zenbpm:taskDefinition type="msgDepthEventSubProcessJobType" />
+            <zenbpm:taskDefinition type="msgNestingDepthEventSubProcessJobType" />
           </bpmn:extensionElements>
           <bpmn:incoming>Flow_1j5omak</bpmn:incoming>
           <bpmn:outgoing>Flow_1jx8d33</bpmn:outgoing>
@@ -52,7 +52,7 @@
             </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:outgoing>Flow_1j5omak</bpmn:outgoing>
-          <bpmn:messageEventDefinition id="MessageEventDefinition_msgNestedDepth1" messageRef="Message_msgNestedDepth1" />
+          <bpmn:messageEventDefinition id="MessageEventDefinition_msgNestingDepth1" messageRef="Message_msgNestingDepth1" />
         </bpmn:startEvent>
       </bpmn:subProcess>
     </bpmn:subProcess>
@@ -62,13 +62,13 @@
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_1g6xvlb" sourceRef="Subprocess_15s23yn" targetRef="Event_013jbfx" />
   </bpmn:process>
-  <bpmn:message id="Message_msgNestedDepth1" name="messageNestedDepthRef">
+  <bpmn:message id="Message_msgNestingDepth1" name="messageNestingDepthRef">
     <bpmn:extensionElements>
-      <zenbpm:subscription correlationKey="=&#34;correlation-key-msg-nested-depth&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-msg-nesting-depth&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_msgNestedDepth1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_msgNestingDepth1">
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
         <dc:Bounds x="182" y="252" width="36" height="36" />
       </bpmndi:BPMNShape>

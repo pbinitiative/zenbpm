@@ -69,7 +69,7 @@ Behaviour settings for the BPMN engines running on the node partitions.
 
 | Field               | Type  | Env Variable                        | Default | Description                                                                                                                                                                                            |
 |---------------------|-------|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `maxExecutionDepth` | int64 | `CLUSTER_ENGINE_MAX_EXECUTION_DEPTH`| `100`   | Maximum allowed execution depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
+| `maxProcessInstanceNestingDepth` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH`| `100`   | Maximum allowed nesting depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
 
 ---
 

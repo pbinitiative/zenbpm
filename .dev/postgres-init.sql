@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS reporting.process_instance (
     history_ttl_sec BIGINT,
     history_delete_sec BIGINT,
     start_element_id TEXT,
-    execution_depth BIGINT NOT NULL DEFAULT 0
+    nesting_depth BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS reporting.decision_instance (

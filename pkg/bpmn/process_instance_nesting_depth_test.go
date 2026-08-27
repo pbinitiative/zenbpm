@@ -13,42 +13,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewEngineUsesDefaultMaxExecutionDepth(t *testing.T) {
+func TestNewEngineUsesDefaultMaxProcessInstanceNestingDepth(t *testing.T) {
 	engine := NewEngine()
 	t.Cleanup(engine.contextCancel)
 
-	assert.Equal(t, DefaultMaxExecutionDepth, engine.maxExecutionDepth)
+	assert.Equal(t, DefaultMaxProcessInstanceNestingDepth, engine.maxProcessInstanceNestingDepth)
 }
 
-func TestRecursiveCallActivityStopsAtMaxExecutionDepthAndCreatesIncident(t *testing.T) {
-	const maxDepth = int64(3)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth)
+func TestRecursiveCallActivityStopsAtMaxProcessInstanceNestingDepthAndCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(3)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/call-activity/call-activity-recursive.bpmn")
 	require.NoError(t, err)
 
 	rootInstance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), rootInstance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), rootInstance.ProcessInstance().NestingDepth)
 
 	// wait until the engine detects the loop and raises an incident
-	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
+	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
 	assert.Equal(t, "recursiveCallActivity", incident.ElementId)
-	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	assertNestingDepthIncident(t, engine, store, incident, maxNestingDepth)
 
-	// the chain must stop at depth == maxDepth: root (0) plus maxDepth children
+	// The chain must stop at nestingDepth == maxNestingDepth: root (0) plus maxNestingDepth children.
 	instances := processInstancesSnapshot(t, engine, store)
-	assert.Len(t, instances, int(maxDepth)+1)
-	seenDepths := make(map[int64]int, len(instances))
+	assert.Len(t, instances, int(maxNestingDepth)+1)
+	seenNestingDepths := make(map[int64]int, len(instances))
 	for _, pi := range instances {
-		seenDepths[pi.ProcessInstance().ExecutionDepth]++
+		seenNestingDepths[pi.ProcessInstance().NestingDepth]++
 	}
-	for depth := int64(0); depth <= maxDepth; depth++ {
-		assert.Equal(t, 1, seenDepths[depth], "expected exactly one process instance at depth %d", depth)
+	for nestingDepth := int64(0); nestingDepth <= maxNestingDepth; nestingDepth++ {
+		assert.Equal(t, 1, seenNestingDepths[nestingDepth], "expected exactly one process instance at nesting depth %d", nestingDepth)
 	}
 }
 
-func TestChildProcessInstancesTrackExecutionDepth(t *testing.T) {
+func TestChildProcessInstancesTrackNestingDepth(t *testing.T) {
 	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	require.NoError(t, err)
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity/call-activity-simple.bpmn")
@@ -61,17 +61,17 @@ func TestChildProcessInstancesTrackExecutionDepth(t *testing.T) {
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 2*time.Second, 50*time.Millisecond)
 
 	childInstance := findChildCallActivityInstance(t, instance.ProcessInstance().Key)
-	assert.Equal(t, int64(1), childInstance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), childInstance.ProcessInstance().NestingDepth)
 }
 
-// TestNestedPlainSubProcessesTrackExecutionDepth verifies that plain (embedded) subprocesses
-// nested three levels deep get an execution depth incremented by one per nesting level.
-func TestNestedPlainSubProcessesTrackExecutionDepth(t *testing.T) {
+// TestNestedPlainSubProcessesTrackNestingDepth verifies that plain (embedded) subprocesses
+// nested three levels deep get a nesting depth incremented by one per nesting level.
+func TestNestedPlainSubProcessesTrackNestingDepth(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/error_events/sub_process/subprocess_nested_with_error_boundery_event.bpmn")
 	require.NoError(t, err)
 
@@ -82,22 +82,22 @@ func TestNestedPlainSubProcessesTrackExecutionDepth(t *testing.T) {
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	outerSubProcess := waitForChildInstanceOfType(t, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 	middleSubProcess := waitForChildInstanceOfType(t, outerSubProcess.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 	innerSubProcess := waitForChildInstanceOfType(t, middleSubProcess.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 
-	assert.Equal(t, int64(1), outerSubProcess.ProcessInstance().ExecutionDepth)
-	assert.Equal(t, int64(2), middleSubProcess.ProcessInstance().ExecutionDepth)
-	assert.Equal(t, int64(3), innerSubProcess.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), outerSubProcess.ProcessInstance().NestingDepth)
+	assert.Equal(t, int64(2), middleSubProcess.ProcessInstance().NestingDepth)
+	assert.Equal(t, int64(3), innerSubProcess.ProcessInstance().NestingDepth)
 
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 5*time.Second, 50*time.Millisecond)
 }
 
-// TestMultiInstanceSubProcessTracksExecutionDepth verifies that a multi-instance subprocess
+// TestMultiInstanceSubProcessTracksNestingDepth verifies that a multi-instance subprocess
 // creates a multi-instance child at depth 1 and the subprocess body instance at depth 2.
-func TestMultiInstanceSubProcessTracksExecutionDepth(t *testing.T) {
+func TestMultiInstanceSubProcessTracksNestingDepth(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/multi_instance_sub_process_task.bpmn")
 	require.NoError(t, err)
 
@@ -111,38 +111,38 @@ func TestMultiInstanceSubProcessTracksExecutionDepth(t *testing.T) {
 		"testInputCollection": []string{"item-1"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	multiInstanceChild := waitForChildInstanceOfType(t, instance.ProcessInstance().Key, runtime.ProcessTypeMultiInstance, 5*time.Second)
 	subProcessBody := waitForChildInstanceOfType(t, multiInstanceChild.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 
-	assert.Equal(t, int64(1), multiInstanceChild.ProcessInstance().ExecutionDepth)
-	assert.Equal(t, int64(2), subProcessBody.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), multiInstanceChild.ProcessInstance().NestingDepth)
+	assert.Equal(t, int64(2), subProcessBody.ProcessInstance().NestingDepth)
 
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 5*time.Second, 50*time.Millisecond)
 }
 
-// TestNestedMessageEventSubProcessTracksExecutionDepth verifies that a message event subprocess
-// nested inside an embedded subprocess runs at execution depth 2. It uses a dedicated copy of
+// TestNestedMessageEventSubProcessTracksNestingDepth verifies that a message event subprocess
+// nested inside an embedded subprocess runs at nesting depth 2. It uses a dedicated copy of
 // the nested message BPMN (unique message name and correlation key) because active message
 // subscriptions are unique per message + correlation key, so sharing them with other tests
 // would make instance creations collide.
-func TestNestedMessageEventSubProcessTracksExecutionDepth(t *testing.T) {
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message_event_subprocess/message-event-subprocess-non-interrupting-nested-depth.bpmn")
+func TestNestedMessageEventSubProcessTracksNestingDepth(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message_event_subprocess/message-event-subprocess-non-interrupting-nesting-depth.bpmn")
 	require.NoError(t, err)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	subProcessChild := waitForChildInstanceOfType(t, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
-	correlationKey := "correlation-key-msg-nested-depth"
-	require.NoError(t, bpmnEngine.PublishMessageByName(t.Context(), "messageNestedDepthRef", &correlationKey, map[string]any{}))
+	correlationKey := "correlation-key-msg-nesting-depth"
+	require.NoError(t, bpmnEngine.PublishMessageByName(t.Context(), "messageNestingDepthRef", &correlationKey, map[string]any{}))
 
 	eventSubProcessChild := waitForChildInstanceOfType(t, subProcessChild.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().NestingDepth)
 
 	// complete the pending jobs so the whole instance tree can finish
 	subProcessJob := waitForPendingJob(t, subProcessChild.ProcessInstance().Key)
@@ -153,22 +153,22 @@ func TestNestedMessageEventSubProcessTracksExecutionDepth(t *testing.T) {
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 5*time.Second, 50*time.Millisecond)
 }
 
-// TestNestedTimerEventSubProcessTracksExecutionDepth verifies that a timer event subprocess
-// nested inside an embedded subprocess runs at execution depth 2.
-func TestNestedTimerEventSubProcessTracksExecutionDepth(t *testing.T) {
+// TestNestedTimerEventSubProcessTracksNestingDepth verifies that a timer event subprocess
+// nested inside an embedded subprocess runs at nesting depth 2.
+func TestNestedTimerEventSubProcessTracksNestingDepth(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-non-interrupting-nested.bpmn")
 	require.NoError(t, err)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	subProcessChild := waitForChildInstanceOfType(t, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
 	// the non-interrupting timer start event (PT1S) fires on its own and starts the event subprocess
 	eventSubProcessChild := waitForChildInstanceOfType(t, subProcessChild.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 15*time.Second)
-	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().NestingDepth)
 
 	// complete the pending jobs so the whole instance tree can finish
 	subProcessJob := waitForPendingJob(t, subProcessChild.ProcessInstance().Key)
@@ -179,51 +179,51 @@ func TestNestedTimerEventSubProcessTracksExecutionDepth(t *testing.T) {
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 5*time.Second, 50*time.Millisecond)
 }
 
-// TestNestedErrorEventSubProcessTracksExecutionDepth verifies that an error event subprocess
-// declared inside an embedded subprocess runs at execution depth 2 when a job error is caught.
-func TestNestedErrorEventSubProcessTracksExecutionDepth(t *testing.T) {
+// TestNestedErrorEventSubProcessTracksNestingDepth verifies that an error event subprocess
+// declared inside an embedded subprocess runs at nesting depth 2 when a job error is caught.
+func TestNestedErrorEventSubProcessTracksNestingDepth(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/error_event_subprocess/error-event-subprocess-nested-in-subprocess.bpmn")
 	require.NoError(t, err)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
 	subProcessChild := waitForChildInstanceOfType(t, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
 	job := waitForPendingJob(t, subProcessChild.ProcessInstance().Key)
 	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
 
 	eventSubProcessChild := waitForChildInstanceOfType(t, subProcessChild.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().NestingDepth)
 
 	waitForProcessCompletion(t, instance.ProcessInstance().Key, 5*time.Second, 50*time.Millisecond)
 }
 
-// TestNestedPlainSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that creating a
-// plain (embedded) subprocess beyond the configured maximum execution depth raises an incident.
-func TestNestedPlainSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testing.T) {
-	const maxDepth = int64(2)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth)
+// TestNestedPlainSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident verifies that creating a
+// plain (embedded) subprocess beyond the configured maximum nesting depth raises an incident.
+func TestNestedPlainSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(2)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/error_events/sub_process/subprocess_nested_with_error_boundery_event.bpmn")
 	require.NoError(t, err)
 
 	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
-	// the innermost subprocess would run at depth 3 (> maxDepth) and must be rejected
-	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
-	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	// the innermost subprocess would run at depth 3 (> maxNestingDepth) and must be rejected
+	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
+	assertNestingDepthIncident(t, engine, store, incident, maxNestingDepth)
 }
 
-// TestMultiInstanceSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that creating a
-// multi-instance subprocess body beyond the configured maximum execution depth raises an incident.
-func TestMultiInstanceSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testing.T) {
-	const maxDepth = int64(1)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth)
+// TestMultiInstanceSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident verifies that creating a
+// multi-instance subprocess body beyond the configured maximum nesting depth raises an incident.
+func TestMultiInstanceSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(1)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/multi_instance_sub_process_task.bpmn")
 	require.NoError(t, err)
@@ -232,39 +232,39 @@ func TestMultiInstanceSubProcessExceedingMaxExecutionDepthCreatesIncident(t *tes
 		"testInputCollection": []string{"item-1"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), instance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(0), instance.ProcessInstance().NestingDepth)
 
-	// the multi-instance child runs at depth 1, its subprocess body would run at depth 2 (> maxDepth)
-	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
-	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	// the multi-instance child runs at depth 1, its subprocess body would run at depth 2 (> maxNestingDepth)
+	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
+	assertNestingDepthIncident(t, engine, store, incident, maxNestingDepth)
 }
 
-// TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
-// activating a message event subprocess beyond the configured maximum execution depth raises
+// TestNestedMessageEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident verifies that
+// activating a message event subprocess beyond the configured maximum nesting depth raises
 // an incident instead of failing the message publish.
-func TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testing.T) {
-	const maxDepth = int64(1)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth)
+func TestNestedMessageEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(1)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth)
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/message_event_subprocess/message-event-subprocess-non-interrupting-nested-depth.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/message_event_subprocess/message-event-subprocess-non-interrupting-nesting-depth.bpmn")
 	require.NoError(t, err)
 
 	_, err = engine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	require.NoError(t, err)
 
-	parentJob := waitForActiveJobByTypeInStore(t, store, "msgDepthSubProcessJobType", 5*time.Second)
+	parentJob := waitForActiveJobByTypeInStore(t, store, "msgNestingDepthSubProcessJobType", 5*time.Second)
 	subProcessChild, err := store.FindProcessInstanceByKey(t.Context(), parentJob.ProcessInstanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
-	// the event subprocess would run at depth 2 (> maxDepth); the publish itself must succeed
-	correlationKey := "correlation-key-msg-nested-depth"
-	require.NoError(t, engine.PublishMessageByName(t.Context(), "messageNestedDepthRef", &correlationKey, map[string]any{
+	// the event subprocess would run at depth 2 (> maxNestingDepth); the publish itself must succeed
+	correlationKey := "correlation-key-msg-nesting-depth"
+	require.NoError(t, engine.PublishMessageByName(t.Context(), "messageNestingDepthRef", &correlationKey, map[string]any{
 		"rejectedPayload": "must-not-propagate",
 	}))
 
-	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
-	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
+	assertNestingDepthIncident(t, engine, store, incident, maxNestingDepth)
 	assert.Zero(t, incident.Token.Key, "event-subprocess depth incidents must not resume an unrelated token")
 	assert.Equal(t, "eventSubprocessMessageEvent_010eof4", incident.ElementId)
 	parentSnapshot, err := processInstanceSnapshot(t, engine, store, subProcessChild.ProcessInstance().Key)
@@ -285,12 +285,12 @@ func TestNestedMessageEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t
 	assert.Equal(t, incident.ElementId, activeSubscriptions[0].MessageSubscription().ElementId)
 }
 
-// TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
-// activating a timer event subprocess beyond the configured maximum execution depth raises
+// TestNestedTimerEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident verifies that
+// activating a timer event subprocess beyond the configured maximum nesting depth raises
 // an incident when the timer fires.
-func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testing.T) {
-	const maxDepth = int64(1)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth, EngineWithPollTimerDelay(time.Second))
+func TestNestedTimerEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(1)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth, EngineWithPollTimerDelay(time.Second))
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-non-interrupting-nested.bpmn")
 	require.NoError(t, err)
@@ -301,12 +301,12 @@ func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	parentJob := waitForActiveJobByTypeInStore(t, store, "subProcessJobType", 5*time.Second)
 	subProcessChild, err := store.FindProcessInstanceByKey(t.Context(), parentJob.ProcessInstanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
 	// the non-interrupting timer start event (PT1S) fires on its own; the event subprocess
-	// would run at depth 2 (> maxDepth) and must be rejected with an incident
-	incident := waitForExecutionDepthIncident(t, engine, store, 15*time.Second)
-	assertExecutionDepthIncident(t, engine, store, incident, maxDepth)
+	// would run at depth 2 (> maxNestingDepth) and must be rejected with an incident
+	incident := waitForNestingDepthIncident(t, engine, store, 15*time.Second)
+	assertNestingDepthIncident(t, engine, store, incident, maxNestingDepth)
 	assert.Zero(t, incident.Token.Key, "event-subprocess depth incidents must not resume an unrelated token")
 
 	createdTimers, err := store.FindProcessInstanceTimers(t.Context(), subProcessChild.ProcessInstance().Key, runtime.TimerStateCreated)
@@ -316,12 +316,12 @@ func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	require.NoError(t, err)
 	assert.Len(t, triggeredTimers, 1)
 
-	incidentCount := executionDepthIncidentCount(t, store, incident.ProcessInstanceKey)
+	incidentCount := nestingDepthIncidentCount(t, store, incident.ProcessInstanceKey)
 	started := time.Now()
 	require.Eventually(t, func() bool {
 		return time.Since(started) >= 2500*time.Millisecond &&
-			executionDepthIncidentCount(t, store, incident.ProcessInstanceKey) == incidentCount
-	}, 3*time.Second, 100*time.Millisecond, "a consumed timer must not create repeated execution-depth incidents")
+			nestingDepthIncidentCount(t, store, incident.ProcessInstanceKey) == incidentCount
+	}, 3*time.Second, 100*time.Millisecond, "a consumed timer must not create repeated nesting-depth incidents")
 
 	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
 	createdTimers, err = store.FindProcessInstanceTimers(t.Context(), subProcessChild.ProcessInstance().Key, runtime.TimerStateCreated)
@@ -330,12 +330,12 @@ func TestNestedTimerEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	assert.Equal(t, incident.ElementId, createdTimers[0].ElementId)
 }
 
-// TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident verifies that
-// activating an error event subprocess beyond the configured maximum execution depth fails
+// TestNestedErrorEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident verifies that
+// activating an error event subprocess beyond the configured maximum nesting depth fails
 // the job with an incident describing the potential infinite loop.
-func TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *testing.T) {
-	const maxDepth = int64(1)
-	engine, store := startEngineWithMaxExecutionDepth(t, maxDepth)
+func TestNestedErrorEventSubProcessExceedingMaxProcessInstanceNestingDepthCreatesIncident(t *testing.T) {
+	const maxNestingDepth = int64(1)
+	engine, store := startEngineWithMaxProcessInstanceNestingDepth(t, maxNestingDepth)
 
 	process, err := engine.LoadFromFile(t.Context(), "./test-cases/error_event_subprocess/error-event-subprocess-nested-in-subprocess.bpmn")
 	require.NoError(t, err)
@@ -344,14 +344,14 @@ func TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	require.NoError(t, err)
 
 	subProcessChild := waitForChildInstanceOfTypeInStore(t, engine, store, instance.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
-	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
 	job := waitForPendingJobInStore(t, store, subProcessChild.ProcessInstance().Key)
-	// the error event subprocess would run at depth 2 (> maxDepth); the job fail must succeed
+	// the error event subprocess would run at depth 2 (> maxNestingDepth); the job fail must succeed
 	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
 
-	incident := waitForExecutionDepthIncident(t, engine, store, 5*time.Second)
-	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed execution depth of %d", maxDepth))
+	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
+	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance nesting depth of %d", maxNestingDepth))
 
 	// the job carrying the incident must have been failed instead of activating the event subprocess
 	failedJob, err := store.FindJobByJobKey(t.Context(), job.Key)
@@ -359,14 +359,14 @@ func TestNestedErrorEventSubProcessExceedingMaxExecutionDepthCreatesIncident(t *
 	assert.Equal(t, runtime.ActivityStateFailed, failedJob.State)
 }
 
-// startEngineWithMaxExecutionDepth starts a dedicated engine backed by a fresh in-memory
-// storage with the given maximum execution depth. The engine is stopped on test cleanup.
-func startEngineWithMaxExecutionDepth(t *testing.T, maxDepth int64, extraOptions ...EngineOption) (*Engine, *inmemory.Storage) {
+// startEngineWithMaxProcessInstanceNestingDepth starts a dedicated engine backed by a fresh in-memory
+// storage with the given maximum nesting depth. The engine is stopped on test cleanup.
+func startEngineWithMaxProcessInstanceNestingDepth(t *testing.T, maxNestingDepth int64, extraOptions ...EngineOption) (*Engine, *inmemory.Storage) {
 	t.Helper()
 	store := inmemory.NewStorage()
 	options := append([]EngineOption{
 		EngineWithStorage(store),
-		EngineWithMaxExecutionDepth(maxDepth),
+		EngineWithMaxProcessInstanceNestingDepth(maxNestingDepth),
 	}, extraOptions...)
 	engine := NewEngine(options...)
 	require.NoError(t, engine.Start(t.Context()))
@@ -374,9 +374,9 @@ func startEngineWithMaxExecutionDepth(t *testing.T, maxDepth int64, extraOptions
 	return &engine, store
 }
 
-// waitForExecutionDepthIncident waits for and returns the first unresolved incident in the
-// given store whose message reports a potential infinite loop (max execution depth breach).
-func waitForExecutionDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, timeout time.Duration) runtime.Incident {
+// waitForNestingDepthIncident waits for and returns the first unresolved incident in the
+// given store whose message reports a potential infinite loop (max nesting depth breach).
+func waitForNestingDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, timeout time.Duration) runtime.Incident {
 	t.Helper()
 	var incident runtime.Incident
 	require.Eventually(t, func() bool {
@@ -393,11 +393,11 @@ func waitForExecutionDepthIncident(t *testing.T, engine *Engine, store *inmemory
 			}
 		}
 		return false
-	}, timeout, 50*time.Millisecond, "expected an execution depth incident to be created")
+	}, timeout, 50*time.Millisecond, "expected an nesting depth incident to be created")
 	return incident
 }
 
-func executionDepthIncidentCount(t *testing.T, store *inmemory.Storage, processInstanceKey int64) int {
+func nestingDepthIncidentCount(t *testing.T, store *inmemory.Storage, processInstanceKey int64) int {
 	t.Helper()
 	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), processInstanceKey)
 	require.NoError(t, err)
@@ -410,15 +410,15 @@ func executionDepthIncidentCount(t *testing.T, store *inmemory.Storage, processI
 	return count
 }
 
-// assertExecutionDepthIncident asserts that the given incident reports the configured maximum
-// execution depth and that the instance carrying it sits at exactly maxDepth. Token-bound
+// assertNestingDepthIncident asserts that the given incident reports the configured maximum
+// nesting depth and that the instance carrying it sits at exactly maxNestingDepth. Token-bound
 // incidents fail that instance; recoverable event-subprocess subscription incidents do not.
-func assertExecutionDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, incident runtime.Incident, maxDepth int64) {
+func assertNestingDepthIncident(t *testing.T, engine *Engine, store *inmemory.Storage, incident runtime.Incident, maxNestingDepth int64) {
 	t.Helper()
-	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed execution depth of %d", maxDepth))
+	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance nesting depth of %d", maxNestingDepth))
 	failedInstance, err := processInstanceSnapshot(t, engine, store, incident.ProcessInstanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, maxDepth, failedInstance.ProcessInstance().ExecutionDepth)
+	assert.Equal(t, maxNestingDepth, failedInstance.ProcessInstance().NestingDepth)
 	if incident.Token.Key == 0 {
 		assert.NotEqual(t, runtime.ActivityStateFailed, failedInstance.ProcessInstance().State)
 	} else {

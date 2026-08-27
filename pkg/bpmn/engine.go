@@ -53,11 +53,11 @@ type Engine struct {
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
 
-	// maxExecutionDepth is the maximum allowed execution depth of a process instance in the parent-child chain
+	// maxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
 	// stops execution and raises an incident, protecting the engine from infinite loops of recursively spawned
-	// process instances. Values <= 0 disable the check. Defaults to DefaultMaxExecutionDepth.
-	maxExecutionDepth int64
+	// process instances. Values <= 0 disable the check. Defaults to DefaultMaxProcessInstanceNestingDepth.
+	maxProcessInstanceNestingDepth int64
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -77,9 +77,9 @@ type Engine struct {
 
 type EngineOption = func(*Engine)
 
-// DefaultMaxExecutionDepth is the default maximum execution depth of a process
-// instance in the parent-child chain. It can be overridden via EngineWithMaxExecutionDepth.
-const DefaultMaxExecutionDepth int64 = 100
+// DefaultMaxProcessInstanceNestingDepth is the default maximum nesting depth of a process
+// instance in the parent-child chain. It can be overridden via EngineWithMaxProcessInstanceNestingDepth.
+const DefaultMaxProcessInstanceNestingDepth int64 = 100
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
@@ -96,22 +96,22 @@ func NewEngine(options ...EngineOption) Engine {
 	jsRuntime := js.NewJsRuntime(1, 1)
 
 	engine := Engine{
-		context:              ctx,
-		contextCancel:        cancel,
-		taskhandlersMu:       &sync.RWMutex{},
-		taskHandlers:         []*taskHandler{},
-		exporters:            []exporter.EventExporter{},
-		persistence:          persistence,
-		logger:               logger,
-		runningInstances:     newRunningInstanceCache(),
-		instantiatingRearmMu: &sync.Mutex{},
-		tracer:               tracer,
-		meter:                meter,
-		metrics:              metrics,
-		feelRuntime:          feelRuntime,
-		jsRuntime:            jsRuntime,
-		maxExecutionDepth:    DefaultMaxExecutionDepth,
-		dmnEngine:            dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
+		context:                        ctx,
+		contextCancel:                  cancel,
+		taskhandlersMu:                 &sync.RWMutex{},
+		taskHandlers:                   []*taskHandler{},
+		exporters:                      []exporter.EventExporter{},
+		persistence:                    persistence,
+		logger:                         logger,
+		runningInstances:               newRunningInstanceCache(),
+		instantiatingRearmMu:           &sync.Mutex{},
+		tracer:                         tracer,
+		meter:                          meter,
+		metrics:                        metrics,
+		feelRuntime:                    feelRuntime,
+		jsRuntime:                      jsRuntime,
+		maxProcessInstanceNestingDepth: DefaultMaxProcessInstanceNestingDepth,
+		dmnEngine:                      dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -174,9 +174,9 @@ func EngineWithDefinitionSubscriptionRecoveryFilter(filter func(runtime.ProcessD
 	}
 }
 
-func EngineWithMaxExecutionDepth(maxDepth int64) EngineOption {
+func EngineWithMaxProcessInstanceNestingDepth(maxNestingDepth int64) EngineOption {
 	return func(engine *Engine) {
-		engine.maxExecutionDepth = maxDepth
+		engine.maxProcessInstanceNestingDepth = maxNestingDepth
 	}
 }
 
@@ -419,43 +419,43 @@ func resolveRootBusinessKey(ctx context.Context, instance runtime.ProcessInstanc
 // across all child-scope creation paths.
 func newChildProcessInstanceData(parent runtime.ProcessInstance, businessKey *string) runtime.ProcessInstanceData {
 	return runtime.ProcessInstanceData{
-		BusinessKey:    businessKey,
-		HistoryTTLSec:  parent.ProcessInstance().HistoryTTLSec,
-		ExecutionDepth: parent.ProcessInstance().ExecutionDepth + 1,
+		BusinessKey:   businessKey,
+		HistoryTTLSec: parent.ProcessInstance().HistoryTTLSec,
+		NestingDepth:  parent.ProcessInstance().NestingDepth + 1,
 	}
 }
 
-// ErrMaxExecutionDepthExceeded is wrapped into the error returned by validateExecutionDepth when a child process instance
-// would exceed the configured maximum execution depth. Callers that trigger child-instance creation outside of
+// ErrMaxProcessInstanceNestingDepthExceeded is wrapped into the error returned by validateProcessInstanceNestingDepth when a child process instance
+// would exceed the configured maximum nesting depth. Callers that trigger child-instance creation outside of
 // token processing (e.g. message/timer event subprocess activation) use it to translate the failure into an incident.
-var ErrMaxExecutionDepthExceeded = errors.New("maximum execution depth exceeded")
+var ErrMaxProcessInstanceNestingDepthExceeded = errors.New("maximum process instance nesting depth exceeded")
 
-// validateExecutionDepth guards every child-instance creation path against potential infinite loops
+// validateProcessInstanceNestingDepth guards every child-instance creation path against potential infinite loops
 // of process instances recursively spawning child instances (e.g. a call activity calling its own process).
-// The returned error wraps ErrMaxExecutionDepthExceeded.
-func (engine *Engine) validateExecutionDepth(instance runtime.ProcessInstance) error {
-	return engine.validateExecutionDepthValue(
-		instance.ProcessInstance().ExecutionDepth,
+// The returned error wraps ErrMaxProcessInstanceNestingDepthExceeded.
+func (engine *Engine) validateProcessInstanceNestingDepth(instance runtime.ProcessInstance) error {
+	return engine.validateProcessInstanceNestingDepthValue(
+		instance.ProcessInstance().NestingDepth,
 		instance.ProcessInstance().Definition.BpmnProcessId,
 	)
 }
 
-// validateChildExecutionDepth checks a prospective child before callers mutate its parent scope.
-func (engine *Engine) validateChildExecutionDepth(parent runtime.ProcessInstance) error {
-	return engine.validateExecutionDepthValue(
-		parent.ProcessInstance().ExecutionDepth+1,
+// validateChildProcessInstanceNestingDepth checks a prospective child before callers mutate its parent scope.
+func (engine *Engine) validateChildProcessInstanceNestingDepth(parent runtime.ProcessInstance) error {
+	return engine.validateProcessInstanceNestingDepthValue(
+		parent.ProcessInstance().NestingDepth+1,
 		parent.ProcessInstance().Definition.BpmnProcessId,
 	)
 }
 
-func (engine *Engine) validateExecutionDepthValue(depth int64, bpmnProcessID string) error {
-	if engine.maxExecutionDepth <= 0 {
+func (engine *Engine) validateProcessInstanceNestingDepthValue(nestingDepth int64, bpmnProcessID string) error {
+	if engine.maxProcessInstanceNestingDepth <= 0 {
 		return nil
 	}
-	if depth > engine.maxExecutionDepth {
+	if nestingDepth > engine.maxProcessInstanceNestingDepth {
 		return fmt.Errorf(
-			"potential infinite loop detected: creating process instance of process %s would exceed the maximum allowed execution depth of %d; check the process model for recursively called processes or raise the configured limit: %w",
-			bpmnProcessID, engine.maxExecutionDepth, ErrMaxExecutionDepthExceeded,
+			"potential infinite loop detected: creating process instance of process %s would exceed the maximum allowed process instance nesting depth of %d; check the process model for recursively called processes or raise the configured limit: %w",
+			bpmnProcessID, engine.maxProcessInstanceNestingDepth, ErrMaxProcessInstanceNestingDepthExceeded,
 		)
 	}
 	return nil
@@ -477,7 +477,7 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
-	if err := engine.validateExecutionDepth(instance); err != nil {
+	if err := engine.validateProcessInstanceNestingDepth(instance); err != nil {
 		return nil, nil, err
 	}
 
@@ -564,7 +564,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
-	if err := engine.validateExecutionDepth(instance); err != nil {
+	if err := engine.validateProcessInstanceNestingDepth(instance); err != nil {
 		return nil, nil, err
 	}
 

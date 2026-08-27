@@ -3,6 +3,7 @@ package bpmn
 import (
 	"fmt"
 	"maps"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,17 @@ func TestNewEngineUsesDefaultMaxProcessInstanceNestingDepth(t *testing.T) {
 	t.Cleanup(engine.contextCancel)
 
 	assert.Equal(t, DefaultMaxProcessInstanceNestingDepth, engine.maxProcessInstanceNestingDepth)
+}
+
+func TestNonPositiveMaxProcessInstanceNestingDepthDisablesValidation(t *testing.T) {
+	for _, maxNestingDepth := range []int64{0, -1} {
+		t.Run(fmt.Sprintf("limit_%d", maxNestingDepth), func(t *testing.T) {
+			engine := NewEngine(EngineWithMaxProcessInstanceNestingDepth(maxNestingDepth))
+			t.Cleanup(engine.contextCancel)
+
+			require.NoError(t, engine.validateProcessInstanceNestingDepthValue(math.MaxInt64, "recursive-process"))
+		})
+	}
 }
 
 func TestRecursiveCallActivityStopsAtMaxProcessInstanceNestingDepthAndCreatesIncident(t *testing.T) {

@@ -71,6 +71,11 @@ Behaviour settings for the BPMN engines running on the node partitions.
 |---------------------|-------|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `maxProcessInstanceNestingDepth` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH`| `100`   | Maximum allowed nesting depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
 
+Resolving a nesting-depth incident retries the blocked execution instead of bypassing the configured limit. For an
+event-subprocess trigger, resolution recreates the consumed message subscription or timer; if the limit is unchanged,
+the next matching message or timer firing raises another incident. Raise or disable the limit only after confirming that
+the process model cannot create an unbounded instance chain.
+
 ---
 
 ### Raft Configuration: `ClusterRaft`

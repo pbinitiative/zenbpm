@@ -28,10 +28,13 @@ func TestNestingDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 			(1, NULL),
 			(2, 10),
 			(3, 20),
-			(4, NULL);
+			(4, NULL),
+			(5, 999),
+			(6, 30);
 		INSERT INTO execution_token (key, process_instance_key) VALUES
 			(10, 1),
-			(20, 2);
+			(20, 2),
+			(30, 5);
 	`)
 	require.NoError(t, err)
 
@@ -51,5 +54,5 @@ func TestNestingDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 		actual[key] = nestingDepth
 	}
 	require.NoError(t, rows.Err())
-	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 2, 4: 0}, actual)
+	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 2, 4: 0, 5: 1, 6: 2}, actual)
 }

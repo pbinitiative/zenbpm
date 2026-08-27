@@ -146,7 +146,8 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 }
 
 // discardWrites drops all buffered writes and pre/post flush actions while keeping the instance locks held by the batch.
-// It is used when a partially prepared mutation set must be replaced by incident bookkeeping.
+// Incident paths use it either to replace partially prepared mutations or defensively ensure that only incident
+// bookkeeping and trigger-consumption writes are flushed.
 func (b *EngineBatch) discardWrites() {
 	b.b = b.engine.persistence.NewBatch()
 	b.preFlushActions = []func() error{}

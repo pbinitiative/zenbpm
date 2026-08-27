@@ -12,8 +12,9 @@ func TestExecutionDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 	db, err := stdsql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	ctx := t.Context()
 
-	_, err = db.Exec(`
+	_, err = db.ExecContext(ctx, `
 		CREATE TABLE process_instance (
 			key INTEGER PRIMARY KEY,
 			parent_process_execution_token INTEGER
@@ -36,11 +37,12 @@ func TestExecutionDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 
 	migration, err := readMigrationFile(DefaultMigrationsDir, "0013_process_instance_execution_depth.up.sql")
 	require.NoError(t, err)
-	_, err = db.Exec(string(migration))
+	_, err = db.ExecContext(ctx, string(migration))
 	require.NoError(t, err)
 
-	rows, err := db.Query("SELECT key, execution_depth FROM process_instance ORDER BY key")
+	rows, err := db.QueryContext(ctx, "SELECT key, execution_depth FROM process_instance ORDER BY key")
 	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
 
 	actual := make(map[int64]int64)
 	for rows.Next() {
@@ -49,6 +51,5 @@ func TestExecutionDepthMigrationBackfillsExistingHierarchy(t *testing.T) {
 		actual[key] = depth
 	}
 	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
 	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 2, 4: 0}, actual)
 }

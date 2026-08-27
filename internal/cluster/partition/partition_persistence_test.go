@@ -323,6 +323,146 @@ func TestRunRollbackMigration(t *testing.T) {
 	assert.Zero(t, tableCount, "Only the migration table should exist after a failed migration rollback.")
 }
 
+// TestUpgradeBackfillsJobElementType verifies that migration 0013
+// (adding job.element_type) correctly backfills the column from
+// flow_element_instance.element_type when applied to a database that
+// already contains job and flow_element_instance rows.
+//
+// The engine writes job rows before flow_element_instance rows in the same
+// EngineBatch, so at migration time any fully-committed batch contributes
+// both a job and a matching flow_element_instance row. This test simulates
+// that state by rolling back migration 0013, inserting pre-migration data,
+// and re-running the migration. Orphan job rows (no matching
+// flow_element_instance) must keep the column default ('').
+func TestUpgradeBackfillsJobElementType(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, partition.Stop()) }()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-upgrade-job-element-type")
+
+	migration := findMigration(t, "0013_job_element_type.up.sql")
+
+	// Roll back migration 0013 so the database looks like a pre-0013 install.
+	// This drops the job.element_type column.
+	require.NoError(t, executeRollbackMigration(t.Context(), db, migration))
+
+	// executeRollbackMigration only reverts the schema. Remove the migration
+	// record so RunMigrations treats 0013 as pending again.
+	_, err := db.ExecContext(t.Context(),
+		"DELETE FROM migration WHERE name = ?", migration.Filename)
+	require.NoError(t, err)
+
+	// Insert a process definition and process instance so the FK constraints
+	// on job and flow_element_instance are satisfied.
+	const (
+		processDefinitionKey = int64(9001)
+		processInstanceKey   = int64(9002)
+	)
+	_, err = db.ExecContext(t.Context(),
+		`INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		processDefinitionKey, int64(1), "upgrade-test", "<bpmn/>", []byte{1}, "Upgrade Test",
+	)
+	require.NoError(t, err)
+	_, err = db.ExecContext(t.Context(),
+		`INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, process_type)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		processInstanceKey, processDefinitionKey, time.Now().UnixMilli(), int64(1), "{}", int64(0),
+	)
+	require.NoError(t, err)
+
+	// Pre-migration flow_element_instance rows carry the element_type we
+	// want the migration to copy onto the corresponding job rows. A job row
+	// without a matching flow_element_instance must keep the column default.
+	now := time.Now().UnixMilli()
+	const (
+		feiServiceTaskKey = int64(8001)
+		feiUserTaskKey    = int64(8002)
+		feiSendTaskKey    = int64(8003)
+	)
+	for _, fei := range []struct {
+		key         int64
+		elementID   string
+		elementType string
+	}{
+		{feiServiceTaskKey, "ServiceTask_1", "ServiceTask"},
+		{feiUserTaskKey, "UserTask_1", "UserTask"},
+		{feiSendTaskKey, "SendTask_1", "SendTask"},
+	} {
+		_, err = db.ExecContext(t.Context(),
+			`INSERT INTO flow_element_instance
+			    (key, element_id, element_type, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			fei.key, fei.elementID, fei.elementType, processInstanceKey, now, fei.key, "{}", "{}",
+		)
+		require.NoError(t, err)
+	}
+
+	// Pre-migration job rows: the element_type column does not exist yet, so
+	// inserts only cover the original schema columns.
+	const (
+		jobServiceTaskKey = int64(7001)
+		jobUserTaskKey    = int64(7002)
+		jobOrphanKey      = int64(7003)
+		jobSendTaskKey    = int64(7004)
+	)
+	for _, job := range []struct {
+		key                int64
+		elementID          string
+		elementInstanceKey int64
+	}{
+		{jobServiceTaskKey, "ServiceTask_1", feiServiceTaskKey},
+		{jobUserTaskKey, "UserTask_1", feiUserTaskKey},
+		{jobOrphanKey, "OrphanTask_1", int64(7777)},
+		{jobSendTaskKey, "SendTask_1", feiSendTaskKey},
+	} {
+		_, err = db.ExecContext(t.Context(),
+			`INSERT INTO job
+			    (key, element_id, element_instance_key, process_instance_key, type, state, created_at, input_variables, execution_token)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			job.key, job.elementID, job.elementInstanceKey, processInstanceKey,
+			"", int64(1), now, "{}", job.elementInstanceKey,
+		)
+		require.NoError(t, err)
+	}
+
+	// Re-run pending migrations through the production migration path. This
+	// adds job.element_type and backfills it from matching flow-element rows.
+	require.NoError(t, db.RunMigrations(t.Context()))
+
+	// Verify the migration is now recorded.
+	appliedMigrations, err := db.Queries.GetMigrations(t.Context())
+	require.NoError(t, err)
+	require.Contains(t, migrationNames(appliedMigrations), migration.Filename,
+		"migration 0013 should be recorded after upgrade")
+
+	// Verify the column exists and was backfilled correctly.
+	assertJobElementType := func(t *testing.T, jobKey int64, expected string) {
+		t.Helper()
+		var elementType string
+		err := db.QueryRowContext(t.Context(),
+			"SELECT element_type FROM job WHERE key = ?", jobKey,
+		).Scan(&elementType)
+		require.NoError(t, err)
+		require.Equal(t, expected, elementType,
+			"job %d should have element_type=%q after upgrade backfill", jobKey, expected)
+	}
+
+	assertJobElementType(t, jobServiceTaskKey, "ServiceTask")
+	assertJobElementType(t, jobUserTaskKey, "UserTask")
+	assertJobElementType(t, jobSendTaskKey, "SendTask")
+	// Orphan job (no matching flow_element_instance) must keep DEFAULT ''.
+	assertJobElementType(t, jobOrphanKey, "")
+}
+
+func migrationNames(migrations []sql.Migration) []string {
+	names := make([]string, 0, len(migrations))
+	for _, m := range migrations {
+		names = append(names, m.Name)
+	}
+	return names
+}
+
 func TestDataCleanup(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer func() { require.NoError(t, partition.Stop()) }()

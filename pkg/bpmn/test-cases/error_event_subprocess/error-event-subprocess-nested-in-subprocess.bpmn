@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_error_event_subprocess_nested_in_subprocess" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="error-event-subprocess-nested-in-subprocess" name="Error Event Subprocess Nested In Subprocess" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_sub</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_sub" sourceRef="StartEvent_1" targetRef="outer-embedded-sub" />
+    <bpmn:subProcess id="outer-embedded-sub" name="Outer embedded subprocess">
+      <bpmn:incoming>Flow_start_sub</bpmn:incoming>
+      <bpmn:outgoing>Flow_sub_end</bpmn:outgoing>
+      <bpmn:startEvent id="outer-sub-start">
+        <bpmn:outgoing>Flow_sub_task</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_sub_task" sourceRef="outer-sub-start" targetRef="outer-sub-task" />
+      <bpmn:serviceTask id="outer-sub-task" name="Outer sub task">
+        <bpmn:extensionElements>
+          <zenbpm:taskDefinition type="nested-error-outer-sub-task" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_sub_task</bpmn:incoming>
+        <bpmn:outgoing>Flow_sub_success</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_sub_success" sourceRef="outer-sub-task" targetRef="outer-sub-should-not-happen-end" />
+      <bpmn:endEvent id="outer-sub-should-not-happen-end" name="Should not happen end">
+        <bpmn:incoming>Flow_sub_success</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:subProcess id="nested-error-event-subprocess" triggeredByEvent="true">
+        <bpmn:startEvent id="nested-error-start-event">
+          <bpmn:outgoing>Flow_error_handled</bpmn:outgoing>
+          <bpmn:errorEventDefinition id="ErrorEventDefinition_nested" errorRef="Error_nested_fail" />
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_error_handled" sourceRef="nested-error-start-event" targetRef="nested-handled-end" />
+        <bpmn:endEvent id="nested-handled-end" name="Handled end">
+          <bpmn:incoming>Flow_error_handled</bpmn:incoming>
+        </bpmn:endEvent>
+      </bpmn:subProcess>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_sub_end" sourceRef="outer-embedded-sub" targetRef="process-end" />
+    <bpmn:endEvent id="process-end" name="End">
+      <bpmn:incoming>Flow_sub_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="Error_nested_fail" name="Nested fail test error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="error-event-subprocess-nested-in-subprocess">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="252" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="outer-embedded-sub_di" bpmnElement="outer-embedded-sub" isExpanded="true">
+        <dc:Bounds x="260" y="80" width="520" height="420" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="outer-sub-start_di" bpmnElement="outer-sub-start">
+        <dc:Bounds x="292" y="152" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="outer-sub-task_di" bpmnElement="outer-sub-task">
+        <dc:Bounds x="400" y="130" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="outer-sub-should-not-happen-end_di" bpmnElement="outer-sub-should-not-happen-end">
+        <dc:Bounds x="572" y="152" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-error-event-subprocess_di" bpmnElement="nested-error-event-subprocess" isExpanded="true">
+        <dc:Bounds x="300" y="280" width="360" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-error-start-event_di" bpmnElement="nested-error-start-event">
+        <dc:Bounds x="340" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-handled-end_di" bpmnElement="nested-handled-end">
+        <dc:Bounds x="552" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="process-end_di" bpmnElement="process-end">
+        <dc:Bounds x="852" y="252" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_sub_di" bpmnElement="Flow_start_sub">
+        <di:waypoint x="188" y="270" />
+        <di:waypoint x="260" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_task_di" bpmnElement="Flow_sub_task">
+        <di:waypoint x="328" y="170" />
+        <di:waypoint x="400" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_success_di" bpmnElement="Flow_sub_success">
+        <di:waypoint x="500" y="170" />
+        <di:waypoint x="572" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_handled_di" bpmnElement="Flow_error_handled">
+        <di:waypoint x="376" y="360" />
+        <di:waypoint x="552" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_end_di" bpmnElement="Flow_sub_end">
+        <di:waypoint x="780" y="270" />
+        <di:waypoint x="852" y="270" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

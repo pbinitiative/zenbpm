@@ -122,12 +122,12 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLi
 		return state.Cluster{
 			Config: state.ClusterConfig{},
 			Partitions: map[uint32]state.Partition{
-				1: state.Partition{
+				1: {
 					Id:       1,
 					LeaderId: "node-1",
 				}},
 			Nodes: map[string]state.Node{
-				"node-1": state.Node{
+				"node-1": {
 					Id:         "node-1",
 					Addr:       "localhost:",
 					Suffrage:   0,
@@ -945,6 +945,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 			VariableHolder: runtime.VariableHolder{},
 			CreatedAt:      time.Now(),
 			State:          runtime.ActivityStateActive,
+			NestingDepth:   0,
 		},
 	}
 
@@ -970,6 +971,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 			VariableHolder: runtime.VariableHolder{},
 			CreatedAt:      time.Now(),
 			State:          runtime.ActivityStateActive,
+			NestingDepth:   1,
 		},
 	}
 
@@ -978,11 +980,13 @@ func testInstanceParent(t *testing.T, db *DB) {
 	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ProcessTypeDefault, dbInst1.Type())
+	assert.Equal(t, int64(0), dbInst1.ProcessInstance().NestingDepth)
 
 	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ProcessTypeCallActivity, dbInst2.Type())
 	assert.NotNil(t, dbInst2.(*runtime.CallActivityInstance).ParentProcessExecutionToken)
+	assert.Equal(t, int64(1), dbInst2.ProcessInstance().NestingDepth)
 
 	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		SortByOrder:             ssql.NullString{String: "", Valid: false},

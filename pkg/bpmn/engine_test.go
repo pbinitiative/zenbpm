@@ -343,7 +343,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity-with-multiple-boundary.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity/call-activity-with-multiple-boundary.bpmn")
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)
@@ -417,7 +417,7 @@ func TestModifyProcessInstance(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	definition, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity-with-multiple-boundary-user-task-end.bpmn")
+	definition, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity/call-activity-with-multiple-boundary-user-task-end.bpmn")
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)

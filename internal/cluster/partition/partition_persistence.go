@@ -1138,6 +1138,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
+				NestingDepth:   dbInstance.NestingDepth,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeMultiInstance:
@@ -1159,6 +1160,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
+				NestingDepth:   dbInstance.NestingDepth,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeSubProcess:
@@ -1180,6 +1182,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
+				NestingDepth:   dbInstance.NestingDepth,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeCallActivity:
@@ -1199,6 +1202,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
+				NestingDepth:   dbInstance.NestingDepth,
 			},
 		}, nil
 	default:
@@ -1344,6 +1348,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		ParentProcessTargetElementInstanceKey: parentProcessTargetElementInstanceKey,
 		ProcessType:                           int64(processInstance.Type()),
 		StartElementID:                        sql.ToNullString(processInstance.ProcessInstance().StartElementId),
+		NestingDepth:                          processInstance.ProcessInstance().NestingDepth,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)

@@ -86,6 +86,12 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 	if err != nil {
 		return err
 	}
+	if err := engine.validateChildProcessInstanceNestingDepth(instance); err != nil {
+		if errors.Is(err, ErrMaxProcessInstanceNestingDepthExceeded) {
+			return engine.writeEventSubprocessNestingDepthIncident(ctx, &batch, t, instance, err)
+		}
+		return err
+	}
 	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, &batch, instance, startEventDef, propagatedVariables)
 	if err != nil {
 		return err
@@ -130,6 +136,37 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	if err := batch.Flush(ctx); err != nil {
 		return errors.Join(newEngineErrorf("failed to flush event subprocess activation batch: %s", err), err)
+	}
+	return nil
+}
+
+func (engine *Engine) writeEventSubprocessNestingDepthIncident(
+	ctx context.Context,
+	batch *EngineBatch,
+	trigger eventSubprocessTrigger,
+	instance runtime.ProcessInstance,
+	cause error,
+) error {
+	// Consume the rejected trigger to prevent repeated attempts, but leave the incident
+	// tokenless: no execution token owns an event-subprocess start subscription. Resolving
+	// a tokenless event-subprocess incident recreates the subscription/timer.
+	batch.discardWrites()
+	incident := runtime.Incident{
+		Key:                engine.generateKey(),
+		ElementInstanceKey: engine.generateKey(),
+		ElementId:          trigger.elementId,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		Message:            cause.Error(),
+		CreatedAt:          time.Now(),
+	}
+	if err := batch.SaveIncident(ctx, incident); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to save process instance nesting depth incident: %w", err))
+	}
+	if err := trigger.markConsumed(ctx, batch); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to consume process instance nesting depth trigger: %w", err))
+	}
+	if err := batch.Flush(ctx); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed to flush process instance nesting depth incident batch: %w", err))
 	}
 	return nil
 }

@@ -45,8 +45,17 @@ type Cluster struct {
 	CDC         CDC         `yaml:"cdc" json:"cdc"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 	Script      Script      `yaml:"script" json:"script"`
+	Engine      Engine      `yaml:"engine" json:"engine"`
 	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
+}
+
+// Engine configures the behaviour of the BPMN engines running on the node partitions.
+type Engine struct {
+	// MaxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
+	// (call activities, sub processes, multi-instance bodies). When a child process instance exceeds the limit,
+	// the engine stops its creation and raises an incident describing a potential infinite loop. Values <= 0 disable the check.
+	MaxProcessInstanceNestingDepth int64 `yaml:"maxProcessInstanceNestingDepth" json:"maxProcessInstanceNestingDepth" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH" env-default:"100"`
 }
 
 // CDC configures the rqlite change data capture output.

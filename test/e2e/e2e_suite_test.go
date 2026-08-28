@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +27,11 @@ import (
 )
 
 var app Application
+
+// e2eMaxProcessInstanceNestingDepth is the engine nesting depth limit configured for the e2e node in
+// TestMain. It is intentionally small so TestNestingDepthExceededCreatesIncident stays fast,
+// while leaving plenty of headroom for the legitimate nesting (max depth 3) used by other tests.
+const e2eMaxProcessInstanceNestingDepth = 10
 
 type testMainWithCleanup struct {
 	testMain *testing.M
@@ -79,6 +85,11 @@ func TestMain(m *testing.M) {
 			log.Error("Failed to set POLL_TIMER_DELAY_SECONDS: %s", err)
 			os.Exit(1)
 		}
+	}
+	// This suite asserts the exact limit below, so do not inherit an ambient value.
+	if err := os.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH", strconv.Itoa(e2eMaxProcessInstanceNestingDepth)); err != nil {
+		log.Error("Failed to set CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH: %s", err)
+		os.Exit(1)
 	}
 	appContext, ctxCancel := context.WithCancel(context.Background())
 	conf := config.InitConfig()

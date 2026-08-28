@@ -94,6 +94,7 @@ type Job struct {
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
 	OutputVariables    sql.NullString `json:"output_variables"`
+	ElementType        string         `json:"element_type"`
 }
 
 type MessageSubscription struct {
@@ -146,6 +147,7 @@ type ProcessInstance struct {
 	HistoryTtlSec                         sql.NullInt64  `json:"history_ttl_sec"`
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
+	NestingDepth                          int64          `json:"nesting_depth"`
 }
 
 type Timer struct {

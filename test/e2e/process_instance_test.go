@@ -130,7 +130,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 	cleanProcessInstances(t)
 
 	var instance zenclient.ProcessInstance
-	definition, err := deployGetDefinition(t, "call-activity-simple.bpmn", "Simple_CallActivity_Process")
+	definition, err := deployGetDefinition(t, "call-activity/call-activity-simple.bpmn", "Simple_CallActivity_Process")
 	assert.NoError(t, err)
 	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
@@ -479,7 +479,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
 
-	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity-simple.bpmn")
+	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity/call-activity-simple.bpmn")
 	_, err := deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
@@ -552,7 +552,7 @@ func TestFindChildProcesses(t *testing.T) {
 
 	multiInstanceDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/multi_instance_service_task.bpmn")
 
-	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity-simple.bpmn")
+	callActivityDefinition := deployAndGetUniqueProcessDefinition(t, "../../pkg/bpmn/test-cases/call-activity/call-activity-simple.bpmn")
 	_, err := deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 

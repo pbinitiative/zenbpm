@@ -52,38 +52,44 @@ WHERE
     AND state = @state;
 
 -- name: FindProcessInstanceTimersInState :many
+-- Pinned to idx_fk_timer_process_instance_key. The newer idx_timer_state_due_at is a
+-- generic (state, due_at) index that the planner would otherwise prefer for the leading
+-- state = ?, causing a partition-wide scan for one process instance's timers.
 SELECT
     *
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
 
 -- name: FindProcessDefinitionTimersInState :many
+-- Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 SELECT
     *
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
     process_definition_key = @process_definition_key
     AND state = @state;
 
 -- name: FindProcessInstanceTimersInStateByElement :many
+-- Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 SELECT
     *
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND element_id = @element_id
     AND state = @state;
 
 -- name: FindProcessDefinitionTimersInStateByElement :many
+-- Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 SELECT
     *
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
     process_definition_key = @process_definition_key
     AND process_instance_key IS NULL
@@ -100,11 +106,12 @@ WHERE
     AND state = @state;
 
 -- name: FindProcessInstanceTimersPage :many
+-- Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 SELECT
     *,
     COUNT(*) OVER () AS total_count
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = @process_instance_key
     AND COALESCE(sqlc.narg('state'), state) = state

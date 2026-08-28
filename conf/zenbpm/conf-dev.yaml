@@ -22,6 +22,9 @@ cluster:
     js:
       maxVmPoolSize: 10
       minVmPoolSize: 2
+#  cdc:
+#    enabled: true
+#    output: http://localhost:4195/cdc
 # tracing:
 #   enabled: true
 #   endpoint: localhost:4318

@@ -105,7 +105,7 @@ const findProcessDefinitionTimersInState = `-- name: FindProcessDefinitionTimers
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
     process_definition_key = ?1
     AND state = ?2
@@ -116,6 +116,7 @@ type FindProcessDefinitionTimersInStateParams struct {
 	State                int64 `json:"state"`
 }
 
+// Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 func (q *Queries) FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitionTimersInState, arg.ProcessDefinitionKey, arg.State)
 	if err != nil {
@@ -153,7 +154,7 @@ const findProcessDefinitionTimersInStateByElement = `-- name: FindProcessDefinit
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
     process_definition_key = ?1
     AND process_instance_key IS NULL
@@ -167,6 +168,7 @@ type FindProcessDefinitionTimersInStateByElementParams struct {
 	State                int64  `json:"state"`
 }
 
+// Pinned to idx_fk_timer_process_definition_key. See note on FindProcessInstanceTimersInState.
 func (q *Queries) FindProcessDefinitionTimersInStateByElement(ctx context.Context, arg FindProcessDefinitionTimersInStateByElementParams) ([]Timer, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitionTimersInStateByElement, arg.ProcessDefinitionKey, arg.ElementID, arg.State)
 	if err != nil {
@@ -204,7 +206,7 @@ const findProcessInstanceTimersInState = `-- name: FindProcessInstanceTimersInSt
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = ?1
     AND state = ?2
@@ -215,6 +217,9 @@ type FindProcessInstanceTimersInStateParams struct {
 	State              int64         `json:"state"`
 }
 
+// Pinned to idx_fk_timer_process_instance_key. The newer idx_timer_state_due_at is a
+// generic (state, due_at) index that the planner would otherwise prefer for the leading
+// state = ?, causing a partition-wide scan for one process instance's timers.
 func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersInState, arg.ProcessInstanceKey, arg.State)
 	if err != nil {
@@ -252,7 +257,7 @@ const findProcessInstanceTimersInStateByElement = `-- name: FindProcessInstanceT
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = ?1
     AND element_id = ?2
@@ -265,6 +270,7 @@ type FindProcessInstanceTimersInStateByElementParams struct {
 	State              int64         `json:"state"`
 }
 
+// Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 func (q *Queries) FindProcessInstanceTimersInStateByElement(ctx context.Context, arg FindProcessInstanceTimersInStateByElementParams) ([]Timer, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersInStateByElement, arg.ProcessInstanceKey, arg.ElementID, arg.State)
 	if err != nil {
@@ -303,7 +309,7 @@ SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token,
     COUNT(*) OVER () AS total_count
 FROM
-    timer
+    timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
     process_instance_key = ?1
     AND COALESCE(?2, state) = state
@@ -331,6 +337,7 @@ type FindProcessInstanceTimersPageRow struct {
 	TotalCount           int64         `json:"total_count"`
 }
 
+// Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
 func (q *Queries) FindProcessInstanceTimersPage(ctx context.Context, arg FindProcessInstanceTimersPageParams) ([]FindProcessInstanceTimersPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersPage,
 		arg.ProcessInstanceKey,

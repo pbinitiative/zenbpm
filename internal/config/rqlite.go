@@ -227,7 +227,6 @@ func (c *RqLite) Validate() error {
 	if c.BootstrapExpect > 0 && c.RaftNonVoter {
 		return errors.New("bootstrapping only applicable to voting nodes")
 	}
-
 	// Join parameters OK?
 	if c.JoinAddrs != "" {
 		addrs := strings.Split(c.JoinAddrs, ",")

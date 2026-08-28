@@ -6,8 +6,12 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/stretchr/testify/require"
 )
 
+// TestUserTaskJobCompleteFlow verifies that a User Task with a configured
+// non-default job type ("test") can be completed end to end through the
+// runtime Job API.
 func TestUserTaskJobCompleteFlow(t *testing.T) {
 
 	t.Run("Completing the user task completes the process and records the full history", func(t *testing.T) {
@@ -17,7 +21,8 @@ func TestUserTaskJobCompleteFlow(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
-		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user_task")
+		require.Equal(t, "test", job.Type)
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
 		assertProcessInstanceTokenState(t, processInstance.Key, "user_task", runtime.TokenStateWaiting)

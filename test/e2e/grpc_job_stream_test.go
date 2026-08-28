@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// TestGrpcJobStream exercises the public gRPC job stream: a worker registers for a job type, the engine pushes jobs to it, and the worker completes them; it also asserts the persisted BPMN ElementType is surfaced on the stream.
 func TestGrpcJobStream(t *testing.T) {
 	var instance zenclient.ProcessInstance
 	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
@@ -61,6 +62,10 @@ func TestGrpcJobStream(t *testing.T) {
 	start := time.Now()
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
+		// long-task-chain.bpmn uses a bpmn:serviceTask, so the public gRPC
+		// stream must surface the persisted BPMN element kind while keeping
+		// the configurable worker-routing type intact.
+		assert.Equal(t, "SERVICE_TASK", job.GetElementType())
 		count.Add(1)
 		return map[string]any{
 			"testVar": 456,

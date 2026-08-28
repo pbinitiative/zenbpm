@@ -1,6 +1,6 @@
 -- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id, nesting_depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
@@ -26,10 +26,14 @@ WHERE
     key = @key;
 
 -- name: FindInactiveInstancesToDelete :many
+-- Pinned to idx_process_instance_cleanup so SQLite uses the partial range index on
+-- history_delete_sec for terminal states. Without the hint the planner (which never
+-- sees ANALYZE stats in production) picks the generic idx_process_instance_state and
+-- scans every terminal instance on every cleanup pass. See TestHotPathIndexes.
 SELECT
     pi.key
 FROM
-    process_instance AS pi
+    process_instance AS pi INDEXED BY idx_process_instance_cleanup
     LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
     LEFT JOIN process_instance AS parent_pi ON et.process_instance_key = parent_pi.key
 WHERE
@@ -321,10 +325,15 @@ WHERE
     parent_process_execution_token = @parent_process_execution_token;
 
 -- name: CountActiveSubProcessInstances :one
+-- Pinned to idx_process_instance_parent_execution_token so the planner drives
+-- from execution_token (filtered by process_instance_key) and probes child by
+-- parent_process_execution_token, instead of starting from process_instance
+-- filtered by state (which the new generic idx_process_instance_state would
+-- otherwise prefer). See TestHotPathIndexes.
 SELECT
     CAST(COUNT(*) AS INTEGER)
 FROM
-    process_instance AS child
+    process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
     INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
 WHERE
     et.process_instance_key = @process_instance_key

@@ -892,6 +892,9 @@ type Job struct {
 	ElementId          string    `json:"elementId"`
 	ElementInstanceKey int64     `json:"elementInstanceKey"`
 
+	// ElementType BPMN element type that created the job
+	ElementType string `json:"elementType"`
+
 	// InputVariables Variables provided to the job at creation/activation time (from BPMN input mappings)
 	InputVariables map[string]interface{} `json:"inputVariables"`
 	Key            int64                  `json:"key"`
@@ -903,7 +906,9 @@ type Job struct {
 	// Retries Remaining retries
 	Retries *int     `json:"retries,omitempty"`
 	State   JobState `json:"state"`
-	Type    string   `json:"type"`
+
+	// Type Configurable worker-routing type
+	Type string `json:"type"`
 }
 
 // JobPage defines model for JobPage.
@@ -994,10 +999,11 @@ type PageMetadata struct {
 
 // PartitionDecisionInstances defines model for PartitionDecisionInstances.
 type PartitionDecisionInstances struct {
-	// Count Total decision instances in this partition
-	Count     *int                      `json:"count,omitempty"`
 	Items     []DecisionInstanceSummary `json:"items"`
 	Partition int                       `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionElementStatistics defines model for PartitionElementStatistics.
@@ -1011,18 +1017,27 @@ type PartitionElementStatistics struct {
 type PartitionJobs struct {
 	Items     []Job `json:"items"`
 	Partition int   `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionProcessDefinitionStatistics defines model for PartitionProcessDefinitionStatistics.
 type PartitionProcessDefinitionStatistics struct {
 	Items     []ProcessDefinitionStatistics `json:"items"`
 	Partition int                           `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
 	Items     []ProcessInstancesSimple `json:"items"`
 	Partition int                      `json:"partition"`
+
+	// TotalCount Total number of items available in this partition
+	TotalCount int `json:"totalCount"`
 }
 
 // PartitionedPageMetadata defines model for PartitionedPageMetadata.

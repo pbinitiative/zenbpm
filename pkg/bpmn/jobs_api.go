@@ -112,6 +112,13 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 				}
 			case target.eventSubprocess != nil:
 				if handled, err := engine.processErrorEventSubprocessForJob(ctx, &batch, job, target.eventSubprocess, variables); err != nil {
+					if errors.Is(err, ErrMaxProcessInstanceNestingDepthExceeded) {
+						batch.discardWrites()
+						if incidentErr := engine.failJobWithIncident(ctx, &batch, job, err.Error(), errorCode, variables); incidentErr != nil {
+							return errors.Join(err, incidentErr)
+						}
+						return nil
+					}
 					return err
 				} else if handled {
 					return nil

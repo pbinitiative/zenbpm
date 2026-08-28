@@ -18,7 +18,7 @@ Rendered as a rounded rectangle with a person icon in the top-left corner.
 
 ## Usage in BPMN
 
-A User Task always creates a job of the fixed type `user-task-type` — unlike a [Service task](./service-task.md), no `zenbpm:taskDefinition` is needed. Variable mappings with `zenbpm:ioMapping` work exactly as for a [Service task](./service-task.md#usage-in-bpmn).
+A User Task creates a job whose `Job.type` is configurable through the optional `zenbpm:taskDefinition` extension element. When the element or its `type` attribute is missing or empty, the job uses the default `user-task-type`. The configured value is filterable and can be consumed by workers, but it does not change how the engine resolves assignment, completion, or form rendering. Variable mappings with `zenbpm:ioMapping` work exactly as for a [Service task](./service-task.md#usage-in-bpmn).
 
 The task can be routed to its performer with a `zenbpm:assignmentDefinition` extension element:
 
@@ -27,17 +27,24 @@ The task can be routed to its performer with a `zenbpm:assignmentDefinition` ext
 | `assignee`        | no       | The user the task is assigned to.                               |
 | `candidateGroups` | no       | Comma-separated list of groups whose members can claim the task. |
 
+The optional `zenbpm:taskDefinition` element exposes a single attribute:
+
+| Attribute | Required | Default           | Description                                                                 |
+| --------- | -------- | ----------------- | --------------------------------------------------------------------------- |
+| `type`    | no       | `user-task-type`  | Type stored in `Job.type` and used by job filtering/workers.                |
+
 ## Related documentation
 
 - [Service task](./service-task.md) — full configuration and execution details for job-based tasks: `zenbpm:taskDefinition`, variable mappings, and job handling.
 
 ## XML example
 
-A User Task assigned to `jane.doe`, claimable by the `sales` and `support` groups. The input mapping exposes the order total to the form; the output mapping stores the user's decision in the process variable `orderApproved`.
+A User Task assigned to `jane.doe`, claimable by the `sales` and `support` groups, and creating a job of type `approval`. The input mapping exposes the order total to the form; the output mapping stores the user's decision in the process variable `orderApproved`.
 
 ```xml
 <bpmn:userTask id="Activity_ApproveOrder" name="Approve order">
   <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="approval" />
     <zenbpm:assignmentDefinition assignee="jane.doe" candidateGroups="sales, support" />
     <zenbpm:ioMapping>
       <zenbpm:input source="=order.total" target="orderTotal" />

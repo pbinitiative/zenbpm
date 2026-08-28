@@ -1,0 +1,98 @@
+---
+id: run-the-engine
+title: Run the engine
+sidebar_position: 1
+description: Start the ZenBPM engine with Docker Compose and verify it is healthy — the foundation for every other Getting Started chapter.
+---
+
+# Run the engine
+
+Everything in Getting Started builds on a running engine. This short chapter gets one up on your machine and confirms it's healthy — no BPMN yet. Once you're done here, move on to [First BPMN process](first-bpmn-process).
+
+:::info New to BPM?
+ZenBPM is a **process engine**: you give it business processes described as BPMN diagrams and it executes them. You don't need to know BPMN to start the engine. For background, see [BPM Concepts](../../explanation/bpm-concepts).
+:::
+
+## Prerequisites {#prerequisites}
+
+- [Docker](https://docs.docker.com/get-docker/) with Compose
+- [Git](https://git-scm.com/downloads)
+- `curl` — or any HTTP client
+
+:::note Windows
+Run the commands in this tutorial from **Git Bash** (installed with Git) or **WSL**. They use bash syntax — line continuations (`\`), quoting, and the real `curl`. In PowerShell, `curl` is an alias for a different command and won't behave the same.
+:::
+
+## Get the examples {#get-the-examples}
+
+The companion projects for this tutorial live in the [zenbpm-examples](https://github.com/pbinitiative/zenbpm-examples) repository. Clone it and move into the Getting Started track:
+
+```bash
+git clone https://github.com/pbinitiative/zenbpm-examples.git
+cd zenbpm-examples/getting-started
+```
+
+Every chapter below is a folder here, and the engine is defined once in `compose.yaml` at this level.
+
+## Start the engine {#start-the-engine}
+
+From the `getting-started/` folder:
+
+```bash
+docker compose up -d
+```
+
+The first run pulls the image and takes a moment. This starts **only** the engine (the container is named `zenbpm`); the workers are something you run yourself in later chapters. It exposes two APIs:
+
+| Address | Protocol | What you use it for |
+|---|---|---|
+| `http://localhost:8080` | REST | Deploy processes, start instances, query state, drive user tasks |
+| `localhost:9090` | gRPC | Connect workers that carry out service tasks |
+
+## Verify it's running {#verify}
+
+Ask the engine for its deployed processes:
+
+```bash
+curl http://localhost:8080/v1/process-definitions
+```
+
+An empty list (`[]` or an empty `items` array) is exactly what you want: the engine is up and answering, with nothing deployed yet. **You're ready to deploy your first process.**
+
+If the request is refused, give the engine a few seconds to finish starting and try again, or see [Troubleshooting](#troubleshooting).
+
+## Optional: web UI {#optional-ui}
+
+ZenBPM has a web UI. It's off by default; start it alongside the engine with:
+
+```bash
+docker compose --profile ui up -d
+```
+
+Then open http://localhost:9000. This tutorial uses only the terminal, but the UI is handy for watching instances.
+
+## Stop {#stop}
+
+Stop the engine but keep everything you deployed:
+
+```bash
+docker compose down
+```
+
+Engine state is kept in a named volume, so your deployed processes and instances survive a restart. To wipe it and start completely fresh:
+
+```bash
+docker compose down -v
+```
+
+## Troubleshooting {#troubleshooting}
+
+**Port already in use** (`bind: address already in use`) — another process holds `8080` or `9090`. Stop it, or change the host ports in `compose.yaml` (e.g. `18080:8080`) and use those ports in the following chapters.
+
+:::note Beyond local
+The compose file mounts a small single-node config (`conf/zenbpm/conf.yaml`) that bootstraps the engine's cluster with one partition — a shard of process/job data with its own Raft-replicated leader; production clusters split work across several — which is enough to run everything in this tutorial. That file is where cluster, partition, and script-engine settings live. Durable persistence (rqlite), multi-node clustering, and observability are operational topics covered in the [How-to guides](/category/how-to).
+:::
+
+## Next {#next}
+
+The engine is running. Next, [First BPMN process](first-bpmn-process) — deploy a process, write a worker, and watch an instance execute.

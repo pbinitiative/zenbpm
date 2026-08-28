@@ -53,6 +53,12 @@ type Engine struct {
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
 
+	// maxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
+	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
+	// stops execution and raises an incident, protecting the engine from infinite loops of recursively spawned
+	// process instances. Values <= 0 disable the check. Defaults to DefaultMaxProcessInstanceNestingDepth.
+	maxProcessInstanceNestingDepth int64
+
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
 
@@ -71,6 +77,10 @@ type Engine struct {
 
 type EngineOption = func(*Engine)
 
+// DefaultMaxProcessInstanceNestingDepth is the default maximum nesting depth of a process
+// instance in the parent-child chain. It can be overridden via EngineWithMaxProcessInstanceNestingDepth.
+const DefaultMaxProcessInstanceNestingDepth int64 = 100
+
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -86,21 +96,22 @@ func NewEngine(options ...EngineOption) Engine {
 	jsRuntime := js.NewJsRuntime(1, 1)
 
 	engine := Engine{
-		context:              ctx,
-		contextCancel:        cancel,
-		taskhandlersMu:       &sync.RWMutex{},
-		taskHandlers:         []*taskHandler{},
-		exporters:            []exporter.EventExporter{},
-		persistence:          persistence,
-		logger:               logger,
-		runningInstances:     newRunningInstanceCache(),
-		instantiatingRearmMu: &sync.Mutex{},
-		tracer:               tracer,
-		meter:                meter,
-		metrics:              metrics,
-		feelRuntime:          feelRuntime,
-		jsRuntime:            jsRuntime,
-		dmnEngine:            dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
+		context:                        ctx,
+		contextCancel:                  cancel,
+		taskhandlersMu:                 &sync.RWMutex{},
+		taskHandlers:                   []*taskHandler{},
+		exporters:                      []exporter.EventExporter{},
+		persistence:                    persistence,
+		logger:                         logger,
+		runningInstances:               newRunningInstanceCache(),
+		instantiatingRearmMu:           &sync.Mutex{},
+		tracer:                         tracer,
+		meter:                          meter,
+		metrics:                        metrics,
+		feelRuntime:                    feelRuntime,
+		jsRuntime:                      jsRuntime,
+		maxProcessInstanceNestingDepth: DefaultMaxProcessInstanceNestingDepth,
+		dmnEngine:                      dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -163,16 +174,24 @@ func EngineWithDefinitionSubscriptionRecoveryFilter(filter func(runtime.ProcessD
 	}
 }
 
+func EngineWithMaxProcessInstanceNestingDepth(maxNestingDepth int64) EngineOption {
+	return func(engine *Engine) {
+		engine.maxProcessInstanceNestingDepth = maxNestingDepth
+	}
+}
+
 func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 	return engine.dmnEngine
 }
 
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
-	_, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch)
+	if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch); err != nil {
+		return fmt.Errorf("failed to cancel process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	// Cancel process instance
 	instance.ProcessInstance().State = runtime.ActivityStateTerminated
-	err = batch.SaveProcessInstance(ctx, instance)
+	err := batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -281,9 +300,14 @@ func (engine *Engine) terminateExecutionTokens(
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
 	}
 
+	keysToTerminate := make(map[int64]struct{}, len(elementInstanceKeysToTerminate))
+	for _, key := range elementInstanceKeysToTerminate {
+		keysToTerminate[key] = struct{}{}
+	}
+
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
-		if slices.Contains(elementInstanceKeysToTerminate, activeToken.ElementInstanceKey) {
+		if _, terminate := keysToTerminate[activeToken.ElementInstanceKey]; terminate {
 			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
@@ -397,7 +421,44 @@ func newChildProcessInstanceData(parent runtime.ProcessInstance, businessKey *st
 	return runtime.ProcessInstanceData{
 		BusinessKey:   businessKey,
 		HistoryTTLSec: parent.ProcessInstance().HistoryTTLSec,
+		NestingDepth:  parent.ProcessInstance().NestingDepth + 1,
 	}
+}
+
+// ErrMaxProcessInstanceNestingDepthExceeded is wrapped into the error returned by validateProcessInstanceNestingDepth when a child process instance
+// would exceed the configured maximum nesting depth. Callers that trigger child-instance creation outside of
+// token processing (e.g. message/timer event subprocess activation) use it to translate the failure into an incident.
+var ErrMaxProcessInstanceNestingDepthExceeded = errors.New("maximum process instance nesting depth exceeded")
+
+// validateProcessInstanceNestingDepth guards every child-instance creation path against potential infinite loops
+// of process instances recursively spawning child instances (e.g. a call activity calling its own process).
+// The returned error wraps ErrMaxProcessInstanceNestingDepthExceeded.
+func (engine *Engine) validateProcessInstanceNestingDepth(instance runtime.ProcessInstance) error {
+	return engine.validateProcessInstanceNestingDepthValue(
+		instance.ProcessInstance().NestingDepth,
+		instance.ProcessInstance().Definition.BpmnProcessId,
+	)
+}
+
+// validateChildProcessInstanceNestingDepth checks a prospective child before callers mutate its parent scope.
+func (engine *Engine) validateChildProcessInstanceNestingDepth(parent runtime.ProcessInstance) error {
+	return engine.validateProcessInstanceNestingDepthValue(
+		parent.ProcessInstance().NestingDepth+1,
+		parent.ProcessInstance().Definition.BpmnProcessId,
+	)
+}
+
+func (engine *Engine) validateProcessInstanceNestingDepthValue(nestingDepth int64, bpmnProcessID string) error {
+	if engine.maxProcessInstanceNestingDepth <= 0 {
+		return nil
+	}
+	if nestingDepth > engine.maxProcessInstanceNestingDepth {
+		return fmt.Errorf(
+			"potential infinite loop detected: creating process instance of process %s would exceed the maximum allowed process instance nesting depth of %d; check the process model for recursively called processes or raise the configured limit: %w",
+			bpmnProcessID, engine.maxProcessInstanceNestingDepth, ErrMaxProcessInstanceNestingDepthExceeded,
+		)
+	}
+	return nil
 }
 
 // createInstance creates a process instance for a given process definition and returns it.
@@ -416,6 +477,9 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
+	if err := engine.validateProcessInstanceNestingDepth(instance); err != nil {
+		return nil, nil, err
+	}
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -500,6 +564,9 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().State = runtime.ActivityStateReady
 	resolveHistoryTTL(ctx, instance)
 	resolveRootBusinessKey(ctx, instance)
+	if err := engine.validateProcessInstanceNestingDepth(instance); err != nil {
+		return nil, nil, err
+	}
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
@@ -790,8 +857,15 @@ func (engine *Engine) getExecutionTokenActivity(
 	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance, *runtime.MultiInstanceInstance:
 		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	case *runtime.SubProcessInstance:
-		parentActivityDefinition := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
-		currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+		// Resolve through the parent sub-process to preserve execution scope.
+		subProcessInstance := instance.(*runtime.SubProcessInstance)
+		rootProcess := &instance.ProcessInstance().Definition.Definitions.Process
+		parentActivityDefinition := rootProcess.GetFlowNodeById(subProcessInstance.ParentProcessTargetElementId)
+		parentSubProcess, ok := parentActivityDefinition.(*bpmn20.TSubProcess)
+		if !ok {
+			return nil, fmt.Errorf("failed to find sub-process activity %s for execution token in process definition", subProcessInstance.ParentProcessTargetElementId)
+		}
+		currentFlowNode = parentSubProcess.GetFlowNodeById(token.ElementId)
 	default:
 		return nil, errors.New("invalid instance type")
 	}

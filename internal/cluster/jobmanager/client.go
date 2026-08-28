@@ -256,6 +256,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			State:          resp.Job.GetState(),
 			ElementID:      resp.Job.GetElementId(),
 			CreatedAt:      resp.Job.GetCreatedAt(),
+			ElementType:    resp.Job.GetElementType(),
 			ClientID:       ClientID(resp.GetClientId()),
 		}
 	}

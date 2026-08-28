@@ -3,7 +3,7 @@ openapi: 3.0.0
 info:
   title: ZenBPM OpenAPI
   description: REST API for ZenBPM
-  version: 1.6.0
+  version: 1.7.0
   contact:
     name: API Support
     email: info@pbinitiative.org
@@ -446,7 +446,7 @@ paths:
               example:
                 partitions:
                   - partition: 1
-                    count: 156
+                    totalCount: 156
                     items:
                       - key: 4503599627370600
                         dmnResourceDefinitionKey: 4503599627370495
@@ -457,7 +457,7 @@ paths:
                         inputCount: 3
                         outputCount: 2
                   - partition: 2
-                    count: 98
+                    totalCount: 98
                     items:
                       - key: 9007199254740995
                         dmnResourceDefinitionKey: 4503599627370495
@@ -973,31 +973,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProcessDefinitionStatisticsPage"
               example:
-                items:
-                  - key: 4503599627370498
-                    version: 3
-                    bpmnProcessId: "loan-application"
-                    name: "Loan Application Process"
-                    bpmnResourceName: "loan-application.bpmn"
-                    instanceCounts:
-                      total: 1250
-                      active: 45
-                      completed: 1180
-                      terminated: 20
-                      failed: 5
-                      withIncident: 0
-                  - key: 4503599627370510
-                    version: 1
-                    bpmnProcessId: "order-fulfillment"
-                    name: "Order Fulfillment"
-                    bpmnResourceName: "order-fulfillment.bpmn"
-                    instanceCounts:
-                      total: 890
-                      active: 120
-                      completed: 750
-                      terminated: 15
-                      failed: 5
-                      withIncident: 2
+                partitions:
+                  - partition: 1
+                    totalCount: 2
+                    items:
+                      - key: 4503599627370498
+                        version: 3
+                        bpmnProcessId: "loan-application"
+                        name: "Loan Application Process"
+                        bpmnResourceName: "loan-application.bpmn"
+                        instanceCounts:
+                          total: 1250
+                          active: 45
+                          completed: 1180
+                          terminated: 20
+                          failed: 5
+                          withIncident: 0
+                      - key: 4503599627370510
+                        version: 1
+                        bpmnProcessId: "order-fulfillment"
+                        name: "Order Fulfillment"
+                        bpmnResourceName: "order-fulfillment.bpmn"
+                        instanceCounts:
+                          total: 890
+                          active: 120
+                          completed: 750
+                          terminated: 15
+                          failed: 5
+                          withIncident: 2
                 page: 1
                 size: 10
                 count: 2
@@ -1207,7 +1210,7 @@ paths:
               example:
                 partitions:
                   - partition: 1
-                    count: 24
+                    totalCount: 24
                     items:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
@@ -1230,7 +1233,7 @@ paths:
                           amount: 5000
                           applicationDate: "2025-08-22"
                   - partition: 2
-                    count: 18
+                    totalCount: 18
                     items:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
@@ -1504,6 +1507,7 @@ paths:
               example:
                 partitions:
                   - partition: 1
+                    totalCount: 2
                     items:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
@@ -1524,6 +1528,7 @@ paths:
                           amount: 5000
                           applicationDate: "2025-08-22"
                   - partition: 2
+                    totalCount: 1
                     items:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
@@ -2198,6 +2203,7 @@ paths:
               example:
                 partitions:
                   - partition: 1
+                    totalCount: 1
                     items:
                       - key: 4503599627370540
                         elementId: "Task_ReviewApplication"
@@ -2210,6 +2216,7 @@ paths:
                         inputVariables:
                           formKey: "loan-review-form"
                   - partition: 2
+                    totalCount: 1
                     items:
                       - key: 9007199254740995
                         elementId: "Task_SendNotification"
@@ -2865,12 +2872,13 @@ components:
       required:
         - partition
         - items
+        - totalCount
       properties:
         partition:
           type: integer
-        count:
+        totalCount:
           type: integer
-          description: Total decision instances in this partition
+          description: Total number of items available in this partition
         items:
           type: array
           items:
@@ -3033,9 +3041,13 @@ components:
       required:
         - partition
         - items
+        - totalCount
       properties:
         partition:
           type: integer
+        totalCount:
+          type: integer
+          description: Total number of items available in this partition
         items:
           type: array
           items:
@@ -3283,9 +3295,13 @@ components:
       required:
         - partition
         - items
+        - totalCount
       properties:
         partition:
           type: integer
+        totalCount:
+          type: integer
+          description: Total number of items available in this partition
         items:
           type: array
           items:
@@ -3601,9 +3617,13 @@ components:
       required:
         - partition
         - items
+        - totalCount
       properties:
         partition:
           type: integer
+        totalCount:
+          type: integer
+          description: Total number of items available in this partition
         items:
           type: array
           items:
@@ -3614,6 +3634,7 @@ components:
         - key
         - elementId
         - type
+        - elementType
         - processInstanceKey
         - elementInstanceKey
         - state
@@ -3627,6 +3648,10 @@ components:
           type: string
         type:
           type: string
+          description: Configurable worker-routing type
+        elementType:
+          type: string
+          description: BPMN element type that created the job
         processInstanceKey:
           type: integer
           format: int64

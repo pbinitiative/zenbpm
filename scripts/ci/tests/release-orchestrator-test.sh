@@ -45,6 +45,12 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_GH_LOG"
 
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "watch" ]; then
+  if [ "$FAKE_GH_SCENARIO" = "watch-timeout" ]; then
+    sleep 5
+  fi
+  exit 0
+fi
+if [ "${1:-}" = "run" ] && [ "${2:-}" = "cancel" ]; then
   exit 0
 fi
 
@@ -129,5 +135,12 @@ export RUN_ID=12345
 : > "$FAKE_GH_LOG"
 "$script" wait-frontend-release >/dev/null
 grep -qx 'run watch 12345 --repo pbinitiative/zenbpm-ui --exit-status' "$FAKE_GH_LOG" || fail "wait did not watch the exact run ID"
+
+export FAKE_GH_SCENARIO=watch-timeout
+if WORKFLOW_WAIT_TIMEOUT_SECONDS=1 "$script" wait-frontend-release >"$tmp/wait-output" 2>&1; then
+  fail "a stalled workflow should time out"
+fi
+grep -q 'Timed out waiting for pbinitiative/zenbpm-ui run 12345 after 1s' "$tmp/wait-output" || fail "wait timeout was not reported"
+grep -qx 'run cancel 12345 --repo pbinitiative/zenbpm-ui' "$FAKE_GH_LOG" || fail "timed-out workflow was not canceled"
 
 echo "release orchestrator tests passed"

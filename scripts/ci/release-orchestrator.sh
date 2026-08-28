@@ -283,12 +283,26 @@ wait_docs_release() {
 wait_workflow_run() {
   require_env ORG
   local repo=${1:?repo is required}
+  local wait_timeout_seconds=${WORKFLOW_WAIT_TIMEOUT_SECONDS:-3000}
   require_env RUN_ID
   if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
     echo "RUN_ID must be a numeric GitHub Actions run ID" >&2
     return 1
   fi
-  gh run watch "$RUN_ID" --repo "$ORG/$repo" --exit-status
+  if [[ ! "$wait_timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+    echo "WORKFLOW_WAIT_TIMEOUT_SECONDS must be a positive integer" >&2
+    return 1
+  fi
+
+  local status=0
+  timeout --foreground "${wait_timeout_seconds}s" \
+    gh run watch "$RUN_ID" --repo "$ORG/$repo" --exit-status || status=$?
+  if [ "$status" -eq 124 ]; then
+    gh run cancel "$RUN_ID" --repo "$ORG/$repo" || true
+    echo "Timed out waiting for $ORG/$repo run $RUN_ID after ${wait_timeout_seconds}s" >&2
+    return 1
+  fi
+  return "$status"
 }
 
 notify_discord() {

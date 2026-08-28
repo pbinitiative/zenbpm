@@ -264,6 +264,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					Type:           new(string(job.Type)),
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
+					ElementType:    &job.ElementType,
 				},
 			})
 			if err != nil {

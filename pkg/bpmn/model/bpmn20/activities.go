@@ -156,13 +156,22 @@ func (receiveTask TReceiveTask) GetType() ElementType { return ElementTypeReceiv
 type TUserTask struct {
 	TTask
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
+	TaskDefinition       extensions.TTaskDefinition       `xml:"extensionElements>taskDefinition"`
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
 func (userTask TUserTask) GetType() ElementType {
 	return ElementTypeUserTask
 }
-func (userTask TUserTask) GetTaskType() string { return "user-task-type" }
+// GetTaskType returns the job type configured for the User Task via the
+// zenbpm:taskDefinition extension element. When the extension is absent or
+// its "type" attribute is empty, it falls back to "user-task-type".
+func (userTask TUserTask) GetTaskType() string {
+	if userTask.TaskDefinition.TypeName == "" {
+		return "user-task-type"
+	}
+	return userTask.TaskDefinition.TypeName
+}
 func (userTask TUserTask) GetAssignmentAssignee() string {
 	return userTask.AssignmentDefinition.Assignee
 }

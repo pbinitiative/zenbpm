@@ -254,6 +254,7 @@ func (s *jobServer) distributeJobs() {
 					State:          &job.State,
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
+					ElementType:    &job.ElementType,
 				},
 			})
 			if err != nil {

@@ -7,6 +7,7 @@
     <bpmn:sequenceFlow id="Flow_0xt1d7q" sourceRef="StartEvent_1" targetRef="user_task_static" />
     <bpmn:userTask id="user_task_static" name="User task static">
       <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="approval" />
         <zenbpm:assignmentDefinition assignee="john.doe" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>

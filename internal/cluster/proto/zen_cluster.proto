@@ -286,6 +286,7 @@ message Job {
   bytes input_variables = 8;
   string assignee = 9;
   bytes output_variables = 10;
+  string element_type = 11;
 }
 
 message FlowElement {
@@ -369,6 +370,7 @@ message InternalJob {
   int64 state = 5;
   string element_id = 6;
   int64 created_at = 7;
+  string element_type = 8;
 }
 
 message SetMessageSubscriptionPointerRequest {

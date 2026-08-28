@@ -471,6 +471,7 @@ type Activity interface {
 
 type Job struct {
 	ElementId          string
+	ElementType        string
 	ElementInstanceKey int64
 	ProcessInstanceKey int64
 	Key                int64

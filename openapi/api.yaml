@@ -3634,6 +3634,7 @@ components:
         - key
         - elementId
         - type
+        - elementType
         - processInstanceKey
         - elementInstanceKey
         - state
@@ -3647,6 +3648,10 @@ components:
           type: string
         type:
           type: string
+          description: Configurable worker-routing type
+        elementType:
+          type: string
+          description: BPMN element type that created the job
         processInstanceKey:
           type: integer
           format: int64

@@ -51,6 +51,7 @@ message WaitingJob {
   string type = 4;
   string element_id = 5;
   int64 created_at = 6;
+  string element_type = 7;
 }
 
 message ErrorResult {

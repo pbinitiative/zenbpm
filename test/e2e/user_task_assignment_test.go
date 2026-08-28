@@ -8,6 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestUserTaskAssignment verifies that a User Task with a configured
+// non-default job type ("approval") is correctly assigned to its static
+// assignee and that the dynamic-assignment path still resolves a job type
+// to its configured assignee via process variables.
 func TestUserTaskAssignment(t *testing.T) {
 
 	t.Run("The user task assignee is mapped from the configured static value.", func(t *testing.T) {
@@ -19,6 +23,7 @@ func TestUserTaskAssignment(t *testing.T) {
 		})
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user_task_static", public.JobStateActive)
+		require.Equal(t, "approval", job.Type)
 		require.Equal(t, "john.doe", ptr.Deref(job.Assignee, ""))
 	})
 

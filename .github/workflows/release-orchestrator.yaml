@@ -292,7 +292,7 @@ jobs:
     needs:
       - validate
       - frontend-release
-    if: ${{ needs.frontend-release.result == 'success' }}
+    if: ${{ needs.frontend-release.result == 'success' && needs.validate.outputs.release-kind == 'final' }}
     steps:
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -325,7 +325,7 @@ jobs:
     needs:
       - validate
       - java-client-release
-    if: ${{ needs.java-client-release.result == 'success' }}
+    if: ${{ needs.validate.outputs.release-kind == 'final' && needs.java-client-release.result == 'success' }}
     steps:
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -371,5 +371,19 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          RELEASE_RESULT: ${{ contains(needs.*.result, 'failure') && 'failed' || contains(needs.*.result, 'cancelled') && 'cancelled' || contains(needs.*.result, 'skipped') && 'failed' || 'succeeded' }}
+          RELEASE_RESULT: >-
+            ${{
+              contains(needs.*.result, 'failure') && 'failed' ||
+              contains(needs.*.result, 'cancelled') && 'cancelled' ||
+              (needs.validate.outputs.release-kind == 'rc' &&
+                needs.validate.result == 'success' &&
+                needs.prepare-and-test.result == 'success' &&
+                needs.create-release-tags.result == 'success' &&
+                needs.backend-release.result == 'success' &&
+                needs.frontend-release.result == 'success' &&
+                needs.java-client-release.result == 'skipped' &&
+                needs.docs-release.result == 'skipped') && 'succeeded' ||
+              contains(needs.*.result, 'skipped') && 'failed' ||
+              'succeeded'
+            }}
         run: scripts/ci/release-orchestrator.sh notify-discord

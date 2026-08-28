@@ -894,16 +894,94 @@ func (rq *DB) FindLatestProcessDefinitionById(ctx context.Context, processDefini
 	}
 
 	res = bpmnruntime.ProcessDefinition{
-		BpmnProcessId: dbDefinition.BpmnProcessID,
-		Version:       int32(dbDefinition.Version),
-		Key:           dbDefinition.Key,
-		Definitions:   definitions,
-		BpmnData:      dbDefinition.BpmnData,
-		BpmnChecksum:  [16]byte(dbDefinition.BpmnChecksum),
+		BpmnProcessId:   dbDefinition.BpmnProcessID,
+		Version:         int32(dbDefinition.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		Key:             dbDefinition.Key,
+		Definitions:     definitions,
+		BpmnData:        dbDefinition.BpmnData,
+		BpmnProcessName: dbDefinition.BpmnProcessName,
+		BpmnChecksum:    [16]byte(dbDefinition.BpmnChecksum),
+		VersionTag:      dbDefinition.VersionTag,
 	}
 
 	rq.pdCache.Add(dbDefinition.Key, res)
 
+	return res, nil
+}
+
+func (rq *DB) FindProcessDefinitionByIDAndVersion(ctx context.Context, processDefinitionID string, version int32) (bpmnruntime.ProcessDefinition, error) {
+	var res bpmnruntime.ProcessDefinition
+	dbDefinition, err := rq.Queries.FindProcessDefinitionByIdAndVersion(ctx, sql.FindProcessDefinitionByIdAndVersionParams{
+		BpmnProcessID: processDefinitionID,
+		Version:       int64(version),
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = storage.ErrNotFound
+		}
+		return res, fmt.Errorf("failed to find process definition by id %s and version %d: %w", processDefinitionID, version, err)
+	}
+
+	pd, ok := rq.pdCache.Get(dbDefinition.Key)
+	if ok {
+		return pd, nil
+	}
+
+	var definitions bpmn20.TDefinitions
+	if err := xml.Unmarshal([]byte(dbDefinition.BpmnData), &definitions); err != nil {
+		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+
+	res = bpmnruntime.ProcessDefinition{
+		BpmnProcessId:   dbDefinition.BpmnProcessID,
+		Version:         int32(dbDefinition.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		Key:             dbDefinition.Key,
+		Definitions:     definitions,
+		BpmnData:        dbDefinition.BpmnData,
+		BpmnProcessName: dbDefinition.BpmnProcessName,
+		BpmnChecksum:    [16]byte(dbDefinition.BpmnChecksum),
+		VersionTag:      dbDefinition.VersionTag,
+	}
+
+	rq.pdCache.Add(dbDefinition.Key, res)
+	return res, nil
+}
+
+func (rq *DB) FindLatestProcessDefinitionByIDAndVersionTag(ctx context.Context, processDefinitionID string, versionTag string) (bpmnruntime.ProcessDefinition, error) {
+	var res bpmnruntime.ProcessDefinition
+	dbDefinition, err := rq.Queries.FindLatestProcessDefinitionByIdAndVersionTag(ctx, sql.FindLatestProcessDefinitionByIdAndVersionTagParams{
+		BpmnProcessID: processDefinitionID,
+		VersionTag:    versionTag,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = storage.ErrNotFound
+		}
+		return res, fmt.Errorf("failed to find latest process definition by id %s and version tag %q: %w", processDefinitionID, versionTag, err)
+	}
+
+	pd, ok := rq.pdCache.Get(dbDefinition.Key)
+	if ok {
+		return pd, nil
+	}
+
+	var definitions bpmn20.TDefinitions
+	if err := xml.Unmarshal([]byte(dbDefinition.BpmnData), &definitions); err != nil {
+		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+
+	res = bpmnruntime.ProcessDefinition{
+		BpmnProcessId:   dbDefinition.BpmnProcessID,
+		Version:         int32(dbDefinition.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		Key:             dbDefinition.Key,
+		Definitions:     definitions,
+		BpmnData:        dbDefinition.BpmnData,
+		BpmnProcessName: dbDefinition.BpmnProcessName,
+		BpmnChecksum:    [16]byte(dbDefinition.BpmnChecksum),
+		VersionTag:      dbDefinition.VersionTag,
+	}
+
+	rq.pdCache.Add(dbDefinition.Key, res)
 	return res, nil
 }
 
@@ -929,12 +1007,14 @@ func (rq *DB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionK
 	}
 
 	res = bpmnruntime.ProcessDefinition{
-		BpmnProcessId: dbDefinition.BpmnProcessID,
-		Version:       int32(dbDefinition.Version),
-		Key:           dbDefinition.Key,
-		Definitions:   definitions,
-		BpmnData:      dbDefinition.BpmnData,
-		BpmnChecksum:  [16]byte(dbDefinition.BpmnChecksum),
+		BpmnProcessId:   dbDefinition.BpmnProcessID,
+		Version:         int32(dbDefinition.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		Key:             dbDefinition.Key,
+		Definitions:     definitions,
+		BpmnData:        dbDefinition.BpmnData,
+		BpmnProcessName: dbDefinition.BpmnProcessName,
+		BpmnChecksum:    [16]byte(dbDefinition.BpmnChecksum),
+		VersionTag:      dbDefinition.VersionTag,
 	}
 
 	rq.pdCache.Add(processDefinitionKey, res)
@@ -963,12 +1043,14 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 		}
 
 		res[i] = bpmnruntime.ProcessDefinition{
-			BpmnProcessId: def.BpmnProcessID,
-			Version:       int32(def.Version),
-			Key:           def.Key,
-			Definitions:   definitions,
-			BpmnData:      def.BpmnData,
-			BpmnChecksum:  [16]byte(def.BpmnChecksum),
+			BpmnProcessId:   def.BpmnProcessID,
+			Version:         int32(def.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+			Key:             def.Key,
+			Definitions:     definitions,
+			BpmnData:        def.BpmnData,
+			BpmnProcessName: def.BpmnProcessName,
+			BpmnChecksum:    [16]byte(def.BpmnChecksum),
+			VersionTag:      def.VersionTag,
 		}
 
 		rq.pdCache.Add(def.Key, res[i])
@@ -997,12 +1079,14 @@ func (rq *DB) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.Proc
 		}
 
 		res[i] = bpmnruntime.ProcessDefinition{
-			BpmnProcessId: def.BpmnProcessID,
-			Version:       int32(def.Version),
-			Key:           def.Key,
-			Definitions:   definitions,
-			BpmnData:      def.BpmnData,
-			BpmnChecksum:  [16]byte(def.BpmnChecksum),
+			BpmnProcessId:   def.BpmnProcessID,
+			Version:         int32(def.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+			Key:             def.Key,
+			Definitions:     definitions,
+			BpmnData:        def.BpmnData,
+			BpmnProcessName: def.BpmnProcessName,
+			BpmnChecksum:    [16]byte(def.BpmnChecksum),
+			VersionTag:      def.VersionTag,
 		}
 
 		rq.pdCache.Add(def.Key, res[i])
@@ -1024,6 +1108,7 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 		BpmnData:        definition.BpmnData,
 		BpmnChecksum:    definition.BpmnChecksum[:],
 		BpmnProcessName: definition.BpmnProcessName,
+		VersionTag:      definition.VersionTag,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process definition: %w", err)

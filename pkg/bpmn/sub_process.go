@@ -4,18 +4,136 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// processDefinitionByVersionReader is an optional storage capability. Keeping it
+// separate from storage.ProcessDefinitionStorageReader avoids breaking existing custom
+// storage implementations, while built-in stores can provide optimized lookups.
+type processDefinitionByVersionReader interface {
+	FindProcessDefinitionByIDAndVersion(ctx context.Context, processDefinitionID string, version int32) (runtime.ProcessDefinition, error)
+	FindLatestProcessDefinitionByIDAndVersionTag(ctx context.Context, processDefinitionID string, versionTag string) (runtime.ProcessDefinition, error)
+}
+
+func findProcessDefinitionByIDAndVersion(
+	ctx context.Context,
+	reader storage.ProcessDefinitionStorageReader,
+	processDefinitionID string,
+	version int32,
+) (runtime.ProcessDefinition, error) {
+	if exactReader, ok := reader.(processDefinitionByVersionReader); ok {
+		return exactReader.FindProcessDefinitionByIDAndVersion(ctx, processDefinitionID, version)
+	}
+
+	definitions, err := reader.FindProcessDefinitionsById(ctx, processDefinitionID)
+	if err != nil {
+		return runtime.ProcessDefinition{}, err
+	}
+	for _, definition := range definitions {
+		if definition.Version == version {
+			return definition, nil
+		}
+	}
+	return runtime.ProcessDefinition{}, storage.ErrNotFound
+}
+
+func (engine *Engine) resolveCalledProcessDefinition(ctx context.Context, processID string, selection extensions.VersionSelection) (runtime.ProcessDefinition, error) {
+	if selection.Version != nil {
+		processDefinition, err := findProcessDefinitionByIDAndVersion(ctx, engine.persistence, processID, *selection.Version)
+		if err != nil {
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s and version=%d was found", processID, *selection.Version), err)
+		}
+		return processDefinition, nil
+	}
+	if selection.VersionTag != "" {
+		processDefinition, err := findProcessDefinitionByIDAndVersionTag(ctx, engine.persistence, processID, selection.VersionTag)
+		if err == nil {
+			return processDefinition, nil
+		}
+		if !errors.Is(err, storage.ErrNotFound) {
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("failed to resolve process with id=%s and version tag %q", processID, selection.VersionTag), err)
+		}
+
+		version, isNumericVersionTag := numericVersionFromVersionTag(selection.VersionTag)
+		if !isNumericVersionTag {
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s and version tag %q was found", processID, selection.VersionTag), err)
+		}
+		processDefinition, err = findProcessDefinitionByIDAndVersion(ctx, engine.persistence, processID, version)
+		if err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("failed to resolve process with id=%s and numeric version=%d after version tag %q was not found", processID, version, selection.VersionTag), err)
+			}
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s and version tag %q or numeric version=%d was found", processID, selection.VersionTag, version), err)
+		}
+		return processDefinition, nil
+	}
+	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processID)
+	if err != nil {
+		return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s was found", processID), err)
+	}
+	return processDefinition, nil
+}
+
+// numericVersionFromVersionTag parses a v-prefixed positive decimal version that fits in int32.
+func numericVersionFromVersionTag(versionTag string) (int32, bool) {
+	if len(versionTag) < 2 || versionTag[0] != 'v' {
+		return 0, false
+	}
+	for _, character := range versionTag[1:] {
+		if character < '0' || character > '9' {
+			return 0, false
+		}
+	}
+	version, err := strconv.ParseInt(versionTag[1:], 10, 32)
+	if err != nil || version <= 0 {
+		return 0, false
+	}
+	return int32(version), true
+}
+
+func findProcessDefinitionByIDAndVersionTag(
+	ctx context.Context,
+	reader storage.ProcessDefinitionStorageReader,
+	processDefinitionID string,
+	versionTag string,
+) (runtime.ProcessDefinition, error) {
+	if exactReader, ok := reader.(processDefinitionByVersionReader); ok {
+		return exactReader.FindLatestProcessDefinitionByIDAndVersionTag(ctx, processDefinitionID, versionTag)
+	}
+
+	definitions, err := reader.FindProcessDefinitionsById(ctx, processDefinitionID)
+	if err != nil {
+		return runtime.ProcessDefinition{}, err
+	}
+	var latest runtime.ProcessDefinition
+	found := false
+	for _, definition := range definitions {
+		if definition.VersionTag != versionTag {
+			continue
+		}
+		if !found || definition.Version > latest.Version || (definition.Version == latest.Version && definition.Key > latest.Key) {
+			latest = definition
+			found = true
+		}
+	}
+	if !found {
+		return runtime.ProcessDefinition{}, storage.ErrNotFound
+	}
+	return latest, nil
+}
 
 func (engine *Engine) resolveChildBusinessKey(parentBusinessKey, expression *string, variables map[string]interface{}) (*string, error) {
 	if expression == nil {
@@ -81,9 +199,14 @@ func (engine *Engine) createCallActivity(
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist flow element instance for call activity %s: %w", element.GetId(), err)
 	}
 
-	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
+	selection, err := element.CalledElement.ResolveVersion()
 	if err != nil {
-		return runtime.ActivityStateFailed, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
+		return runtime.ActivityStateFailed, fmt.Errorf("invalid called process version configuration: %w", err)
+	}
+
+	processDefinition, err := engine.resolveCalledProcessDefinition(ctx, processId, selection)
+	if err != nil {
+		return runtime.ActivityStateFailed, err
 	}
 
 	calledProcessInstance, tokens, err := engine.createInstance(

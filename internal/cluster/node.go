@@ -940,6 +940,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 			Version:     new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
 			ProcessId:   &def.BpmnProcessID,
 			ProcessName: &def.BpmnProcessName,
+			VersionTag:  &def.VersionTag,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
@@ -962,10 +963,12 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to read process definition from database: %w", err))
 	}
 	return proto.ProcessDefinition{
-		Key:        &def.Key,
-		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
-		ProcessId:  &def.BpmnProcessID,
-		Definition: []byte(def.BpmnData),
+		Key:         &def.Key,
+		Version:     new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		ProcessId:   &def.BpmnProcessID,
+		Definition:  []byte(def.BpmnData),
+		ProcessName: &def.BpmnProcessName,
+		VersionTag:  &def.VersionTag,
 	}, nil
 }
 
@@ -983,10 +986,12 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to read process definition from database: %w", err))
 	}
 	return proto.ProcessDefinition{
-		Key:        &def.Key,
-		Version:    new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
-		ProcessId:  &def.BpmnProcessID,
-		Definition: []byte(def.BpmnData),
+		Key:         &def.Key,
+		Version:     new(int32(def.Version)), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		ProcessId:   &def.BpmnProcessID,
+		Definition:  []byte(def.BpmnData),
+		ProcessName: &def.BpmnProcessName,
+		VersionTag:  &def.VersionTag,
 	}, nil
 }
 

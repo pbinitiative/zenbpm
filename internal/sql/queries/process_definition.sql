@@ -1,6 +1,6 @@
 -- name: SaveProcessDefinition :exec
-INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name)
-    VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name, version_tag)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: FindProcessDefinitions :many
 SELECT
@@ -8,6 +8,7 @@ SELECT
   pd.version,
   pd.bpmn_process_id,
   pd.bpmn_process_name,
+  pd.version_tag,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
@@ -76,7 +77,33 @@ FROM
 WHERE
     bpmn_process_id = @bpmn_process_id
 ORDER BY
-    version DESC
+    version DESC,
+    "key" DESC
+LIMIT 1;
+
+-- name: FindProcessDefinitionByIdAndVersion :one
+SELECT
+    *
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = @bpmn_process_id
+    AND version = @version;
+
+-- name: FindLatestProcessDefinitionByIdAndVersionTag :one
+-- Returns the highest-version definition whose version_tag matches the supplied
+-- value exactly. The partial index on (id, version_tag) accelerates this lookup;
+-- the explicit ORDER BY acts as a defensive tiebreaker.
+SELECT
+    *
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = @bpmn_process_id
+    AND version_tag = @version_tag
+ORDER BY
+    version DESC,
+    "key" DESC
 LIMIT 1;
 
 -- name: FindProcessDefinitionsById :many
@@ -87,7 +114,8 @@ FROM
 WHERE
     bpmn_process_id = @bpmn_process_ids
 ORDER BY
-    version asc;
+    version ASC,
+    "key" ASC;
 
 -- name: FindProcessDefinitionsByKeys :many
 SELECT

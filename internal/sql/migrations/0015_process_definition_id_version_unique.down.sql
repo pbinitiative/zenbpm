@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_process_definition_bpmn_process_id_version_tag;
+DROP INDEX IF EXISTS idx_process_definition_bpmn_process_id_version;
+ALTER TABLE process_definition DROP COLUMN version_tag;

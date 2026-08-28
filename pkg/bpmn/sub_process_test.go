@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -9,10 +10,305 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCallActivityProcessVersionSelection(t *testing.T) {
+	uniqueSuffix := time.Now().UnixNano()
+	childProcessID := fmt.Sprintf("call-activity-version-child-%d", uniqueSuffix)
+
+	childV1, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionChildBPMN(childProcessID, "version-one-task")), bpmnEngine.generateKey())
+	require.NoError(t, err)
+	childV2, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionChildBPMN(childProcessID, "version-two-task")), bpmnEngine.generateKey())
+	require.NoError(t, err)
+	require.Equal(t, int32(1), childV1.Version)
+	require.Equal(t, int32(2), childV2.Version)
+
+	tests := []struct {
+		name               string
+		versionAttribute   string
+		expectedDefinition *runtime.ProcessDefinition
+	}{
+		{
+			name:               "explicit numeric version",
+			versionAttribute:   ` version="1"`,
+			expectedDefinition: childV1,
+		},
+		{
+			name:               "version tag binding selects stored version tag",
+			versionAttribute:   ` bindingType="versionTag" versionTag="VersionTag-version-two-task"`,
+			expectedDefinition: childV2,
+		},
+		{
+			name:               "v-number version tag falls back to numeric version",
+			versionAttribute:   ` bindingType="versionTag" versionTag="v1"`,
+			expectedDefinition: childV1,
+		},
+		{
+			name:               "latest version by default",
+			expectedDefinition: childV2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parentProcessID := fmt.Sprintf("call-activity-version-parent-%d-%s", uniqueSuffix, strings.ReplaceAll(tt.name, " ", "-"))
+			parent, loadErr := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionParentBPMN(parentProcessID, childProcessID, tt.versionAttribute)), bpmnEngine.generateKey())
+			require.NoError(t, loadErr)
+
+			parentInstance, createErr := bpmnEngine.CreateInstanceByKey(t.Context(), parent.Key, nil)
+			require.NoError(t, createErr)
+			childInstance := findChildCallActivityInstance(t, parentInstance.ProcessInstance().Key)
+			assert.Equal(t, tt.expectedDefinition.Key, childInstance.ProcessInstance().Definition.Key)
+			assert.Equal(t, tt.expectedDefinition.Version, childInstance.ProcessInstance().Definition.Version)
+		})
+	}
+}
+
+func TestNumericVersionFromVersionTag(t *testing.T) {
+	tests := []struct {
+		name            string
+		versionTag      string
+		expectedVersion int32
+		expected        bool
+	}{
+		{name: "positive version", versionTag: "v1", expectedVersion: 1, expected: true},
+		{name: "leading zero", versionTag: "v01", expectedVersion: 1, expected: true},
+		{name: "maximum int32", versionTag: "v2147483647", expectedVersion: 2147483647, expected: true},
+		{name: "empty"},
+		{name: "missing number", versionTag: "v"},
+		{name: "missing prefix", versionTag: "1"},
+		{name: "uppercase prefix", versionTag: "V1"},
+		{name: "zero", versionTag: "v0"},
+		{name: "negative", versionTag: "v-1"},
+		{name: "explicit positive sign", versionTag: "v+1"},
+		{name: "decimal", versionTag: "v1.0"},
+		{name: "int32 overflow", versionTag: "v2147483648"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			version, ok := numericVersionFromVersionTag(test.versionTag)
+			assert.Equal(t, test.expected, ok)
+			assert.Equal(t, test.expectedVersion, version)
+		})
+	}
+}
+
+func TestCallActivityExactVNumberVersionTagTakesPrecedenceOverNumericVersion(t *testing.T) {
+	uniqueSuffix := time.Now().UnixNano()
+	childProcessID := fmt.Sprintf("call-activity-v-number-precedence-child-%d", uniqueSuffix)
+
+	childV1, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionChildBPMN(childProcessID, "version-one-task")), bpmnEngine.generateKey())
+	require.NoError(t, err)
+	childV2, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionChildBPMNWithVersionTag(childProcessID, "version-two-task", "v1")), bpmnEngine.generateKey())
+	require.NoError(t, err)
+	require.Equal(t, int32(1), childV1.Version)
+	require.Equal(t, int32(2), childV2.Version)
+
+	parentProcessID := fmt.Sprintf("call-activity-v-number-precedence-parent-%d", uniqueSuffix)
+	parent, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionParentBPMN(parentProcessID, childProcessID, ` bindingType="versionTag" versionTag="v1"`)), bpmnEngine.generateKey())
+	require.NoError(t, err)
+
+	parentInstance, err := bpmnEngine.CreateInstanceByKey(t.Context(), parent.Key, nil)
+	require.NoError(t, err)
+	childInstance := findChildCallActivityInstance(t, parentInstance.ProcessInstance().Key)
+	assert.Equal(t, childV2.Key, childInstance.ProcessInstance().Definition.Key)
+	assert.Equal(t, int32(2), childInstance.ProcessInstance().Definition.Version)
+}
+
+type processDefinitionLookupStorage struct {
+	storage.Storage
+	tagDefinition     runtime.ProcessDefinition
+	tagErr            error
+	versionDefinition runtime.ProcessDefinition
+	versionErr        error
+	versionCalls      int
+}
+
+func (reader *processDefinitionLookupStorage) FindLatestProcessDefinitionByIDAndVersionTag(_ context.Context, _ string, _ string) (runtime.ProcessDefinition, error) {
+	return reader.tagDefinition, reader.tagErr
+}
+
+func (reader *processDefinitionLookupStorage) FindProcessDefinitionByIDAndVersion(_ context.Context, _ string, _ int32) (runtime.ProcessDefinition, error) {
+	reader.versionCalls++
+	return reader.versionDefinition, reader.versionErr
+}
+
+func TestCallActivityNumericVersionTagFallbackOnlyOnNotFound(t *testing.T) {
+	t.Run("wrapped not found uses numeric fallback", func(t *testing.T) {
+		reader := &processDefinitionLookupStorage{
+			tagErr:            fmt.Errorf("tag lookup: %w", storage.ErrNotFound),
+			versionDefinition: runtime.ProcessDefinition{BpmnProcessId: "child", Version: 2},
+		}
+		engine := &Engine{persistence: reader}
+
+		definition, err := engine.resolveCalledProcessDefinition(t.Context(), "child", extensions.VersionSelection{VersionTag: "v2"})
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), definition.Version)
+		assert.Equal(t, 1, reader.versionCalls)
+	})
+
+	t.Run("storage error does not use numeric fallback", func(t *testing.T) {
+		lookupErr := fmt.Errorf("tag storage unavailable")
+		reader := &processDefinitionLookupStorage{tagErr: lookupErr}
+		engine := &Engine{persistence: reader}
+
+		_, err := engine.resolveCalledProcessDefinition(t.Context(), "child", extensions.VersionSelection{VersionTag: "v2"})
+
+		require.ErrorIs(t, err, lookupErr)
+		assert.Equal(t, 0, reader.versionCalls)
+	})
+}
+
+type storageWithoutExactProcessVersionLookup struct {
+	storage.Storage
+}
+
+var _ storage.Storage = storageWithoutExactProcessVersionLookup{}
+
+func TestFindProcessDefinitionByIdAndVersionFallsBackForExistingStorageImplementations(t *testing.T) {
+	store := inmemory.NewStorage()
+	legacyCompatibleStore := storageWithoutExactProcessVersionLookup{Storage: store}
+	_, hasExactLookup := any(legacyCompatibleStore).(processDefinitionByVersionReader)
+	require.False(t, hasExactLookup)
+
+	for _, definition := range []runtime.ProcessDefinition{
+		{Key: 1, BpmnProcessId: "versioned-process", Version: 1, VersionTag: "stable-1"},
+		{Key: 2, BpmnProcessId: "versioned-process", Version: 2, VersionTag: "stable-2"},
+	} {
+		require.NoError(t, legacyCompatibleStore.SaveProcessDefinition(t.Context(), definition))
+	}
+
+	definition, err := findProcessDefinitionByIDAndVersion(t.Context(), legacyCompatibleStore, "versioned-process", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), definition.Key)
+
+	definition, err = findProcessDefinitionByIDAndVersionTag(t.Context(), legacyCompatibleStore, "versioned-process", "stable-2")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), definition.Key)
+
+	_, err = findProcessDefinitionByIDAndVersion(t.Context(), legacyCompatibleStore, "versioned-process", 3)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+
+	_, err = findProcessDefinitionByIDAndVersionTag(t.Context(), legacyCompatibleStore, "versioned-process", "missing")
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+func TestFindProcessDefinitionByIDAndVersionTagFallbackReturnsZeroKey(t *testing.T) {
+	store := inmemory.NewStorage()
+	legacyCompatibleStore := storageWithoutExactProcessVersionLookup{Storage: store}
+	definition := runtime.ProcessDefinition{
+		Key:           0,
+		BpmnProcessId: "zero-key-process",
+		Version:       1,
+		VersionTag:    "stable",
+	}
+	require.NoError(t, legacyCompatibleStore.SaveProcessDefinition(t.Context(), definition))
+
+	found, err := findProcessDefinitionByIDAndVersionTag(t.Context(), legacyCompatibleStore, definition.BpmnProcessId, definition.VersionTag)
+
+	assert.NotErrorIs(t, err, storage.ErrNotFound)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), found.Key)
+}
+
+func TestCallActivityNonExistingProcessVersionCreatesIncident(t *testing.T) {
+	uniqueSuffix := time.Now().UnixNano()
+	childProcessID := fmt.Sprintf("call-activity-missing-version-child-%d", uniqueSuffix)
+	_, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionChildBPMN(childProcessID, "only-version-task")), bpmnEngine.generateKey())
+	require.NoError(t, err)
+
+	tests := []struct {
+		name                 string
+		versionAttribute     string
+		expectedErrorMessage string
+	}{
+		{
+			name:                 "missing explicit numeric version",
+			versionAttribute:     ` version="2"`,
+			expectedErrorMessage: fmt.Sprintf("no deployed process with id=%s and version=%d was found", childProcessID, 2),
+		},
+		{
+			name:                 "missing version tag",
+			versionAttribute:     ` bindingType="versionTag" versionTag="VersionTagMissing"`,
+			expectedErrorMessage: fmt.Sprintf("no deployed process with id=%s and version tag %q was found", childProcessID, "VersionTagMissing"),
+		},
+		{
+			name:                 "missing v-number version tag and numeric version",
+			versionAttribute:     ` bindingType="versionTag" versionTag="v2"`,
+			expectedErrorMessage: fmt.Sprintf("no deployed process with id=%s and version tag %q or numeric version=%d was found", childProcessID, "v2", 2),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parentProcessID := fmt.Sprintf("call-activity-missing-version-parent-%d-%s", uniqueSuffix, strings.ReplaceAll(tt.name, " ", "-"))
+			parent, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(callActivityVersionParentBPMN(parentProcessID, childProcessID, tt.versionAttribute)), bpmnEngine.generateKey())
+			require.NoError(t, err)
+
+			parentInstance, err := bpmnEngine.CreateInstanceByKey(t.Context(), parent.Key, nil)
+			require.ErrorContains(t, err, tt.expectedErrorMessage)
+			require.NotNil(t, parentInstance)
+
+			persistedParent, findErr := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), parentInstance.ProcessInstance().Key)
+			require.NoError(t, findErr)
+			assert.Equal(t, runtime.ActivityStateFailed, persistedParent.ProcessInstance().State)
+
+			incidents, findErr := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), parentInstance.ProcessInstance().Key)
+			require.NoError(t, findErr)
+			require.Len(t, incidents, 1)
+			assert.Equal(t, "call-activity", incidents[0].ElementId)
+			assert.Contains(t, incidents[0].Message, tt.expectedErrorMessage)
+
+			children, findErr := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), incidents[0].Token.Key)
+			require.NoError(t, findErr)
+			assert.Empty(t, children)
+		})
+	}
+}
+
+func callActivityVersionChildBPMN(processID string, taskID string) string {
+	return callActivityVersionChildBPMNWithVersionTag(processID, taskID, "VersionTag-"+taskID)
+}
+
+func callActivityVersionChildBPMNWithVersionTag(processID string, taskID string, versionTag string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="%s" isExecutable="true">
+    <bpmn:extensionElements><zenbpm:versionTag value="%s" /></bpmn:extensionElements>
+    <bpmn:startEvent id="start"><bpmn:outgoing>to-task</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="%s">
+      <bpmn:extensionElements><zenbpm:taskDefinition type="call-activity-version-test" /></bpmn:extensionElements>
+      <bpmn:incoming>to-task</bpmn:incoming>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="to-task" sourceRef="start" targetRef="%s" />
+  </bpmn:process>
+</bpmn:definitions>`, processID, versionTag, taskID, taskID)
+}
+
+func callActivityVersionParentBPMN(processID string, calledProcessID string, versionAttribute string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="%s" isExecutable="true">
+    <bpmn:startEvent id="start"><bpmn:outgoing>to-call</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:callActivity id="call-activity">
+      <bpmn:extensionElements><zenbpm:calledElement processId="%s"%s /></bpmn:extensionElements>
+      <bpmn:incoming>to-call</bpmn:incoming>
+      <bpmn:outgoing>to-end</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:endEvent id="end"><bpmn:incoming>to-end</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="to-call" sourceRef="start" targetRef="call-activity" />
+    <bpmn:sequenceFlow id="to-end" sourceRef="call-activity" targetRef="end" />
+  </bpmn:process>
+</bpmn:definitions>`, processID, calledProcessID, versionAttribute)
+}
 
 func TestCallActivityStartsAndCompletes(t *testing.T) {
 	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
@@ -1150,6 +1446,9 @@ func assertProcessCompletionWithSubProcess(t *testing.T, instance runtime.Proces
 }
 
 // findChildCallActivityInstance waits for and returns the child CallActivity instance under the given parent.
+// The engine mutates the aliased in-memory instance pointer from its worker goroutine (see
+// inmemory.RefreshProcessInstance), so each candidate read is synchronized on the per-instance
+// lock to avoid data races with concurrent worker updates.
 func findChildCallActivityInstance(t *testing.T, parentInstanceKey int64) runtime.CallActivityInstance {
 	t.Helper()
 	var found runtime.CallActivityInstance
@@ -1158,8 +1457,16 @@ func findChildCallActivityInstance(t *testing.T, parentInstanceKey int64) runtim
 			if pi.Type() != runtime.ProcessTypeCallActivity {
 				continue
 			}
-			if pi.(*runtime.CallActivityInstance).ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
-				found = *pi.(*runtime.CallActivityInstance)
+			ca := pi.(*runtime.CallActivityInstance)
+			// Lock the child instance for the whole candidate inspection so the engine worker goroutine
+			// cannot race with us while we read ParentProcessExecutionToken and then copy the struct.
+			bpmnEngine.runningInstances.lockInstance(ca.ProcessInstance().Key)
+			match := ca.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey
+			if match {
+				found = *ca
+			}
+			bpmnEngine.runningInstances.unlockInstance(ca.ProcessInstance().Key)
+			if match {
 				return true
 			}
 		}
@@ -1169,6 +1476,8 @@ func findChildCallActivityInstance(t *testing.T, parentInstanceKey int64) runtim
 }
 
 // findChildSubProcessInstance waits for and returns the child SubProcess instance under the given parent.
+// See findChildCallActivityInstance for the rationale behind the per-instance lock; the same race exists
+// for the SubProcessInstance struct.
 func findChildSubProcessInstance(t *testing.T, parentInstanceKey int64) runtime.SubProcessInstance {
 	t.Helper()
 	var found runtime.SubProcessInstance
@@ -1177,8 +1486,14 @@ func findChildSubProcessInstance(t *testing.T, parentInstanceKey int64) runtime.
 			if pi.Type() != runtime.ProcessTypeSubProcess {
 				continue
 			}
-			if pi.(*runtime.SubProcessInstance).ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
-				found = *pi.(*runtime.SubProcessInstance)
+			sp := pi.(*runtime.SubProcessInstance)
+			bpmnEngine.runningInstances.lockInstance(sp.ProcessInstance().Key)
+			match := sp.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey
+			if match {
+				found = *sp
+			}
+			bpmnEngine.runningInstances.unlockInstance(sp.ProcessInstance().Key)
+			if match {
 				return true
 			}
 		}
@@ -1188,6 +1503,7 @@ func findChildSubProcessInstance(t *testing.T, parentInstanceKey int64) runtime.
 }
 
 // findChildMultiInstanceInstance waits for and returns the child MultiInstance under the given parent.
+// See findChildCallActivityInstance for the rationale behind the per-instance lock.
 func findChildMultiInstanceInstance(t *testing.T, parentInstanceKey int64) runtime.MultiInstanceInstance {
 	t.Helper()
 	var found runtime.MultiInstanceInstance
@@ -1196,8 +1512,14 @@ func findChildMultiInstanceInstance(t *testing.T, parentInstanceKey int64) runti
 			if pi.Type() != runtime.ProcessTypeMultiInstance {
 				continue
 			}
-			if pi.(*runtime.MultiInstanceInstance).ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
-				found = *pi.(*runtime.MultiInstanceInstance)
+			mi := pi.(*runtime.MultiInstanceInstance)
+			bpmnEngine.runningInstances.lockInstance(mi.ProcessInstance().Key)
+			match := mi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey
+			if match {
+				found = *mi
+			}
+			bpmnEngine.runningInstances.unlockInstance(mi.ProcessInstance().Key)
+			if match {
 				return true
 			}
 		}

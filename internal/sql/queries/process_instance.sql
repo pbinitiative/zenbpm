@@ -78,7 +78,7 @@ WHERE key IN (sqlc.slice('keys'));
 WITH process_instance_candidates AS (
     -- Use the definition/created_at index only when both parts of its prefix
     -- are selective.
-    SELECT pi.*, pd.bpmn_process_id
+    SELECT pi.*, pd.bpmn_process_id, pd.version, pd.version_tag
     FROM
         process_instance AS pi
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -100,7 +100,7 @@ WITH process_instance_candidates AS (
 
     -- Preserve the sequential scan for listings without an index-selective
     -- definition and lower time bound. The branches are mutually exclusive.
-    SELECT pi.*, pd.bpmn_process_id
+    SELECT pi.*, pd.bpmn_process_id, pd.version, pd.version_tag
     FROM
         process_instance AS pi NOT INDEXED
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -219,6 +219,8 @@ SELECT
     paged.history_delete_sec,
     paged.start_element_id,
     paged.bpmn_process_id,
+    paged.version,
+    paged.version_tag,
     CAST((
         SELECT COUNT(*)
         FROM incident AS i
@@ -246,7 +248,7 @@ ORDER BY
 -- name: FindChildProcessInstancesPage :many
 WITH paged AS (
 SELECT
-    pi.*, pd.bpmn_process_id,
+    pi.*, pd.bpmn_process_id, pd.version, pd.version_tag,
     COUNT(*) OVER () AS total_count
 FROM
     execution_token AS parent_token
@@ -296,6 +298,8 @@ SELECT
     paged.history_delete_sec,
     paged.start_element_id,
     paged.bpmn_process_id,
+    paged.version,
+    paged.version_tag,
     CAST((
         SELECT COUNT(*)
         FROM incident AS i

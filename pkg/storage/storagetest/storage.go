@@ -1,6 +1,7 @@
 package storagetest
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -32,6 +33,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 	functions := []StorageTestFunc{
 		st.TestProcessDefinitionStorageWriter,
 		st.TestProcessDefinitionStorageReaderBasic,
+		st.TestProcessDefinitionVersionTagLookup,
+		st.TestProcessDefinitionVersionTagIsUnique,
 		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
@@ -76,11 +79,12 @@ func getFunctionName(i any) string {
 func getProcessDefinition(r int64) bpmnruntime.ProcessDefinition {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	return bpmnruntime.ProcessDefinition{
-		BpmnProcessId: fmt.Sprintf("id-%d", r),
-		Version:       1,
-		Key:           r,
-		BpmnData:      fmt.Sprintf(data, r),
-		BpmnChecksum:  [16]byte{1},
+		BpmnProcessId:   fmt.Sprintf("id-%d", r),
+		Version:         1,
+		Key:             r,
+		BpmnData:        fmt.Sprintf(data, r),
+		BpmnProcessName: fmt.Sprintf("process-%d", r),
+		BpmnChecksum:    [16]byte{1},
 	}
 }
 
@@ -145,19 +149,118 @@ func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Stora
 		err := s.SaveProcessDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
+		secondVersion := def
+		secondVersion.Key = s.GenerateId()
+		secondVersion.Version = 2
+		err = s.SaveProcessDefinition(t.Context(), secondVersion)
+		assert.NoError(t, err)
+
+		duplicateVersion := def
+		duplicateVersion.Key = s.GenerateId()
+		err = s.SaveProcessDefinition(t.Context(), duplicateVersion)
+		assert.Error(t, err)
+
 		definition, err := s.FindLatestProcessDefinitionById(t.Context(), def.BpmnProcessId)
 		assert.NoError(t, err)
-		assert.Equal(t, r, definition.Key)
+		assert.Equal(t, secondVersion.Key, definition.Key)
+		assert.Equal(t, secondVersion.BpmnProcessName, definition.BpmnProcessName)
+
+		// Exact version lookup is an optional optimization, not part of the public
+		// Storage contract. Exercise it for stores that provide the capability.
+		if exactReader, ok := s.(interface {
+			FindProcessDefinitionByIDAndVersion(ctx context.Context, processDefinitionID string, version int32) (bpmnruntime.ProcessDefinition, error)
+		}); ok {
+			definition, err = exactReader.FindProcessDefinitionByIDAndVersion(t.Context(), def.BpmnProcessId, def.Version)
+			assert.NoError(t, err)
+			assert.Equal(t, def.Key, definition.Key)
+			assert.Equal(t, def.BpmnProcessName, definition.BpmnProcessName)
+
+			definition, err = exactReader.FindProcessDefinitionByIDAndVersion(t.Context(), def.BpmnProcessId, secondVersion.Version)
+			assert.NoError(t, err)
+			assert.Equal(t, secondVersion.Key, definition.Key)
+			assert.Equal(t, secondVersion.BpmnProcessName, definition.BpmnProcessName)
+
+			_, err = exactReader.FindProcessDefinitionByIDAndVersion(t.Context(), def.BpmnProcessId, 3)
+			assert.ErrorIs(t, err, storage.ErrNotFound)
+		}
 
 		definition, err = s.FindProcessDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
+		assert.Equal(t, def.BpmnProcessName, definition.BpmnProcessName)
 
 		definitions, err := s.FindProcessDefinitionsById(t.Context(), def.BpmnProcessId)
 		assert.NoError(t, err)
-		assert.Len(t, definitions, 1)
+		assert.Len(t, definitions, 2)
 		assert.Equal(t, definitions[0].Key, definition.Key)
+		assert.Equal(t, def.BpmnProcessName, definitions[0].BpmnProcessName)
 
+	}
+}
+
+func (st *StorageTester) TestProcessDefinitionVersionTagIsUnique(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		processID := fmt.Sprintf("unique-version-tag-process-%d", s.GenerateId())
+		first := getProcessDefinition(s.GenerateId())
+		first.BpmnProcessId = processID
+		first.VersionTag = "stable"
+		require.NoError(t, s.SaveProcessDefinition(t.Context(), first))
+
+		conflicting := first
+		conflicting.Key = s.GenerateId()
+		conflicting.Version++
+		assert.Error(t, s.SaveProcessDefinition(t.Context(), conflicting))
+	}
+}
+
+func (st *StorageTester) TestProcessDefinitionVersionTagLookup(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		tagReader, ok := s.(interface {
+			FindLatestProcessDefinitionByIDAndVersionTag(ctx context.Context, processDefinitionID string, versionTag string) (bpmnruntime.ProcessDefinition, error)
+		})
+		if !ok {
+			t.Skip("storage does not implement version-tag lookup")
+		}
+
+		processID := fmt.Sprintf("version-tag-process-%d", s.GenerateId())
+		v1 := getProcessDefinition(s.GenerateId())
+		v1.BpmnProcessId = processID
+		v1.Version = 1
+		v1.VersionTag = "stable"
+		require.NoError(t, s.SaveProcessDefinition(t.Context(), v1))
+
+		v2 := v1
+		v2.Key = s.GenerateId()
+		v2.Version = 2
+		v2.VersionTag = "beta"
+		require.NoError(t, s.SaveProcessDefinition(t.Context(), v2))
+
+		v3 := v1
+		v3.Key = s.GenerateId()
+		v3.Version = 3
+		v3.VersionTag = "candidate"
+		require.NoError(t, s.SaveProcessDefinition(t.Context(), v3))
+
+		definition, err := tagReader.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), processID, "stable")
+		require.NoError(t, err)
+		assert.Equal(t, v1.Key, definition.Key)
+		assert.Equal(t, int32(1), definition.Version)
+		assert.Equal(t, "stable", definition.VersionTag)
+
+		definition, err = tagReader.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), processID, "beta")
+		require.NoError(t, err)
+		assert.Equal(t, v2.Key, definition.Key)
+		assert.Equal(t, int32(2), definition.Version)
+		assert.Equal(t, "beta", definition.VersionTag)
+
+		definition, err = tagReader.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), processID, "candidate")
+		require.NoError(t, err)
+		assert.Equal(t, v3.Key, definition.Key)
+		assert.Equal(t, int32(3), definition.Version)
+		assert.Equal(t, "candidate", definition.VersionTag)
+
+		_, err = tagReader.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), processID, "missing")
+		assert.ErrorIs(t, err, storage.ErrNotFound)
 	}
 }
 

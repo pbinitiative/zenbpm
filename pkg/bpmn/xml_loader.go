@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/xmlutil"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -42,6 +43,11 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		return nil, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
+	versionTag, err := extractProcessVersionTag(xmlData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse process version tag: %w", err)
+	}
+
 	processInfo := runtime.ProcessDefinition{
 		Version:         1,
 		BpmnProcessId:   definitions.Process.Id,
@@ -50,6 +56,7 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		Definitions:     definitions,
 		BpmnData:        string(xmlData),
 		BpmnChecksum:    md5sum,
+		VersionTag:      versionTag,
 	}
 	processes, err := engine.persistence.FindProcessDefinitionsById(ctx, definitions.Process.Id)
 	if err != nil {
@@ -58,6 +65,9 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 	if len(processes) > 0 {
 		latest := &processes[0]
 		for i := range processes {
+			if processes[i].VersionTag == versionTag && versionTag != "" {
+				return nil, fmt.Errorf("process definition with id %q and version tag %q already exists: %w", definitions.Process.Id, versionTag, storage.ErrUniqueConstraint)
+			}
 			if latest.Version < processes[i].Version {
 				latest = &processes[i]
 			}
@@ -86,6 +96,30 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 
 	engine.exportNewProcessEvent(processInfo, xmlData, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil
+}
+
+type processVersionTagDefinitions struct {
+	Process processVersionTagProcess `xml:"process"`
+}
+
+type processVersionTagProcess struct {
+	ExtensionElements processVersionTagExtensionElements `xml:"extensionElements"`
+}
+
+type processVersionTagExtensionElements struct {
+	VersionTag processVersionTagElement `xml:"versionTag"`
+}
+
+type processVersionTagElement struct {
+	Value string `xml:"value,attr"`
+}
+
+func extractProcessVersionTag(xmlData []byte) (string, error) {
+	var definitions processVersionTagDefinitions
+	if err := xml.Unmarshal(xmlData, &definitions); err != nil {
+		return "", err
+	}
+	return definitions.Process.ExtensionElements.VersionTag.Value, nil
 }
 
 func (engine *Engine) deleteProcessDefinitionSubscriptions(ctx context.Context, latest *runtime.ProcessDefinition) error {

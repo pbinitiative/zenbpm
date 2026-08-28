@@ -1064,6 +1064,9 @@ type ProcessDefinitionDetail struct {
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
 	Version         int     `json:"version"`
+
+	// VersionTag Optional process version tag from `zenbpm:versionTag`
+	VersionTag *string `json:"versionTag,omitempty"`
 }
 
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
@@ -1074,6 +1077,9 @@ type ProcessDefinitionSimple struct {
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
 	Version         int     `json:"version"`
+
+	// VersionTag Optional process version tag from `zenbpm:versionTag`
+	VersionTag *string `json:"versionTag,omitempty"`
 }
 
 // ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
@@ -1130,6 +1136,8 @@ type ProcessInstance struct {
 	ProcessType              ProcessInstanceProcessType `json:"processType"`
 	State                    ProcessInstanceState       `json:"state"`
 	Variables                map[string]interface{}     `json:"variables"`
+	Version                  int                        `json:"version"`
+	VersionTag               *string                    `json:"versionTag,omitempty"`
 }
 
 // ProcessInstancePage defines model for ProcessInstancePage.
@@ -1168,6 +1176,8 @@ type ProcessInstancesSimple struct {
 	ProcessType              ProcessInstanceProcessType `json:"processType"`
 	State                    ProcessInstanceState       `json:"state"`
 	Variables                map[string]interface{}     `json:"variables"`
+	Version                  int                        `json:"version"`
+	VersionTag               *string                    `json:"versionTag,omitempty"`
 }
 
 // StartElementInstanceData defines model for StartElementInstanceData.

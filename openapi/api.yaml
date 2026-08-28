@@ -1086,6 +1086,8 @@ paths:
                 processDefinitionKey: 4503599627370498
                 createdAt: "2025-08-22T14:30:25Z"
                 state: "active"
+                version: 1
+                versionTag: "initial-release"
                 variables:
                   customerId: "customer-456"
                   amount: 1000
@@ -1218,6 +1220,8 @@ paths:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
                         incidentCount: 1
@@ -1228,6 +1232,8 @@ paths:
                       - key: 4503599627370505
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
                         incidentCount: 0
@@ -1241,6 +1247,8 @@ paths:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
                         bpmnProcessId: "loan-application"
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
                         incidentCount: 2
@@ -1297,6 +1305,8 @@ paths:
               example:
                 key: 4503599627370501
                 processDefinitionKey: 4503599627370498
+                version: 1
+                versionTag: "initial-release"
                 createdAt: "2025-08-22T14:30:25Z"
                 state: "active"
                 variables:
@@ -1514,6 +1524,8 @@ paths:
                     items:
                       - key: 4503599627370501
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
                         incidentCount: 1
@@ -1523,6 +1535,8 @@ paths:
                           applicationDate: "2025-08-22"
                       - key: 4503599627370505
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
                         incidentCount: 0
@@ -1535,6 +1549,8 @@ paths:
                     items:
                       - key: 9007199254740992
                         processDefinitionKey: 4503599627370498
+                        version: 1
+                        versionTag: "initial-release"
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
                         incidentCount: 2
@@ -3217,6 +3233,9 @@ components:
         bpmnProcessName:
           type: string
           description: Process name from BPMN
+        versionTag:
+          type: string
+          description: Optional process version tag from `zenbpm:versionTag`
     ProcessDefinitionDetail:
       type: object
       required:
@@ -3391,6 +3410,7 @@ components:
       required:
         - key
         - processDefinitionKey
+        - version
         - createdAt
         - state
         - variables
@@ -3403,6 +3423,10 @@ components:
           type: integer
           format: int64
         bpmnProcessId:
+          type: string
+        version:
+          type: integer
+        versionTag:
           type: string
         businessKey:
           type: string

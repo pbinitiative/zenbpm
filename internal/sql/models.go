@@ -132,6 +132,7 @@ type ProcessDefinition struct {
 	BpmnData        string `json:"bpmn_data"`
 	BpmnChecksum    []byte `json:"bpmn_checksum"`
 	BpmnProcessName string `json:"bpmn_process_name"`
+	VersionTag      string `json:"version_tag"`
 }
 
 type ProcessInstance struct {

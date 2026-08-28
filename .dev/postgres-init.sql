@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS reporting.process_definition (
     bpmn_process_id TEXT NOT NULL,
     bpmn_data TEXT NOT NULL,
     bpmn_checksum BYTEA NOT NULL,
-    bpmn_process_name TEXT NOT NULL
+    bpmn_process_name TEXT NOT NULL,
+    version_tag TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS reporting.process_instance (

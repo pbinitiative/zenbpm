@@ -15,6 +15,7 @@ type ProcessDefinition struct {
 	BpmnData        string              // the raw source data, compressed and encoded via ascii85
 	BpmnProcessName string              // the name of the process
 	BpmnChecksum    [16]byte            // internal checksum to identify different versions
+	VersionTag      string              // optional version tag supplied at deployment time; empty means no tag
 }
 
 type CatchEvent struct {

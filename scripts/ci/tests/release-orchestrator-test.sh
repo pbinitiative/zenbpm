@@ -45,12 +45,19 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_GH_LOG"
 
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "watch" ]; then
-  if [ "$FAKE_GH_SCENARIO" = "watch-timeout" ]; then
+  if [[ "$FAKE_GH_SCENARIO" == watch-timeout* ]]; then
     sleep 5
   fi
   exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "cancel" ]; then
+  if [ "$FAKE_GH_SCENARIO" = "watch-timeout-cancel-retry" ]; then
+    count=0
+    [ ! -f "$FAKE_GH_STATE/cancel-attempts" ] || read -r count < "$FAKE_GH_STATE/cancel-attempts"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$FAKE_GH_STATE/cancel-attempts"
+    [ "$count" -ge 3 ] || exit 1
+  fi
   exit 0
 fi
 
@@ -141,6 +148,15 @@ if WORKFLOW_WAIT_TIMEOUT_SECONDS=1 "$script" wait-frontend-release >"$tmp/wait-o
   fail "a stalled workflow should time out"
 fi
 grep -q 'Timed out waiting for pbinitiative/zenbpm-ui run 12345 after 1s' "$tmp/wait-output" || fail "wait timeout was not reported"
-grep -qx 'run cancel 12345 --repo pbinitiative/zenbpm-ui' "$FAKE_GH_LOG" || fail "timed-out workflow was not canceled"
+grep -qFx 'run cancel 12345 --repo pbinitiative/zenbpm-ui' "$FAKE_GH_LOG" || fail "timed-out workflow was not canceled"
+
+export FAKE_GH_SCENARIO=watch-timeout-cancel-retry
+rm -f "$FAKE_GH_STATE/cancel-attempts"
+: > "$FAKE_GH_LOG"
+if WORKFLOW_WAIT_TIMEOUT_SECONDS=1 "$script" wait-frontend-release >"$tmp/retry-output" 2>&1; then
+  fail "a stalled workflow should fail after cancellation retries"
+fi
+[ "$(grep -cFx 'run cancel 12345 --repo pbinitiative/zenbpm-ui' "$FAKE_GH_LOG")" -eq 3 ] || fail "cancellation was not retried"
+[ "$(< "$FAKE_GH_STATE/cancel-attempts")" -eq 3 ] || fail "cancellation did not eventually succeed"
 
 echo "release orchestrator tests passed"

@@ -283,7 +283,7 @@ wait_docs_release() {
 wait_workflow_run() {
   require_env ORG
   local repo=${1:?repo is required}
-  local wait_timeout_seconds=${WORKFLOW_WAIT_TIMEOUT_SECONDS:-3000}
+  local wait_timeout_seconds=${WORKFLOW_WAIT_TIMEOUT_SECONDS:-2700}
   require_env RUN_ID
   if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
     echo "RUN_ID must be a numeric GitHub Actions run ID" >&2
@@ -298,7 +298,19 @@ wait_workflow_run() {
   timeout --foreground "${wait_timeout_seconds}s" \
     gh run watch "$RUN_ID" --repo "$ORG/$repo" --exit-status || status=$?
   if [ "$status" -eq 124 ]; then
-    gh run cancel "$RUN_ID" --repo "$ORG/$repo" || true
+    local attempt cancel_status=1
+    for attempt in 1 2 3; do
+      if gh run cancel "$RUN_ID" --repo "$ORG/$repo"; then
+        cancel_status=0
+        break
+      else
+        cancel_status=$?
+      fi
+      [ "$attempt" -eq 3 ] || sleep 1
+    done
+    if [ "$cancel_status" -ne 0 ]; then
+      echo "Failed to cancel $ORG/$repo run $RUN_ID after 3 attempts" >&2
+    fi
     echo "Timed out waiting for $ORG/$repo run $RUN_ID after ${wait_timeout_seconds}s" >&2
     return 1
   fi

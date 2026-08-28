@@ -253,7 +253,7 @@ jobs:
 
   frontend-release:
     runs-on: ubuntu-latest
-    # Installation tokens expire after one hour; leave cleanup time after the 50-minute wait.
+    # Installation tokens expire after one hour; leave cleanup time after the 45-minute wait.
     timeout-minutes: 55
     needs:
       - validate

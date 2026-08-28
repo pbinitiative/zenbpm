@@ -24,10 +24,27 @@ const (
 	dmnDINamespace      = "https://www.omg.org/spec/DMN/20191111/DMNDI/"
 	dmnDCNamespace      = "http://www.omg.org/spec/DMN/20180521/DC/"
 	dmnDiagramNamespace = "http://www.omg.org/spec/DMN/20180521/DI/"
+
+	zenbpmExtensionNamespace = "http://zenbpm.pbinitiative.org/1.0"
+	zeebeExtensionNamespace  = "http://camunda.org/schema/zeebe/1.0"
 )
 
 // SameContent reports whether newData is the same XML document as storedData
 // ignoring XML formatting differences. Both checksums must be md5(raw).
+//
+// The comparison first matches raw MD5 checksums as a fast path. If they differ,
+// both payloads are normalized and re-hashed. The normalizer ignores attribute
+// order, quote style, inter-element whitespace inside structural elements
+// (BPMN/DMN model and DI elements, plus zenbpm/zeebe extension namespaces), and
+// CDATA vs entity spellings.
+//
+// The normalizer intentionally treats the following as significant:
+//   - any text node content, including whitespace inside xml:space="preserve"
+//     regions and inside non-structural elements
+//   - attribute values, including the URI bound to a namespace prefix
+//     (renaming xmlns:b="…" to xmlns:x="…" is NOT considered equivalent)
+//   - namespace-prefix bindings themselves
+//   - comments, processing instructions, and document type declarations
 func SameContent(storedChecksum, newChecksum, storedData, newData []byte) (bool, error) {
 	if bytes.Equal(storedChecksum, newChecksum) {
 		return true, nil
@@ -45,7 +62,9 @@ func SameContent(storedChecksum, newChecksum, storedData, newData []byte) (bool,
 }
 
 // normalizedXMLHash hashes a length-prefixed token stream so attribute order,
-// quoting, and namespace-prefix spellings are normalized.
+// quoting, and inter-element whitespace inside structural elements are
+// normalized. Namespace-prefix bindings (xmlns:*) are NOT normalized — they
+// are part of the canonical content.
 func normalizedXMLHash(data []byte) ([sha256.Size]byte, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	digest := sha256.New()
@@ -225,7 +244,9 @@ func isStructuralElement(name xml.Name) bool {
 		dmnModelNamespace,
 		dmnDINamespace,
 		dmnDCNamespace,
-		dmnDiagramNamespace:
+		dmnDiagramNamespace,
+		zenbpmExtensionNamespace,
+		zeebeExtensionNamespace:
 		return true
 	default:
 		return false

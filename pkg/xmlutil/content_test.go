@@ -113,6 +113,68 @@ func TestSameContent_WhitespacePolicy(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, same)
 	})
+
+	t.Run("zenbpm:ioMapping structural indentation", func(t *testing.T) {
+		stored := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="p">
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=a" target="x"/>
+      <zenbpm:input source="=b" target="y"/>
+    </zenbpm:ioMapping>
+  </bpmn:process>
+</bpmn:definitions>`)
+		formatted := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><bpmn:process id="p"><zenbpm:ioMapping><zenbpm:input source="=a" target="x"/><zenbpm:input source="=b" target="y"/></zenbpm:ioMapping></bpmn:process></bpmn:definitions>`)
+		storedChecksum := md5.Sum(stored)
+		formattedChecksum := md5.Sum(formatted)
+
+		same, err := SameContent(storedChecksum[:], formattedChecksum[:], stored, formatted)
+
+		require.NoError(t, err)
+		assert.True(t, same)
+	})
+
+	t.Run("zeebe:ioMapping structural indentation (legacy namespace)", func(t *testing.T) {
+		stored := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0">
+  <bpmn:process id="p">
+    <zeebe:ioMapping>
+      <zeebe:input source="=a" target="x"/>
+      <zeebe:output source="=x" target="y"/>
+    </zeebe:ioMapping>
+  </bpmn:process>
+</bpmn:definitions>`)
+		formatted := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"><bpmn:process id="p"><zeebe:ioMapping><zeebe:input source="=a" target="x"/><zeebe:output source="=x" target="y"/></zeebe:ioMapping></bpmn:process></bpmn:definitions>`)
+		storedChecksum := md5.Sum(stored)
+		formattedChecksum := md5.Sum(formatted)
+
+		same, err := SameContent(storedChecksum[:], formattedChecksum[:], stored, formatted)
+
+		require.NoError(t, err)
+		assert.True(t, same)
+	})
+
+	t.Run("zenbpm:taskHeaders and assignmentDefinition structural indentation", func(t *testing.T) {
+		stored := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="p">
+    <bpmn:userTask id="u">
+      <bpmn:extensionElements>
+        <zenbpm:taskHeaders>
+          <zenbpm:header key="a" value="1"/>
+          <zenbpm:header key="b" value="2"/>
+        </zenbpm:taskHeaders>
+        <zenbpm:assignmentDefinition assignee="x" candidateGroups="g1, g2"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+  </bpmn:process>
+</bpmn:definitions>`)
+		formatted := []byte(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><bpmn:process id="p"><bpmn:userTask id="u"><bpmn:extensionElements><zenbpm:taskHeaders><zenbpm:header key="a" value="1"/><zenbpm:header key="b" value="2"/></zenbpm:taskHeaders><zenbpm:assignmentDefinition assignee="x" candidateGroups="g1, g2"/></bpmn:extensionElements></bpmn:userTask></bpmn:process></bpmn:definitions>`)
+		storedChecksum := md5.Sum(stored)
+		formattedChecksum := md5.Sum(formatted)
+
+		same, err := SameContent(storedChecksum[:], formattedChecksum[:], stored, formatted)
+
+		require.NoError(t, err)
+		assert.True(t, same)
+	})
 }
 
 func TestSameContent_IsConservative(t *testing.T) {
@@ -170,6 +232,21 @@ func TestSameContent_IsConservative(t *testing.T) {
 			name:   "xml space preserve",
 			stored: `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xml:space="preserve"> <bpmn:process/></bpmn:definitions>`,
 			new:    `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xml:space="preserve"><bpmn:process/></bpmn:definitions>`,
+		},
+		{
+			name:   "zenbpm:ioMapping attribute value change",
+			stored: `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><zenbpm:ioMapping><zenbpm:input source="=a" target="x"/></zenbpm:ioMapping></bpmn:definitions>`,
+			new:    `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><zenbpm:ioMapping><zenbpm:input source="=b" target="x"/></zenbpm:ioMapping></bpmn:definitions>`,
+		},
+		{
+			name:   "zenbpm:ioMapping child added",
+			stored: `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><zenbpm:ioMapping><zenbpm:input source="=a" target="x"/></zenbpm:ioMapping></bpmn:definitions>`,
+			new:    `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"><zenbpm:ioMapping><zenbpm:input source="=a" target="x"/><zenbpm:output source="=x" target="y"/></zenbpm:ioMapping></bpmn:definitions>`,
+		},
+		{
+			name:   "zeebe:ioMapping attribute value change (legacy namespace)",
+			stored: `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"><zeebe:ioMapping><zeebe:input source="=a" target="x"/></zeebe:ioMapping></bpmn:definitions>`,
+			new:    `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"><zeebe:ioMapping><zeebe:input source="=b" target="x"/></zeebe:ioMapping></bpmn:definitions>`,
 		},
 		{
 			name:   "BPMN DI coordinate",

@@ -71,3 +71,50 @@ func TestLoadFromBytes_ContentChangeCreatesNewVersion(t *testing.T) {
 	assert.Equal(t, int32(2), second.Version)
 	assert.Equal(t, md5.Sum(changed), second.BpmnChecksum)
 }
+
+func TestLoadFromBytes_FormattingOnlyRedeployReusesDefinitionWithZenbpmExtensions(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	defer engine.Stop()
+
+	original := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="definitions" targetNamespace="urn:test">
+  <bpmn:process id="zenbpm-ext-test" name="ZenBPM ext test" isExecutable="true">
+    <bpmn:serviceTask id="task">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=a" target="x"/>
+          <zenbpm:output source="=x" target="y"/>
+        </zenbpm:ioMapping>
+        <zenbpm:taskDefinition type="worker"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+  </bpmn:process>
+</bpmn:definitions>`)
+	formatted := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions id="definitions" targetNamespace="urn:test" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process name="ZenBPM ext test" id="zenbpm-ext-test" isExecutable="true">
+    <bpmn:serviceTask id="task">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping><zenbpm:input source="=a" target="x"/><zenbpm:output source="=x" target="y"/></zenbpm:ioMapping>
+        <zenbpm:taskDefinition type="worker"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+  </bpmn:process>
+</bpmn:definitions>`)
+	require.NotEqual(t, md5.Sum(original), md5.Sum(formatted), "test inputs must exercise the fallback")
+
+	first, err := engine.LoadFromBytes(t.Context(), original, engine.generateKey())
+	require.NoError(t, err)
+	second, err := engine.LoadFromBytes(t.Context(), formatted, engine.generateKey())
+	require.NoError(t, err)
+
+	assert.Equal(t, first.Key, second.Key)
+	assert.Equal(t, int32(1), second.Version)
+	assert.Equal(t, md5.Sum(original), second.BpmnChecksum, "the stored checksum must remain the raw MD5")
+
+	definitions, err := store.FindProcessDefinitionsById(t.Context(), "zenbpm-ext-test")
+	require.NoError(t, err)
+	assert.Len(t, definitions, 1)
+}

@@ -550,6 +550,47 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		assert.Equal(t, 1, definitions[0].Version)
 	})
 
+	t.Run("CreateProcessDefinition - formatting-only inside zenbpm:ioMapping reuses definition", func(t *testing.T) {
+		processID := fmt.Sprintf("zenbpm-formatting-%d", time.Now().UnixNano())
+		original := []byte(fmt.Sprintf(`<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="definitions" targetNamespace="urn:test">
+  <bpmn:process id="%s" name="zenbpm-formatting" isExecutable="true">
+    <bpmn:serviceTask id="t">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=a" target="x"/>
+          <zenbpm:output source="=x" target="y"/>
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+  </bpmn:process>
+</bpmn:definitions>`, processID))
+		formatted := []byte(fmt.Sprintf(`<bpmn:definitions id="definitions" targetNamespace="urn:test" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process name="zenbpm-formatting" id="%s" isExecutable="true">
+    <bpmn:serviceTask id="t">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping><zenbpm:input source="=a" target="x"/><zenbpm:output source="=x" target="y"/></zenbpm:ioMapping>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+  </bpmn:process>
+</bpmn:definitions>`, processID))
+		require.NotEqual(t, original, formatted, "test inputs must exercise the formatting fallback")
+
+		first, err := deployDefinitionFromBytes(t, original, "zenbpm-formatting-original.bpmn")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, first.StatusCode())
+		require.NotNil(t, first.JSON201)
+
+		second, err := deployDefinitionFromBytes(t, formatted, "zenbpm-formatting-redeploy.bpmn")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, second.StatusCode())
+		require.NotNil(t, second.JSON200)
+		assert.Equal(t, first.JSON201.ProcessDefinitionKey, second.JSON200.ProcessDefinitionKey)
+
+		definitions := getProcessDefinitionVersions(t, processID, false)
+		require.Len(t, definitions, 1)
+		assert.Equal(t, 1, definitions[0].Version)
+	})
+
 	t.Run("GetProcessDefinition - 404 for nonexistent key", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionWithResponse(t.Context(), int64(999999999))
 		require.NoError(t, err)

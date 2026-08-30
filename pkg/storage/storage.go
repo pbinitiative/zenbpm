@@ -28,6 +28,8 @@ type Storage interface {
 	DecisionStorage
 	FlowElementInstanceReader
 	FlowElementInstanceWriter
+	ElementExecutionCounterReader
+	ElementExecutionCounterWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 	ErrorSubscriptionStorageReader
@@ -57,6 +59,7 @@ type Batch interface {
 	MessageStorageWriter
 	TokenStorageWriter
 	FlowElementInstanceWriter
+	ElementExecutionCounterWriter
 	IncidentStorageWriter
 	ErrorSubscriptionStorageWriter
 
@@ -232,6 +235,26 @@ type FlowElementInstanceWriter interface {
 	SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 	UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 	CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error
+}
+
+// ElementExecutionCounterReader reads the runtime execution-control counters used by the engine
+// to prevent infinite sequence-flow loops within a single process instance.
+type ElementExecutionCounterReader interface {
+	// GetElementExecutionCount returns the number of times the element was executed within the
+	// process instance. Returns 0 (and no error) when no counter row exists yet.
+	GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) (int64, error)
+}
+
+// ElementExecutionCounterWriter mutates the runtime execution-control counters used by the engine
+// to prevent infinite sequence-flow loops within a single process instance.
+type ElementExecutionCounterWriter interface {
+	// IncrementElementExecutionCount increments (creating the row if absent) the execution counter
+	// of the element within the process instance.
+	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error
+	// AllowProcessInstanceExecutionRetry decrements every existing element counter for the process
+	// instance by one, without going below zero. This permits one corrected traversal after operator
+	// intervention without resetting the process instance's execution history.
+	AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error
 }
 
 type IncidentStorageReader interface {

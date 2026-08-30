@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,11 +19,19 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 		ElementInstanceKey: token.ElementInstanceKey,
 		ElementId:          token.ElementId,
 		ProcessInstanceKey: token.ProcessInstanceKey,
+		Type:               incidentTypeFromError(err),
 		Message:            err.Error(),
 		CreatedAt:          time.Now(),
 		Token:              token,
 		ResolvedAt:         nil,
 	}
+}
+
+func incidentTypeFromError(err error) runtime.IncidentType {
+	if errors.Is(err, ErrMaxElementExecutionCountExceeded) {
+		return runtime.IncidentTypeMaxElementExecutionCountExceeded
+	}
+	return runtime.IncidentTypeUnspecified
 }
 
 func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, incident runtime.Incident) error {
@@ -153,6 +162,15 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	err = batch.SaveIncident(ctx, incident)
 	if err != nil {
 		return err
+	}
+
+	// Let only a token blocked by the element execution guard retry one traversal. Every existing
+	// counter is decremented once because downstream elements may also already be at the limit.
+	// Other incidents must not alter execution counters.
+	if incident.Type == runtime.IncidentTypeMaxElementExecutionCountExceeded {
+		if err := batch.AllowProcessInstanceExecutionRetry(ctx, incident.ProcessInstanceKey); err != nil {
+			return fmt.Errorf("failed to allow execution retry for process instance %d: %w", incident.ProcessInstanceKey, err)
+		}
 	}
 
 	// Checking for linked jobs as these need to be resolved as well

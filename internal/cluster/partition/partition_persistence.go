@@ -253,6 +253,7 @@ func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, hist
 		}
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteElementExecutionCounters(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
@@ -2568,6 +2569,43 @@ func CompleteFlowElementInstanceWith(ctx context.Context, db *sql.Queries, key i
 	})
 }
 
+var _ storage.ElementExecutionCounterReader = &DB{}
+
+func (rq *DB) GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) (int64, error) {
+	count, err := rq.Queries.GetElementExecutionCount(ctx, sql.GetElementExecutionCountParams{
+		ProcessInstanceKey: processInstanceKey,
+		ElementID:          elementId,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get execution count for element %s of process instance %d: %w", elementId, processInstanceKey, err)
+	}
+	return count, nil
+}
+
+var _ storage.ElementExecutionCounterWriter = &DB{}
+
+func (rq *DB) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
+	return IncrementElementExecutionCountWith(ctx, rq.Queries, processInstanceKey, elementId)
+}
+
+func (rq *DB) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
+	return AllowProcessInstanceExecutionRetryWith(ctx, rq.Queries, processInstanceKey)
+}
+
+func IncrementElementExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64, elementId string) error {
+	return db.IncrementElementExecutionCount(ctx, sql.IncrementElementExecutionCountParams{
+		ProcessInstanceKey: processInstanceKey,
+		ElementID:          elementId,
+	})
+}
+
+func AllowProcessInstanceExecutionRetryWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
+	return db.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
+}
+
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	inputVariablesString, err := json.Marshal(flowElementInstance.InputVariables)
 	if err != nil {
@@ -2659,6 +2697,7 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 		ElementInstanceKey: incident.ElementInstanceKey,
 		ElementId:          incident.ElementID,
 		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Type:               bpmnruntime.IncidentType(incident.IncidentType),
 		Message:            incident.Message,
 		CreatedAt:          time.UnixMilli(incident.CreatedAt),
 		ResolvedAt:         nullInt64ToTimePtr(incident.ResolvedAt),
@@ -2772,6 +2811,7 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 		ElementInstanceKey: incident.ElementInstanceKey,
 		ElementID:          incident.ElementId,
 		ProcessInstanceKey: incident.ProcessInstanceKey,
+		IncidentType:       string(incident.Type),
 		Message:            incident.Message,
 		CreatedAt:          incident.CreatedAt.UnixMilli(),
 		ResolvedAt:         timePtrToNullInt64(incident.ResolvedAt),
@@ -3052,6 +3092,16 @@ func (b *DBBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyIt
 
 func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
 	return CompleteFlowElementInstanceWith(ctx, b.queries, key, completedAt)
+}
+
+var _ storage.ElementExecutionCounterWriter = &DBBatch{}
+
+func (b *DBBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
+	return IncrementElementExecutionCountWith(ctx, b.queries, processInstanceKey, elementId)
+}
+
+func (b *DBBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
+	return AllowProcessInstanceExecutionRetryWith(ctx, b.queries, processInstanceKey)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

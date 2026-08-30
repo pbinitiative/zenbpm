@@ -56,6 +56,14 @@ type Engine struct {
 	// (call activities, sub processes, multi-instance bodies). When a child process instance exceeds the limit,
 	// the engine stops its creation and raises an incident describing a potential infinite loop. Values <= 0 disable the check.
 	MaxProcessInstanceNestingDepth int64 `yaml:"maxProcessInstanceNestingDepth" json:"maxProcessInstanceNestingDepth" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH" env-default:"100"`
+	// MaxElementExecutionCount is the maximum number of times a single flow element may be executed within
+	// one process instance. It guards against infinite sequence-flow loops (e.g. an exclusive gateway looping
+	// back forever). When the limit is exceeded, the engine fails the token and raises an incident; resolving
+	// that incident permits one retry traversal without resetting the process instance's execution history.
+	// Values <= 0 disable the check.
+	// This constraint is intentionally separate from (and is much larger than) MaxProcessInstanceNestingDepth:
+	// legitimate loops may run thousands of iterations while legitimate nesting rarely exceeds double digits.
+	MaxElementExecutionCount int64 `yaml:"maxElementExecutionCount" json:"maxElementExecutionCount" env:"CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT" env-default:"2"`
 }
 
 // CDC configures the rqlite change data capture output.

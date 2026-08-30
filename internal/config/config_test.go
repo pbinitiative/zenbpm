@@ -152,6 +152,46 @@ func TestEngineMaxProcessInstanceNestingDepthFromYAML(t *testing.T) {
 	}
 }
 
+func TestEngineMaxElementExecutionCountDefault(t *testing.T) {
+	unsetEngineMaxElementExecutionCountEnv(t)
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxElementExecutionCount != 10000 {
+		t.Errorf("expected default MaxElementExecutionCount 10000, got %d", c.Cluster.Engine.MaxElementExecutionCount)
+	}
+}
+
+func TestEngineMaxElementExecutionCountFromEnv(t *testing.T) {
+	t.Setenv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT", "321")
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxElementExecutionCount != 321 {
+		t.Errorf("expected MaxElementExecutionCount 321, got %d", c.Cluster.Engine.MaxElementExecutionCount)
+	}
+}
+
+func TestEngineMaxElementExecutionCountFromYAML(t *testing.T) {
+	unsetEngineMaxElementExecutionCountEnv(t)
+	configFile := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(configFile, []byte("cluster:\n  engine:\n    maxElementExecutionCount: -1\n"), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	var c Config
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	if c.Cluster.Engine.MaxElementExecutionCount != -1 {
+		t.Errorf("expected MaxElementExecutionCount -1, got %d", c.Cluster.Engine.MaxElementExecutionCount)
+	}
+}
+
 func unsetEngineMaxProcessInstanceNestingDepthEnv(t *testing.T) {
 	t.Helper()
 	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH")
@@ -168,5 +208,24 @@ func unsetEngineMaxProcessInstanceNestingDepthEnv(t *testing.T) {
 	})
 	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH"); err != nil {
 		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH: %v", err)
+	}
+}
+
+func unsetEngineMaxElementExecutionCountEnv(t *testing.T) {
+	t.Helper()
+	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT")
+	t.Cleanup(func() {
+		if wasSet {
+			if err := os.Setenv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT", value); err != nil {
+				t.Errorf("failed to restore CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT: %v", err)
+			}
+			return
+		}
+		if err := os.Unsetenv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT"); err != nil {
+			t.Errorf("failed to unset CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT during cleanup: %v", err)
+		}
+	})
+	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT"); err != nil {
+		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT: %v", err)
 	}
 }

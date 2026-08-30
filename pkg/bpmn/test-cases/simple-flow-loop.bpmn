@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_simple_flow_loop" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="simple-flow-loop" name="simple-flow-loop" isExecutable="true">
+    <bpmn:startEvent id="start">
+      <bpmn:outgoing>toJoin</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="joinGateway">
+      <bpmn:incoming>toJoin</bpmn:incoming>
+      <bpmn:incoming>loopBack</bpmn:incoming>
+      <bpmn:outgoing>toTask</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="loopTask" name="loop task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="loopJobType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=done" target="done" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>toTask</bpmn:incoming>
+      <bpmn:outgoing>toSplit</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="splitGateway" default="loopBack">
+      <bpmn:incoming>toSplit</bpmn:incoming>
+      <bpmn:outgoing>toEnd</bpmn:outgoing>
+      <bpmn:outgoing>loopBack</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="end">
+      <bpmn:incoming>toEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="toJoin" sourceRef="start" targetRef="joinGateway" />
+    <bpmn:sequenceFlow id="toTask" sourceRef="joinGateway" targetRef="loopTask" />
+    <bpmn:sequenceFlow id="toSplit" sourceRef="loopTask" targetRef="splitGateway" />
+    <bpmn:sequenceFlow id="toEnd" name="done" sourceRef="splitGateway" targetRef="end">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=done = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="loopBack" name="loop" sourceRef="splitGateway" targetRef="joinGateway" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="simple-flow-loop">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start">
+        <dc:Bounds x="182" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="joinGateway_di" bpmnElement="joinGateway" isMarkerVisible="true">
+        <dc:Bounds x="285" y="155" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="loopTask_di" bpmnElement="loopTask">
+        <dc:Bounds x="410" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="splitGateway_di" bpmnElement="splitGateway" isMarkerVisible="true">
+        <dc:Bounds x="585" y="155" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_di" bpmnElement="end">
+        <dc:Bounds x="722" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="toJoin_di" bpmnElement="toJoin">
+        <di:waypoint x="218" y="180" />
+        <di:waypoint x="285" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="toTask_di" bpmnElement="toTask">
+        <di:waypoint x="335" y="180" />
+        <di:waypoint x="410" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="toSplit_di" bpmnElement="toSplit">
+        <di:waypoint x="510" y="180" />
+        <di:waypoint x="585" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="toEnd_di" bpmnElement="toEnd">
+        <di:waypoint x="635" y="180" />
+        <di:waypoint x="722" y="180" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="665" y="162" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="loopBack_di" bpmnElement="loopBack">
+        <di:waypoint x="610" y="155" />
+        <di:waypoint x="610" y="80" />
+        <di:waypoint x="310" y="80" />
+        <di:waypoint x="310" y="155" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="449" y="62" width="22" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

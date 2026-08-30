@@ -319,6 +319,14 @@ func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64
 	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
 }
 
+func (b *EngineBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
+	return b.b.IncrementElementExecutionCount(ctx, processInstanceKey, elementId)
+}
+
+func (b *EngineBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
+	return b.b.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
+}
+
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	if err := b.b.SaveIncident(ctx, incident); err != nil {
 		return err

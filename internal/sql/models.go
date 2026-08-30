@@ -38,6 +38,12 @@ type DmnResourceDefinition struct {
 	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
+type ElementExecutionCounter struct {
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	ElementID          string `json:"element_id"`
+	ExecutionCount     int64  `json:"execution_count"`
+}
+
 type ErrorSubscription struct {
 	Key                  int64          `json:"key"`
 	ElementInstanceKey   int64          `json:"element_instance_key"`
@@ -80,6 +86,7 @@ type Incident struct {
 	CreatedAt          int64         `json:"created_at"`
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
+	IncidentType       string        `json:"incident_type"`
 }
 
 type Job struct {

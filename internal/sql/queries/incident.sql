@@ -1,6 +1,6 @@
 -- name: SaveIncident :exec
-INSERT INTO incident(key, element_id, element_instance_key, process_instance_key, message, created_at, resolved_at, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO incident(key, element_id, element_instance_key, process_instance_key, incident_type, message, created_at, resolved_at, execution_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         resolved_at = excluded.resolved_at;

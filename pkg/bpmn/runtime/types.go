@@ -531,11 +531,19 @@ type FlowElementInstance struct {
 }
 
 // Incident represent an incident that happened in process execution
+type IncidentType string
+
+const (
+	IncidentTypeUnspecified                      IncidentType = ""
+	IncidentTypeMaxElementExecutionCountExceeded IncidentType = "MAX_ELEMENT_EXECUTION_COUNT_EXCEEDED"
+)
+
 type Incident struct {
 	Key                int64
 	ElementInstanceKey int64
 	ElementId          string
 	ProcessInstanceKey int64
+	Type               IncidentType
 	Message            string
 	CreatedAt          time.Time
 	ResolvedAt         *time.Time

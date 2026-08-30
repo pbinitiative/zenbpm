@@ -195,6 +195,9 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	}()
 
 	// *** MAIN LOOP ***
+	// elementExecutionRunCounts caches element execution counters for the duration of this run;
+	// see validateAndIncrementElementExecutionCount.
+	elementExecutionRunCounts := make(map[string]int64)
 mainLoop:
 	for len(runningExecutionTokens) > 0 {
 		batch, err := engine.NewEngineBatchClean()
@@ -211,6 +214,18 @@ mainLoop:
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
+
+		if err := engine.validateAndIncrementElementExecutionCount(ctx, &batch, instance, currentToken, elementExecutionRunCounts); err != nil {
+			runErr = errors.Join(runErr, err)
+			engine.logger.Warn("element execution count guard tripped, recording incident", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			if incidentError != nil {
+				err = errors.Join(err, incidentError)
+				runErr = errors.Join(runErr, incidentError)
+			}
+			endErrorSpan(tokenSpan, err)
+			continue
+		}
 
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {

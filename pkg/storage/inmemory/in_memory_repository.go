@@ -29,8 +29,17 @@ type Storage struct {
 	Jobs                   map[int64]bpmnruntime.Job
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
 	FlowElementInstance    map[int64]bpmnruntime.FlowElementInstance
-	Incidents              map[int64]bpmnruntime.Incident
-	ErrorSubscriptions     map[int64]bpmnruntime.ErrorSubscription
+	// ElementExecutionCounters tracks how many times each element was executed within a process
+	// instance. Used by the engine to prevent infinite sequence-flow loops.
+	ElementExecutionCounters map[ElementExecutionCounterKey]int64
+	Incidents                map[int64]bpmnruntime.Incident
+	ErrorSubscriptions       map[int64]bpmnruntime.ErrorSubscription
+}
+
+// ElementExecutionCounterKey identifies the execution counter of one element within one process instance.
+type ElementExecutionCounterKey struct {
+	ProcessInstanceKey int64
+	ElementId          string
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -53,18 +62,19 @@ func (mem *Storage) ProcessInstancesSnapshot() []bpmnruntime.ProcessInstance {
 
 func NewStorage() *Storage {
 	return &Storage{
-		DmnResourceDefinitions: make(map[int64]dmnruntime.DmnResourceDefinition),
-		DecisionDefinitions:    make(map[int64]dmnruntime.DecisionDefinition),
-		DecisionInstances:      make(map[int64]dmnruntime.DecisionInstance),
-		ProcessDefinitions:     make(map[int64]bpmnruntime.ProcessDefinition),
-		ProcessInstances:       make(map[int64]bpmnruntime.ProcessInstance),
-		MessageSubscriptions:   make(map[int64]bpmnruntime.MessageSubscription),
-		Timers:                 make(map[int64]bpmnruntime.Timer),
-		Jobs:                   make(map[int64]bpmnruntime.Job),
-		ExecutionTokens:        make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementInstance:    make(map[int64]bpmnruntime.FlowElementInstance),
-		Incidents:              make(map[int64]bpmnruntime.Incident),
-		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
+		DmnResourceDefinitions:   make(map[int64]dmnruntime.DmnResourceDefinition),
+		DecisionDefinitions:      make(map[int64]dmnruntime.DecisionDefinition),
+		DecisionInstances:        make(map[int64]dmnruntime.DecisionInstance),
+		ProcessDefinitions:       make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:         make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptions:     make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:                   make(map[int64]bpmnruntime.Timer),
+		Jobs:                     make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:          make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementInstance:      make(map[int64]bpmnruntime.FlowElementInstance),
+		ElementExecutionCounters: make(map[ElementExecutionCounterKey]int64),
+		Incidents:                make(map[int64]bpmnruntime.Incident),
+		ErrorSubscriptions:       make(map[int64]bpmnruntime.ErrorSubscription),
 	}
 }
 
@@ -101,6 +111,9 @@ func (mem *Storage) Copy() *Storage {
 	}
 	for k, v := range mem.FlowElementInstance {
 		c.FlowElementInstance[k] = v
+	}
+	for k, v := range mem.ElementExecutionCounters {
+		c.ElementExecutionCounters[k] = v
 	}
 	for k, v := range mem.Incidents {
 		c.Incidents[k] = v
@@ -1101,6 +1114,34 @@ func (mem *Storage) CompleteFlowElementInstance(_ context.Context, key int64, co
 	return nil
 }
 
+var _ storage.ElementExecutionCounterReader = &Storage{}
+
+func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64, elementId string) (int64, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	return mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementId: elementId}], nil
+}
+
+var _ storage.ElementExecutionCounterWriter = &Storage{}
+
+func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64, elementId string) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementId: elementId}]++
+	return nil
+}
+
+func (mem *Storage) AllowProcessInstanceExecutionRetry(_ context.Context, processInstanceKey int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	for key, count := range mem.ElementExecutionCounters {
+		if key.ProcessInstanceKey == processInstanceKey && count > 0 {
+			mem.ElementExecutionCounters[key]--
+		}
+	}
+	return nil
+}
+
 func (mem *Storage) SaveIncident(_ context.Context, incident bpmnruntime.Incident) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
@@ -1273,6 +1314,20 @@ func (b *StorageBatch) UpdateOutputFlowElementInstance(ctx context.Context, flow
 func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.CompleteFlowElementInstance(ctx, key, completedAt)
+	})
+	return nil
+}
+
+func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey, elementId)
+	})
+	return nil
+}
+
+func (b *StorageBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
 	})
 	return nil
 }

@@ -62,6 +62,12 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
+	assert.Equal(t, runtime.IncidentTypeUnspecified, incidents[0].Type)
+
+	const unrelatedElementId = "already-executed-element"
+	for range 3 {
+		require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId))
+	}
 
 	// now fix the variable
 	pi := store.ProcessInstances[instance.ProcessInstance().Key]
@@ -77,6 +83,10 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	incident, err := bpmnEngine.persistence.FindIncidentByKey(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
+
+	count, err := store.GetElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), count, "resolving an unrelated incident must preserve element execution counters")
 
 }
 

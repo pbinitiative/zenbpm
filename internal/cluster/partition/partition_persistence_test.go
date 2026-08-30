@@ -262,6 +262,41 @@ func TestRqLiteStorage(t *testing.T) {
 	})
 	testMessageCorrelation(t, db, ts)
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(db, t))
+	t.Run("ElementExecutionCounters", func(t *testing.T) {
+		const concurrentIncrements = 20
+		processInstanceKey := db.GenerateId()
+		otherProcessInstanceKey := db.GenerateId()
+
+		count, err := db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		require.NoError(t, err)
+		require.Zero(t, count)
+
+		require.NoError(t, db.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop"))
+		var wg sync.WaitGroup
+		errs := make(chan error, concurrentIncrements)
+		for range concurrentIncrements {
+			wg.Go(func() {
+				errs <- db.IncrementElementExecutionCount(t.Context(), processInstanceKey, "loop")
+			})
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+
+		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		require.NoError(t, err)
+		require.Equal(t, int64(concurrentIncrements), count)
+		require.NoError(t, db.AllowProcessInstanceExecutionRetry(t.Context(), processInstanceKey))
+		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		require.NoError(t, err)
+		require.Equal(t, int64(concurrentIncrements-1), count)
+
+		otherCount, err := db.GetElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), otherCount)
+	})
 }
 
 func TestRunUpMigrations(t *testing.T) {
@@ -333,7 +368,7 @@ func TestRunRollbackMigration(t *testing.T) {
 // both a job and a matching flow_element_instance row. This test simulates
 // that state by rolling back migration 0013, inserting pre-migration data,
 // and re-running the migration. Orphan job rows (no matching
-// flow_element_instance) must keep the column default ('').
+// flow_element_instance) must keep the column default (”).
 func TestUpgradeBackfillsJobElementType(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer func() { require.NoError(t, partition.Stop()) }()
@@ -620,6 +655,11 @@ func TestDataCleanup(t *testing.T) {
 		}
 		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
+
+		err = db.IncrementElementExecutionCount(ctx, inst1.ProcessInstance().Key, "test-64654")
+		assert.NoError(t, err)
+		err = db.IncrementElementExecutionCount(ctx, inst2.ProcessInstance().Key, "job-123")
+		assert.NoError(t, err)
 	}
 
 	idsToBeDeleted := []int64{}
@@ -703,6 +743,19 @@ func TestDataCleanup(t *testing.T) {
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from error_subscription")
 	require.Equal(t, remainingCalls, count)
+	// One counter row per surviving instance; counters of deleted instances must be gone.
+	count = queryCount(t, db, "select count(*) from element_execution_counter")
+	require.Equal(t, int64(len(idsToKeep)+len(idsWithoutTTL)), count)
+	rows, err := db.QueryContext(t.Context(), "select process_instance_key from element_execution_counter")
+	require.NoError(t, err)
+	var counterProcessInstanceKeys []int64
+	for rows.Next() {
+		var processInstanceKey int64
+		require.NoError(t, rows.Scan(&processInstanceKey))
+		counterProcessInstanceKeys = append(counterProcessInstanceKeys, processInstanceKey)
+	}
+	require.NoError(t, rows.Close())
+	require.ElementsMatch(t, slices.Concat(idsToKeep, idsWithoutTTL), counterProcessInstanceKeys)
 
 	// Should delete only one instance.
 	cleanupTriggered, err = db.dataCleanupWithLimit(t.Context(), time.Now().Add(2*time.Hour), 1)

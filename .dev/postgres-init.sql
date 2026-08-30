@@ -112,6 +112,13 @@ CREATE INDEX IF NOT EXISTS idx_fk_execution_token_process_instance_key
 CREATE INDEX IF NOT EXISTS idx_execution_token_state
     ON reporting.execution_token (state);
 
+CREATE TABLE IF NOT EXISTS reporting.element_execution_counter (
+    process_instance_key BIGINT NOT NULL,
+    element_id TEXT NOT NULL,
+    execution_count BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (process_instance_key, element_id)
+);
+
 CREATE TABLE IF NOT EXISTS reporting.flow_element_instance (
     key BIGINT PRIMARY KEY,
     element_id TEXT NOT NULL,
@@ -132,6 +139,7 @@ CREATE TABLE IF NOT EXISTS reporting.incident (
     element_instance_key BIGINT NOT NULL,
     element_id TEXT NOT NULL,
     process_instance_key BIGINT NOT NULL,
+    incident_type TEXT NOT NULL DEFAULT '',
     message TEXT NOT NULL,
     created_at BIGINT NOT NULL,
     resolved_at BIGINT,
@@ -331,6 +339,7 @@ DECLARE
         'decision_instance',
         'error_subscription',
         'execution_token',
+        'element_execution_counter',
         'flow_element_instance',
         'incident',
         'job',

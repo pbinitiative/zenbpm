@@ -1,10 +1,12 @@
 package inmemory_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -23,6 +25,39 @@ func TestInMemoryStorage(t *testing.T) {
 		t.Run(name, testFunc(store, t))
 	}
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
+}
+
+func TestElementExecutionCountersAreConcurrentAndRetryIsProcessScoped(t *testing.T) {
+	const concurrentIncrements = 100
+	store := inmemory.NewStorage()
+	processInstanceKey := store.GenerateId()
+	otherProcessInstanceKey := store.GenerateId()
+
+	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop"))
+	var wg sync.WaitGroup
+	errs := make(chan error, concurrentIncrements)
+	for range concurrentIncrements {
+		wg.Go(func() {
+			errs <- store.IncrementElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	count, err := store.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+	require.NoError(t, err)
+	require.Equal(t, int64(concurrentIncrements), count)
+	require.NoError(t, store.AllowProcessInstanceExecutionRetry(t.Context(), processInstanceKey))
+	count, err = store.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+	require.NoError(t, err)
+	require.Equal(t, int64(concurrentIncrements-1), count)
+
+	otherCount, err := store.GetElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), otherCount)
 }
 
 // Verifies UpdateOutputFlowElementInstance mirrors SQL COALESCE on completed_at:

@@ -187,9 +187,9 @@ func TestResolvingElementExecutionCountIncidentAllowsSingleTraversalWithoutReset
 	countersBeforeResolution := elementExecutionCountersForInstance(store, instance.ProcessInstance().Key)
 	assert.Equal(t, maxExecutionCount, countersBeforeResolution[incident.ElementId])
 
-	const unrelatedElementId = "unrelated-element"
-	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId))
-	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId))
+	const unrelatedElementID = "unrelated-element"
+	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementID))
+	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementID))
 
 	// operator intervention: let the loop exit and resolve the incident
 	exitAllowed.Store(true)
@@ -200,7 +200,7 @@ func TestResolvingElementExecutionCountIncidentAllowsSingleTraversalWithoutReset
 	waitForProcessInstanceState(t, store, instance.ProcessInstance().Key, runtime.ActivityStateCompleted)
 	countersAfterResolution := elementExecutionCountersForInstance(store, instance.ProcessInstance().Key)
 	assert.Equal(t, maxExecutionCount, countersAfterResolution[incident.ElementId])
-	assert.Equal(t, int64(1), countersAfterResolution[unrelatedElementId])
+	assert.Equal(t, int64(1), countersAfterResolution[unrelatedElementID])
 }
 
 // startEngineWithMaxElementExecutionCount starts a dedicated engine backed by a fresh in-memory
@@ -247,7 +247,7 @@ func elementExecutionCountersForInstance(store *inmemory.Storage, processInstanc
 	counters := make(map[string]int64)
 	for key, count := range store.Copy().ElementExecutionCounters {
 		if key.ProcessInstanceKey == processInstanceKey {
-			counters[key.ElementId] = count
+			counters[key.ElementID] = count
 		}
 	}
 	return counters

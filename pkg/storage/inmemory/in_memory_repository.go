@@ -39,7 +39,7 @@ type Storage struct {
 // ElementExecutionCounterKey identifies the execution counter of one element within one process instance.
 type ElementExecutionCounterKey struct {
 	ProcessInstanceKey int64
-	ElementId          string
+	ElementID          string
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -1116,18 +1116,18 @@ func (mem *Storage) CompleteFlowElementInstance(_ context.Context, key int64, co
 
 var _ storage.ElementExecutionCounterReader = &Storage{}
 
-func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64, elementId string) (int64, error) {
+func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64, elementID string) (int64, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	return mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementId: elementId}], nil
+	return mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementID: elementID}], nil
 }
 
 var _ storage.ElementExecutionCounterWriter = &Storage{}
 
-func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64, elementId string) error {
+func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64, elementID string) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementId: elementId}]++
+	mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementID: elementID}]++
 	return nil
 }
 
@@ -1318,9 +1318,9 @@ func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int6
 	return nil
 }
 
-func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
+func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey, elementId)
+		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey, elementID)
 	})
 	return nil
 }

@@ -533,6 +533,7 @@ type FlowElementInstance struct {
 // Incident represent an incident that happened in process execution
 type IncidentType string
 
+// Incident types persisted for machine-readable incident-specific recovery behavior.
 const (
 	IncidentTypeUnspecified                      IncidentType = ""
 	IncidentTypeMaxElementExecutionCountExceeded IncidentType = "MAX_ELEMENT_EXECUTION_COUNT_EXCEEDED"

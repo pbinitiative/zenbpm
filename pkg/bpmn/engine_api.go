@@ -218,7 +218,7 @@ mainLoop:
 		if err := engine.validateAndIncrementElementExecutionCount(ctx, &batch, instance, currentToken, elementExecutionRunCounts); err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("element execution count guard tripped, recording incident", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -231,7 +231,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -244,7 +244,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -274,7 +274,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to save process instance after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -289,7 +289,7 @@ mainLoop:
 				if err != nil {
 					runErr = errors.Join(runErr, err)
 					engine.logger.Warn("failed to handle parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-					incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+					incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 					if incidentError != nil {
 						err = errors.Join(err, incidentError)
 						runErr = errors.Join(runErr, incidentError)
@@ -302,7 +302,7 @@ mainLoop:
 			if err != nil {
 				runErr = errors.Join(runErr, err)
 				engine.logger.Warn("failed to flush after processing parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-				incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+				incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 				if incidentError != nil {
 					err = errors.Join(err, incidentError)
 					runErr = errors.Join(runErr, incidentError)
@@ -318,7 +318,7 @@ mainLoop:
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to flush after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, elementExecutionRunCounts)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)

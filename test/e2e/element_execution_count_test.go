@@ -72,7 +72,7 @@ func TestElementExecutionCountExceededCreatesIncident(t *testing.T) {
 // driveLoopUntilElementExecutionCountIncident keeps completing the active job of the given
 // element with an exit condition that never becomes true until an unresolved element execution
 // count incident appears on the process instance, and returns that incident.
-func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKey int64, elementId string) public.Incident {
+func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKey int64, elementID string) public.Incident {
 	t.Helper()
 
 	var incident public.Incident
@@ -87,7 +87,7 @@ func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKe
 			}
 		}
 		// no incident yet: complete the pending loop job (best effort) to advance the loop
-		if job, err := findActiveJobForElement(t, processInstanceKey, elementId); err == nil && job != nil {
+		if job, err := findActiveJobForElement(t, processInstanceKey, elementID); err == nil && job != nil {
 			// ignore completion races: the next poll re-reads jobs and incidents
 			_ = completeJob(t, job.Key, map[string]any{"done": false})
 		}
@@ -100,7 +100,7 @@ func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKe
 // findActiveJobForElement returns the active job of the given element, or nil when there is none.
 // It lists jobs with an explicit page size: completed jobs of previous loop iterations accumulate
 // and must not push the single active job off the default page.
-func findActiveJobForElement(t testing.TB, processInstanceKey int64, elementId string) (*public.Job, error) {
+func findActiveJobForElement(t testing.TB, processInstanceKey int64, elementID string) (*public.Job, error) {
 	t.Helper()
 
 	resp, err := app.restClient.GetProcessInstanceJobsWithResponse(t.Context(), processInstanceKey, &zenclient.GetProcessInstanceJobsParams{
@@ -117,7 +117,7 @@ func findActiveJobForElement(t testing.TB, processInstanceKey int64, elementId s
 		return nil, err
 	}
 	for _, job := range jobPage.Items {
-		if job.ElementId == elementId && job.State == public.JobStateActive {
+		if job.ElementId == elementID && job.State == public.JobStateActive {
 			return &job, nil
 		}
 	}
@@ -126,19 +126,19 @@ func findActiveJobForElement(t testing.TB, processInstanceKey int64, elementId s
 
 // completeLoopJob waits for the active job of the given element (listing jobs page-aware, unlike
 // completeJobForElementId, because the loop left many completed jobs behind) and completes it.
-func completeLoopJob(t testing.TB, processInstanceKey int64, elementId string, vars map[string]any) {
+func completeLoopJob(t testing.TB, processInstanceKey int64, elementID string, vars map[string]any) {
 	t.Helper()
 
 	var job *public.Job
 	require.Eventually(t, func() bool {
-		found, err := findActiveJobForElement(t, processInstanceKey, elementId)
+		found, err := findActiveJobForElement(t, processInstanceKey, elementID)
 		if err != nil || found == nil {
 			return false
 		}
 		job = found
 		return true
 	}, 10*time.Second, 100*time.Millisecond,
-		"process instance %d should expose active job for element %s", processInstanceKey, elementId)
+		"process instance %d should expose active job for element %s", processInstanceKey, elementID)
 	require.NoError(t, completeJob(t, job.Key, vars))
 }
 
@@ -146,19 +146,19 @@ func completeLoopJob(t testing.TB, processInstanceKey int64, elementId string, v
 // the process instance and asserts its value. Execution counters are internal runtime-control
 // state and are not exposed through the public REST API, so the assertion goes directly
 // against the storage layer.
-func assertElementExecutionCount(t testing.TB, processInstanceKey int64, elementId string, expectedCount int64) {
+func assertElementExecutionCount(t testing.TB, processInstanceKey int64, elementID string, expectedCount int64) {
 	t.Helper()
 
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		count, findErr := store.GetElementExecutionCount(t.Context(), processInstanceKey, elementId)
+		count, findErr := store.GetElementExecutionCount(t.Context(), processInstanceKey, elementID)
 		if !assert.NoError(collect, findErr) {
 			return
 		}
 		assert.Equal(collect, expectedCount, count,
-			"element %s of process instance %d should have execution count %d", elementId, processInstanceKey, expectedCount)
+			"element %s of process instance %d should have execution count %d", elementID, processInstanceKey, expectedCount)
 	}, 5*time.Second, 100*time.Millisecond,
-		"element %s of process instance %d should have execution count %d", elementId, processInstanceKey, expectedCount)
+		"element %s of process instance %d should have execution count %d", elementID, processInstanceKey, expectedCount)
 }

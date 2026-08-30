@@ -63,7 +63,7 @@ type Engine struct {
 	// Values <= 0 disable the check.
 	// This constraint is intentionally separate from (and is much larger than) MaxProcessInstanceNestingDepth:
 	// legitimate loops may run thousands of iterations while legitimate nesting rarely exceeds double digits.
-	MaxElementExecutionCount int64 `yaml:"maxElementExecutionCount" json:"maxElementExecutionCount" env:"CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT" env-default:"2"`
+	MaxElementExecutionCount int64 `yaml:"maxElementExecutionCount" json:"maxElementExecutionCount" env:"CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT" env-default:"10000"`
 }
 
 // CDC configures the rqlite change data capture output.

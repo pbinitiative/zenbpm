@@ -242,7 +242,7 @@ type FlowElementInstanceWriter interface {
 type ElementExecutionCounterReader interface {
 	// GetElementExecutionCount returns the number of times the element was executed within the
 	// process instance. Returns 0 (and no error) when no counter row exists yet.
-	GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) (int64, error)
+	GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) (int64, error)
 }
 
 // ElementExecutionCounterWriter mutates the runtime execution-control counters used by the engine
@@ -250,7 +250,7 @@ type ElementExecutionCounterReader interface {
 type ElementExecutionCounterWriter interface {
 	// IncrementElementExecutionCount increments (creating the row if absent) the execution counter
 	// of the element within the process instance.
-	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error
+	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error
 	// AllowProcessInstanceExecutionRetry decrements every existing element counter for the process
 	// instance by one, without going below zero. This permits one corrected traversal after operator
 	// intervention without resetting the process instance's execution history.

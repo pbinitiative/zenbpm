@@ -64,9 +64,9 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.Equal(t, 1, len(incidents))
 	assert.Equal(t, runtime.IncidentTypeUnspecified, incidents[0].Type)
 
-	const unrelatedElementId = "already-executed-element"
+	const unrelatedElementID = "already-executed-element"
 	for range 3 {
-		require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId))
+		require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementID))
 	}
 
 	// now fix the variable
@@ -84,7 +84,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
 
-	count, err := store.GetElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementId)
+	count, err := store.GetElementExecutionCount(t.Context(), instance.ProcessInstance().Key, unrelatedElementID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), count, "resolving an unrelated incident must preserve element execution counters")
 

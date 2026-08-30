@@ -214,6 +214,19 @@ func (b *EngineBatch) writeAndFlushTokenIncident(ctx context.Context, token bpmn
 	return b.Flush(ctx)
 }
 
+// writeAndFlushTokenIncidentWithCounterInvalidation keeps the per-run counter cache aligned
+// with persistence when WriteTokenIncident replaces and discards the token-processing batch.
+func (b *EngineBatch) writeAndFlushTokenIncidentWithCounterInvalidation(
+	ctx context.Context,
+	token bpmnruntime.ExecutionToken,
+	instance bpmnruntime.ProcessInstance,
+	cause error,
+	runCounts map[string]int64,
+) error {
+	delete(runCounts, token.ElementId)
+	return b.writeAndFlushTokenIncident(ctx, token, instance, cause)
+}
+
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
 	b.b = b.engine.persistence.NewBatch()
 	b.preFlushActions = []func() error{}
@@ -319,8 +332,8 @@ func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64
 	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
 }
 
-func (b *EngineBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementId string) error {
-	return b.b.IncrementElementExecutionCount(ctx, processInstanceKey, elementId)
+func (b *EngineBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
+	return b.b.IncrementElementExecutionCount(ctx, processInstanceKey, elementID)
 }
 
 func (b *EngineBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {

@@ -27,18 +27,18 @@ func TestInMemoryStorage(t *testing.T) {
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
 }
 
-func TestElementExecutionCountersAreConcurrentAndRetryIsProcessScoped(t *testing.T) {
+func TestElementExecutionCountersAreConcurrentAndResetIsProcessScoped(t *testing.T) {
 	const concurrentIncrements = 100
 	store := inmemory.NewStorage()
 	processInstanceKey := store.GenerateId()
 	otherProcessInstanceKey := store.GenerateId()
 
-	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop"))
+	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey))
 	var wg sync.WaitGroup
 	errs := make(chan error, concurrentIncrements)
 	for range concurrentIncrements {
 		wg.Go(func() {
-			errs <- store.IncrementElementExecutionCount(t.Context(), processInstanceKey, "loop")
+			errs <- store.IncrementElementExecutionCount(t.Context(), processInstanceKey)
 		})
 	}
 	wg.Wait()
@@ -47,15 +47,15 @@ func TestElementExecutionCountersAreConcurrentAndRetryIsProcessScoped(t *testing
 		require.NoError(t, err)
 	}
 
-	count, err := store.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+	count, err := store.GetElementExecutionCount(t.Context(), processInstanceKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(concurrentIncrements), count)
-	require.NoError(t, store.AllowProcessInstanceExecutionRetry(t.Context(), processInstanceKey))
-	count, err = store.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+	require.NoError(t, store.ResetProcessInstanceExecutionCount(t.Context(), processInstanceKey))
+	count, err = store.GetElementExecutionCount(t.Context(), processInstanceKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(concurrentIncrements-1), count)
+	require.Zero(t, count)
 
-	otherCount, err := store.GetElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop")
+	otherCount, err := store.GetElementExecutionCount(t.Context(), otherProcessInstanceKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), otherCount)
 }

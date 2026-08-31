@@ -1,7 +1,7 @@
 -- name: IncrementElementExecutionCount :exec
-INSERT INTO element_execution_counter (process_instance_key, element_id, execution_count)
-    VALUES (@process_instance_key, @element_id, 1)
-ON CONFLICT (process_instance_key, element_id)
+INSERT INTO element_execution_counter (process_instance_key, execution_count)
+    VALUES (@process_instance_key, 1)
+ON CONFLICT (process_instance_key)
     DO UPDATE SET
         execution_count = execution_count + 1;
 
@@ -11,12 +11,11 @@ SELECT
 FROM
     element_execution_counter
 WHERE
-    process_instance_key = @process_instance_key
-    AND element_id = @element_id;
+    process_instance_key = @process_instance_key;
 
--- name: AllowProcessInstanceExecutionRetry :exec
+-- name: ResetProcessInstanceExecutionCount :exec
 UPDATE element_execution_counter
-SET execution_count = MAX(execution_count - 1, 0)
+SET execution_count = 0
 WHERE process_instance_key = @process_instance_key;
 
 -- name: DeleteElementExecutionCounters :exec

@@ -10,7 +10,6 @@ import (
 )
 
 type Querier interface {
-	AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error
 	CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
 	// Pinned to idx_process_instance_parent_execution_token so the planner drives
@@ -132,7 +131,7 @@ type Querier interface {
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
 	GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
-	GetElementExecutionCount(ctx context.Context, arg GetElementExecutionCountParams) (int64, error)
+	GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error)
 	GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error)
 	GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)
@@ -150,7 +149,8 @@ type Querier interface {
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)
-	IncrementElementExecutionCount(ctx context.Context, arg IncrementElementExecutionCountParams) error
+	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error
+	ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
 	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error

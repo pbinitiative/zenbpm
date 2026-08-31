@@ -267,16 +267,16 @@ func TestRqLiteStorage(t *testing.T) {
 		processInstanceKey := db.GenerateId()
 		otherProcessInstanceKey := db.GenerateId()
 
-		count, err := db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		count, err := db.GetElementExecutionCount(t.Context(), processInstanceKey)
 		require.NoError(t, err)
 		require.Zero(t, count)
 
-		require.NoError(t, db.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop"))
+		require.NoError(t, db.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey))
 		var wg sync.WaitGroup
 		errs := make(chan error, concurrentIncrements)
 		for range concurrentIncrements {
 			wg.Go(func() {
-				errs <- db.IncrementElementExecutionCount(t.Context(), processInstanceKey, "loop")
+				errs <- db.IncrementElementExecutionCount(t.Context(), processInstanceKey)
 			})
 		}
 		wg.Wait()
@@ -285,15 +285,15 @@ func TestRqLiteStorage(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey)
 		require.NoError(t, err)
 		require.Equal(t, int64(concurrentIncrements), count)
-		require.NoError(t, db.AllowProcessInstanceExecutionRetry(t.Context(), processInstanceKey))
-		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey, "loop")
+		require.NoError(t, db.ResetProcessInstanceExecutionCount(t.Context(), processInstanceKey))
+		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey)
 		require.NoError(t, err)
-		require.Equal(t, int64(concurrentIncrements-1), count)
+		require.Zero(t, count)
 
-		otherCount, err := db.GetElementExecutionCount(t.Context(), otherProcessInstanceKey, "loop")
+		otherCount, err := db.GetElementExecutionCount(t.Context(), otherProcessInstanceKey)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), otherCount)
 	})
@@ -656,9 +656,9 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
 
-		err = db.IncrementElementExecutionCount(ctx, inst1.ProcessInstance().Key, "test-64654")
+		err = db.IncrementElementExecutionCount(ctx, inst1.ProcessInstance().Key)
 		assert.NoError(t, err)
-		err = db.IncrementElementExecutionCount(ctx, inst2.ProcessInstance().Key, "job-123")
+		err = db.IncrementElementExecutionCount(ctx, inst2.ProcessInstance().Key)
 		assert.NoError(t, err)
 	}
 

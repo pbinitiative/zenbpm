@@ -237,24 +237,23 @@ type FlowElementInstanceWriter interface {
 	CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error
 }
 
-// ElementExecutionCounterReader reads the runtime execution-control counters used by the engine
+// ElementExecutionCounterReader reads the runtime execution-control counter used by the engine
 // to prevent infinite sequence-flow loops within a single process instance.
 type ElementExecutionCounterReader interface {
-	// GetElementExecutionCount returns the number of times the element was executed within the
+	// GetElementExecutionCount returns the total number of element executions performed within the
 	// process instance. Returns 0 (and no error) when no counter row exists yet.
-	GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) (int64, error)
+	GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error)
 }
 
-// ElementExecutionCounterWriter mutates the runtime execution-control counters used by the engine
+// ElementExecutionCounterWriter mutates the runtime execution-control counter used by the engine
 // to prevent infinite sequence-flow loops within a single process instance.
 type ElementExecutionCounterWriter interface {
-	// IncrementElementExecutionCount increments (creating the row if absent) the execution counter
-	// of the element within the process instance.
-	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error
-	// AllowProcessInstanceExecutionRetry decrements every existing element counter for the process
-	// instance by one, without going below zero. This permits one corrected traversal after operator
-	// intervention without resetting the process instance's execution history.
-	AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error
+	// IncrementElementExecutionCount increments (creating the row if absent) the total element
+	// execution counter of the process instance.
+	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error
+	// ResetProcessInstanceExecutionCount resets the total element execution counter of the process
+	// instance to zero, granting a fresh execution budget after operator intervention.
+	ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error
 }
 
 type IncidentStorageReader interface {

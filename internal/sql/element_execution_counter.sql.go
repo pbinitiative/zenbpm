@@ -10,17 +10,6 @@ import (
 	"strings"
 )
 
-const allowProcessInstanceExecutionRetry = `-- name: AllowProcessInstanceExecutionRetry :exec
-UPDATE element_execution_counter
-SET execution_count = MAX(execution_count - 1, 0)
-WHERE process_instance_key = ?1
-`
-
-func (q *Queries) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
-	_, err := q.db.ExecContext(ctx, allowProcessInstanceExecutionRetry, processInstanceKey)
-	return err
-}
-
 const deleteElementExecutionCounters = `-- name: DeleteElementExecutionCounters :exec
 DELETE FROM element_execution_counter
 WHERE process_instance_key IN (/*SLICE:keys*/?)
@@ -48,35 +37,35 @@ FROM
     element_execution_counter
 WHERE
     process_instance_key = ?1
-    AND element_id = ?2
 `
 
-type GetElementExecutionCountParams struct {
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ElementID          string `json:"element_id"`
-}
-
-func (q *Queries) GetElementExecutionCount(ctx context.Context, arg GetElementExecutionCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getElementExecutionCount, arg.ProcessInstanceKey, arg.ElementID)
+func (q *Queries) GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getElementExecutionCount, processInstanceKey)
 	var execution_count int64
 	err := row.Scan(&execution_count)
 	return execution_count, err
 }
 
 const incrementElementExecutionCount = `-- name: IncrementElementExecutionCount :exec
-INSERT INTO element_execution_counter (process_instance_key, element_id, execution_count)
-    VALUES (?1, ?2, 1)
-ON CONFLICT (process_instance_key, element_id)
+INSERT INTO element_execution_counter (process_instance_key, execution_count)
+    VALUES (?1, 1)
+ON CONFLICT (process_instance_key)
     DO UPDATE SET
         execution_count = execution_count + 1
 `
 
-type IncrementElementExecutionCountParams struct {
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ElementID          string `json:"element_id"`
+func (q *Queries) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	_, err := q.db.ExecContext(ctx, incrementElementExecutionCount, processInstanceKey)
+	return err
 }
 
-func (q *Queries) IncrementElementExecutionCount(ctx context.Context, arg IncrementElementExecutionCountParams) error {
-	_, err := q.db.ExecContext(ctx, incrementElementExecutionCount, arg.ProcessInstanceKey, arg.ElementID)
+const resetProcessInstanceExecutionCount = `-- name: ResetProcessInstanceExecutionCount :exec
+UPDATE element_execution_counter
+SET execution_count = 0
+WHERE process_instance_key = ?1
+`
+
+func (q *Queries) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	_, err := q.db.ExecContext(ctx, resetProcessInstanceExecutionCount, processInstanceKey)
 	return err
 }

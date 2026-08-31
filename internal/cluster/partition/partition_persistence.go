@@ -2571,39 +2571,33 @@ func CompleteFlowElementInstanceWith(ctx context.Context, db *sql.Queries, key i
 
 var _ storage.ElementExecutionCounterReader = &DB{}
 
-func (rq *DB) GetElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) (int64, error) {
-	count, err := rq.Queries.GetElementExecutionCount(ctx, sql.GetElementExecutionCountParams{
-		ProcessInstanceKey: processInstanceKey,
-		ElementID:          elementID,
-	})
+func (rq *DB) GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error) {
+	count, err := rq.Queries.GetElementExecutionCount(ctx, processInstanceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("failed to get execution count for element %s of process instance %d: %w", elementID, processInstanceKey, err)
+		return 0, fmt.Errorf("failed to get element execution count of process instance %d: %w", processInstanceKey, err)
 	}
 	return count, nil
 }
 
 var _ storage.ElementExecutionCounterWriter = &DB{}
 
-func (rq *DB) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
-	return IncrementElementExecutionCountWith(ctx, rq.Queries, processInstanceKey, elementID)
+func (rq *DB) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return IncrementElementExecutionCountWith(ctx, rq.Queries, processInstanceKey)
 }
 
-func (rq *DB) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
-	return AllowProcessInstanceExecutionRetryWith(ctx, rq.Queries, processInstanceKey)
+func (rq *DB) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return ResetProcessInstanceExecutionCountWith(ctx, rq.Queries, processInstanceKey)
 }
 
-func IncrementElementExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64, elementID string) error {
-	return db.IncrementElementExecutionCount(ctx, sql.IncrementElementExecutionCountParams{
-		ProcessInstanceKey: processInstanceKey,
-		ElementID:          elementID,
-	})
+func IncrementElementExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
+	return db.IncrementElementExecutionCount(ctx, processInstanceKey)
 }
 
-func AllowProcessInstanceExecutionRetryWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
-	return db.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
+func ResetProcessInstanceExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
+	return db.ResetProcessInstanceExecutionCount(ctx, processInstanceKey)
 }
 
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
@@ -3096,12 +3090,12 @@ func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, co
 
 var _ storage.ElementExecutionCounterWriter = &DBBatch{}
 
-func (b *DBBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
-	return IncrementElementExecutionCountWith(ctx, b.queries, processInstanceKey, elementID)
+func (b *DBBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return IncrementElementExecutionCountWith(ctx, b.queries, processInstanceKey)
 }
 
-func (b *DBBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
-	return AllowProcessInstanceExecutionRetryWith(ctx, b.queries, processInstanceKey)
+func (b *DBBatch) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return ResetProcessInstanceExecutionCountWith(ctx, b.queries, processInstanceKey)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestElementExecutionCountLoopCompletesUnderLimit verifies that a legitimate, bounded
+// TestProcessInstanceElementExecutionCountLoopCompletesUnderLimit verifies that a legitimate, bounded
 // sequence-flow loop that stays under the configured element execution limit completes
 // without incidents.
-func TestElementExecutionCountLoopCompletesUnderLimit(t *testing.T) {
+func TestProcessInstanceElementExecutionCountLoopCompletesUnderLimit(t *testing.T) {
 	definition, err := deployGetDefinition(t, "simple-flow-loop.bpmn", "simple-flow-loop")
 	require.NoError(t, err)
 
@@ -38,12 +38,12 @@ func TestElementExecutionCountLoopCompletesUnderLimit(t *testing.T) {
 	assert.Empty(t, incidents)
 }
 
-// TestElementExecutionCountExceededCreatesIncident verifies that a sequence-flow loop without a
+// TestProcessInstanceElementExecutionCountExceededCreatesIncident verifies that a sequence-flow loop without a
 // reachable exit condition is stopped at the configured maximum element execution count
-// (e2eMaxElementExecutionCount, set in TestMain): the instance fails with an incident naming the
-// offending element, and resolving the incident permits one retry traversal so the fixed loop can
-// continue and complete.
-func TestElementExecutionCountExceededCreatesIncident(t *testing.T) {
+// (e2eMaxProcessInstanceElementExecutionCount, set in TestMain): the instance fails with an incident, and
+// resolving the incident resets the instance's execution counter so the fixed loop can continue
+// and complete.
+func TestProcessInstanceElementExecutionCountExceededCreatesIncident(t *testing.T) {
 	definition, err := deployGetDefinition(t, "simple-flow-loop.bpmn", "simple-flow-loop")
 	require.NoError(t, err)
 
@@ -54,15 +54,15 @@ func TestElementExecutionCountExceededCreatesIncident(t *testing.T) {
 
 	// Drive the loop without ever satisfying the exit condition until the guard trips.
 	incident := driveLoopUntilElementExecutionCountIncident(t, instance.Key, "loopTask")
-	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed element execution count of %d", e2eMaxElementExecutionCount))
+	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance element execution count of %d", e2eMaxProcessInstanceElementExecutionCount))
 	// which loop element trips first is an engine scheduling detail; it must be one of the loop elements
 	assert.Contains(t, []string{"joinGateway", "loopTask", "splitGateway"}, incident.ElementId)
 
 	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateFailed)
 
-	assertElementExecutionCount(t, instance.Key, incident.ElementId, e2eMaxElementExecutionCount)
+	assertProcessInstanceElementExecutionCount(t, instance.Key, e2eMaxProcessInstanceElementExecutionCount)
 
-	// resolving the incident grants one traversal retry without resetting cumulative history;
+	// resolving the incident resets the instance's execution counter, granting a fresh budget;
 	// the loop then exits on the next iteration and the instance completes
 	resolveIncident(t, incident.Key)
 	completeLoopJob(t, instance.Key, "loopTask", map[string]any{"done": true})
@@ -80,7 +80,7 @@ func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKe
 		incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
 		if err == nil {
 			for _, candidate := range incidents {
-				if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed element execution count") {
+				if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed process instance element execution count") {
 					incident = candidate
 					return true
 				}
@@ -142,23 +142,23 @@ func completeLoopJob(t testing.TB, processInstanceKey int64, elementID string, v
 	require.NoError(t, completeJob(t, job.Key, vars))
 }
 
-// assertElementExecutionCount reads the element execution counter from the partition store of
-// the process instance and asserts its value. Execution counters are internal runtime-control
+// assertProcessInstanceElementExecutionCount reads the total element execution counter from the partition store
+// of the process instance and asserts its value. Execution counters are internal runtime-control
 // state and are not exposed through the public REST API, so the assertion goes directly
 // against the storage layer.
-func assertElementExecutionCount(t testing.TB, processInstanceKey int64, elementID string, expectedCount int64) {
+func assertProcessInstanceElementExecutionCount(t testing.TB, processInstanceKey int64, expectedCount int64) {
 	t.Helper()
 
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		count, findErr := store.GetElementExecutionCount(t.Context(), processInstanceKey, elementID)
+		count, findErr := store.GetElementExecutionCount(t.Context(), processInstanceKey)
 		if !assert.NoError(collect, findErr) {
 			return
 		}
 		assert.Equal(collect, expectedCount, count,
-			"element %s of process instance %d should have execution count %d", elementID, processInstanceKey, expectedCount)
+			"process instance %d should have execution count %d", processInstanceKey, expectedCount)
 	}, 5*time.Second, 100*time.Millisecond,
-		"element %s of process instance %d should have execution count %d", elementID, processInstanceKey, expectedCount)
+		"process instance %d should have execution count %d", processInstanceKey, expectedCount)
 }

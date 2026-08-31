@@ -28,8 +28,8 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 }
 
 func incidentTypeFromError(err error) runtime.IncidentType {
-	if errors.Is(err, ErrMaxElementExecutionCountExceeded) {
-		return runtime.IncidentTypeMaxElementExecutionCountExceeded
+	if errors.Is(err, ErrMaxProcessInstanceElementExecutionCountExceeded) {
+		return runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded
 	}
 	return runtime.IncidentTypeUnspecified
 }
@@ -152,6 +152,18 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if err != nil {
 		return fmt.Errorf("failed to find execution token %d for incident %d: %w", incident.Token.Key, key, err)
 	}
+	executionTokens := []runtime.ExecutionToken{incident.Token}
+	if incident.Type == runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded {
+		activeTokens, findErr := engine.persistence.GetActiveTokensForProcessInstance(ctx, incident.ProcessInstanceKey)
+		if findErr != nil {
+			return fmt.Errorf("failed to find active execution tokens for process instance %d: %w", incident.ProcessInstanceKey, findErr)
+		}
+		for _, token := range activeTokens {
+			if token.Key != incident.Token.Key && token.State == runtime.TokenStateRunning {
+				executionTokens = append(executionTokens, token)
+			}
+		}
+	}
 
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
@@ -164,12 +176,12 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return err
 	}
 
-	// Let only a token blocked by the element execution guard retry one traversal. Every existing
-	// counter is decremented once because downstream elements may also already be at the limit.
-	// Other incidents must not alter execution counters.
-	if incident.Type == runtime.IncidentTypeMaxElementExecutionCountExceeded {
-		if err := batch.AllowProcessInstanceExecutionRetry(ctx, incident.ProcessInstanceKey); err != nil {
-			return fmt.Errorf("failed to allow execution retry for process instance %d: %w", incident.ProcessInstanceKey, err)
+	// A token blocked by the element execution guard gets a fresh execution budget: the operator
+	// resolved the incident after fixing the loop's exit condition, so the instance-wide counter
+	// is reset to zero. Other incidents must not alter the execution counter.
+	if incident.Type == runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded {
+		if err := batch.ResetProcessInstanceExecutionCount(ctx, incident.ProcessInstanceKey); err != nil {
+			return fmt.Errorf("failed to reset execution count of process instance %d: %w", incident.ProcessInstanceKey, err)
 		}
 	}
 
@@ -212,7 +224,8 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return newEngineErrorf("failed to complete incident with key: %d", key)
 	}
 
-	err = engine.RunProcessInstance(ctx, instance, []runtime.ExecutionToken{incident.Token})
+	executionTokens[0] = incident.Token
+	err = engine.RunProcessInstance(ctx, instance, executionTokens)
 	if err != nil {
 		return err
 	}

@@ -221,9 +221,9 @@ func (b *EngineBatch) writeAndFlushTokenIncidentWithCounterInvalidation(
 	token bpmnruntime.ExecutionToken,
 	instance bpmnruntime.ProcessInstance,
 	cause error,
-	runCounts map[string]int64,
+	runCount *elementExecutionRunCount,
 ) error {
-	delete(runCounts, token.ElementId)
+	runCount.cached = false
 	return b.writeAndFlushTokenIncident(ctx, token, instance, cause)
 }
 
@@ -332,12 +332,12 @@ func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64
 	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
 }
 
-func (b *EngineBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
-	return b.b.IncrementElementExecutionCount(ctx, processInstanceKey, elementID)
+func (b *EngineBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return b.b.IncrementElementExecutionCount(ctx, processInstanceKey)
 }
 
-func (b *EngineBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
-	return b.b.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
+func (b *EngineBatch) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
+	return b.b.ResetProcessInstanceExecutionCount(ctx, processInstanceKey)
 }
 
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {

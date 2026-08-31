@@ -33,10 +33,12 @@ var app Application
 // while leaving plenty of headroom for the legitimate nesting (max depth 3) used by other tests.
 const e2eMaxProcessInstanceNestingDepth = 10
 
-// e2eMaxElementExecutionCount is the engine element execution count limit configured for the e2e
-// node in TestMain. It is intentionally small, so TestElementExecutionCountExceededCreatesIncident
-// stays fast, while leaving plenty of headroom for the bounded loops used by other tests.
-const e2eMaxElementExecutionCount = 20
+// e2eMaxProcessInstanceElementExecutionCount is the engine element execution count limit configured for the e2e
+// node in TestMain. The limit bounds the total number of element executions within one process
+// instance. It is intentionally small, so TestElementExecutionCountExceededCreatesIncident stays
+// fast, while leaving plenty of headroom for the bounded loops and multi-element processes used
+// by other tests.
+const e2eMaxProcessInstanceElementExecutionCount = 100
 
 type testMainWithCleanup struct {
 	testMain *testing.M
@@ -97,8 +99,8 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	// This suite asserts the exact limit below, so do not inherit an ambient value.
-	if err := os.Setenv("CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT", strconv.Itoa(e2eMaxElementExecutionCount)); err != nil {
-		log.Error("Failed to set CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT: %s", err)
+	if err := os.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_ELEMENT_EXECUTION_COUNT", strconv.Itoa(e2eMaxProcessInstanceElementExecutionCount)); err != nil {
+		log.Error("Failed to set CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_ELEMENT_EXECUTION_COUNT: %s", err)
 		os.Exit(1)
 	}
 	appContext, ctxCancel := context.WithCancel(context.Background())

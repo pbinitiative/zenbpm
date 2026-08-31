@@ -70,7 +70,7 @@ Behaviour settings for the BPMN engines running on the node partitions.
 | Field               | Type  | Env Variable                        | Default | Description                                                                                                                                                                                            |
 |---------------------|-------|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `maxProcessInstanceNestingDepth` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH`| `100`   | Maximum allowed nesting depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
-| `maxElementExecutionCount` | int64 | `CLUSTER_ENGINE_MAX_ELEMENT_EXECUTION_COUNT`| `10000`   | Maximum number of times a single flow element may be executed within one process instance. Guards against infinite sequence-flow loops (e.g. an exclusive gateway looping back without a reachable exit condition). Exceeding the limit fails the token and raises an incident. Values `<= 0` disable the check. |
+| `maxProcessInstanceElementExecutionCount` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_ELEMENT_EXECUTION_COUNT`| `10000`   | Maximum total number of flow element executions allowed within one process instance. Guards against infinite sequence-flow loops (e.g. an exclusive gateway looping back without a reachable exit condition). Exceeding the limit fails the token and raises an incident. Values `<= 0` disable the check. |
 
 Resolving a nesting-depth incident retries the blocked execution instead of bypassing the configured limit. For an
 event-subprocess trigger, resolution recreates the consumed message subscription or timer; if the limit is unchanged,
@@ -78,14 +78,13 @@ the next matching message or timer firing raises another incident. Raise or disa
 the process model cannot create an unbounded instance chain.
 
 The two limits serve different constraints and are intentionally independent: `maxProcessInstanceNestingDepth` bounds
-the depth of parent→child instance chains (rarely legitimate above double digits), while `maxElementExecutionCount`
-bounds loop iterations within a single instance (legitimate loops may run thousands of iterations), hence its much
-larger default. Element execution counters are kept in a dedicated runtime table (one row per distinct element per
-instance) and are removed together with the rest of the instance data during history cleanup. Resolving an
-element-execution-count incident permits one retry traversal by decrementing each existing counter once; it does not
-reset the process instance's cumulative execution history. Resolve it only after fixing the loop's exit condition
-(for example, by correcting process variables); otherwise the guard trips again on the next loop iteration.
-Resolving other incident types does not alter element execution counters.
+the depth of parent→child instance chains (rarely legitimate above double digits), while `maxProcessInstanceElementExecutionCount`
+bounds the total number of element executions within a single instance (legitimate loops may run thousands of
+iterations), hence its much larger default. The execution counter is kept in a dedicated runtime table (one row per
+process instance) and is removed together with the rest of the instance data during history cleanup. Resolving an
+element-execution-count incident resets the instance's counter to zero, granting a fresh execution budget. Resolve it
+only after fixing the loop's exit condition (for example, by correcting process variables); otherwise the guard trips
+again once the fresh budget is consumed. Resolving other incident types does not alter the execution counter.
 
 When upgrading a cluster that already has active process instances, counting starts at zero for those instances when
 the migration is applied. Existing audit history is intentionally not used to reconstruct runtime counters because

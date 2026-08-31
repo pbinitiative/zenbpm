@@ -59,11 +59,12 @@ type Engine struct {
 	// process instances. Values <= 0 disable the check. Defaults to DefaultMaxProcessInstanceNestingDepth.
 	maxProcessInstanceNestingDepth int64
 
-	// maxElementExecutionCount is the maximum number of times a single flow element may be executed
-	// within one process instance. It guards against infinite sequence-flow loops (e.g., an exclusive
-	// gateway looping back forever). Exceeding the limit fails the token and raises an incident.
-	// Values <= 0 disable the check. Defaults to DefaultMaxElementExecutionCount.
-	maxElementExecutionCount int64
+	// maxProcessInstanceElementExecutionCount is the maximum total number of flow element executions
+	// allowed within one process instance (summed across all elements). It guards against infinite
+	// sequence-flow loops (e.g., an exclusive gateway looping back forever). Exceeding the limit fails
+	// the token and raises an incident.
+	// Values <= 0 disable the check. Defaults to DefaultMaxProcessInstanceElementExecutionCount.
+	maxProcessInstanceElementExecutionCount int64
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -87,11 +88,12 @@ type EngineOption = func(*Engine)
 // instance in the parent-child chain. It can be overridden via EngineWithMaxProcessInstanceNestingDepth.
 const DefaultMaxProcessInstanceNestingDepth int64 = 100
 
-// DefaultMaxElementExecutionCount is the default maximum number of times a single flow element may be
-// executed within one process instance. It can be overridden via EngineWithMaxElementExecutionCount.
+// DefaultMaxProcessInstanceElementExecutionCount is the default maximum total number of flow element
+// executions allowed within one process instance. It can be overridden via
+// EngineWithMaxProcessInstanceElementExecutionCount.
 // It is intentionally much larger than DefaultMaxProcessInstanceNestingDepth: legitimate loops may run
 // thousands of iterations while legitimate nesting rarely exceeds double digits.
-const DefaultMaxElementExecutionCount int64 = 10000
+const DefaultMaxProcessInstanceElementExecutionCount int64 = 10000
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
@@ -108,23 +110,23 @@ func NewEngine(options ...EngineOption) Engine {
 	jsRuntime := js.NewJsRuntime(1, 1)
 
 	engine := Engine{
-		context:                        ctx,
-		contextCancel:                  cancel,
-		taskhandlersMu:                 &sync.RWMutex{},
-		taskHandlers:                   []*taskHandler{},
-		exporters:                      []exporter.EventExporter{},
-		persistence:                    persistence,
-		logger:                         logger,
-		runningInstances:               newRunningInstanceCache(),
-		instantiatingRearmMu:           &sync.Mutex{},
-		tracer:                         tracer,
-		meter:                          meter,
-		metrics:                        metrics,
-		feelRuntime:                    feelRuntime,
-		jsRuntime:                      jsRuntime,
-		maxProcessInstanceNestingDepth: DefaultMaxProcessInstanceNestingDepth,
-		maxElementExecutionCount:       DefaultMaxElementExecutionCount,
-		dmnEngine:                      dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
+		context:                                 ctx,
+		contextCancel:                           cancel,
+		taskhandlersMu:                          &sync.RWMutex{},
+		taskHandlers:                            []*taskHandler{},
+		exporters:                               []exporter.EventExporter{},
+		persistence:                             persistence,
+		logger:                                  logger,
+		runningInstances:                        newRunningInstanceCache(),
+		instantiatingRearmMu:                    &sync.Mutex{},
+		tracer:                                  tracer,
+		meter:                                   meter,
+		metrics:                                 metrics,
+		feelRuntime:                             feelRuntime,
+		jsRuntime:                               jsRuntime,
+		maxProcessInstanceNestingDepth:          DefaultMaxProcessInstanceNestingDepth,
+		maxProcessInstanceElementExecutionCount: DefaultMaxProcessInstanceElementExecutionCount,
+		dmnEngine:                               dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -193,11 +195,11 @@ func EngineWithMaxProcessInstanceNestingDepth(maxNestingDepth int64) EngineOptio
 	}
 }
 
-// EngineWithMaxElementExecutionCount overrides the maximum number of times a single flow element may
-// be executed within one process instance. Values <= 0 disable the check.
-func EngineWithMaxElementExecutionCount(maxExecutionCount int64) EngineOption {
+// EngineWithMaxProcessInstanceElementExecutionCount overrides the maximum total number of flow element executions
+// allowed within one process instance. Values <= 0 disable the check.
+func EngineWithMaxProcessInstanceElementExecutionCount(maxExecutionCount int64) EngineOption {
 	return func(engine *Engine) {
-		engine.maxElementExecutionCount = maxExecutionCount
+		engine.maxProcessInstanceElementExecutionCount = maxExecutionCount
 	}
 }
 
@@ -482,53 +484,56 @@ func (engine *Engine) validateProcessInstanceNestingDepthValue(nestingDepth int6
 	return nil
 }
 
-// ErrMaxElementExecutionCountExceeded is wrapped into the error returned by
-// validateAndIncrementElementExecutionCount when a flow element is executed more times within a single
-// process instance than the configured maximum. RunProcessInstance uses it to translate the failure
-// into an incident instead of aborting the run with an engine error.
-var ErrMaxElementExecutionCountExceeded = errors.New("maximum element execution count exceeded")
+// ErrMaxProcessInstanceElementExecutionCountExceeded is wrapped into the error returned by
+// validateAndIncrementElementExecutionCount when the total number of element executions within a
+// single process instance exceeds the configured maximum. RunProcessInstance uses it to translate
+// the failure into an incident instead of aborting the run with an engine error.
+var ErrMaxProcessInstanceElementExecutionCountExceeded = errors.New("maximum process instance total element execution count exceeded")
+
+// elementExecutionRunCount caches the process instance's total element execution counter for the
+// duration of one RunProcessInstance call: the persisted value is read once, and all later
+// increments are tracked in memory. This keeps counting exact within a run (batch increments are
+// not visible to storage reads until flushed) and avoids one storage read per processed token.
+type elementExecutionRunCount struct {
+	cached bool
+	count  int64
+}
 
 // validateAndIncrementElementExecutionCount guards token processing against infinite sequence-flow
 // loops within a single process instance (e.g., an exclusive gateway looping back forever).
 //
-// It increments the persisted execution counter of the token's element (queued into batch so the write
-// rides the same storage flush as the rest of the token processing) and returns an error wrapping
-// ErrMaxElementExecutionCountExceeded when the limit is breached. A limit <= 0 disables the check
-// entirely (no reads, no writes).
-//
-// runCounts caches counter values for the duration of one RunProcessInstance call: the persisted value
-// is read once per distinct element, and all later increments are tracked in memory. This keeps
-// counting exact within a run (batch increments are not visible to storage reads until flushed) and
-// avoids one storage read per processed token.
+// It increments the persisted total element execution counter of the process instance (queued into
+// batch so the write rides the same storage flush as the rest of the token processing) and returns
+// an error wrapping ErrMaxProcessInstanceElementExecutionCountExceeded when the limit is breached. A limit <= 0
+// disables the check entirely (no reads, no writes).
 func (engine *Engine) validateAndIncrementElementExecutionCount(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
-	runCounts map[string]int64,
+	runCount *elementExecutionRunCount,
 ) error {
-	if engine.maxElementExecutionCount <= 0 {
+	if engine.maxProcessInstanceElementExecutionCount <= 0 {
 		return nil
 	}
-	count, cached := runCounts[token.ElementId]
-	if !cached {
-		persisted, err := engine.persistence.GetElementExecutionCount(ctx, instance.ProcessInstance().Key, token.ElementId)
+	if !runCount.cached {
+		persisted, err := engine.persistence.GetElementExecutionCount(ctx, instance.ProcessInstance().Key)
 		if err != nil {
-			return fmt.Errorf("failed to read execution count for element %s of process instance %d: %w",
-				token.ElementId, instance.ProcessInstance().Key, err)
+			return fmt.Errorf("failed to read element execution count of process instance %d: %w",
+				instance.ProcessInstance().Key, err)
 		}
-		count = persisted
+		runCount.count = persisted
+		runCount.cached = true
 	}
-	count++
-	runCounts[token.ElementId] = count
-	if err := batch.IncrementElementExecutionCount(ctx, instance.ProcessInstance().Key, token.ElementId); err != nil {
-		return fmt.Errorf("failed to increment execution count for element %s of process instance %d: %w",
-			token.ElementId, instance.ProcessInstance().Key, err)
+	runCount.count++
+	if err := batch.IncrementElementExecutionCount(ctx, instance.ProcessInstance().Key); err != nil {
+		return fmt.Errorf("failed to increment element execution count of process instance %d: %w",
+			instance.ProcessInstance().Key, err)
 	}
-	if count > engine.maxElementExecutionCount {
+	if runCount.count > engine.maxProcessInstanceElementExecutionCount {
 		return fmt.Errorf(
-			"potential infinite loop detected: element %s of process instance %d has been executed %d times which exceeds the maximum allowed element execution count of %d; check the process model for sequence-flow loops without a reachable exit condition or raise the configured limit: %w",
-			token.ElementId, instance.ProcessInstance().Key, count, engine.maxElementExecutionCount, ErrMaxElementExecutionCountExceeded,
+			"potential infinite loop detected: process instance %d has executed %d flow elements (last element: %s) which exceeds the maximum allowed process instance element execution count of %d; check the process model for sequence-flow loops without a reachable exit condition or raise the configured limit: %w",
+			instance.ProcessInstance().Key, runCount.count, token.ElementId, engine.maxProcessInstanceElementExecutionCount, ErrMaxProcessInstanceElementExecutionCountExceeded,
 		)
 	}
 	return nil

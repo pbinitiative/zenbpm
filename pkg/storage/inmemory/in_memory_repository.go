@@ -29,17 +29,12 @@ type Storage struct {
 	Jobs                   map[int64]bpmnruntime.Job
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
 	FlowElementInstance    map[int64]bpmnruntime.FlowElementInstance
-	// ElementExecutionCounters tracks how many times each element was executed within a process
-	// instance. Used by the engine to prevent infinite sequence-flow loops.
-	ElementExecutionCounters map[ElementExecutionCounterKey]int64
+	// ElementExecutionCounters tracks the total number of element executions within a process
+	// instance, keyed by process instance key. Used by the engine to prevent infinite
+	// sequence-flow loops.
+	ElementExecutionCounters map[int64]int64
 	Incidents                map[int64]bpmnruntime.Incident
 	ErrorSubscriptions       map[int64]bpmnruntime.ErrorSubscription
-}
-
-// ElementExecutionCounterKey identifies the execution counter of one element within one process instance.
-type ElementExecutionCounterKey struct {
-	ProcessInstanceKey int64
-	ElementID          string
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -72,7 +67,7 @@ func NewStorage() *Storage {
 		Jobs:                     make(map[int64]bpmnruntime.Job),
 		ExecutionTokens:          make(map[int64]bpmnruntime.ExecutionToken),
 		FlowElementInstance:      make(map[int64]bpmnruntime.FlowElementInstance),
-		ElementExecutionCounters: make(map[ElementExecutionCounterKey]int64),
+		ElementExecutionCounters: make(map[int64]int64),
 		Incidents:                make(map[int64]bpmnruntime.Incident),
 		ErrorSubscriptions:       make(map[int64]bpmnruntime.ErrorSubscription),
 	}
@@ -1116,29 +1111,25 @@ func (mem *Storage) CompleteFlowElementInstance(_ context.Context, key int64, co
 
 var _ storage.ElementExecutionCounterReader = &Storage{}
 
-func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64, elementID string) (int64, error) {
+func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64) (int64, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	return mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementID: elementID}], nil
+	return mem.ElementExecutionCounters[processInstanceKey], nil
 }
 
 var _ storage.ElementExecutionCounterWriter = &Storage{}
 
-func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64, elementID string) error {
+func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	mem.ElementExecutionCounters[ElementExecutionCounterKey{ProcessInstanceKey: processInstanceKey, ElementID: elementID}]++
+	mem.ElementExecutionCounters[processInstanceKey]++
 	return nil
 }
 
-func (mem *Storage) AllowProcessInstanceExecutionRetry(_ context.Context, processInstanceKey int64) error {
+func (mem *Storage) ResetProcessInstanceExecutionCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	for key, count := range mem.ElementExecutionCounters {
-		if key.ProcessInstanceKey == processInstanceKey && count > 0 {
-			mem.ElementExecutionCounters[key]--
-		}
-	}
+	delete(mem.ElementExecutionCounters, processInstanceKey)
 	return nil
 }
 
@@ -1318,16 +1309,16 @@ func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int6
 	return nil
 }
 
-func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64, elementID string) error {
+func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey, elementID)
+		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey)
 	})
 	return nil
 }
 
-func (b *StorageBatch) AllowProcessInstanceExecutionRetry(ctx context.Context, processInstanceKey int64) error {
+func (b *StorageBatch) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.AllowProcessInstanceExecutionRetry(ctx, processInstanceKey)
+		return b.db.ResetProcessInstanceExecutionCount(ctx, processInstanceKey)
 	})
 	return nil
 }

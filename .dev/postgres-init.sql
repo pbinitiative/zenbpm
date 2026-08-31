@@ -114,9 +114,8 @@ CREATE INDEX IF NOT EXISTS idx_execution_token_state
 
 CREATE TABLE IF NOT EXISTS reporting.element_execution_counter (
     process_instance_key BIGINT NOT NULL,
-    element_id TEXT NOT NULL,
     execution_count BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (process_instance_key, element_id)
+    PRIMARY KEY (process_instance_key)
 );
 
 CREATE TABLE IF NOT EXISTS reporting.flow_element_instance (

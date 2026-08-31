@@ -611,7 +611,7 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		bpmn.EngineWithStorageAndFeel(db, feelRuntime),
 		bpmn.EngineWithJs(jsRuntime),
 		bpmn.EngineWithMaxProcessInstanceNestingDepth(c.Config.Engine.MaxProcessInstanceNestingDepth),
-		bpmn.EngineWithMaxElementExecutionCount(c.Config.Engine.MaxElementExecutionCount),
+		bpmn.EngineWithMaxProcessInstanceElementExecutionCount(c.Config.Engine.MaxProcessInstanceElementExecutionCount),
 		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
 			return db.Partition == definitionSubscriptionPartition(c.store.ClusterState(), definition.BpmnProcessId)
 		}),

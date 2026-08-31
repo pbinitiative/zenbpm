@@ -39,9 +39,8 @@ type DmnResourceDefinition struct {
 }
 
 type ElementExecutionCounter struct {
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ElementID          string `json:"element_id"`
-	ExecutionCount     int64  `json:"execution_count"`
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	ExecutionCount     int64 `json:"execution_count"`
 }
 
 type ErrorSubscription struct {

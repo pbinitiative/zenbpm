@@ -21,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"github.com/pbinitiative/zenbpm/pkg/xmlutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -188,7 +189,16 @@ func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 			}
 		}
 
-		if latest.DmnChecksum == dmnResourceDefinition.DmnChecksum {
+		sameContent, err := xmlutil.SameContent(
+			latest.DmnChecksum[:],
+			dmnResourceDefinition.DmnChecksum[:],
+			latest.DmnData,
+			dmnResourceDefinition.DmnData,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to compare DMN content for resource %s: %w", dmnResourceDefinition.Id, err)
+		}
+		if sameContent {
 			return latest, nil, nil
 		}
 		dmnResourceDefinition.Version = latest.Version + 1

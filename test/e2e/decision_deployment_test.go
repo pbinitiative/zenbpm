@@ -322,6 +322,165 @@ func TestDmnDeploymentValidation(t *testing.T) {
 		require.Equal(t, definitionID, definitions[0].DmnResourceDefinitionId)
 		require.Equal(t, response.JSON201.DmnResourceDefinitionKey, definitions[0].Key)
 	})
+
+	t.Run("rejects malformed DMN XML", func(t *testing.T) {
+		definitionID := uniqueDmnResourceDefinitionTestValue("malformedXml")
+
+		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+			t.Context(),
+			"application/xml",
+			strings.NewReader(`<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="`+definitionID+`" <<<unclosed`),
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode())
+		require.NotNil(t, response.JSON400)
+		require.Equal(t, "BAD_REQUEST", response.JSON400.Code)
+		require.Contains(t, response.JSON400.Message, "failed to unmarshal DMN data")
+
+		definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+			DmnResourceDefinitionId: &definitionID,
+		})
+		require.NoError(t, err)
+		require.Empty(t, definitions)
+	})
+
+	t.Run("rejects a DMN definition missing a definitions ID", func(t *testing.T) {
+		definitionID := uniqueDmnResourceDefinitionTestValue("missingDefinitionsId")
+
+		missingID := `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" name="DMN missing definitions id" namespace="https://pbinitiative.com/zenbpm">
+  <decision id="` + definitionID + `Decision" name="decision">
+    <decisionTable id="decision-table" hitPolicy="FIRST">
+      <input id="input" label="Input">
+        <inputExpression id="input-expression" typeRef="string">
+          <text>value</text>
+        </inputExpression>
+      </input>
+      <output id="output" name="result" typeRef="string" />
+      <rule id="rule">
+        <inputEntry id="input-entry">
+          <text>"VIP"</text>
+        </inputEntry>
+        <outputEntry id="output-entry">
+          <text>"ok"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>`
+
+		before, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
+		require.NoError(t, err)
+
+		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+			t.Context(),
+			"application/xml",
+			strings.NewReader(missingID),
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode())
+		require.NotNil(t, response.JSON400)
+		require.Equal(t, "BAD_REQUEST", response.JSON400.Code)
+		require.Contains(t, response.JSON400.Message, "DMN resource definition ID is empty")
+
+		// The rejected payload has no definitions ID, so a faulty deployment could persist a
+		// row with an empty root ID that the per-definitionID filter below would not surface.
+		// Compare the full list before and after to detect any spurious persistence.
+		definitionsForID, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+			DmnResourceDefinitionId: &definitionID,
+		})
+		require.NoError(t, err)
+		require.Empty(t, definitionsForID)
+
+		after, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
+		require.NoError(t, err)
+		require.Len(t, after, len(before), "no DMN resource definition should be persisted when validation rejects the payload")
+	})
+}
+
+func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {
+	definitionID := uniqueDmnResourceDefinitionTestValue("formattingOnly")
+	original := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"VIP"`)
+	formatted := strings.Replace(original, ">\n  <decision", ">\n\n\n  <decision", 1)
+	require.NotEqual(t, original, formatted, "test inputs must exercise the formatting fallback")
+
+	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, first.StatusCode())
+	require.NotNil(t, first.JSON201)
+
+	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(formatted),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, second.StatusCode())
+	require.NotNil(t, second.JSON200)
+	require.Equal(t, first.JSON201.DmnResourceDefinitionKey, second.JSON200.DmnResourceDefinitionKey)
+
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+		DmnResourceDefinitionId: &definitionID,
+	})
+	require.NoError(t, err)
+	require.Len(t, definitions, 1)
+	require.Equal(t, 1, definitions[0].Version)
+}
+
+// TestDmnContentChangeAfterNewerVersionCreatesNewVersion guards against a regression where
+// redeploying an older DMN version after a newer one was already accepted would silently
+// reuse the older version's key. The deduplication must always compare the new payload
+// against the latest stored definition, not the first definition that happens to share a
+// raw checksum.
+func TestDmnContentChangeAfterNewerVersionCreatesNewVersion(t *testing.T) {
+	definitionID := uniqueDmnResourceDefinitionTestValue("contentChangeAfterNewer")
+	original := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"VIP"`)
+	changed := dmnDeploymentValidationDefinition(t, definitionID, "string", "value", `"STANDARD"`)
+
+	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, first.StatusCode())
+	require.NotNil(t, first.JSON201)
+	require.NotZero(t, first.JSON201.DmnResourceDefinitionKey)
+
+	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(changed),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, second.StatusCode())
+	require.NotNil(t, second.JSON201)
+	require.NotZero(t, second.JSON201.DmnResourceDefinitionKey)
+	require.NotEqual(t, first.JSON201.DmnResourceDefinitionKey, second.JSON201.DmnResourceDefinitionKey, "content changes must produce a new definition key")
+
+	third, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+		t.Context(),
+		"application/xml",
+		strings.NewReader(original),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, third.StatusCode(), "redeploying an older version after a newer one was accepted must create a new version, not reuse the older one")
+	require.NotNil(t, third.JSON201)
+	require.NotZero(t, third.JSON201.DmnResourceDefinitionKey)
+	require.NotEqual(t, first.JSON201.DmnResourceDefinitionKey, third.JSON201.DmnResourceDefinitionKey, "the older version must not be reused after a newer one was accepted")
+	require.NotEqual(t, second.JSON201.DmnResourceDefinitionKey, third.JSON201.DmnResourceDefinitionKey, "the older version must not collide with the latest accepted version")
+
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+		DmnResourceDefinitionId: &definitionID,
+	})
+	require.NoError(t, err)
+	require.Len(t, definitions, 3)
 }
 
 func dmnDeploymentValidationDefinition(t testing.TB, definitionID string, inputType string, inputExpression string, inputEntry string) string {

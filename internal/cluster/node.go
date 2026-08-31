@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/json"
@@ -31,8 +30,10 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	dmnmodel "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/xmlutil"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/rqlite/rqlite/v10/cluster"
 	"github.com/rqlite/rqlite/v10/command"
@@ -322,6 +323,10 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, bool, error) {
 	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			return key, false, zerr
+		}
 		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
 	}
 	if key != 0 {
@@ -389,12 +394,41 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database for dmn resource definition key lookup: %w", err)
 	}
-	md5sum := md5.Sum(data)
-	key, err := db.Queries.GetDmnResourceDefinitionKeyByChecksum(ctx, md5sum[:])
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("failed to find dmn resource definition by checksum: %w", err)
+
+	// Parse and validate the payload before any reuse lookup so the latest-definition
+	// comparison (and any validation errors) apply to every deployment. Looking up by
+	// raw checksum first would let an older version be reused after a newer one was
+	// deployed with different content, silently skipping the required new version.
+	var definition dmnmodel.TDefinitions
+	if err := xml.Unmarshal(data, &definition); err != nil {
+		return 0, zenerr.BadRequest(fmt.Errorf("failed to unmarshal DMN data: %w", err))
 	}
-	return key, nil
+	if definition.Id == "" {
+		return 0, zenerr.BadRequest(fmt.Errorf("DMN resource definition ID is empty"))
+	}
+
+	latest, err := db.Queries.FindLatestDmnResourceDefinitionById(ctx, definition.Id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to find latest DMN resource definition by id %s: %w", definition.Id, err)
+	}
+
+	newChecksum := md5.Sum(data)
+	sameContent, err := xmlutil.SameContent(
+		latest.DmnChecksum,
+		newChecksum[:],
+		[]byte(latest.DmnData),
+		data,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compare DMN content for resource %s: %w", definition.Id, err)
+	}
+	if sameContent {
+		return latest.Key, nil
+	}
+	return 0, nil
 }
 
 func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {
@@ -516,8 +550,16 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 	}
 
 	newDefinitionMD5Sum := md5.Sum(newDefinitionData)
-
-	if bytes.Equal(latestDefinition.BpmnChecksum, newDefinitionMD5Sum[:]) {
+	sameContent, err := xmlutil.SameContent(
+		latestDefinition.BpmnChecksum,
+		newDefinitionMD5Sum[:],
+		[]byte(latestDefinition.BpmnData),
+		newDefinitionData,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compare BPMN content for process %s: %w", processId, err)
+	}
+	if sameContent {
 		return latestDefinition.Key, nil
 	}
 	return 0, nil

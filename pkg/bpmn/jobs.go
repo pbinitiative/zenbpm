@@ -46,12 +46,13 @@ func (engine *Engine) createInternalTask(
 			return job.State, fmt.Errorf("failed to create job: %w", err)
 		}
 
-		// Cast the result to string
-		assigneeStr, ok := assigneeResult.(string)
-		if !ok {
-			assigneeStr = fmt.Sprintf("%v", assigneeResult)
+		if assigneeResult != nil {
+			assigneeStr, ok := assigneeResult.(string)
+			if !ok {
+				assigneeStr = fmt.Sprintf("%v", assigneeResult)
+			}
+			job.Assignee = new(assigneeStr)
 		}
-		job.Assignee = new(assigneeStr)
 	}
 
 	err := batch.SaveJob(ctx, job)

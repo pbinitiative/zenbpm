@@ -1957,6 +1957,11 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		return public.Job{}, stateErr
 	}
 
+	assignee := job.Assignee
+	if assignee != nil && *assignee == "<nil>" {
+		assignee = nil
+	}
+
 	return public.Job{
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
@@ -1968,7 +1973,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		Type:               job.GetType(),
 		InputVariables:     inputVars,
 		OutputVariables:    outputVars,
-		Assignee:           job.Assignee,
+		Assignee:           assignee,
 	}, nil
 }
 

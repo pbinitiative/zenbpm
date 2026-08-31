@@ -10,6 +10,16 @@ import (
 )
 
 func TestMapProtoJobAssignee(t *testing.T) {
+	t.Run("omits a nil assignee", func(t *testing.T) {
+		mapped, err := (&Server{}).mapProtoJob(testProtoJobWithAssignee(nil))
+		require.NoError(t, err)
+		require.Nil(t, mapped.Assignee)
+
+		encoded, err := json.Marshal(mapped)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"assignee"`)
+	})
+
 	t.Run("omits the legacy nil sentinel", func(t *testing.T) {
 		assignee := "<nil>"
 

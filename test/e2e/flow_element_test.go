@@ -74,9 +74,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		assert.Equal(t, 1, children.JSON200.TotalCount)
 		assert.Equal(t, zenclient.ProcessInstanceProcessType("multiInstance"), children.JSON200.Partitions[0].Items[0].ProcessType)
 		childKey := children.JSON200.Partitions[0].Items[0].Key
-		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
-		assert.NoError(t, err)
-		assert.Equal(t, 1, history.JSON200.TotalCount)
+		requireHistoryTotalCount(t, childKey, 1)
 	})
 
 	t.Run("get history callActivity", func(t *testing.T) {
@@ -99,9 +97,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		assert.Equal(t, 1, children.JSON200.TotalCount)
 		assert.Equal(t, zenclient.ProcessInstanceProcessType("callActivity"), children.JSON200.Partitions[0].Items[0].ProcessType)
 		childKey := children.JSON200.Partitions[0].Items[0].Key
-		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
-		assert.NoError(t, err)
-		assert.Equal(t, 3, history.JSON200.TotalCount)
+		requireHistoryTotalCount(t, childKey, 3)
 	})
 
 	t.Run("get history subprocess", func(t *testing.T) {
@@ -124,9 +120,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		assert.Equal(t, 1, children.JSON200.TotalCount)
 		assert.Equal(t, zenclient.ProcessInstanceProcessType("subprocess"), children.JSON200.Partitions[0].Items[0].ProcessType)
 		childKey := children.JSON200.Partitions[0].Items[0].Key
-		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
-		assert.NoError(t, err)
-		assert.Equal(t, 3, history.JSON200.TotalCount)
+		requireHistoryTotalCount(t, childKey, 3)
 	})
 
 	assert.NoError(t, err)
@@ -231,4 +225,19 @@ func TestGetFlowElementHistoryElementType(t *testing.T) {
 		assert.Equal(t, expectedType, fe.ElementType,
 			"element %s should be reported as %s", elementID, expectedType)
 	}
+}
+
+func requireHistoryTotalCount(t testing.TB, processInstanceKey int64, expected int) {
+	t.Helper()
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), processInstanceKey, &zenclient.GetHistoryParams{})
+		if !assert.NoError(collect, err) || !assert.NotNil(collect, history) {
+			return
+		}
+		if !assert.NotNil(collect, history.JSON200) {
+			return
+		}
+		assert.Equal(collect, expected, history.JSON200.TotalCount)
+	}, 15*time.Second, 100*time.Millisecond,
+		"process instance %d should reach history size %d", processInstanceKey, expected)
 }

@@ -58,6 +58,10 @@ func (engine *Engine) Start(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
 			}
+			// Failed instances resume only through incident resolution; terminal instances never resume.
+			if instance.ProcessInstance().State != runtime.ActivityStateReady && instance.ProcessInstance().State != runtime.ActivityStateActive {
+				continue
+			}
 			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
 				instance: instance,
 				tokens:   []runtime.ExecutionToken{token},

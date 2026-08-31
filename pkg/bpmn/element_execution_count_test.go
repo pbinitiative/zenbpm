@@ -259,6 +259,61 @@ func TestParallelTokensCreateOneProcessInstanceElementExecutionCountIncidentAndR
 	assert.LessOrEqual(t, executionCountForInstance(store, instance.ProcessInstance().Key), maxExecutionCount)
 }
 
+func TestEngineRestartDoesNotResumeParallelTokensBlockedByElementExecutionCountIncident(t *testing.T) {
+	const maxExecutionCount = int64(4)
+	store := inmemory.NewStorage()
+	firstEngine := NewEngine(
+		EngineWithStorage(store),
+		EngineWithMaxProcessInstanceElementExecutionCount(maxExecutionCount),
+	)
+	t.Cleanup(firstEngine.Stop)
+	require.NoError(t, firstEngine.Start(t.Context()))
+	registerParallelCompletionHandlers(t, &firstEngine)
+
+	process, err := firstEngine.LoadFromFile(t.Context(), "./test-cases/parallel-gateway-flow.bpmn")
+	require.NoError(t, err)
+	instance, err := firstEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.ErrorIs(t, err, ErrMaxProcessInstanceElementExecutionCountExceeded)
+	require.NotNil(t, instance)
+
+	processInstanceKey := instance.ProcessInstance().Key
+	incidentsBeforeRestart, err := store.FindIncidentsByProcessInstanceKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidentsBeforeRestart, 1)
+	incident := incidentsBeforeRestart[0]
+	runningTokenKeysBeforeRestart := runningTokenKeysForInstance(t, store, processInstanceKey)
+	require.NotEmpty(t, runningTokenKeysBeforeRestart, "a runnable sibling must be preserved for incident resolution")
+	assert.Equal(t, maxExecutionCount, executionCountForInstance(store, processInstanceKey))
+	waitForProcessInstanceState(t, store, processInstanceKey, runtime.ActivityStateFailed)
+	firstEngine.Stop()
+
+	secondEngine := NewEngine(
+		EngineWithStorage(store),
+		EngineWithMaxProcessInstanceElementExecutionCount(maxExecutionCount),
+	)
+	t.Cleanup(secondEngine.Stop)
+	registerParallelCompletionHandlers(t, &secondEngine)
+	require.NoError(t, secondEngine.Start(t.Context()))
+
+	incidentsAfterRestart, err := store.FindIncidentsByProcessInstanceKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidentsAfterRestart, 1, "startup recovery must not create another incident")
+	assert.Equal(t, incident.Key, incidentsAfterRestart[0].Key)
+	assert.Nil(t, incidentsAfterRestart[0].ResolvedAt)
+	assert.ElementsMatch(t, runningTokenKeysBeforeRestart, runningTokenKeysForInstance(t, store, processInstanceKey))
+	assert.Equal(t, maxExecutionCount, executionCountForInstance(store, processInstanceKey))
+	restartedInstance, err := store.FindProcessInstanceByKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateFailed, restartedInstance.ProcessInstance().State)
+
+	require.NoError(t, secondEngine.ResolveIncident(t.Context(), incident.Key))
+	waitForProcessInstanceState(t, store, processInstanceKey, runtime.ActivityStateCompleted)
+	incidentsAfterResolution, err := store.FindIncidentsByProcessInstanceKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidentsAfterResolution, 1)
+	assert.NotNil(t, incidentsAfterResolution[0].ResolvedAt)
+}
+
 // startEngineWithMaxProcessInstanceElementExecutionCount starts a dedicated engine backed by a fresh in-memory
 // storage with the given maximum element execution count. The engine is stopped on test cleanup.
 func startEngineWithMaxProcessInstanceElementExecutionCount(t *testing.T, maxExecutionCount int64, extraOptions ...EngineOption) (*Engine, *inmemory.Storage) {
@@ -301,4 +356,27 @@ func waitForElementExecutionCountIncident(t *testing.T, engine *Engine, store *i
 // of the given process instance.
 func executionCountForInstance(store *inmemory.Storage, processInstanceKey int64) int64 {
 	return store.Copy().ElementExecutionCounters[processInstanceKey]
+}
+
+func registerParallelCompletionHandlers(t *testing.T, engine *Engine) {
+	t.Helper()
+	for _, elementID := range []string{"id-a-1", "id-b-1", "id-b-2"} {
+		handler := engine.NewTaskHandler().Id(elementID).Handler(func(job ActivatedJob) {
+			job.Complete()
+		})
+		t.Cleanup(func() { engine.RemoveHandler(handler) })
+	}
+}
+
+func runningTokenKeysForInstance(t *testing.T, store *inmemory.Storage, processInstanceKey int64) []int64 {
+	t.Helper()
+	tokens, err := store.GetActiveTokensForProcessInstance(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	keys := make([]int64, 0, len(tokens))
+	for _, token := range tokens {
+		if token.State == runtime.TokenStateRunning {
+			keys = append(keys, token.Key)
+		}
+	}
+	return keys
 }

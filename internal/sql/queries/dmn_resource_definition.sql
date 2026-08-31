@@ -80,12 +80,3 @@ ORDER BY
 
 LIMIT @size OFFSET @offset;
 
--- name: GetDmnResourceDefinitionKeyByChecksum :one
-SELECT
-    key
-FROM
-    dmn_resource_definition
-WHERE
-    dmn_checksum = @dmn_checksum
-LIMIT 1;
-

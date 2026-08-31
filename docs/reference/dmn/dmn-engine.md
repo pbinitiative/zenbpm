@@ -23,11 +23,19 @@ Deploy over REST with `POST /dmn-resource-definitions`, which returns the `dmnRe
 
 ### Versioning
 
-Versions are derived on deployment, not declared in the file:
+Versions are derived on deployment, not declared in the file. The engine uses a two-step comparison:
 
-1. The engine computes an MD5 checksum of the XML and looks for existing resource definitions with the same `<definitions>` id.
-2. **If the checksum matches the latest existing version, nothing is stored** and the existing definition is returned. Redeploying an unchanged file is a no-op.
-3. Otherwise the resource definition is stored with `latest version + 1`, and every decision it contains is stored as `latest version of that decision id + 1`.
+1. The engine computes an MD5 checksum of the **raw** XML bytes and looks for existing resource definitions with the same `<definitions>` id.
+2. **Fast path — raw checksum matches:** if the raw checksum equals the latest existing version's checksum, the normalizer is skipped and the existing definition is returned. (The XML has already been unmarshalled and validated earlier in the deploy path, so this only avoids re-hashing for an identical re-deploy.)
+3. **Formatting-insensitive fallback:** if the raw checksums differ, both payloads are normalized and re-hashed. The normalizer sorts attributes, ignores inter-element whitespace inside structural elements (BPMN/DMN model and DI elements, plus the zenbpm/zeebe extension namespaces), and treats CDATA and entity spellings as equivalent. If the normalized hashes match, the redeploy is treated as a no-op and the existing definition is returned.
+4. **Otherwise** the resource definition is stored with `latest version + 1`, and every decision it contains is stored as `latest version of that decision id + 1`.
+
+The normalizer intentionally treats the following as semantically significant, so they always create a new version:
+
+- Any change to text content, including whitespace inside `xml:space="preserve"` regions and inside non-structural elements.
+- Any change to an attribute value, including the URI bound to a namespace prefix (renaming `xmlns:b="…"` to `xmlns:x="…"` is significant).
+- Adding, removing, or reordering child elements or comments.
+- Adding, removing, or renaming namespace declarations.
 
 Because decision versions are counted per decision id, a decision's version can differ from the version of the file that carries it.
 

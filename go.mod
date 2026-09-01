@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.5
 
 require (
-	github.com/adhocore/gronx v1.20.0
+	github.com/adhocore/gronx v1.20.3
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/dop251/goja v0.0.0-20251103141225-af2ceb9156d7
 	github.com/getkin/kin-openapi v0.145.0

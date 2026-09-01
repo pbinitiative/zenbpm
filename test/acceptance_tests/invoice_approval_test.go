@@ -1297,8 +1297,8 @@ func TestInvoiceApproval_Scenario12_NoPaymentMethodSelectedCausesIncident(t *tes
 	completeJobResp, err := app.restClient.CompleteJobWithResponse(t.Context(), accountJob.Key,
 		zenclient.CompleteJobJSONRequestBody{Variables: &vars})
 	require.NoError(t, err)
-	require.Equal(t, http.StatusInternalServerError, completeJobResp.StatusCode(),
-		"expected HTTP 500: engine error from gateway with no valid outgoing flow")
+	require.Equal(t, http.StatusCreated, completeJobResp.StatusCode(),
+		"job completion is committed even when subsequent execution creates an incident")
 
 	assertProcessCheckpoint(t, inst.Key, ProcessCheckpoint{
 		State:        zenclient.ProcessInstanceStateFailed,

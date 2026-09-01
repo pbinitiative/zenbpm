@@ -259,6 +259,9 @@ mainLoop:
 
 		if err := engine.validateAndIncrementFlowNodeCount(ctx, &batch, instance, currentToken, runFlowNodeCount); err != nil {
 			runErr = errors.Join(runErr, err)
+			if !errors.Is(err, ErrMaxProcessInstanceFlowNodeCountExceeded) {
+				outcome.recordTechnicalFailure()
+			}
 			engine.logger.Warn("flow node count guard tripped, recording incident", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
 			outcome.recordIncident(incidentError)

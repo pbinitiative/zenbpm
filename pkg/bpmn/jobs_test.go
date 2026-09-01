@@ -111,6 +111,63 @@ func TestJobCompleteReturnsIncidentPersistenceFailure(t *testing.T) {
 	assert.Empty(t, incidents, "a failed incident batch must not be reported as a durable domain outcome")
 }
 
+func TestJobCompleteReturnsFlowNodeCounterTechnicalFailure(t *testing.T) {
+	tests := []struct {
+		name       string
+		setFailure func(*failingContinuationStorage)
+	}{
+		{
+			name: "read",
+			setFailure: func(store *failingContinuationStorage) {
+				store.failFlowNodeCountRead = true
+			},
+		},
+		{
+			name: "increment",
+			setFailure: func(store *failingContinuationStorage) {
+				store.failFlowNodeCountIncrement = true
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			injectedErr := errors.New("injected flow node counter failure")
+			store := &failingContinuationStorage{
+				Storage: inmemory.NewStorage(),
+				err:     injectedErr,
+			}
+			engine := NewEngine(
+				EngineWithStorage(store),
+				EngineWithMaxProcessInstanceFlowNodeCount(100),
+			)
+			require.NoError(t, engine.Start(t.Context()))
+			t.Cleanup(engine.Stop)
+
+			process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-input-output.bpmn")
+			require.NoError(t, err)
+			instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+			require.NoError(t, err)
+			jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+			require.NoError(t, err)
+			require.Len(t, jobs, 1)
+
+			tt.setFailure(store)
+			err = engine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables)
+			require.ErrorIs(t, err, injectedErr)
+			assert.ErrorContains(t, err, "failed to continue process instance")
+
+			persistedJob, err := store.FindJobByJobKey(t.Context(), jobs[0].Key)
+			require.NoError(t, err)
+			assert.Equal(t, runtime.ActivityStateCompleted, persistedJob.State,
+				"the job transaction was committed before continuation failed")
+			incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+			require.NoError(t, err)
+			assert.Len(t, incidents, 1, "the technical continuation failure should remain durably recorded")
+		})
+	}
+}
+
 func increaseCounterHandler(job ActivatedJob) {
 	counter := job.Variable(varCounter)
 	counter = counter.(int64) + 1
@@ -774,9 +831,11 @@ func TestBusinessRuleTaskExternalComplete(t *testing.T) {
 
 type failingContinuationStorage struct {
 	*inmemory.Storage
-	failSave          bool
-	failIncidentFlush bool
-	err               error
+	failSave                   bool
+	failIncidentFlush          bool
+	failFlowNodeCountRead      bool
+	failFlowNodeCountIncrement bool
+	err                        error
 }
 
 func (s *failingContinuationStorage) SaveProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
@@ -784,6 +843,13 @@ func (s *failingContinuationStorage) SaveProcessInstance(ctx context.Context, in
 		return s.err
 	}
 	return s.Storage.SaveProcessInstance(ctx, instance)
+}
+
+func (s *failingContinuationStorage) GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error) {
+	if s.failFlowNodeCountRead {
+		return 0, s.err
+	}
+	return s.Storage.GetFlowNodeCount(ctx, processInstanceKey)
 }
 
 func (s *failingContinuationStorage) NewBatch() storage.Batch {
@@ -799,6 +865,13 @@ type failingContinuationBatch struct {
 func (b *failingContinuationBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
 	b.containsIncident = true
 	return b.Batch.SaveIncident(ctx, incident)
+}
+
+func (b *failingContinuationBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	if b.store.failFlowNodeCountIncrement {
+		return b.store.err
+	}
+	return b.Batch.IncrementFlowNodeCount(ctx, processInstanceKey)
 }
 
 func (b *failingContinuationBatch) Flush(ctx context.Context) error {

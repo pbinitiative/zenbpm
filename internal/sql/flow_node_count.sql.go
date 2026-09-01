@@ -11,11 +11,11 @@ import (
 
 const getFlowNodeCount = `-- name: GetFlowNodeCount :one
 SELECT
-    flow_node_count
-FROM
-    process_instance
-WHERE
-    key = ?1
+    CAST(COALESCE((
+        SELECT flow_node_count
+        FROM process_instance
+        WHERE key = ?1
+    ), 0) AS INTEGER) AS flow_node_count
 `
 
 func (q *Queries) GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error) {

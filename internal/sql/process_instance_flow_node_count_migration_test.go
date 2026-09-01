@@ -58,8 +58,8 @@ func TestProcessInstanceFlowNodeCountMigrationUpAndDownPreservesExistingData(t *
 	_, err = db.ExecContext(ctx, string(down))
 	require.NoError(t, err)
 
-	require.NotContains(t, sqliteColumnNames(t, ctx, db, "process_instance"), "flow_node_count")
-	require.NotContains(t, sqliteColumnNames(t, ctx, db, "incident"), "incident_type")
+	require.NotContains(t, sqliteColumnNames(ctx, t, db, "process_instance"), "flow_node_count")
+	require.NotContains(t, sqliteColumnNames(ctx, t, db, "incident"), "incident_type")
 	var processInstances, incidents int
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM process_instance").Scan(&processInstances))
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM incident").Scan(&incidents))
@@ -67,7 +67,7 @@ func TestProcessInstanceFlowNodeCountMigrationUpAndDownPreservesExistingData(t *
 	require.Equal(t, 1, incidents)
 }
 
-func sqliteColumnNames(t testing.TB, ctx context.Context, db *stdsql.DB, table string) map[string]struct{} {
+func sqliteColumnNames(ctx context.Context, t testing.TB, db *stdsql.DB, table string) map[string]struct{} {
 	t.Helper()
 	var query string
 	switch table {

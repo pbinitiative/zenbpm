@@ -85,15 +85,15 @@ func TestWriteAndFlushTokenIncidentInvalidatesDiscardedElementCount(t *testing.T
 	batch, err := engine.NewEngineBatchClean()
 	require.NoError(t, err)
 	token := incidentTestToken()
-	runCount := &elementExecutionRunCount{cached: true, count: 7}
+	runCount := &flowNodeRunCount{cached: true, count: 7}
 
-	require.NoError(t, batch.IncrementElementExecutionCount(t.Context(), token.ProcessInstanceKey))
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), token.ProcessInstanceKey))
 	require.NoError(t, batch.writeAndFlushTokenIncidentWithCounterInvalidation(
 		t.Context(), token, incidentTestInstance(), errors.New("original failure"), runCount,
 	))
 
 	assert.False(t, runCount.cached, "the cached count must be invalidated so the next read re-seeds from storage")
-	count, err := persistence.GetElementExecutionCount(t.Context(), token.ProcessInstanceKey)
+	count, err := persistence.GetFlowNodeCount(t.Context(), token.ProcessInstanceKey)
 	require.NoError(t, err)
 	assert.Zero(t, count, "the increment from the replaced batch must not be persisted")
 }

@@ -35,6 +35,71 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFlowNodeCounts(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-flow-node-count-db")
+
+	const concurrentIncrements = 20
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Flow_Node_Count_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("flow-node-count-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      fmt.Sprintf(data, definitionKey),
+		BpmnChecksum:  [16]byte{2},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	processInstanceKey := db.GenerateId()
+	otherProcessInstanceKey := db.GenerateId()
+	for _, key := range []int64{processInstanceKey, otherProcessInstanceKey} {
+		instance := runtime.DefaultProcessInstance{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &pd,
+				Key:            key,
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      time.Now(),
+				State:          runtime.ActivityStateActive,
+			},
+		}
+		require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+	}
+
+	count, err := db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	require.NoError(t, db.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
+	var wg sync.WaitGroup
+	errs := make(chan error, concurrentIncrements)
+	for range concurrentIncrements {
+		wg.Go(func() {
+			errs <- db.IncrementFlowNodeCount(t.Context(), processInstanceKey)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(concurrentIncrements), count)
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	otherCount, err := db.GetFlowNodeCount(t.Context(), otherProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), otherCount)
+}
+
 func prepareTestSetupWithTestMigration(t *testing.T) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
 	return prepareTestSetup(t, true)
 }
@@ -262,41 +327,6 @@ func TestRqLiteStorage(t *testing.T) {
 	})
 	testMessageCorrelation(t, db, ts)
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(db, t))
-	t.Run("ElementExecutionCounters", func(t *testing.T) {
-		const concurrentIncrements = 20
-		processInstanceKey := db.GenerateId()
-		otherProcessInstanceKey := db.GenerateId()
-
-		count, err := db.GetElementExecutionCount(t.Context(), processInstanceKey)
-		require.NoError(t, err)
-		require.Zero(t, count)
-
-		require.NoError(t, db.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey))
-		var wg sync.WaitGroup
-		errs := make(chan error, concurrentIncrements)
-		for range concurrentIncrements {
-			wg.Go(func() {
-				errs <- db.IncrementElementExecutionCount(t.Context(), processInstanceKey)
-			})
-		}
-		wg.Wait()
-		close(errs)
-		for err := range errs {
-			require.NoError(t, err)
-		}
-
-		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey)
-		require.NoError(t, err)
-		require.Equal(t, int64(concurrentIncrements), count)
-		require.NoError(t, db.ResetProcessInstanceExecutionCount(t.Context(), processInstanceKey))
-		count, err = db.GetElementExecutionCount(t.Context(), processInstanceKey)
-		require.NoError(t, err)
-		require.Zero(t, count)
-
-		otherCount, err := db.GetElementExecutionCount(t.Context(), otherProcessInstanceKey)
-		require.NoError(t, err)
-		require.Equal(t, int64(1), otherCount)
-	})
 }
 
 func TestRunUpMigrations(t *testing.T) {
@@ -656,9 +686,9 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
 
-		err = db.IncrementElementExecutionCount(ctx, inst1.ProcessInstance().Key)
+		err = db.IncrementFlowNodeCount(ctx, inst1.ProcessInstance().Key)
 		assert.NoError(t, err)
-		err = db.IncrementElementExecutionCount(ctx, inst2.ProcessInstance().Key)
+		err = db.IncrementFlowNodeCount(ctx, inst2.ProcessInstance().Key)
 		assert.NoError(t, err)
 	}
 
@@ -743,10 +773,11 @@ func TestDataCleanup(t *testing.T) {
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from error_subscription")
 	require.Equal(t, remainingCalls, count)
-	// One counter row per surviving instance; counters of deleted instances must be gone.
-	count = queryCount(t, db, "select count(*) from element_execution_counter")
+	// The flow node counter lives on process_instance; counters of deleted instances must be gone
+	// together with their instance rows.
+	count = queryCount(t, db, "select count(*) from process_instance where flow_node_count >= 0")
 	require.Equal(t, int64(len(idsToKeep)+len(idsWithoutTTL)), count)
-	rows, err := db.QueryContext(t.Context(), "select process_instance_key from element_execution_counter")
+	rows, err := db.QueryContext(t.Context(), "select key from process_instance")
 	require.NoError(t, err)
 	var counterProcessInstanceKeys []int64
 	for rows.Next() {

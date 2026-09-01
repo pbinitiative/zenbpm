@@ -535,8 +535,8 @@ type IncidentType string
 
 // Incident types persisted for machine-readable incident-specific recovery behavior.
 const (
-	IncidentTypeUnspecified                                     IncidentType = ""
-	IncidentTypeMaxProcessInstanceElementExecutionCountExceeded IncidentType = "MAX_PROCESS_INSTANCE_ELEMENT_EXECUTION_COUNT_EXCEEDED"
+	IncidentTypeUnspecified                             IncidentType = ""
+	IncidentTypeMaxProcessInstanceFlowNodeCountExceeded IncidentType = "MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT_EXCEEDED"
 )
 
 type Incident struct {
@@ -544,9 +544,12 @@ type Incident struct {
 	ElementInstanceKey int64
 	ElementId          string
 	ProcessInstanceKey int64
-	Type               IncidentType
-	Message            string
-	CreatedAt          time.Time
-	ResolvedAt         *time.Time
-	Token              ExecutionToken
+	// Type drives incident-specific recovery behavior inside the engine (see ResolveIncident).
+	// It is intentionally NOT exposed through the public gRPC/REST/OpenAPI contracts: external
+	// consumers resolve incidents by key and must not depend on engine-internal recovery semantics.
+	Type       IncidentType
+	Message    string
+	CreatedAt  time.Time
+	ResolvedAt *time.Time
+	Token      ExecutionToken
 }

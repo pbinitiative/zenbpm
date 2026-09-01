@@ -27,18 +27,18 @@ func TestInMemoryStorage(t *testing.T) {
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
 }
 
-func TestElementExecutionCountersAreConcurrentAndResetIsProcessScoped(t *testing.T) {
+func TestFlowNodeCountsAreConcurrentAndResetIsProcessScoped(t *testing.T) {
 	const concurrentIncrements = 100
 	store := inmemory.NewStorage()
 	processInstanceKey := store.GenerateId()
 	otherProcessInstanceKey := store.GenerateId()
 
-	require.NoError(t, store.IncrementElementExecutionCount(t.Context(), otherProcessInstanceKey))
+	require.NoError(t, store.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
 	var wg sync.WaitGroup
 	errs := make(chan error, concurrentIncrements)
 	for range concurrentIncrements {
 		wg.Go(func() {
-			errs <- store.IncrementElementExecutionCount(t.Context(), processInstanceKey)
+			errs <- store.IncrementFlowNodeCount(t.Context(), processInstanceKey)
 		})
 	}
 	wg.Wait()
@@ -47,15 +47,15 @@ func TestElementExecutionCountersAreConcurrentAndResetIsProcessScoped(t *testing
 		require.NoError(t, err)
 	}
 
-	count, err := store.GetElementExecutionCount(t.Context(), processInstanceKey)
+	count, err := store.GetFlowNodeCount(t.Context(), processInstanceKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(concurrentIncrements), count)
-	require.NoError(t, store.ResetProcessInstanceExecutionCount(t.Context(), processInstanceKey))
-	count, err = store.GetElementExecutionCount(t.Context(), processInstanceKey)
+	require.NoError(t, store.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	count, err = store.GetFlowNodeCount(t.Context(), processInstanceKey)
 	require.NoError(t, err)
 	require.Zero(t, count)
 
-	otherCount, err := store.GetElementExecutionCount(t.Context(), otherProcessInstanceKey)
+	otherCount, err := store.GetFlowNodeCount(t.Context(), otherProcessInstanceKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), otherCount)
 }

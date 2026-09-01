@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestProcessInstanceElementExecutionCountLoopCompletesUnderLimit verifies that a legitimate, bounded
-// sequence-flow loop that stays under the configured element execution limit completes
+// TestProcessInstanceFlowNodeCountLoopCompletesUnderLimit verifies that a legitimate, bounded
+// sequence-flow loop that stays under the configured flow node count limit completes
 // without incidents.
-func TestProcessInstanceElementExecutionCountLoopCompletesUnderLimit(t *testing.T) {
+func TestProcessInstanceFlowNodeCountLoopCompletesUnderLimit(t *testing.T) {
 	definition, err := deployGetDefinition(t, "simple-flow-loop.bpmn", "simple-flow-loop")
 	require.NoError(t, err)
 
@@ -38,12 +38,12 @@ func TestProcessInstanceElementExecutionCountLoopCompletesUnderLimit(t *testing.
 	assert.Empty(t, incidents)
 }
 
-// TestProcessInstanceElementExecutionCountExceededCreatesIncident verifies that a sequence-flow loop without a
-// reachable exit condition is stopped at the configured maximum element execution count
-// (e2eMaxProcessInstanceElementExecutionCount, set in TestMain): the instance fails with an incident, and
-// resolving the incident resets the instance's execution counter so the fixed loop can continue
+// TestProcessInstanceFlowNodeCountExceededCreatesIncident verifies that a sequence-flow loop without a
+// reachable exit condition is stopped at the configured maximum flow node count
+// (e2eMaxProcessInstanceFlowNodeCount, set in TestMain): the instance fails with an incident, and
+// resolving the incident resets the instance's flow node counter so the fixed loop can continue
 // and complete.
-func TestProcessInstanceElementExecutionCountExceededCreatesIncident(t *testing.T) {
+func TestProcessInstanceFlowNodeCountExceededCreatesIncident(t *testing.T) {
 	definition, err := deployGetDefinition(t, "simple-flow-loop.bpmn", "simple-flow-loop")
 	require.NoError(t, err)
 
@@ -53,26 +53,26 @@ func TestProcessInstanceElementExecutionCountExceededCreatesIncident(t *testing.
 	t.Cleanup(func() { cleanProcessInstances(t) })
 
 	// Drive the loop without ever satisfying the exit condition until the guard trips.
-	incident := driveLoopUntilElementExecutionCountIncident(t, instance.Key, "loopTask")
-	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance element execution count of %d", e2eMaxProcessInstanceElementExecutionCount))
+	incident := driveLoopUntilFlowNodeCountIncident(t, instance.Key, "loopTask")
+	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance flow node count of %d", e2eMaxProcessInstanceFlowNodeCount))
 	// which loop element trips first is an engine scheduling detail; it must be one of the loop elements
 	assert.Contains(t, []string{"joinGateway", "loopTask", "splitGateway"}, incident.ElementId)
 
 	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateFailed)
 
-	assertProcessInstanceElementExecutionCount(t, instance.Key, e2eMaxProcessInstanceElementExecutionCount)
+	assertProcessInstanceFlowNodeCount(t, instance.Key, e2eMaxProcessInstanceFlowNodeCount)
 
-	// resolving the incident resets the instance's execution counter, granting a fresh budget;
+	// resolving the incident resets the instance's flow node counter, granting a fresh budget;
 	// the loop then exits on the next iteration and the instance completes
 	resolveIncident(t, incident.Key)
 	completeLoopJob(t, instance.Key, "loopTask", map[string]any{"done": true})
 	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 }
 
-// driveLoopUntilElementExecutionCountIncident keeps completing the active job of the given
-// element with an exit condition that never becomes true until an unresolved element execution
+// driveLoopUntilFlowNodeCountIncident keeps completing the active job of the given
+// element with an exit condition that never becomes true until an unresolved flow node
 // count incident appears on the process instance, and returns that incident.
-func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKey int64, elementID string) public.Incident {
+func driveLoopUntilFlowNodeCountIncident(t testing.TB, processInstanceKey int64, elementID string) public.Incident {
 	t.Helper()
 
 	var incident public.Incident
@@ -80,7 +80,7 @@ func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKe
 		incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
 		if err == nil {
 			for _, candidate := range incidents {
-				if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed process instance element execution count") {
+				if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed process instance flow node count") {
 					incident = candidate
 					return true
 				}
@@ -88,12 +88,15 @@ func driveLoopUntilElementExecutionCountIncident(t testing.TB, processInstanceKe
 		}
 		// no incident yet: complete the pending loop job (best effort) to advance the loop
 		if job, err := findActiveJobForElement(t, processInstanceKey, elementID); err == nil && job != nil {
-			// ignore completion races: the next poll re-reads jobs and incidents
+			// Completion errors are discarded deliberately: once the guard trips between listing
+			// and completing, the engine rejects completions on the failed instance. The next
+			// poll re-reads jobs and incidents. The completion that trips the guard itself
+			// succeeds: the job is durably completed and the incident is the domain outcome.
 			_ = completeJob(t, job.Key, map[string]any{"done": false})
 		}
 		return false
 	}, 60*time.Second, 100*time.Millisecond,
-		"process instance %d should raise an element execution count incident", processInstanceKey)
+		"process instance %d should raise a flow node count incident", processInstanceKey)
 	return incident
 }
 
@@ -142,23 +145,23 @@ func completeLoopJob(t testing.TB, processInstanceKey int64, elementID string, v
 	require.NoError(t, completeJob(t, job.Key, vars))
 }
 
-// assertProcessInstanceElementExecutionCount reads the total element execution counter from the partition store
-// of the process instance and asserts its value. Execution counters are internal runtime-control
+// assertProcessInstanceFlowNodeCount reads the total flow node counter from the partition store
+// of the process instance and asserts its value. Flow node counters are internal runtime-control
 // state and are not exposed through the public REST API, so the assertion goes directly
 // against the storage layer.
-func assertProcessInstanceElementExecutionCount(t testing.TB, processInstanceKey int64, expectedCount int64) {
+func assertProcessInstanceFlowNodeCount(t testing.TB, processInstanceKey int64, expectedCount int64) {
 	t.Helper()
 
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		count, findErr := store.GetElementExecutionCount(t.Context(), processInstanceKey)
+		count, findErr := store.GetFlowNodeCount(t.Context(), processInstanceKey)
 		if !assert.NoError(collect, findErr) {
 			return
 		}
 		assert.Equal(collect, expectedCount, count,
-			"process instance %d should have execution count %d", processInstanceKey, expectedCount)
+			"process instance %d should have flow node count %d", processInstanceKey, expectedCount)
 	}, 5*time.Second, 100*time.Millisecond,
-		"process instance %d should have execution count %d", processInstanceKey, expectedCount)
+		"process instance %d should have flow node count %d", processInstanceKey, expectedCount)
 }

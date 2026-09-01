@@ -38,11 +38,6 @@ type DmnResourceDefinition struct {
 	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
-type ElementExecutionCounter struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	ExecutionCount     int64 `json:"execution_count"`
-}
-
 type ErrorSubscription struct {
 	Key                  int64          `json:"key"`
 	ElementInstanceKey   int64          `json:"element_instance_key"`
@@ -154,6 +149,7 @@ type ProcessInstance struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	NestingDepth                          int64          `json:"nesting_depth"`
+	FlowNodeCount                         int64          `json:"flow_node_count"`
 }
 
 type Timer struct {

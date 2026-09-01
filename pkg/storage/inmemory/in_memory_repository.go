@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"slices"
 	"sort"
@@ -29,12 +30,12 @@ type Storage struct {
 	Jobs                   map[int64]bpmnruntime.Job
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
 	FlowElementInstance    map[int64]bpmnruntime.FlowElementInstance
-	// ElementExecutionCounters tracks the total number of element executions within a process
+	// FlowNodeCounts tracks the total number of flow node executions within a process
 	// instance, keyed by process instance key. Used by the engine to prevent infinite
 	// sequence-flow loops.
-	ElementExecutionCounters map[int64]int64
-	Incidents                map[int64]bpmnruntime.Incident
-	ErrorSubscriptions       map[int64]bpmnruntime.ErrorSubscription
+	FlowNodeCounts     map[int64]int64
+	Incidents          map[int64]bpmnruntime.Incident
+	ErrorSubscriptions map[int64]bpmnruntime.ErrorSubscription
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -57,19 +58,19 @@ func (mem *Storage) ProcessInstancesSnapshot() []bpmnruntime.ProcessInstance {
 
 func NewStorage() *Storage {
 	return &Storage{
-		DmnResourceDefinitions:   make(map[int64]dmnruntime.DmnResourceDefinition),
-		DecisionDefinitions:      make(map[int64]dmnruntime.DecisionDefinition),
-		DecisionInstances:        make(map[int64]dmnruntime.DecisionInstance),
-		ProcessDefinitions:       make(map[int64]bpmnruntime.ProcessDefinition),
-		ProcessInstances:         make(map[int64]bpmnruntime.ProcessInstance),
-		MessageSubscriptions:     make(map[int64]bpmnruntime.MessageSubscription),
-		Timers:                   make(map[int64]bpmnruntime.Timer),
-		Jobs:                     make(map[int64]bpmnruntime.Job),
-		ExecutionTokens:          make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementInstance:      make(map[int64]bpmnruntime.FlowElementInstance),
-		ElementExecutionCounters: make(map[int64]int64),
-		Incidents:                make(map[int64]bpmnruntime.Incident),
-		ErrorSubscriptions:       make(map[int64]bpmnruntime.ErrorSubscription),
+		DmnResourceDefinitions: make(map[int64]dmnruntime.DmnResourceDefinition),
+		DecisionDefinitions:    make(map[int64]dmnruntime.DecisionDefinition),
+		DecisionInstances:      make(map[int64]dmnruntime.DecisionInstance),
+		ProcessDefinitions:     make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:       make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptions:   make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:                 make(map[int64]bpmnruntime.Timer),
+		Jobs:                   make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:        make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementInstance:    make(map[int64]bpmnruntime.FlowElementInstance),
+		FlowNodeCounts:         make(map[int64]int64),
+		Incidents:              make(map[int64]bpmnruntime.Incident),
+		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
 	}
 }
 
@@ -77,45 +78,19 @@ func (mem *Storage) Copy() *Storage {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	c := NewStorage()
-	for k, v := range mem.DmnResourceDefinitions {
-		c.DmnResourceDefinitions[k] = v
-	}
-	for k, v := range mem.DecisionDefinitions {
-		c.DecisionDefinitions[k] = v
-	}
-	for k, v := range mem.DecisionInstances {
-		c.DecisionInstances[k] = v
-	}
-	for k, v := range mem.ProcessInstances {
-		c.ProcessInstances[k] = v
-	}
-	for k, v := range mem.ProcessDefinitions {
-		c.ProcessDefinitions[k] = v
-	}
-	for k, v := range mem.MessageSubscriptions {
-		c.MessageSubscriptions[k] = v
-	}
-	for k, v := range mem.Timers {
-		c.Timers[k] = v
-	}
-	for k, v := range mem.Jobs {
-		c.Jobs[k] = v
-	}
-	for k, v := range mem.ExecutionTokens {
-		c.ExecutionTokens[k] = v
-	}
-	for k, v := range mem.FlowElementInstance {
-		c.FlowElementInstance[k] = v
-	}
-	for k, v := range mem.ElementExecutionCounters {
-		c.ElementExecutionCounters[k] = v
-	}
-	for k, v := range mem.Incidents {
-		c.Incidents[k] = v
-	}
-	for k, v := range mem.ErrorSubscriptions {
-		c.ErrorSubscriptions[k] = v
-	}
+	maps.Copy(c.DmnResourceDefinitions, mem.DmnResourceDefinitions)
+	maps.Copy(c.DecisionDefinitions, mem.DecisionDefinitions)
+	maps.Copy(c.DecisionInstances, mem.DecisionInstances)
+	maps.Copy(c.ProcessInstances, mem.ProcessInstances)
+	maps.Copy(c.ProcessDefinitions, mem.ProcessDefinitions)
+	maps.Copy(c.MessageSubscriptions, mem.MessageSubscriptions)
+	maps.Copy(c.Timers, mem.Timers)
+	maps.Copy(c.Jobs, mem.Jobs)
+	maps.Copy(c.ExecutionTokens, mem.ExecutionTokens)
+	maps.Copy(c.FlowElementInstance, mem.FlowElementInstance)
+	maps.Copy(c.FlowNodeCounts, mem.FlowNodeCounts)
+	maps.Copy(c.Incidents, mem.Incidents)
+	maps.Copy(c.ErrorSubscriptions, mem.ErrorSubscriptions)
 	return c
 }
 
@@ -1109,27 +1084,31 @@ func (mem *Storage) CompleteFlowElementInstance(_ context.Context, key int64, co
 	return nil
 }
 
-var _ storage.ElementExecutionCounterReader = &Storage{}
+var _ storage.FlowNodeCounterReader = &Storage{}
 
-func (mem *Storage) GetElementExecutionCount(_ context.Context, processInstanceKey int64) (int64, error) {
+func (mem *Storage) GetFlowNodeCount(_ context.Context, processInstanceKey int64) (int64, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	return mem.ElementExecutionCounters[processInstanceKey], nil
+	return mem.FlowNodeCounts[processInstanceKey], nil
 }
 
-var _ storage.ElementExecutionCounterWriter = &Storage{}
+var _ storage.FlowNodeCounterWriter = &Storage{}
 
-func (mem *Storage) IncrementElementExecutionCount(_ context.Context, processInstanceKey int64) error {
+func (mem *Storage) IncrementFlowNodeCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	mem.ElementExecutionCounters[processInstanceKey]++
+	mem.FlowNodeCounts[processInstanceKey]++
 	return nil
 }
 
-func (mem *Storage) ResetProcessInstanceExecutionCount(_ context.Context, processInstanceKey int64) error {
+func (mem *Storage) ResetProcessInstanceFlowNodeCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	delete(mem.ElementExecutionCounters, processInstanceKey)
+	// Mirror the SQL backend (UPDATE process_instance SET flow_node_count = 0): an existing
+	// counter is reset to 0, an absent one stays absent.
+	if _, ok := mem.FlowNodeCounts[processInstanceKey]; ok {
+		mem.FlowNodeCounts[processInstanceKey] = 0
+	}
 	return nil
 }
 
@@ -1309,16 +1288,16 @@ func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int6
 	return nil
 }
 
-func (b *StorageBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
+func (b *StorageBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.IncrementElementExecutionCount(ctx, processInstanceKey)
+		return b.db.IncrementFlowNodeCount(ctx, processInstanceKey)
 	})
 	return nil
 }
 
-func (b *StorageBatch) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
+func (b *StorageBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.ResetProcessInstanceExecutionCount(ctx, processInstanceKey)
+		return b.db.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey)
 	})
 	return nil
 }

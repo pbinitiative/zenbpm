@@ -1,9 +1,12 @@
 package bpmn
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,6 +17,99 @@ const (
 	varEngineValidationAttempts = "engineValidationAttempts"
 	varHasReachedMaxAttempts    = "hasReachedMaxAttempts"
 )
+
+func TestJobCompleteTreatsPersistedFlowNodeCountIncidentAsDomainOutcome(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(
+		EngineWithStorage(store),
+		EngineWithMaxProcessInstanceFlowNodeCount(2),
+	)
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-input-output.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "service-task-1", jobs[0].ElementId)
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables))
+
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	assert.Equal(t, runtime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded, incidents[0].Type)
+}
+
+func TestJobCompleteReturnsPostCommitTechnicalContinuationFailure(t *testing.T) {
+	injectedErr := errors.New("injected continuation save failure")
+	store := &failingContinuationStorage{
+		Storage: inmemory.NewStorage(),
+		err:     injectedErr,
+	}
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-input-output.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+
+	store.failSave = true
+	err = engine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables)
+	require.ErrorIs(t, err, injectedErr)
+	assert.ErrorContains(t, err, "failed to continue process instance")
+
+	persistedJob, err := store.FindJobByJobKey(t.Context(), jobs[0].Key)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, persistedJob.State,
+		"the job transaction was committed before continuation failed")
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.Empty(t, incidents, "the initial continuation save failure cannot be represented as an incident")
+}
+
+func TestJobCompleteReturnsIncidentPersistenceFailure(t *testing.T) {
+	injectedErr := errors.New("injected incident flush failure")
+	store := &failingContinuationStorage{
+		Storage: inmemory.NewStorage(),
+		err:     injectedErr,
+	}
+	engine := NewEngine(
+		EngineWithStorage(store),
+		EngineWithMaxProcessInstanceFlowNodeCount(2),
+	)
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-input-output.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+
+	store.failIncidentFlush = true
+	err = engine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables)
+	require.ErrorIs(t, err, injectedErr)
+	assert.ErrorContains(t, err, "failed to continue process instance")
+
+	persistedJob, err := store.FindJobByJobKey(t.Context(), jobs[0].Key)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, persistedJob.State)
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.Empty(t, incidents, "a failed incident batch must not be reported as a durable domain outcome")
+}
 
 func increaseCounterHandler(job ActivatedJob) {
 	counter := job.Variable(varCounter)
@@ -674,4 +770,40 @@ func TestBusinessRuleTaskExternalComplete(t *testing.T) {
 
 	assert.Equal(t, "BusinessRuleTask1", cp.CallPath)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
+}
+
+type failingContinuationStorage struct {
+	*inmemory.Storage
+	failSave          bool
+	failIncidentFlush bool
+	err               error
+}
+
+func (s *failingContinuationStorage) SaveProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
+	if s.failSave {
+		return s.err
+	}
+	return s.Storage.SaveProcessInstance(ctx, instance)
+}
+
+func (s *failingContinuationStorage) NewBatch() storage.Batch {
+	return &failingContinuationBatch{Batch: s.Storage.NewBatch(), store: s}
+}
+
+type failingContinuationBatch struct {
+	storage.Batch
+	store            *failingContinuationStorage
+	containsIncident bool
+}
+
+func (b *failingContinuationBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	b.containsIncident = true
+	return b.Batch.SaveIncident(ctx, incident)
+}
+
+func (b *failingContinuationBatch) Flush(ctx context.Context) error {
+	if b.containsIncident && b.store.failIncidentFlush {
+		return b.store.err
+	}
+	return b.Batch.Flush(ctx)
 }

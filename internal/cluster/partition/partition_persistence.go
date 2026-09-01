@@ -253,7 +253,6 @@ func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, hist
 		}
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
-		err = errors.Join(err, batch.queries.DeleteElementExecutionCounters(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
@@ -2569,35 +2568,35 @@ func CompleteFlowElementInstanceWith(ctx context.Context, db *sql.Queries, key i
 	})
 }
 
-var _ storage.ElementExecutionCounterReader = &DB{}
+var _ storage.FlowNodeCounterReader = &DB{}
 
-func (rq *DB) GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error) {
-	count, err := rq.Queries.GetElementExecutionCount(ctx, processInstanceKey)
+func (rq *DB) GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error) {
+	count, err := rq.Queries.GetFlowNodeCount(ctx, processInstanceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("failed to get element execution count of process instance %d: %w", processInstanceKey, err)
+		return 0, fmt.Errorf("failed to get flow node count of process instance %d: %w", processInstanceKey, err)
 	}
 	return count, nil
 }
 
-var _ storage.ElementExecutionCounterWriter = &DB{}
+var _ storage.FlowNodeCounterWriter = &DB{}
 
-func (rq *DB) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
-	return IncrementElementExecutionCountWith(ctx, rq.Queries, processInstanceKey)
+func (rq *DB) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return IncrementFlowNodeCountWith(ctx, rq.Queries, processInstanceKey)
 }
 
-func (rq *DB) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
-	return ResetProcessInstanceExecutionCountWith(ctx, rq.Queries, processInstanceKey)
+func (rq *DB) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return ResetProcessInstanceFlowNodeCountWith(ctx, rq.Queries, processInstanceKey)
 }
 
-func IncrementElementExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
-	return db.IncrementElementExecutionCount(ctx, processInstanceKey)
+func IncrementFlowNodeCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
+	return db.IncrementFlowNodeCount(ctx, processInstanceKey)
 }
 
-func ResetProcessInstanceExecutionCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
-	return db.ResetProcessInstanceExecutionCount(ctx, processInstanceKey)
+func ResetProcessInstanceFlowNodeCountWith(ctx context.Context, db *sql.Queries, processInstanceKey int64) error {
+	return db.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey)
 }
 
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
@@ -3088,14 +3087,14 @@ func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, co
 	return CompleteFlowElementInstanceWith(ctx, b.queries, key, completedAt)
 }
 
-var _ storage.ElementExecutionCounterWriter = &DBBatch{}
+var _ storage.FlowNodeCounterWriter = &DBBatch{}
 
-func (b *DBBatch) IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error {
-	return IncrementElementExecutionCountWith(ctx, b.queries, processInstanceKey)
+func (b *DBBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return IncrementFlowNodeCountWith(ctx, b.queries, processInstanceKey)
 }
 
-func (b *DBBatch) ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error {
-	return ResetProcessInstanceExecutionCountWith(ctx, b.queries, processInstanceKey)
+func (b *DBBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return ResetProcessInstanceFlowNodeCountWith(ctx, b.queries, processInstanceKey)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

@@ -28,8 +28,8 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 }
 
 func incidentTypeFromError(err error) runtime.IncidentType {
-	if errors.Is(err, ErrMaxProcessInstanceElementExecutionCountExceeded) {
-		return runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded
+	if errors.Is(err, ErrMaxProcessInstanceFlowNodeCountExceeded) {
+		return runtime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded
 	}
 	return runtime.IncidentTypeUnspecified
 }
@@ -152,16 +152,18 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if err != nil {
 		return fmt.Errorf("failed to find execution token %d for incident %d: %w", incident.Token.Key, key, err)
 	}
+	// Startup recovery skips instances in the Failed state, so incident resolution is the only
+	// path that can reschedule persisted Running sibling tokens (e.g. parallel branches that were
+	// not drained before the incident was flushed or the node stopped). Gather them for every
+	// token-bound incident regardless of its type, otherwise those siblings stay stranded forever.
 	executionTokens := []runtime.ExecutionToken{incident.Token}
-	if incident.Type == runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded {
-		activeTokens, findErr := engine.persistence.GetActiveTokensForProcessInstance(ctx, incident.ProcessInstanceKey)
-		if findErr != nil {
-			return fmt.Errorf("failed to find active execution tokens for process instance %d: %w", incident.ProcessInstanceKey, findErr)
-		}
-		for _, token := range activeTokens {
-			if token.Key != incident.Token.Key && token.State == runtime.TokenStateRunning {
-				executionTokens = append(executionTokens, token)
-			}
+	activeTokens, findErr := engine.persistence.GetActiveTokensForProcessInstance(ctx, incident.ProcessInstanceKey)
+	if findErr != nil {
+		return fmt.Errorf("failed to find active execution tokens for process instance %d: %w", incident.ProcessInstanceKey, findErr)
+	}
+	for _, token := range activeTokens {
+		if token.Key != incident.Token.Key && token.State == runtime.TokenStateRunning {
+			executionTokens = append(executionTokens, token)
 		}
 	}
 
@@ -176,12 +178,12 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return err
 	}
 
-	// A token blocked by the element execution guard gets a fresh execution budget: the operator
+	// A token blocked by the flow node count guard gets a fresh execution budget: the operator
 	// resolved the incident after fixing the loop's exit condition, so the instance-wide counter
-	// is reset to zero. Other incidents must not alter the execution counter.
-	if incident.Type == runtime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded {
-		if err := batch.ResetProcessInstanceExecutionCount(ctx, incident.ProcessInstanceKey); err != nil {
-			return fmt.Errorf("failed to reset execution count of process instance %d: %w", incident.ProcessInstanceKey, err)
+	// is reset to zero. Other incidents must not alter the flow node counter.
+	if incident.Type == runtime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded {
+		if err := batch.ResetProcessInstanceFlowNodeCount(ctx, incident.ProcessInstanceKey); err != nil {
+			return fmt.Errorf("failed to reset flow node count of process instance %d: %w", incident.ProcessInstanceKey, err)
 		}
 	}
 

@@ -928,7 +928,7 @@ func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
-			Type:               bpmnruntime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded,
+			Type:               bpmnruntime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded,
 			Message:            "test-message",
 			Token: bpmnruntime.ExecutionToken{
 				Key:                tok,
@@ -964,7 +964,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
 			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
-			Type:               bpmnruntime.IncidentTypeMaxProcessInstanceElementExecutionCountExceeded,
+			Type:               bpmnruntime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded,
 			Message:            "test-message",
 			CreatedAt:          time.Time{}.Local(),
 			ResolvedAt:         nil,

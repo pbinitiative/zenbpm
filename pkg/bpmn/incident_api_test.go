@@ -64,11 +64,11 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.Equal(t, 1, len(incidents))
 	assert.Equal(t, runtime.IncidentTypeUnspecified, incidents[0].Type)
 
-	// artificially raise the instance's element execution counter to verify unrelated resolution keeps it
+	// artificially raise the instance's flow node counter to verify unrelated resolution keeps it
 	for range 3 {
-		require.NoError(t, store.IncrementElementExecutionCount(t.Context(), instance.ProcessInstance().Key))
+		require.NoError(t, store.IncrementFlowNodeCount(t.Context(), instance.ProcessInstance().Key))
 	}
-	countBeforeResolution, err := store.GetElementExecutionCount(t.Context(), instance.ProcessInstance().Key)
+	countBeforeResolution, err := store.GetFlowNodeCount(t.Context(), instance.ProcessInstance().Key)
 	require.NoError(t, err)
 
 	// now fix the variable
@@ -86,10 +86,10 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
 
-	count, err := store.GetElementExecutionCount(t.Context(), instance.ProcessInstance().Key)
+	count, err := store.GetFlowNodeCount(t.Context(), instance.ProcessInstance().Key)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, count, countBeforeResolution,
-		"resolving an unrelated incident must not reset the element execution counter")
+		"resolving an unrelated incident must not reset the flow node counter")
 
 }
 

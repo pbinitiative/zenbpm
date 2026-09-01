@@ -28,8 +28,8 @@ type Storage interface {
 	DecisionStorage
 	FlowElementInstanceReader
 	FlowElementInstanceWriter
-	ElementExecutionCounterReader
-	ElementExecutionCounterWriter
+	FlowNodeCounterReader
+	FlowNodeCounterWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 	ErrorSubscriptionStorageReader
@@ -59,7 +59,7 @@ type Batch interface {
 	MessageStorageWriter
 	TokenStorageWriter
 	FlowElementInstanceWriter
-	ElementExecutionCounterWriter
+	FlowNodeCounterWriter
 	IncidentStorageWriter
 	ErrorSubscriptionStorageWriter
 
@@ -237,23 +237,22 @@ type FlowElementInstanceWriter interface {
 	CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error
 }
 
-// ElementExecutionCounterReader reads the runtime execution-control counter used by the engine
+// FlowNodeCounterReader reads the runtime execution-control counter used by the engine
 // to prevent infinite sequence-flow loops within a single process instance.
-type ElementExecutionCounterReader interface {
-	// GetElementExecutionCount returns the total number of element executions performed within the
-	// process instance. Returns 0 (and no error) when no counter row exists yet.
-	GetElementExecutionCount(ctx context.Context, processInstanceKey int64) (int64, error)
+type FlowNodeCounterReader interface {
+	// GetFlowNodeCount returns the total number of flow node executions performed within the
+	// process instance. Returns 0 (and no error) when the process instance does not exist yet.
+	GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error)
 }
 
-// ElementExecutionCounterWriter mutates the runtime execution-control counter used by the engine
+// FlowNodeCounterWriter mutates the runtime execution-control counter used by the engine
 // to prevent infinite sequence-flow loops within a single process instance.
-type ElementExecutionCounterWriter interface {
-	// IncrementElementExecutionCount increments (creating the row if absent) the total element
-	// execution counter of the process instance.
-	IncrementElementExecutionCount(ctx context.Context, processInstanceKey int64) error
-	// ResetProcessInstanceExecutionCount resets the total element execution counter of the process
+type FlowNodeCounterWriter interface {
+	// IncrementFlowNodeCount increments the total flow node execution counter of the process instance.
+	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
+	// ResetProcessInstanceFlowNodeCount resets the total flow node execution counter of the process
 	// instance to zero, granting a fresh execution budget after operator intervention.
-	ResetProcessInstanceExecutionCount(ctx context.Context, processInstanceKey int64) error
+	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 }
 
 type IncidentStorageReader interface {

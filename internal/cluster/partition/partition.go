@@ -460,7 +460,10 @@ func (zpn *ZenPartitionNode) stop() error {
 		if zpn.config.RaftStepdownOnShutdown && !standalone && zpn.store.IsLeader() {
 			zpn.logger.Info("stepping down as Leader before shutdown")
 			if err := zpn.store.Stepdown(true, ""); err != nil {
-				stopErr = errors.Join(stopErr, fmt.Errorf("failed to step down partition leader: %w", err))
+				// Best-effort: with RaftClusterRemoveOnShutdown=false stopped
+				// peers stay in the voter set, so the transfer can fail when no
+				// live peer remains. Shutdown must proceed anyway.
+				zpn.logger.Warn("failed to step down partition leader before shutdown", "err", err)
 			}
 		}
 	}

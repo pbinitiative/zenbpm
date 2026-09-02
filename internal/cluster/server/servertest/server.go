@@ -2,10 +2,13 @@ package servertest
 
 import (
 	"context"
+	"errors"
 	"net"
+	"sync"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/rqlite/rqlite/v10/tcp"
 	"google.golang.org/grpc"
 )
 
@@ -16,25 +19,39 @@ type TestServer struct {
 	NotifyHandler            func(*proto.NotifyRequest) (*proto.NotifyResponse, error)
 	FindActiveMessageHandler func(*proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error)
 	GlobalHandler            func() error
+	mux                      *tcp.Mux
+	muxListener              net.Listener
+	grpcServer               *grpc.Server
+	closeSignal              chan struct{}
+	closeOnce                sync.Once
+	closeErr                 error
 }
 
 // New returns a new instance of a TestServer
 func NewTestServer() *TestServer {
-	mux, _, err := network.NewNodeMux("")
+	mux, muxListener, err := network.NewNodeMux("")
 	if err != nil {
 		panic("service: failed to listen: " + err.Error())
 	}
 	ln := network.NewZenBpmClusterListener(mux)
+	srv := grpc.NewServer()
 	s := &TestServer{
-		Listener: ln,
+		Listener:    ln,
+		mux:         mux,
+		muxListener: muxListener,
+		grpcServer:  srv,
+		closeSignal: make(chan struct{}),
 	}
 
-	srv := grpc.NewServer()
 	proto.RegisterZenServiceServer(srv, s)
 	go func() {
-		err := srv.Serve(ln)
-		if err != nil {
-			panic(err)
+		if err := srv.Serve(ln); err != nil {
+			select {
+			case <-s.closeSignal:
+				return
+			default:
+				panic(err)
+			}
 		}
 	}()
 	return s
@@ -44,7 +61,12 @@ var _ proto.ZenServiceServer = &TestServer{}
 
 // Close closes the TestServer.
 func (s *TestServer) Close() error {
-	return s.Listener.Close()
+	s.closeOnce.Do(func() {
+		close(s.closeSignal)
+		s.closeErr = errors.Join(s.mux.Close(), s.muxListener.Close())
+		s.grpcServer.Stop()
+	})
+	return s.closeErr
 }
 
 func (s *TestServer) Addr() string {

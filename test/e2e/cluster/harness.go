@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -118,7 +120,6 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 			t.Fatalf("failed to listen for node %s: %s", nodeID, err)
 		}
 		realAddr := realLn.Addr().String()
-		realLn.Close() // Close it; StartZenNode will rebind
 
 		// Create proxy pointing to the real address
 		proxy, err := NewNodeProxy(realAddr)
@@ -137,10 +138,10 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 					Addr:   realAddr,
 					Adv:    proxy.Addr(), // advertise the proxy address
 					Raft: config.ClusterRaft{
-						Dir:                   tempDir,
-						JoinAttempts:          10,
-						JoinInterval:          1 * time.Second,
-						BootstrapExpect:       o.bootstrapExpect,
+						Dir:                    tempDir,
+						JoinAttempts:           10,
+						JoinInterval:           1 * time.Second,
+						BootstrapExpect:        o.bootstrapExpect,
 						BootstrapExpectTimeout: 30 * time.Second,
 					},
 					// Struct-literal config bypasses cleanenv's env-default tags, so the
@@ -180,6 +181,13 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 		results[i] = make(chan nodeResult, 1)
 		go func(idx int) {
 			s := &setups[idx]
+			// Keep the selected cluster port reserved until this goroutine is
+			// ready to bind it. Closing it during setup leaves a large enough
+			// window for another listener to claim the port on busy CI runners.
+			if err := s.realLn.Close(); err != nil {
+				results[idx] <- nodeResult{err: fmt.Errorf("failed to release reserved cluster port for node %s: %w", s.nodeID, err)}
+				return
+			}
 			nodeCtx, nodeCancel := context.WithCancel(context.Background())
 
 			zenNode, err := cluster.StartZenNode(nodeCtx, s.conf)
@@ -190,7 +198,7 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 			}
 
 			// Start REST server
-			restSrv := rest.NewServer(zenNode, s.conf)
+			restSrv := rest.NewServer(zenNode, s.conf, buildinfo.Info{})
 			restLn := restSrv.Start()
 
 			// Create REST client
@@ -237,14 +245,25 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 		}(i)
 	}
 
-	// Collect results
+	// Collect every result before failing so the original startup error is not
+	// hidden by the bootstrap timeouts it causes on the other nodes.
+	var startupErr error
 	for i := 0; i < nodeCount; i++ {
 		r := <-results[i]
 		if r.err != nil {
-			tc.teardownPartial(t)
-			t.Fatalf("%s", r.err)
+			startupErr = errors.Join(startupErr, r.err)
+			continue
 		}
 		tc.Nodes = append(tc.Nodes, r.node)
+	}
+	if startupErr != nil {
+		tc.teardownPartial(t)
+		for i := range setups {
+			if tc.NodeByID(setups[i].nodeID) == nil {
+				_ = setups[i].proxy.Close()
+			}
+		}
+		t.Fatalf("failed to start test cluster: %s", startupErr)
 	}
 
 	return tc
@@ -289,10 +308,10 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 			Addr:   realAddr,
 			Adv:    proxy.Addr(),
 			Raft: config.ClusterRaft{
-				Dir:                   tempDir,
-				JoinAttempts:          10,
-				JoinInterval:          1 * time.Second,
-				BootstrapExpect:       0, // join existing cluster, don't bootstrap
+				Dir:                    tempDir,
+				JoinAttempts:           10,
+				JoinInterval:           1 * time.Second,
+				BootstrapExpect:        0, // join existing cluster, don't bootstrap
 				BootstrapExpectTimeout: 30 * time.Second,
 			},
 			// See NewTestCluster: struct-literal config skips env-defaults, so set
@@ -313,7 +332,7 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 		t.Fatalf("failed to start new node %s: %s", nodeID, err)
 	}
 
-	restSrv := rest.NewServer(zenNode, conf)
+	restSrv := rest.NewServer(zenNode, conf, buildinfo.Info{})
 	restLn := restSrv.Start()
 
 	restClient, err := zenclient.NewClientWithResponses(
@@ -462,7 +481,7 @@ func (tc *TestCluster) RestartNode(t *testing.T, nodeID string) {
 		t.Fatalf("failed to restart node %s: %s", nodeID, err)
 	}
 
-	restSrv := rest.NewServer(zenNode, n.Config)
+	restSrv := rest.NewServer(zenNode, n.Config, buildinfo.Info{})
 	restLn := restSrv.Start()
 
 	restClient, err := zenclient.NewClientWithResponses(

@@ -74,10 +74,13 @@ func (rq *DB) SchemaVersion(ctx context.Context) (string, error) {
 	return latest, nil
 }
 
-// DataStats returns coarse row counts used by the restore empty-cluster check.
+// DataStats returns definition and instance row counts used by the restore
+// empty-cluster check. Definitions include both BPMN and DMN resources.
 func (rq *DB) DataStats(ctx context.Context) (definitions int64, instances int64, err error) {
 	row := rq.QueryRowContext(ctx,
-		"SELECT (SELECT COUNT(*) FROM process_definition), (SELECT COUNT(*) FROM process_instance)")
+		`SELECT (SELECT COUNT(*) FROM process_definition) +
+		        (SELECT COUNT(*) FROM dmn_resource_definition),
+		        (SELECT COUNT(*) FROM process_instance)`)
 	err = row.Scan(&definitions, &instances)
 	return definitions, instances, err
 }

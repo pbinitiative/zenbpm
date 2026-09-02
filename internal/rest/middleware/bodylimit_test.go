@@ -22,6 +22,20 @@ func TestRequestBodyLimitAllowsBodyWithinLimit(t *testing.T) {
 
 	require.NoError(t, reader.err)
 	assert.Equal(t, body, string(reader.read))
+
+	reader = &bodyReadRecorder{}
+	handler = RequestBodyLimitExcept(1, "/system/v1/cluster/restore")(reader)
+	req = httptest.NewRequest(http.MethodPost, "/system/v1/cluster/restore", strings.NewReader(body))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	require.NoError(t, reader.err)
+	assert.Equal(t, body, string(reader.read), "the exact restore endpoint must use its streaming limit")
+
+	reader = &bodyReadRecorder{}
+	handler = RequestBodyLimitExcept(1, "/system/v1/cluster/restore")(reader)
+	req = httptest.NewRequest(http.MethodPost, "/system/v1/cluster/restore/other", strings.NewReader(body))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	var maxBytesErr *http.MaxBytesError
+	require.ErrorAs(t, reader.err, &maxBytesErr, "nearby system paths must keep the normal request limit")
 }
 
 func TestRequestBodyLimitStopsReadingOversizedChunkedBody(t *testing.T) {

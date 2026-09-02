@@ -62,17 +62,18 @@ type ClusterStatus struct {
 	ClusterConfig struct {
 		DesiredPartitions int64 `json:"desiredPartitions"`
 	} `json:"clusterConfig"`
+	// /system/status renders enum fields as their String() names.
 	Nodes map[string]struct {
 		Addr       string `json:"addr"`
 		ID         string `json:"id"`
 		Partitions map[string]struct {
-			ID    int64 `json:"id"`
-			Role  int64 `json:"role"`
-			State int64 `json:"state"`
+			ID    int64  `json:"id"`
+			Role  string `json:"role"`
+			State string `json:"state"`
 		} `json:"partitions"`
-		Role     int64 `json:"role"`
-		State    int64 `json:"state"`
-		Suffrage int64 `json:"suffrage"`
+		Role     string `json:"role"`
+		State    string `json:"state"`
+		Suffrage string `json:"suffrage"`
 	} `json:"nodes"`
 	Partitions map[string]struct {
 		ID       int64  `json:"id"`
@@ -162,12 +163,17 @@ func TestMain(m *testing.M) {
 		}
 		s := ClusterStatus{}
 		resp, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
-		_ = err
-		_ = json.Unmarshal(resp, &s)
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(resp, &s); err != nil {
+			fmt.Printf("Failed to parse cluster status: %v\n", err)
+			os.Exit(1)
+		}
 		nodePartition := s.Nodes["test-node-1"].Partitions["1"]
 		if len(s.Partitions) > 0 && len(s.Nodes) > 0 &&
-			nodePartition.Role == int64(state.RoleLeader) &&
-			nodePartition.State == int64(state.NodePartitionStateInitialized) {
+			nodePartition.Role == state.RoleLeader.String() &&
+			nodePartition.State == state.NodePartitionStateInitialized.String() {
 			break
 		}
 	}
@@ -176,6 +182,7 @@ func TestMain(m *testing.M) {
 		testMainWithCleanup{
 			testMain: m,
 			cleanup: func() {
+				httpClient.CloseIdleConnections()
 				svr.Stop(appContext)
 				grpcSrv.Stop()
 				if err := zenNode.Stop(); err != nil {

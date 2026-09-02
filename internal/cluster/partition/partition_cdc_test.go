@@ -134,6 +134,9 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 	ctx := context.Background()
 	mux, muxListener, err := network.NewNodeMux("")
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, muxListener.Close())
+	})
 
 	rqLiteConfig := GetRqLiteDefaultConfig(
 		"test-rq-lite",
@@ -149,6 +152,9 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 	}
 
 	server := servertest.NewTestServer()
+	t.Cleanup(func() {
+		require.NoError(t, server.Close())
+	})
 	server.FindActiveMessageHandler = func(_ *zenproto.FindActiveMessageRequest) (*zenproto.FindActiveMessageResponse, error) {
 		err := errors.New("message subscription was not found")
 		return &zenproto.FindActiveMessageResponse{
@@ -168,6 +174,9 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 		leader: true,
 	}
 	clientManager := client.NewClientManager(tStore)
+	t.Cleanup(func() {
+		require.NoError(t, clientManager.Close())
+	})
 
 	partition, err := startZenPartitionNodeWithCDCConfig(
 		ctx,

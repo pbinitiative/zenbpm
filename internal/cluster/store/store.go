@@ -204,8 +204,8 @@ func (s *Store) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) e
 		return fmt.Errorf("failed to marshal ClusterMaintenanceChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if f.Error() != nil && f.Response() != nil {
-		return fmt.Errorf("failed to apply ClusterMaintenanceChange message to raft log: %w", f.Error())
+	if err := f.Error(); err != nil {
+		return fmt.Errorf("failed to apply ClusterMaintenanceChange message to raft log: %w", err)
 	}
 	return nil
 }

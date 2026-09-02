@@ -356,16 +356,8 @@ func DeployDMNDefinitionOnNode(t *testing.T, n *TestNode, filename string) {
 	fileContent, err := os.ReadFile(loc)
 	require.NoError(t, err, "failed to read DMN file: %s", loc)
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	require.NoError(t, err)
-	_, err = part.Write(fileContent)
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
-
 	resp, err := n.RestClient.CreateDmnResourceDefinitionWithBodyWithResponse(
-		context.Background(), writer.FormDataContentType(), &requestBody,
+		context.Background(), "application/xml", bytes.NewReader(fileContent),
 	)
 	require.NoError(t, err)
 	require.Less(t, resp.StatusCode(), 400, "DMN deploy failed: %s", string(resp.Body))

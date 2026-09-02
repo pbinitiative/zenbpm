@@ -43,7 +43,7 @@ func (app *Application) NewRequest(t testing.TB) *request {
 		addr:        app.httpAddr,
 		requestBody: nil,
 		headers:     map[string][]string{},
-		transport:   &http.Transport{},
+		transport:   http.DefaultTransport,
 	}
 }
 

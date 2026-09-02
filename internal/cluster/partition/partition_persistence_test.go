@@ -84,6 +84,41 @@ func TestFlowNodeCounts(t *testing.T) {
 	require.Equal(t, int64(1), refreshed.ProcessInstance().FlowNodeCount)
 	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
 
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count, "a reset queued after an increment must run last")
+
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued after a reset must run last")
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+
+	newProcessInstanceKey := db.GenerateId()
+	newInstance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            newProcessInstanceKey,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), newProcessInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), &newInstance))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), newProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued before process-instance creation must be retained")
+
 	require.NoError(t, db.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
 	var wg sync.WaitGroup
 	errs := make(chan error, concurrentIncrements)

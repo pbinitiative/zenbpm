@@ -98,9 +98,10 @@ var _ storage.Storage = &Storage{}
 
 func (mem *Storage) NewBatch() storage.Batch {
 	return &StorageBatch{
-		db:               mem,
-		stmtToRun:        make([]func() error, 0, 10),
-		postFlushActions: make([]func(), 0, 5),
+		db:                      mem,
+		stmtToRun:               make([]func() error, 0, 10),
+		postFlushActions:        make([]func(), 0, 5),
+		flowNodeCountOperations: make([]func() error, 0, 5),
 	}
 }
 
@@ -1166,10 +1167,11 @@ func (mem *Storage) FindProcessInstanceErrorSubscriptions(_ context.Context, pro
 }
 
 type StorageBatch struct {
-	db               *Storage
-	stmtToRun        []func() error
-	postFlushActions []func()
-	preFlushActions  []func() error
+	db                      *Storage
+	stmtToRun               []func() error
+	postFlushActions        []func()
+	preFlushActions         []func() error
+	flowNodeCountOperations []func() error
 }
 
 var _ storage.Batch = &StorageBatch{}
@@ -1191,6 +1193,11 @@ func (b *StorageBatch) Flush(_ context.Context) error {
 			joinErr = errors.Join(joinErr, err)
 		}
 	}
+	for _, operation := range b.flowNodeCountOperations {
+		if err := operation(); err != nil {
+			joinErr = errors.Join(joinErr, err)
+		}
+	}
 	if joinErr != nil {
 		b.db = dbCopy
 		return joinErr
@@ -1199,6 +1206,7 @@ func (b *StorageBatch) Flush(_ context.Context) error {
 		action()
 	}
 	b.stmtToRun = make([]func() error, 0)
+	b.flowNodeCountOperations = make([]func() error, 0)
 	return nil
 }
 
@@ -1292,14 +1300,14 @@ func (b *StorageBatch) CompleteFlowElementInstance(ctx context.Context, key int6
 }
 
 func (b *StorageBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
+	b.flowNodeCountOperations = append(b.flowNodeCountOperations, func() error {
 		return b.db.IncrementFlowNodeCount(ctx, processInstanceKey)
 	})
 	return nil
 }
 
 func (b *StorageBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
+	b.flowNodeCountOperations = append(b.flowNodeCountOperations, func() error {
 		return b.db.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey)
 	})
 	return nil

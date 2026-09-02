@@ -27,6 +27,41 @@ func TestInMemoryStorage(t *testing.T) {
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
 }
 
+func TestBatchFlowNodeCountOperationsPreserveOrderAndPendingIncrement(t *testing.T) {
+	store := inmemory.NewStorage()
+	processInstanceKey := store.GenerateId()
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: processInstanceKey},
+	}))
+
+	batch := store.NewBatch()
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err := store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count, "a reset queued after an increment must run last")
+
+	batch = store.NewBatch()
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued after a reset must run last")
+
+	newProcessInstanceKey := store.GenerateId()
+	batch = store.NewBatch()
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), newProcessInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: newProcessInstanceKey},
+	}))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = store.GetFlowNodeCount(t.Context(), newProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued before process-instance creation must be retained")
+}
+
 func TestFlowNodeCountsAreConcurrentAndResetIsProcessScoped(t *testing.T) {
 	const concurrentIncrements = 100
 	store := inmemory.NewStorage()

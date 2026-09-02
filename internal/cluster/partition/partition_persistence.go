@@ -543,7 +543,7 @@ func (rq *DB) NewBatch() storage.Batch {
 		postFlushActions:        make([]func(), 0, 5),
 		preFlushActions:         make([]func() error, 0, 5),
 		logger:                  rq.logger,
-		flowNodeCountIncrements: make(map[int64]int64),
+		flowNodeCountOperations: make([]flowNodeCountOperation, 0, 5),
 	}
 	queries := sql.New(batch)
 	batch.queries = queries
@@ -2924,6 +2924,11 @@ func SaveErrorSubscriptionWith(ctx context.Context, db *sql.Queries, errorSubscr
 	return nil
 }
 
+type flowNodeCountOperation struct {
+	processInstanceKey int64
+	reset              bool
+}
+
 type DBBatch struct {
 	db                      *DB
 	stmtToRun               []*proto.Statement
@@ -2931,7 +2936,7 @@ type DBBatch struct {
 	postFlushActions        []func()
 	preFlushActions         []func() error
 	logger                  hclog.Logger
-	flowNodeCountIncrements map[int64]int64
+	flowNodeCountOperations []flowNodeCountOperation
 }
 
 func (b *DBBatch) getQueries() *sql.Queries {
@@ -2978,14 +2983,18 @@ func (b *DBBatch) AddPreFlushAction(_ context.Context, f func() error) {
 }
 
 func (b *DBBatch) Flush(ctx context.Context) error {
-	for processInstanceKey, increment := range b.flowNodeCountIncrements {
-		for range increment {
-			if err := IncrementFlowNodeCountWith(ctx, b.queries, processInstanceKey); err != nil {
-				return fmt.Errorf("failed to queue flow node count increment for process instance %d: %w", processInstanceKey, err)
+	for _, operation := range b.flowNodeCountOperations {
+		if operation.reset {
+			if err := ResetProcessInstanceFlowNodeCountWith(ctx, b.queries, operation.processInstanceKey); err != nil {
+				return fmt.Errorf("failed to queue flow node count reset for process instance %d: %w", operation.processInstanceKey, err)
 			}
+			continue
 		}
-		delete(b.flowNodeCountIncrements, processInstanceKey)
+		if err := IncrementFlowNodeCountWith(ctx, b.queries, operation.processInstanceKey); err != nil {
+			return fmt.Errorf("failed to queue flow node count increment for process instance %d: %w", operation.processInstanceKey, err)
+		}
 	}
+	b.flowNodeCountOperations = b.flowNodeCountOperations[:0]
 	for _, action := range b.preFlushActions {
 		err := action()
 		if err != nil {
@@ -3030,9 +3039,7 @@ func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnrunt
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	increment := b.flowNodeCountIncrements[processInstance.ProcessInstance().Key]
-	delete(b.flowNodeCountIncrements, processInstance.ProcessInstance().Key)
-	return saveProcessInstanceWithFlowNodeIncrement(ctx, b, processInstance, increment)
+	return SaveProcessInstanceWith(ctx, b, processInstance)
 }
 
 var _ storage.TimerStorageWriter = &DBBatch{}
@@ -3112,12 +3119,16 @@ func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, co
 var _ storage.FlowNodeCounterWriter = &DBBatch{}
 
 func (b *DBBatch) IncrementFlowNodeCount(_ context.Context, processInstanceKey int64) error {
-	b.flowNodeCountIncrements[processInstanceKey]++
+	b.flowNodeCountOperations = append(b.flowNodeCountOperations, flowNodeCountOperation{processInstanceKey: processInstanceKey})
 	return nil
 }
 
-func (b *DBBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	return ResetProcessInstanceFlowNodeCountWith(ctx, b.queries, processInstanceKey)
+func (b *DBBatch) ResetProcessInstanceFlowNodeCount(_ context.Context, processInstanceKey int64) error {
+	b.flowNodeCountOperations = append(b.flowNodeCountOperations, flowNodeCountOperation{
+		processInstanceKey: processInstanceKey,
+		reset:              true,
+	})
+	return nil
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

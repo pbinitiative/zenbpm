@@ -3,7 +3,10 @@ package bpmn
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -17,6 +20,74 @@ const (
 	varEngineValidationAttempts = "engineValidationAttempts"
 	varHasReachedMaxAttempts    = "hasReachedMaxAttempts"
 )
+
+func TestJobCompleteReturnsErrorSubscriptionTechnicalFailureRepresentedByIncident(t *testing.T) {
+	injectedErr := errors.New("injected error subscription save failure")
+	store := &failingContinuationStorage{Storage: inmemory.NewStorage(), err: injectedErr}
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/technical-failure-error-subscription.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "first-task", jobs[0].ElementId)
+
+	store.failSaveErrorSubscription.Store(true)
+	err = engine.JobCompleteByKey(t.Context(), jobs[0].Key, nil)
+	require.ErrorIs(t, err, injectedErr)
+	assert.ErrorContains(t, err, "failed to continue process instance")
+
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	assert.Contains(t, incidents[0].Message, injectedErr.Error())
+}
+
+func TestJobCompleteReturnsParentRefreshTechnicalFailureRepresentedByIncident(t *testing.T) {
+	injectedErr := errors.New("injected parent refresh failure")
+	store := &failingContinuationStorage{Storage: inmemory.NewStorage(), err: injectedErr}
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+
+	_, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	require.NoError(t, err)
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/call-activity/call-activity-simple.bpmn")
+	require.NoError(t, err)
+	parent, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+
+	var childKey int64
+	require.Eventually(t, func() bool {
+		key, found := store.firstCallActivityChildKey()
+		childKey = key
+		return found
+	}, time.Second, 10*time.Millisecond)
+	var job runtime.Job
+	require.Eventually(t, func() bool {
+		jobs, findErr := store.FindPendingProcessInstanceJobs(t.Context(), childKey)
+		if findErr != nil || len(jobs) != 1 {
+			return false
+		}
+		job = jobs[0]
+		return true
+	}, time.Second, 10*time.Millisecond)
+
+	store.failRefreshProcessInstanceKey.Store(parent.ProcessInstance().Key)
+	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
+	require.ErrorIs(t, err, injectedErr)
+	assert.ErrorContains(t, err, "failed to continue process instance")
+
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), childKey)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	assert.Contains(t, incidents[0].Message, injectedErr.Error())
+}
 
 func TestJobCompleteTreatsPersistedFlowNodeCountIncidentAsDomainOutcome(t *testing.T) {
 	store := inmemory.NewStorage()
@@ -856,15 +927,43 @@ type failingContinuationStorage struct {
 	failIncidentFlush             bool
 	failFlowNodeCountIncrement    bool
 	failSaveFlowElement           bool
+	failSaveErrorSubscription     atomic.Bool
+	failRefreshProcessInstanceKey atomic.Int64
 	saveFlowElementsBeforeFailure int
 	err                           error
+	mu                            sync.Mutex
+	callActivityChildKeys         []int64
 }
 
 func (s *failingContinuationStorage) SaveProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
+	if _, ok := instance.(*runtime.CallActivityInstance); ok {
+		s.mu.Lock()
+		s.callActivityChildKeys = append(s.callActivityChildKeys, instance.ProcessInstance().Key)
+		s.mu.Unlock()
+	}
 	if s.failSave {
 		return s.err
 	}
 	return s.Storage.SaveProcessInstance(ctx, instance)
+}
+
+// firstCallActivityChildKey returns the key of the first call-activity child instance saved to the
+// storage. It exists so tests can discover the child key without touching live engine-owned
+// process instance objects, which would race with engine goroutines mutating them.
+func (s *failingContinuationStorage) firstCallActivityChildKey() (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.callActivityChildKeys) == 0 {
+		return 0, false
+	}
+	return s.callActivityChildKeys[0], true
+}
+
+func (s *failingContinuationStorage) RefreshProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
+	if instance.ProcessInstance().Key == s.failRefreshProcessInstanceKey.Load() {
+		return s.err
+	}
+	return s.Storage.RefreshProcessInstance(ctx, instance)
 }
 
 func (s *failingContinuationStorage) NewBatch() storage.Batch {
@@ -887,6 +986,13 @@ func (b *failingContinuationBatch) IncrementFlowNodeCount(ctx context.Context, p
 		return b.store.err
 	}
 	return b.Batch.IncrementFlowNodeCount(ctx, processInstanceKey)
+}
+
+func (b *failingContinuationBatch) SaveErrorSubscription(ctx context.Context, subscription runtime.ErrorSubscription) error {
+	if b.store.failSaveErrorSubscription.Load() {
+		return b.store.err
+	}
+	return b.Batch.SaveErrorSubscription(ctx, subscription)
 }
 
 func (b *failingContinuationBatch) SaveFlowElementInstance(ctx context.Context, instance runtime.FlowElementInstance) error {

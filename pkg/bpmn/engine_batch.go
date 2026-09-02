@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -60,30 +61,25 @@ func (engine *Engine) NewEngineBatchClean() (EngineBatch, error) {
 }
 
 func (b *EngineBatch) hasLockedInstance(instanceKey int64) bool {
-	for _, touchedKey := range b.touchedInstances {
-		if touchedKey == instanceKey {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(b.touchedInstances, instanceKey)
 }
 
 // AddParentLockedInstance only refreshes the input instances. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstance bpmnruntime.ProcessInstance) error {
 	if b.hasLockedInstance(parentInstance.ProcessInstance().Key) {
-		return b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
+		return markTechnicalFailure(b.engine.persistence.RefreshProcessInstance(ctx, parentInstance))
 	}
 
 	//This does the same thing as AddLockedInstance because I havent found better way yet
 	//TODO: do this better
 	err := b.engine.runningInstances.tryLockInstance(ctx, parentInstance.ProcessInstance().Key)
 	if err != nil {
-		return fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err))
 	}
 	err = b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(parentInstance.ProcessInstance().Key)
-		return fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err))
 	}
 	b.touchedInstances = append(b.touchedInstances, parentInstance.ProcessInstance().Key)
 	return nil
@@ -92,14 +88,14 @@ func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstanc
 // AddLockedInstance only refreshes the input instance. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddLockedInstance(ctx context.Context, instance bpmnruntime.ProcessInstance) error {
 	if b.hasLockedInstance(instance.ProcessInstance().Key) {
-		return b.engine.persistence.RefreshProcessInstance(ctx, instance)
+		return markTechnicalFailure(b.engine.persistence.RefreshProcessInstance(ctx, instance))
 	}
 
 	b.engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
 	err := b.engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
-		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err))
 	}
 	b.touchedInstances = append(b.touchedInstances, instance.ProcessInstance().Key)
 	return nil
@@ -402,5 +398,5 @@ func (engine *Engine) recordTimerMetric(ctx context.Context, timer bpmnruntime.T
 }
 
 func (b *EngineBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
-	return b.b.SaveErrorSubscription(ctx, subscription)
+	return markTechnicalFailure(b.b.SaveErrorSubscription(ctx, subscription))
 }

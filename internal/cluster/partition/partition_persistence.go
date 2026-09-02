@@ -3039,7 +3039,42 @@ func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnrunt
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return SaveProcessInstanceWith(ctx, b, processInstance)
+	flowNodeCountIncrement, remaining := b.peekFlowNodeCountIncrement(processInstance.ProcessInstance().Key)
+	if err := saveProcessInstanceWithFlowNodeIncrement(ctx, b, processInstance, flowNodeCountIncrement); err != nil {
+		// Leave the operation queue untouched so the folded increments are not lost:
+		// Flush will still materialize them as standalone counter statements.
+		return err
+	}
+	b.flowNodeCountOperations = remaining
+	return nil
+}
+
+// peekFlowNodeCountIncrement folds increments queued before the first reset for this instance
+// into an increment for its upsert and returns the operations that must remain queued. A reset
+// and every operation after it remain queued so reset/increment order is preserved when Flush
+// materializes the remaining counter statements. Increments queued after the upsert is folded
+// are deliberately left for Flush: counter statements only touch the counter column, so their
+// position relative to the upsert statement is irrelevant. The queue itself is not mutated;
+// callers commit the returned remaining slice only after the upsert has been queued successfully.
+func (b *DBBatch) peekFlowNodeCountIncrement(processInstanceKey int64) (int64, []flowNodeCountOperation) {
+	var increment int64
+	seenReset := false
+	remaining := make([]flowNodeCountOperation, 0, len(b.flowNodeCountOperations))
+	for _, operation := range b.flowNodeCountOperations {
+		if operation.processInstanceKey != processInstanceKey {
+			remaining = append(remaining, operation)
+			continue
+		}
+		if operation.reset {
+			seenReset = true
+		}
+		if seenReset {
+			remaining = append(remaining, operation)
+			continue
+		}
+		increment++
+	}
+	return increment, remaining
 }
 
 var _ storage.TimerStorageWriter = &DBBatch{}

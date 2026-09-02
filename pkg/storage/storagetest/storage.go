@@ -35,6 +35,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
+		st.TestFlowNodeCounter,
 		st.TestTimerStorageWriter,
 		st.TestTimerStorageReader,
 		st.TestJobStorageWriter,
@@ -258,6 +259,26 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, _ *
 		assert.NoError(t, err)
 		assert.False(t, containsProcessInstanceKey(activeByDef, inst.ProcessInstance().Key),
 			"terminated instance must not be returned by FindActiveProcessInstancesByDefinitionKeyAndStartElementId")
+	}
+}
+
+func (st *StorageTester) TestFlowNodeCounter(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		missingKey := s.GenerateId()
+		require.NoError(t, s.IncrementFlowNodeCount(t.Context(), missingKey))
+		count, err := s.GetFlowNodeCount(t.Context(), missingKey)
+		require.NoError(t, err)
+		assert.Zero(t, count, "incrementing a missing process instance must be a no-op")
+
+		instanceKey := st.processInstance.ProcessInstance().Key
+		require.NoError(t, s.IncrementFlowNodeCount(t.Context(), instanceKey))
+		count, err = s.GetFlowNodeCount(t.Context(), instanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+		require.NoError(t, s.ResetProcessInstanceFlowNodeCount(t.Context(), instanceKey))
+		count, err = s.GetFlowNodeCount(t.Context(), instanceKey)
+		require.NoError(t, err)
+		assert.Zero(t, count)
 	}
 }
 

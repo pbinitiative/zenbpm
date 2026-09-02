@@ -276,16 +276,16 @@ func (b *EngineBatch) AddPostFlushAction(ctx context.Context, f func()) {
 }
 
 func (b *EngineBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
-	return b.b.SaveProcessDefinition(ctx, definition)
+	return markTechnicalFailure(b.b.SaveProcessDefinition(ctx, definition))
 }
 
 func (b *EngineBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return b.b.SaveProcessInstance(ctx, processInstance)
+	return markTechnicalFailure(b.b.SaveProcessInstance(ctx, processInstance))
 }
 
 func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	if err := b.b.SaveTimer(ctx, timer); err != nil {
-		return err
+		return markTechnicalFailure(err)
 	}
 	b.postFlushActions = append(b.postFlushActions, func() {
 		b.engine.recordTimerMetric(ctx, timer)
@@ -294,23 +294,23 @@ func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) er
 }
 
 func (b *EngineBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
-	return b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+	return markTechnicalFailure(b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys))
 }
 
 func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
-	return b.b.SaveJob(ctx, job)
+	return markTechnicalFailure(b.b.SaveJob(ctx, job))
 }
 
 func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
-	return b.b.SaveMessageSubscription(ctx, subscription)
+	return markTechnicalFailure(b.b.SaveMessageSubscription(ctx, subscription))
 }
 
 func (b *EngineBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
-	return b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
+	return markTechnicalFailure(b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys))
 }
 
 func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
-	return b.b.SaveToken(ctx, token)
+	return markTechnicalFailure(b.b.SaveToken(ctx, token))
 }
 
 func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.ExecutionToken) error {
@@ -324,28 +324,28 @@ func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.Execu
 }
 
 func (b *EngineBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
-	return b.b.SaveFlowElementInstance(ctx, historyItem)
+	return markTechnicalFailure(b.b.SaveFlowElementInstance(ctx, historyItem))
 }
 
 func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
-	return b.b.UpdateOutputFlowElementInstance(ctx, historyItem)
+	return markTechnicalFailure(b.b.UpdateOutputFlowElementInstance(ctx, historyItem))
 }
 
 func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
-	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
+	return markTechnicalFailure(b.b.CompleteFlowElementInstance(ctx, key, completedAt))
 }
 
 func (b *EngineBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	return b.b.IncrementFlowNodeCount(ctx, processInstanceKey)
+	return markTechnicalFailure(b.b.IncrementFlowNodeCount(ctx, processInstanceKey))
 }
 
 func (b *EngineBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	return b.b.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey)
+	return markTechnicalFailure(b.b.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey))
 }
 
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	if err := b.b.SaveIncident(ctx, incident); err != nil {
-		return err
+		return markTechnicalFailure(err)
 	}
 	b.postFlushActions = append(b.postFlushActions, func() {
 		b.engine.recordIncidentMetric(ctx, incident)

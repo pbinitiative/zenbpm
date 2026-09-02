@@ -491,9 +491,8 @@ func (engine *Engine) validateProcessInstanceNestingDepthValue(nestingDepth int6
 var ErrMaxProcessInstanceFlowNodeCountExceeded = errors.New("maximum process instance total flow node count exceeded")
 
 // flowNodeRunCount caches the process instance's total flow node execution counter for the
-// duration of one RunProcessInstance call: the persisted value is read once, and all later
-// increments are tracked in memory. This keeps counting exact within a run (batch increments are
-// not visible to storage reads until flushed) and avoids one storage read per processed token.
+// duration of one RunProcessInstance call. It starts from the refreshed process-instance snapshot,
+// and all later increments are tracked in memory because batch increments are not visible until flush.
 type flowNodeRunCount struct {
 	cached bool
 	count  int64
@@ -517,12 +516,7 @@ func (engine *Engine) validateAndIncrementFlowNodeCount(
 		return nil
 	}
 	if !runCount.cached {
-		persisted, err := engine.persistence.GetFlowNodeCount(ctx, instance.ProcessInstance().Key)
-		if err != nil {
-			return fmt.Errorf("failed to read flow node count of process instance %d: %w",
-				instance.ProcessInstance().Key, err)
-		}
-		runCount.count = persisted
+		runCount.count = instance.ProcessInstance().FlowNodeCount
 		runCount.cached = true
 	}
 	runCount.count++

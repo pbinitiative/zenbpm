@@ -265,12 +265,8 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 	}()
 
-	// A Failed instance must not be resurrected by an external job completion: resuming it would
-	// flip it back to Active behind the back of the incident that failed it (and, for element
-	// flow-node-count incidents, immediately re-trip the guard). The instance state was refreshed
-	// by NewEngineBatch above; terminal states are already rejected there.
-	if state := instance.ProcessInstance().State; state != runtime.ActivityStateActive && state != runtime.ActivityStateReady {
-		return newEngineErrorf("cannot complete job %d: process instance %d is in state %s, resolve the instance's incidents first", jobKey, instance.ProcessInstance().Key, state)
+	if err := validateExternalTriggerInstanceState(instance, fmt.Sprintf("complete job %d", jobKey)); err != nil {
+		return err
 	}
 
 	//refresh token

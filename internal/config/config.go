@@ -63,7 +63,7 @@ type Engine struct {
 	// Values <= 0 disable the check.
 	// This constraint is intentionally separate from (and is much larger than) MaxProcessInstanceNestingDepth:
 	// legitimate loops may run thousands of iterations while legitimate nesting rarely exceeds double digits.
-	MaxProcessInstanceFlowNodeCount int64 `yaml:"maxProcessInstanceFlowNodeCount" json:"maxProcessInstanceFlowNodeCount" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT" env-default:"10000"`
+	MaxProcessInstanceFlowNodeCount int64 `yaml:"maxProcessInstanceFlowNodeCount" json:"maxProcessInstanceFlowNodeCount" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT" env-default:"10"`
 }
 
 // CDC configures the rqlite change data capture output.

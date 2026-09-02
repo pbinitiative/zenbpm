@@ -227,9 +227,14 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	}
 
 	executionTokens[0] = incident.Token
-	err = engine.RunProcessInstance(ctx, instance, executionTokens)
-	if err != nil {
-		return err
+	outcome := &runProcessInstanceOutcome{}
+	if runErr := engine.runProcessInstance(ctx, instance, executionTokens, outcome); runErr != nil {
+		if !outcome.isPersistedFlowNodeCountReplacement(incident.Type) {
+			return fmt.Errorf("failed to continue process instance %d after resolving incident %d: %w",
+				instance.ProcessInstance().Key, incident.Key, runErr)
+		}
+		engine.logger.Warn("process instance raised a replacement incident after incident resolution",
+			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
 }

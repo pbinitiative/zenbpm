@@ -69,12 +69,6 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
 	}
 
-	currentToken := timer.Token
-	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
-	if tokenNode == nil || tokenNode.GetId() == "" {
-		return nil, nil, newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId)
-	}
-
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err)
@@ -91,6 +85,14 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 			batch.Clear(ctx)
 		}
 	}()
+	if err := validateExternalTriggerInstanceState(instance, fmt.Sprintf("trigger timer %d", timer.Key)); err != nil {
+		return nil, nil, err
+	}
+	currentToken := timer.Token
+	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
+	if tokenNode == nil || tokenNode.GetId() == "" {
+		return nil, nil, newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId)
+	}
 	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)

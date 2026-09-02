@@ -127,6 +127,7 @@ func TestNonPositiveMaxProcessInstanceFlowNodeCountDisablesLoopGuard(t *testing.
 func TestProcessInstanceFlowNodeCountSurvivesEngineRecreation(t *testing.T) {
 	store := inmemory.NewStorage()
 	instance := &runtime.DefaultProcessInstance{ProcessInstanceData: runtime.ProcessInstanceData{Key: store.GenerateId()}}
+	require.NoError(t, store.SaveProcessInstance(t.Context(), instance))
 	token := runtime.ExecutionToken{
 		Key:                store.GenerateId(),
 		ElementInstanceKey: store.GenerateId(),
@@ -146,6 +147,7 @@ func TestProcessInstanceFlowNodeCountSurvivesEngineRecreation(t *testing.T) {
 
 	secondEngine := NewEngine(EngineWithStorage(store), EngineWithMaxProcessInstanceFlowNodeCount(1))
 	t.Cleanup(secondEngine.contextCancel)
+	require.NoError(t, store.RefreshProcessInstance(t.Context(), instance))
 	secondBatch, err := secondEngine.NewEngineBatchClean()
 	require.NoError(t, err)
 	err = secondEngine.validateAndIncrementFlowNodeCount(
@@ -197,6 +199,40 @@ func TestResolvingProcessInstanceFlowNodeCountIncidentResetsCounterAndAllowsComp
 	countAfterResolution := flowNodeCountForInstance(store, instance.ProcessInstance().Key)
 	assert.Positive(t, countAfterResolution)
 	assert.LessOrEqual(t, countAfterResolution, maxFlowNodeCount)
+}
+
+func TestResolvingFlowNodeCountIncidentReturnsSuccessWhenLoopCreatesReplacementIncident(t *testing.T) {
+	const maxFlowNodeCount = int64(6)
+	engine, store := startEngineWithMaxProcessInstanceFlowNodeCount(t, maxFlowNodeCount)
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/simple-flow-loop.bpmn")
+	require.NoError(t, err)
+	handler := engine.NewTaskHandler().Type("loopJobType").Handler(func(job ActivatedJob) {
+		job.SetOutputVariable("done", false)
+		job.Complete()
+	})
+	defer engine.RemoveHandler(handler)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]any{"done": false})
+	require.ErrorIs(t, err, ErrMaxProcessInstanceFlowNodeCountExceeded)
+	require.NotNil(t, instance)
+	original := waitForFlowNodeCountIncident(t, engine, store, 10*time.Second)
+
+	require.NoError(t, engine.ResolveIncident(t.Context(), original.Key))
+	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 2)
+	var resolved, unresolved int
+	for _, incident := range incidents {
+		if incident.ResolvedAt == nil {
+			unresolved++
+		} else {
+			resolved++
+		}
+	}
+	assert.Equal(t, 1, resolved)
+	assert.Equal(t, 1, unresolved)
+	assert.Equal(t, maxFlowNodeCount, flowNodeCountForInstance(store, instance.ProcessInstance().Key))
+	waitForProcessInstanceState(t, store, instance.ProcessInstance().Key, runtime.ActivityStateFailed)
 }
 
 // TestParallelTokensCreateOneProcessInstanceFlowNodeCountIncidentAndResumeTogether verifies that a

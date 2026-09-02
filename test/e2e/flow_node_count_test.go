@@ -76,27 +76,43 @@ func driveLoopUntilFlowNodeCountIncident(t testing.TB, processInstanceKey int64,
 	t.Helper()
 
 	var incident public.Incident
+	var unexpectedErr error
 	require.Eventually(t, func() bool {
 		incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
-		if err == nil {
-			for _, candidate := range incidents {
-				if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed process instance flow node count") {
-					incident = candidate
-					return true
-				}
+		if err != nil {
+			unexpectedErr = fmt.Errorf("failed to inspect process instance incidents: %w", err)
+			return true
+		}
+		for _, candidate := range incidents {
+			if candidate.ResolvedAt == nil && strings.Contains(candidate.Message, "maximum allowed process instance flow node count") {
+				incident = candidate
+				return true
 			}
 		}
-		// no incident yet: complete the pending loop job (best effort) to advance the loop
-		if job, err := findActiveJobForElement(t, processInstanceKey, elementID); err == nil && job != nil {
-			// Completion errors are discarded deliberately: once the guard trips between listing
-			// and completing, the engine rejects completions on the failed instance. The next
-			// poll re-reads jobs and incidents. The completion that trips the guard itself
-			// succeeds: the job is durably completed and the incident is the domain outcome.
-			_ = completeJob(t, job.Key, map[string]any{"done": false})
+		job, err := findActiveJobForElement(t, processInstanceKey, elementID)
+		if err != nil {
+			unexpectedErr = fmt.Errorf("failed to find active loop job: %w", err)
+			return true
+		}
+		if job != nil {
+			if err := completeJob(t, job.Key, map[string]any{"done": false}); err != nil {
+				instance, findErr := getProcessInstance(t, processInstanceKey)
+				if findErr != nil {
+					unexpectedErr = fmt.Errorf("job completion failed (%v) and process instance state could not be read: %w", err, findErr)
+					return true
+				}
+				if instance.State != zenclient.ProcessInstanceStateFailed {
+					unexpectedErr = fmt.Errorf("failed to complete loop job while process instance is %s: %w", instance.State, err)
+					return true
+				}
+				// The guard won the race between listing and completion. Its incident is
+				// committed with the Failed state and will be observed on the next poll.
+			}
 		}
 		return false
 	}, 60*time.Second, 100*time.Millisecond,
 		"process instance %d should raise a flow node count incident", processInstanceKey)
+	require.NoError(t, unexpectedErr)
 	return incident
 }
 

@@ -135,6 +135,9 @@ type ProcessInstanceData struct {
 	// parent's depth incremented by one. It is used to detect potential infinite
 	// loops of process instances recursively spawning child instances.
 	NestingDepth int64
+	// FlowNodeCount is the persisted number of successfully executed flow nodes.
+	// It is an internal execution-control state used to enforce the per-instance limit.
+	FlowNodeCount int64
 }
 
 func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {

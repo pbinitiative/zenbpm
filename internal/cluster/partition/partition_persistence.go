@@ -538,11 +538,12 @@ var _ storage.Storage = &DB{}
 
 func (rq *DB) NewBatch() storage.Batch {
 	batch := &DBBatch{
-		db:               rq,
-		stmtToRun:        make([]*proto.Statement, 0, 10),
-		postFlushActions: make([]func(), 0, 5),
-		preFlushActions:  make([]func() error, 0, 5),
-		logger:           rq.logger,
+		db:                      rq,
+		stmtToRun:               make([]*proto.Statement, 0, 10),
+		postFlushActions:        make([]func(), 0, 5),
+		preFlushActions:         make([]func() error, 0, 5),
+		logger:                  rq.logger,
+		flowNodeCountIncrements: make(map[int64]int64),
 	}
 	queries := sql.New(batch)
 	batch.queries = queries
@@ -1085,6 +1086,7 @@ func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnru
 		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
 		multiInstanceInstance.ParentProcessExecutionToken = parentToken
 	}
+	processInstance.ProcessInstance().FlowNodeCount = dbInstance.FlowNodeCount
 	return nil
 }
 
@@ -1139,6 +1141,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 				NestingDepth:   dbInstance.NestingDepth,
+				FlowNodeCount:  dbInstance.FlowNodeCount,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeMultiInstance:
@@ -1161,6 +1164,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 				NestingDepth:   dbInstance.NestingDepth,
+				FlowNodeCount:  dbInstance.FlowNodeCount,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeSubProcess:
@@ -1183,6 +1187,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 				NestingDepth:   dbInstance.NestingDepth,
+				FlowNodeCount:  dbInstance.FlowNodeCount,
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeCallActivity:
@@ -1203,6 +1208,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 				NestingDepth:   dbInstance.NestingDepth,
+				FlowNodeCount:  dbInstance.FlowNodeCount,
 			},
 		}, nil
 	default:
@@ -1270,6 +1276,10 @@ func (rq *DB) SaveProcessInstance(ctx context.Context, processInstance bpmnrunti
 }
 
 func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bpmnruntime.ProcessInstance) error {
+	return saveProcessInstanceWithFlowNodeIncrement(ctx, db, processInstance, 0)
+}
+
+func saveProcessInstanceWithFlowNodeIncrement(ctx context.Context, db Querier, processInstance bpmnruntime.ProcessInstance, flowNodeCountIncrement int64) error {
 	varStr, err := json.Marshal(processInstance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.ProcessInstance().Key, err)
@@ -1349,6 +1359,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		ProcessType:                           int64(processInstance.Type()),
 		StartElementID:                        sql.ToNullString(processInstance.ProcessInstance().StartElementId),
 		NestingDepth:                          processInstance.ProcessInstance().NestingDepth,
+		FlowNodeCountIncrement:                flowNodeCountIncrement,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)
@@ -2914,12 +2925,13 @@ func SaveErrorSubscriptionWith(ctx context.Context, db *sql.Queries, errorSubscr
 }
 
 type DBBatch struct {
-	db               *DB
-	stmtToRun        []*proto.Statement
-	queries          *sql.Queries
-	postFlushActions []func()
-	preFlushActions  []func() error
-	logger           hclog.Logger
+	db                      *DB
+	stmtToRun               []*proto.Statement
+	queries                 *sql.Queries
+	postFlushActions        []func()
+	preFlushActions         []func() error
+	logger                  hclog.Logger
+	flowNodeCountIncrements map[int64]int64
 }
 
 func (b *DBBatch) getQueries() *sql.Queries {
@@ -2966,6 +2978,14 @@ func (b *DBBatch) AddPreFlushAction(_ context.Context, f func() error) {
 }
 
 func (b *DBBatch) Flush(ctx context.Context) error {
+	for processInstanceKey, increment := range b.flowNodeCountIncrements {
+		for range increment {
+			if err := IncrementFlowNodeCountWith(ctx, b.queries, processInstanceKey); err != nil {
+				return fmt.Errorf("failed to queue flow node count increment for process instance %d: %w", processInstanceKey, err)
+			}
+		}
+		delete(b.flowNodeCountIncrements, processInstanceKey)
+	}
 	for _, action := range b.preFlushActions {
 		err := action()
 		if err != nil {
@@ -3010,7 +3030,9 @@ func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnrunt
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return SaveProcessInstanceWith(ctx, b, processInstance)
+	increment := b.flowNodeCountIncrements[processInstance.ProcessInstance().Key]
+	delete(b.flowNodeCountIncrements, processInstance.ProcessInstance().Key)
+	return saveProcessInstanceWithFlowNodeIncrement(ctx, b, processInstance, increment)
 }
 
 var _ storage.TimerStorageWriter = &DBBatch{}
@@ -3089,8 +3111,9 @@ func (b *DBBatch) CompleteFlowElementInstance(ctx context.Context, key int64, co
 
 var _ storage.FlowNodeCounterWriter = &DBBatch{}
 
-func (b *DBBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
-	return IncrementFlowNodeCountWith(ctx, b.queries, processInstanceKey)
+func (b *DBBatch) IncrementFlowNodeCount(_ context.Context, processInstanceKey int64) error {
+	b.flowNodeCountIncrements[processInstanceKey]++
+	return nil
 }
 
 func (b *DBBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {

@@ -391,6 +391,7 @@ func (mem *Storage) RefreshProcessInstance(_ context.Context, processInstance bp
 		multiInstanceInstance.ProcessInstance().VariableHolder = dbInstance.ProcessInstance().VariableHolder
 		multiInstanceInstance.ParentProcessExecutionToken = parentToken
 	}
+	processInstance.ProcessInstance().FlowNodeCount = mem.FlowNodeCounts[processInstance.ProcessInstance().Key]
 	return nil
 }
 
@@ -1097,6 +1098,9 @@ var _ storage.FlowNodeCounterWriter = &Storage{}
 func (mem *Storage) IncrementFlowNodeCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	if _, exists := mem.ProcessInstances[processInstanceKey]; !exists {
+		return nil
+	}
 	mem.FlowNodeCounts[processInstanceKey]++
 	return nil
 }
@@ -1104,9 +1108,8 @@ func (mem *Storage) IncrementFlowNodeCount(_ context.Context, processInstanceKey
 func (mem *Storage) ResetProcessInstanceFlowNodeCount(_ context.Context, processInstanceKey int64) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	// Mirror the SQL backend (UPDATE process_instance SET flow_node_count = 0): an existing
-	// counter is reset to 0, an absent one stays absent.
-	if _, ok := mem.FlowNodeCounts[processInstanceKey]; ok {
+	// Mirror the SQL backend: UPDATE is a no-op when the process-instance row is absent.
+	if _, exists := mem.ProcessInstances[processInstanceKey]; exists {
 		mem.FlowNodeCounts[processInstanceKey] = 0
 	}
 	return nil

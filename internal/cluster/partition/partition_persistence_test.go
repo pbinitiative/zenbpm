@@ -72,6 +72,17 @@ func TestFlowNodeCounts(t *testing.T) {
 	count, err := db.GetFlowNodeCount(t.Context(), processInstanceKey)
 	require.NoError(t, err)
 	require.Zero(t, count)
+	instance, err := db.FindProcessInstanceByKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	batch := db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), instance))
+	require.Len(t, batch.stmtToRun, 1, "counter increment must share the process-instance update")
+	require.NoError(t, batch.Flush(t.Context()))
+	refreshed, err := db.FindProcessInstanceByKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), refreshed.ProcessInstance().FlowNodeCount)
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
 
 	require.NoError(t, db.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
 	var wg sync.WaitGroup

@@ -32,6 +32,12 @@ func TestFlowNodeCountsAreConcurrentAndResetIsProcessScoped(t *testing.T) {
 	store := inmemory.NewStorage()
 	processInstanceKey := store.GenerateId()
 	otherProcessInstanceKey := store.GenerateId()
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: processInstanceKey},
+	}))
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: otherProcessInstanceKey},
+	}))
 
 	require.NoError(t, store.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
 	var wg sync.WaitGroup
@@ -58,6 +64,17 @@ func TestFlowNodeCountsAreConcurrentAndResetIsProcessScoped(t *testing.T) {
 	otherCount, err := store.GetFlowNodeCount(t.Context(), otherProcessInstanceKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), otherCount)
+}
+
+func TestFlowNodeCountMutationForMissingProcessInstanceIsNoOp(t *testing.T) {
+	store := inmemory.NewStorage()
+	missingKey := store.GenerateId()
+
+	require.NoError(t, store.IncrementFlowNodeCount(t.Context(), missingKey))
+	require.NoError(t, store.ResetProcessInstanceFlowNodeCount(t.Context(), missingKey))
+	count, err := store.GetFlowNodeCount(t.Context(), missingKey)
+	require.NoError(t, err)
+	assert.Zero(t, count)
 }
 
 // Verifies UpdateOutputFlowElementInstance mirrors SQL COALESCE on completed_at:

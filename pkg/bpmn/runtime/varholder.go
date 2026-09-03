@@ -144,8 +144,10 @@ func (vh *VariableHolder) evaluateAndPropagateMappings(
 			return nil, err
 		}
 		outputVariablesWithOutputMappings[mapping.Target] = evalResult
-		vh.parent.SetLocalVariable(mapping.Target, evalResult)
 	}
+	// Apply the mapped values only after every expression succeeds so callers never
+	// observe or persist a partially evaluated output mapping.
+	vh.parent.SetLocalVariables(outputVariablesWithOutputMappings)
 	return outputVariablesWithOutputMappings, nil
 }
 

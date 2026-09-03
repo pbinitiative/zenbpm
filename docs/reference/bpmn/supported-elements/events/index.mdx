@@ -128,6 +128,8 @@ The trigger depends on the type:
 - **[Message start event](./message-events.md#message-start-event)** — a new instance is created each time a matching message is published.
 - **[Timer start event](./timer-events.md#timer-start-event)** — instances are created on a schedule, without any external trigger.
 
+A none start event can use `zenbpm:output` mappings to initialize or derive process variables from literals and variables supplied when the instance is created. Start events do not support `zenbpm:input` mappings; variables supplied through the create-instance API already belong to the root process scope.
+
 Start events also appear inside an [Event sub process](../activities/event-sub-process.md), where message, timer, and error triggers are supported and the start event may be non-interrupting.
 
 ## Intermediate events

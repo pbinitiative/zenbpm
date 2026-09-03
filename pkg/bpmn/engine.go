@@ -1000,12 +1000,16 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
+		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)
+		}
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
-		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken, outputVariables); err != nil {
 			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
@@ -1110,16 +1114,8 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 	instance runtime.ProcessInstance,
 	element *bpmn20.TStartEvent,
 	token runtime.ExecutionToken,
+	outputVariables map[string]any,
 ) error {
-	var outputVariables map[string]any
-	// Unmapped message payload already lives on the process instance. Keep history
-	// compact by recording only an explicitly mapped start-event output.
-	if instance.Type() == runtime.ProcessTypeDefault &&
-		isMessageStartEvent(element) &&
-		len(element.GetOutputMapping()) > 0 {
-		outputVariables = maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables())
-	}
-
 	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                token.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -1129,6 +1125,29 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 		OutputVariables:    outputVariables,
 		CompletedAt:        new(time.Now()),
 	})
+}
+
+func (engine *Engine) applyStartEventOutputMappings(instance runtime.ProcessInstance, element *bpmn20.TStartEvent) (map[string]any, error) {
+	if instance.Type() != runtime.ProcessTypeDefault || len(element.GetOutputMapping()) == 0 {
+		return nil, nil
+	}
+
+	// Message-start output mappings are evaluated before the process instance is created,
+	// so its root variables already contain exactly the mapped payload. Do not evaluate
+	// them a second time when the new instance executes its start-event token.
+	if isMessageStartEvent(element) {
+		return maps.Clone(instance.ProcessInstance().VariableHolder.LocalVariables()), nil
+	}
+
+	// A none (or timer) start event has no trigger-local scope. Evaluate its output
+	// mappings against the variables already present on the root process instance and
+	// propagate the mapped values back into that root scope before the outgoing flow runs.
+	startEventVariables := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	return startEventVariables.PropagateMappedOutputsOrAll(
+		element.GetOutputMapping(),
+		nil,
+		engine.evaluateExpression,
+	)
 }
 
 // completeFlowElementInstance updates the history row keyed by token.ElementInstanceKey.

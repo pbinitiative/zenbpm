@@ -97,19 +97,38 @@ func TestOpenAPIValidatorRejectsInvalidQueryParam(t *testing.T) {
 	assertErrorPayload(t, rec, "BAD_REQUEST")
 }
 
-func TestOpenAPIValidatorPassesXmlBody(t *testing.T) {
-	handler, next := newValidatedHandler(t)
+func TestOpenAPIValidatorPassesBinaryUploadBody(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "DMN",
+			path: "/v1/dmn-resource-definitions",
+			body: `<?xml version="1.0" encoding="UTF-8"?><definitions></definitions>`,
+		},
+		{
+			name: "BPMN",
+			path: "/v1/process-definitions",
+			body: `<?xml version="1.0" encoding="UTF-8"?><definitions></definitions>`,
+		},
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/dmn-resource-definitions",
-		strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?><definitions></definitions>`))
-	req.Header.Set("Content-Type", "application/xml")
-	rec := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, next := newValidatedHandler(t)
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/octet-stream")
+			rec := httptest.NewRecorder()
 
-	handler.ServeHTTP(rec, req)
+			handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.True(t, next.called, "next handler should be called for a valid XML request")
-	assert.Contains(t, next.body, "<definitions>", "XML body must remain readable after validation")
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.True(t, next.called, "next handler should be called for a valid binary upload")
+			assert.Equal(t, tt.body, next.body, "upload body must remain readable after validation")
+		})
+	}
 }
 
 func TestOpenAPIValidatorRejectsUnsupportedMethod(t *testing.T) {

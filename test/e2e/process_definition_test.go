@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -320,21 +319,9 @@ func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionI
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 
-	// Create multipart form data
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-
-	// Create the resource field as required by the OpenAPI spec
-	part, err := writer.CreateFormFile("resource", filepath)
-	require.NoError(t, err, fmt.Errorf("failed to create form file: %w", err))
-
-	_, err = part.Write(file)
-	require.NoError(t, err, fmt.Errorf("failed to write file to multipart form: %w", err))
-
-	err = writer.Close()
-	require.NoError(t, err, fmt.Errorf("failed to close multipart writer: %w", err))
-
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 	require.NoError(t, err, fmt.Errorf("failed to deploy process definition: %w", err))
 
 	isErrorResponse := resp.StatusCode() >= 400
@@ -373,19 +360,9 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 }
 
 func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(content); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(content),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
 	}
@@ -426,20 +403,9 @@ func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProces
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(file); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 }
 
 type expectedProcessDefinitionVersion struct {

@@ -16,10 +16,11 @@ import (
 )
 
 type Application struct {
-	httpAddr   string
-	grpcAddr   string
-	node       *cluster.ZenNode
-	restClient *zenclient.ClientWithResponses
+	httpAddr      string
+	grpcAddr      string
+	httpTransport *http.Transport
+	node          *cluster.ZenNode
+	restClient    *zenclient.ClientWithResponses
 }
 
 type request struct {
@@ -43,7 +44,7 @@ func (app *Application) NewRequest(t testing.TB) *request {
 		addr:        app.httpAddr,
 		requestBody: nil,
 		headers:     map[string][]string{},
-		transport:   http.DefaultTransport,
+		transport:   app.httpTransport,
 	}
 }
 

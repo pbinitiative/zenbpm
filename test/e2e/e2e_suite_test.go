@@ -129,8 +129,11 @@ func TestMain(m *testing.M) {
 	ln := svr.Start()
 
 	// Create rest client
+	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
+	httpTransport.Proxy = nil
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Transport: httpTransport,
+		Timeout:   30 * time.Second,
 	}
 
 	client, err := zenclient.NewClientWithResponses(
@@ -143,9 +146,10 @@ func TestMain(m *testing.M) {
 	}
 
 	app = Application{
-		httpAddr:   ln.Addr().String(),
-		node:       zenNode,
-		restClient: client,
+		httpAddr:      ln.Addr().String(),
+		httpTransport: httpTransport,
+		node:          zenNode,
+		restClient:    client,
 	}
 
 	// Start ZenBpm GRPC API
@@ -156,7 +160,7 @@ func TestMain(m *testing.M) {
 	// wait until node is ready
 	timeout := time.Now().Add(30 * time.Second)
 	for {
-		time.Sleep(1)
+		time.Sleep(time.Second)
 		if time.Now().After(timeout) {
 			fmt.Println("Node failed to start until timeout was reached")
 			os.Exit(1)
@@ -182,7 +186,7 @@ func TestMain(m *testing.M) {
 		testMainWithCleanup{
 			testMain: m,
 			cleanup: func() {
-				httpClient.CloseIdleConnections()
+				httpTransport.CloseIdleConnections()
 				svr.Stop(appContext)
 				grpcSrv.Stop()
 				if err := zenNode.Stop(); err != nil {

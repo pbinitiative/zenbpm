@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,7 +103,7 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 	persistenceConfig := c.Config.Persistence
 
 	if c.Config.Persistence.RqLite == nil {
-		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses)
+		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses, c.Config.Raft.BootstrapExpect)
 		persistenceConfig.RqLite = &defaultConfig
 	}
 	if err := c.Config.ValidateCDC(); err != nil {
@@ -227,6 +229,25 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Debug("Skipping member operation checks due to expired context")
 		return
 	}
+	if c.store.ClusterState().Restoring {
+		c.partitionsMu.RLock()
+		local := make(map[uint32]*partition.ZenPartitionNode, len(c.partitions))
+		for id, pn := range c.partitions {
+			local[id] = pn
+		}
+		c.partitionsMu.RUnlock()
+		for id, pn := range local {
+			c.partitionsMu.Lock()
+			engine := pn.Engine
+			pn.Engine = nil
+			c.partitionsMu.Unlock()
+			if engine != nil {
+				engine.Stop()
+				c.logger.Info("Stopped engine while cluster restore is in progress", "partitionId", id)
+			}
+		}
+		return
+	}
 	cs := c.store.ClusterState()
 	currentNode, err := cs.GetNode(c.store.ID())
 	if err != nil {
@@ -237,6 +258,9 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		partitionOp := c.partitionOperationMutex(partitionId)
 		partitionOp.Lock()
 		c.logger.Debug(fmt.Sprintf("Handling partition %d state %s", partitionId, partition.State))
+		// Unlocks are deferred inside closures: handlers run from safego
+		// goroutines that recover panics, so a plain Unlock after the call
+		// would be skipped on panic and leave the mutex locked forever.
 		switch partition.State {
 		case state.NodePartitionStateError:
 			c.handlePartitionStateError(partitionId)
@@ -294,6 +318,18 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if err := c.reportPartitionState(partitionID, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_UNKNOWN); err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionID, err))
 		c.schedulePartitionRetry(partitionID, "partition-initializing-state-retry")
+		return
+	}
+	// The partition node may already be running while local state still reads
+	// JOINING: the INITIALIZING write is applied on the cluster leader first and
+	// only later replicated into this node's FSM (the write above re-sends it in
+	// case it was lost). Never start a second instance — the duplicate mux
+	// listener registration panics mid-handler, which used to leak a locked
+	// partitionsMu and deadlock all partition handling on this node.
+	c.partitionsMu.RLock()
+	_, alreadyRunning := c.partitions[partitionID]
+	c.partitionsMu.RUnlock()
+	if alreadyRunning {
 		return
 	}
 	partitionConf := c.persistenceConfig
@@ -650,12 +686,53 @@ func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 	// TODO: verify that partition leader removes the node from the state after it gets removed from the cluster
 }
 
+func parsePartitionServerID(serverID raft.ServerID) (nodeID string, partitionID uint32, err error) {
+	s := string(serverID)
+	const prefix = "zen-"
+	const sep = "-partition-"
+
+	if !strings.HasPrefix(s, prefix) {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: missing %q prefix", s, prefix)
+	}
+
+	sepIdx := strings.LastIndex(s, sep)
+	if sepIdx < 0 {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: missing %q separator", s, sep)
+	}
+
+	nodeID = s[len(prefix):sepIdx]
+	if nodeID == "" {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: empty node ID", s)
+	}
+
+	partNum, err := strconv.ParseUint(s[sepIdx+len(sep):], 10, 32)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: %w", s, err)
+	}
+
+	return nodeID, uint32(partNum), nil
+}
+
 func (c *Controller) partitionResumeNode(id string, partitionId uint32) error {
-	return fmt.Errorf("partitionResumeNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(raft.ServerID(id))
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: resume-node observation had unparseable server ID %q: %s", partitionId, id, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s resumed", partitionId, nodeId))
+	// TODO(phase 4): re-mark node partition as active after heartbeat resumed.
+	return nil
 }
 
 func (c *Controller) partitionRemoveNode(id string, partitionId uint32) error {
-	return fmt.Errorf("partitionRemoveNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(raft.ServerID(id))
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: remove-node observation had unparseable server ID %q: %s", partitionId, id, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s removed (reap timeout)", partitionId, nodeId))
+	// TODO(phase 4): write NodePartitionChange{State=LEAVING} to base cluster leader.
+	return nil
 }
 
 func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
@@ -687,11 +764,37 @@ func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) 
 }
 
 func (c *Controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
-	return fmt.Errorf("partitionShutdownNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(s)
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: shutdown-node observation had unparseable server ID %q: %s", partitionId, s, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s shutdown detected", partitionId, nodeId))
+	// TODO(phase 4): mark partition slot as unavailable, trigger reassignment if quorum affected.
+	return nil
 }
 
 func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) error {
-	return fmt.Errorf("partitionAddNewNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(s.ID)
+	if err != nil {
+		// Log and continue — the observer goroutine discards errors and there's no upstream retry path.
+		c.logger.Warn(fmt.Sprintf("partition %d: add-node observation had unparseable server ID %q: %s", partitionId, s.ID, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s joined", partitionId, nodeId))
+	// TODO(phase 4): propagate NodePartitionChange{State=JOINING} to base cluster leader.
+	return nil
+}
+
+// GetPartitions returns a snapshot of partition nodes hosted on this zen node.
+func (c *Controller) GetPartitions() map[uint32]*partition.ZenPartitionNode {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	out := make(map[uint32]*partition.ZenPartitionNode, len(c.partitions))
+	for id, p := range c.partitions {
+		out[id] = p
+	}
+	return out
 }
 
 func (c *Controller) Stop() error {

@@ -132,7 +132,9 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 }
 
 func (engine *Engine) Stop() {
-	engine.timerManager.stop()
+	if engine.timerManager != nil {
+		engine.timerManager.stop()
+	}
 	engine.contextCancel()
 }
 

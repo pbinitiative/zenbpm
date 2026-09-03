@@ -35,16 +35,20 @@ service ZenService {
 
   // cluster management endpoints
 
-  rpc ClusterBackup(ClusterBackupRequest) returns (ClusterBackupResponse);
-  rpc ClusterRestore(ClusterRestoreRequest) returns (ClusterRestoreResponse);
+  rpc ClusterBackup(ClusterBackupRequest) returns (stream BackupChunk);
+  rpc ClusterRestore(stream RestoreChunk) returns (ClusterRestoreResponse);
   rpc ConfigurationUpdate(ConfigurationUpdateRequest)
       returns (ConfigurationUpdateResponse);
   rpc AssignPartition(AssignPartitionRequest) returns (AssignPartitionResponse);
   rpc UnassignPartition(UnassignPartitionRequest)
       returns (UnassignPartitionResponse);
-  rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
-  rpc PartitionRestore(PartitionRestoreRequest)
-      returns (PartitionRestoreResponse);
+  rpc PartitionBackup(PartitionBackupRequest) returns (stream BackupChunk);
+  rpc PartitionRestore(stream RestoreChunk) returns (PartitionRestoreResponse);
+  rpc PartitionDataStats(PartitionDataStatsRequest) returns (PartitionDataStatsResponse);
+  rpc ListActiveMessageSubscriptions(ListActiveMessageSubscriptionsRequest) returns (ListActiveMessageSubscriptionsResponse);
+  rpc RebuildMessageSubscriptionPointers(RebuildMessageSubscriptionPointersRequest) returns (RebuildMessageSubscriptionPointersResponse);
+  rpc ListDefinitions(ListDefinitionsRequest) returns (ListDefinitionsResponse);
+  rpc GetDefinitionResource(GetDefinitionResourceRequest) returns (GetDefinitionResourceResponse);
   rpc StartPprofServer(PprofServerRequest) returns (PprofServerStartResult);
   rpc StopPprofServer(PprofServerRequest) returns (PprofServerStopResult);
 
@@ -782,21 +786,96 @@ message PprofServerStopResult {
 
 // INTERNAL ENGINE API END
 
-// TODO: implement missing messages when needed by cluster communication
-message PartitionRestoreRequest {}
-message PartitionRestoreResponse {}
-message PartitionBackupRequest {}
-message PartitionBackupResponse {}
+message PartitionBackupRequest { uint32 partition_id = 1; }
+
+// BackupChunk streams backup bytes. The final chunk has eof=true, empty data,
+// and carries the source-side digest + schema version.
+message BackupChunk {
+  bytes data = 1;
+  bool eof = 2;
+  string sha256 = 3;         // hex digest of ALL data bytes sent, set when eof
+  string schema_version = 4; // latest applied migration filename, set when eof
+}
+
+message RestoreMeta {
+  uint32 partition_id = 1;
+  string sha256 = 2;     // hex digest of the gzipped stream that follows
+  int64 size_bytes = 3;
+  bool force = 4;        // only meaningful on ClusterRestore
+}
+
+// RestoreChunk: first chunk carries meta, subsequent chunks carry data, last has eof=true.
+message RestoreChunk {
+  oneof payload {
+    RestoreMeta meta = 1;
+    bytes data = 2;
+  }
+  bool eof = 3;
+}
+
+message PartitionRestoreResponse { ErrorResult error = 1; }
+message ClusterBackupRequest {}
+message ClusterRestoreResponse {
+  ErrorResult error = 1;
+  bytes report_json = 2; // JSON-encoded backup.RestoreReport
+}
+
+message PartitionDataStatsRequest { uint32 partition_id = 1; }
+message PartitionDataStatsResponse {
+  ErrorResult error = 1;
+  int64 process_definitions = 2;
+  int64 process_instances = 3;
+}
+
+message MessageSubscriptionRow {
+  int64 key = 1;
+  string name = 2;
+  string correlation_key = 3;
+  int64 created_at = 4;
+  int64 state = 5;
+}
+message ListActiveMessageSubscriptionsRequest { uint32 partition_id = 1; }
+message ListActiveMessageSubscriptionsResponse {
+  ErrorResult error = 1;
+  repeated MessageSubscriptionRow rows = 2;
+}
+message RebuildMessageSubscriptionPointersRequest {
+  uint32 partition_id = 1;
+  repeated MessageSubscriptionRow pointers = 2;
+}
+message RebuildMessageSubscriptionPointersResponse { ErrorResult error = 1; }
+
+enum DefinitionType {
+  DEFINITION_TYPE_UNKNOWN = 0;
+  DEFINITION_TYPE_PROCESS = 1;
+  DEFINITION_TYPE_DMN_RESOURCE = 2;
+}
+message DefinitionRef {
+  int64 key = 1;
+  DefinitionType type = 2;
+}
+message ListDefinitionsRequest { uint32 partition_id = 1; }
+message ListDefinitionsResponse {
+  ErrorResult error = 1;
+  repeated DefinitionRef definitions = 2;
+}
+message GetDefinitionResourceRequest {
+  uint32 partition_id = 1;
+  int64 key = 2;
+  DefinitionType type = 3;
+}
+message GetDefinitionResourceResponse {
+  ErrorResult error = 1;
+  bytes data = 2;
+  string resource_name = 3;
+}
+
 message UnassignPartitionRequest {}
 message UnassignPartitionResponse {}
 message AssignPartitionRequest {}
 message AssignPartitionResponse {}
 message ConfigurationUpdateRequest {}
 message ConfigurationUpdateResponse {}
-message ClusterRestoreRequest {}
-message ClusterRestoreResponse {}
-message ClusterBackupRequest {}
-message ClusterBackupResponse {}
 
 message NodeCommandResponse {
   ErrorResult error = 1;

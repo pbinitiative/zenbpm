@@ -48,5 +48,7 @@ jobs:
         run: make test
       - name: run e2e tests
         run: make test-e2e
+      - name: run cluster e2e tests
+        run: make test-e2e-cluster
       - name: run acceptance tests
         run: make test-acceptance

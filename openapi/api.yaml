@@ -13,6 +13,9 @@ info:
 
 servers:
   - url: http://localhost:8080/v1
+  - url: http://localhost:8081/v1
+  - url: http://localhost:8082/v1
+  - url: http://zenbpm.local/v1
 
 tags:
   - name: process-definition

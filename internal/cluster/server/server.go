@@ -67,6 +67,7 @@ type StoreService interface {
 	WriteNodeChange(change *protoc.NodeChange) error
 	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
+	WriteMaintenanceChange(change *protoc.ClusterMaintenanceChange) error
 }
 
 type ControllerService interface {
@@ -77,13 +78,14 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager, clientMgr *client.ClientManager) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
 		controller: controller,
 		jobManager: jobManager,
+		client:     clientMgr,
 	}
 }
 
@@ -185,14 +187,6 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	}
 }
 
-func (s *Server) ClusterBackup(ctx context.Context, req *proto.ClusterBackupRequest) (*proto.ClusterBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ClusterBackup is not implemented")
-}
-
-func (s *Server) ClusterRestore(ctx context.Context, req *proto.ClusterRestoreRequest) (*proto.ClusterRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ClusterRestore is not implemented")
-}
-
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "ConfigurationUpdate is not implemented")
 }
@@ -203,28 +197,80 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) PartitionBackup(ctx context.Context, req *proto.PartitionBackupRequest) (*proto.PartitionBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionBackup is not implemented")
-}
-func (s *Server) PartitionRestore(ctx context.Context, req *proto.PartitionRestoreRequest) (*proto.PartitionRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionRestore is not implemented")
-}
-func (s *Server) PartitionNodeLeaderChange(context.Context, *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionNodeLeaderChange is not implemented")
-}
-func (s *Server) AddPartitionNode(context.Context, *proto.AddPartitionNodeRequest) (*proto.AddPartitionNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "AddPartitionNode is not implemented")
-}
-func (s *Server) RemovePartitionNode(context.Context, *proto.RemovePartitionNodeRequest) (*proto.RemovePartitionNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "RemovePartitionNode is not implemented")
+func (s *Server) PartitionNodeLeaderChange(ctx context.Context, req *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	newLeaderId := req.GetId()
+	partitionId := req.GetPartition()
+
+	// If a different node was previously the leader, demote it first.
+	// The FSM only updates the role of the node in the change command,
+	// so without this the old leader's NodePartition.Role stays stale.
+	cs := s.store.ClusterState()
+	if existing, ok := cs.Partitions[partitionId]; ok &&
+		existing.LeaderId != "" &&
+		existing.LeaderId != newLeaderId {
+		err := s.store.WritePartitionChange(&protoc.NodePartitionChange{
+			NodeId:      new(existing.LeaderId),
+			PartitionId: new(partitionId),
+			State:       protoc.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+			Role:        protoc.Role_ROLE_TYPE_FOLLOWER.Enum(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to demote old partition leader %s: %w", existing.LeaderId, err)
+		}
+	}
+
+	// Promote the new leader.
+	err := s.store.WritePartitionChange(&protoc.NodePartitionChange{
+		NodeId:      new(newLeaderId),
+		PartitionId: new(partitionId),
+		State:       protoc.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+		Role:        protoc.Role_ROLE_TYPE_LEADER.Enum(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to promote new partition leader %s: %w", newLeaderId, err)
+	}
+
+	return &proto.PartitionNodeLeaderChangeResponse{}, nil
 }
 
-func (s *Server) ResumePartitionNode(context.Context, *proto.ResumePartitionNodeRequest) (*proto.ResumePartitionNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ResumePartitionNode is not implemented")
+func (s *Server) AddPartitionNode(ctx context.Context, req *proto.AddPartitionNodeRequest) (*proto.AddPartitionNodeResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	log.Info("AddPartitionNode RPC received (phase 1 no-op): node=%s partition=%d", req.GetId(), req.GetPartition())
+	// TODO(phase 4): write NodePartitionChange{State=JOINING} via s.store.WritePartitionChange.
+	return &proto.AddPartitionNodeResponse{}, nil
 }
 
-func (s *Server) ShutdownPartitionNode(context.Context, *proto.ShutdownPartitionNodeRequest) (*proto.ShutdownPartitionNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ShutdownPartitionNode is not implemented")
+func (s *Server) RemovePartitionNode(ctx context.Context, req *proto.RemovePartitionNodeRequest) (*proto.RemovePartitionNodeResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	log.Info("RemovePartitionNode RPC received (phase 1 no-op): node=%s partition=%d", req.GetId(), req.GetPartition())
+	// TODO(phase 4): write NodePartitionChange{State=LEAVING} via s.store.WritePartitionChange.
+	return &proto.RemovePartitionNodeResponse{}, nil
+}
+
+func (s *Server) ResumePartitionNode(ctx context.Context, req *proto.ResumePartitionNodeRequest) (*proto.ResumePartitionNodeResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	log.Info("ResumePartitionNode RPC received (phase 1 no-op): node=%s partition=%d", req.GetId(), req.GetPartition())
+	// TODO(phase 4): re-mark partition slot as active via s.store.WritePartitionChange.
+	return &proto.ResumePartitionNodeResponse{}, nil
+}
+
+func (s *Server) ShutdownPartitionNode(ctx context.Context, req *proto.ShutdownPartitionNodeRequest) (*proto.ShutdownPartitionNodeResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	log.Info("ShutdownPartitionNode RPC received (phase 1 no-op): node=%s partition=%d", req.GetId(), req.GetPartition())
+	// TODO(phase 4.2): mark partitions as LEAVING, wait for handoff.
+	return &proto.ShutdownPartitionNodeResponse{}, nil
 }
 
 func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
@@ -681,36 +727,50 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
-	engine := s.controller.PartitionEngine(ctx, partitionId)
-	if engine == nil {
-		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+	instanceKey := req.GetProcessInstanceKey()
+	partitionId := zenflake.GetPartitionId(instanceKey)
+
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d was not found", partitionId))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
-	instance, err := engine.FindProcessInstance(ctx, req.GetProcessInstanceKey())
+	instance, err := queries.GetProcessInstance(ctx, instanceKey)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
+			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", instanceKey, err))
 		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get process instance %d: %w", *req.ProcessInstanceKey, err))
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get process instance %d: %w", instanceKey, err))
 		}
 		return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	queries := s.controller.PartitionQueries(ctx, partitionId)
-	if queries == nil {
-		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
-		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	definition, err := queries.FindProcessDefinitionByKey(ctx, instance.ProcessDefinitionKey)
+	if err != nil {
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to find process definition %d for instance %d: %w", instance.ProcessDefinitionKey, instanceKey, err))
+		return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+	}
+
+	var parentInstanceKey *int64
+	if instance.ParentProcessExecutionToken.Valid {
+		parentTokens, err := queries.GetTokens(ctx, []int64{instance.ParentProcessExecutionToken.Int64})
+		if err != nil {
+			zerr := zenerr.TechnicalError(fmt.Errorf("failed to find parent execution token %d for instance %d: %w", instance.ParentProcessExecutionToken.Int64, instanceKey, err))
+			return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+		}
+		if len(parentTokens) > 0 {
+			parentInstanceKey = new(parentTokens[0].ProcessInstanceKey)
+		}
 	}
 
 	activeStates := []int64{int64(runtime.TokenStateWaiting), int64(runtime.TokenStateRunning), int64(runtime.TokenStateFailed)}
 	tokens, err := queries.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
-		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		ProcessInstanceKey: instanceKey,
 		States:             activeStates,
 	})
 	if err != nil {
-		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey()))
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", instanceKey))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
@@ -725,23 +785,22 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		})
 	}
 
-	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
-	if err != nil {
-		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	var businessKey *string
+	if instance.BusinessKey.Valid {
+		businessKey = new(instance.BusinessKey.String)
 	}
 
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
-			Key:               &instance.ProcessInstance().Key,
-			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:         vars,
-			State:             new(int64(instance.ProcessInstance().State)),
-			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
-			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
-			BusinessKey:       instance.ProcessInstance().BusinessKey,
-			Type:              new(int64(instance.Type())),
+			Key:               &instance.Key,
+			ProcessId:         &definition.BpmnProcessID,
+			Variables:         []byte(instance.Variables),
+			State:             &instance.State,
+			CreatedAt:         &instance.CreatedAt,
+			DefinitionKey:     &instance.ProcessDefinitionKey,
+			ParentInstanceKey: parentInstanceKey,
+			BusinessKey:       businessKey,
+			Type:              &instance.ProcessType,
 		},
 		ExecutionTokens: respTokens,
 	}, nil

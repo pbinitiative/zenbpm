@@ -360,6 +360,20 @@ func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
 	return zpn.store.IsLeader()
 }
 
+// Health reports whether this node currently sees a working partition Raft
+// from its own perspective: either it is the Leader, or there is a known
+// leader (heartbeats arriving). Anything else means no quorum from this
+// node's POV.
+func (zpn *ZenPartitionNode) Health() (ok bool, reason string) {
+	if zpn.store.IsLeader() {
+		return true, ""
+	}
+	if zpn.store.HasLeader() {
+		return true, ""
+	}
+	return false, fmt.Sprintf("partition raft state %v, no leader known", zpn.store.State())
+}
+
 func (zpn *ZenPartitionNode) Role() zproto.Role {
 	if zpn.store.IsLeader() {
 		return zproto.Role_ROLE_TYPE_LEADER
@@ -446,7 +460,10 @@ func (zpn *ZenPartitionNode) stop() error {
 		if zpn.config.RaftStepdownOnShutdown && !standalone && zpn.store.IsLeader() {
 			zpn.logger.Info("stepping down as Leader before shutdown")
 			if err := zpn.store.Stepdown(true, ""); err != nil {
-				stopErr = errors.Join(stopErr, fmt.Errorf("failed to step down partition leader: %w", err))
+				// Best-effort: with RaftClusterRemoveOnShutdown=false stopped
+				// peers stay in the voter set, so the transfer can fail when no
+				// live peer remains. Shutdown must proceed anyway.
+				zpn.logger.Warn("failed to step down partition leader before shutdown", "err", err)
 			}
 		}
 	}
@@ -478,6 +495,7 @@ func (zpn *ZenPartitionNode) stop() error {
 		zpn.cdcService.Stop()
 		zpn.cdcService = nil
 	}
+
 	zpn.logger.Info("rqlite server stopped")
 	return stopErr
 }

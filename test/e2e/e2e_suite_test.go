@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -62,17 +63,18 @@ type ClusterStatus struct {
 	ClusterConfig struct {
 		DesiredPartitions int64 `json:"desiredPartitions"`
 	} `json:"clusterConfig"`
+	// /system/status renders enum fields as their String() names.
 	Nodes map[string]struct {
 		Addr       string `json:"addr"`
 		ID         string `json:"id"`
 		Partitions map[string]struct {
-			ID    int64 `json:"id"`
-			Role  int64 `json:"role"`
-			State int64 `json:"state"`
+			ID    int64  `json:"id"`
+			Role  string `json:"role"`
+			State string `json:"state"`
 		} `json:"partitions"`
-		Role     int64 `json:"role"`
-		State    int64 `json:"state"`
-		Suffrage int64 `json:"suffrage"`
+		Role     string `json:"role"`
+		State    string `json:"state"`
+		Suffrage string `json:"suffrage"`
 	} `json:"nodes"`
 	Partitions map[string]struct {
 		ID       int64  `json:"id"`
@@ -117,19 +119,56 @@ func TestMain(m *testing.M) {
 		log.Error("Failed to start Zen node: %s", err)
 		os.Exit(1)
 	}
-	zenNode, err := cluster.StartZenNode(appContext, conf)
-	if err != nil {
-		log.Error("Failed to start Zen node: %s", err)
+	var (
+		zenNode       *cluster.ZenNode
+		svr           *rest.Server
+		grpcSrv       *grpc.Server
+		httpTransport *http.Transport
+	)
+	cleanup := sync.OnceFunc(func() {
+		if httpTransport != nil {
+			httpTransport.CloseIdleConnections()
+		}
+		if svr != nil {
+			svr.Stop(appContext)
+		}
+		if grpcSrv != nil {
+			grpcSrv.Stop()
+		}
+		if zenNode != nil {
+			if err := zenNode.Stop(); err != nil {
+				log.Error("failed to properly stop zen node: %s", err)
+			}
+		}
+		openTelemetry.Stop(appContext)
+		ctxCancel()
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Error("failed to remove e2e test directory: %s", err)
+		}
+	})
+	exitWithCleanup := func(format string, args ...any) {
+		log.Error(format, args...)
+		cleanup()
 		os.Exit(1)
+	}
+	zenNode, err = cluster.StartZenNode(appContext, conf)
+	if err != nil {
+		exitWithCleanup("Failed to start Zen node: %s", err)
 	}
 	// Start the public API
 	buildInfo := buildinfo.Current()
-	svr := rest.NewServer(zenNode, conf, buildInfo)
+	svr = rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
+	if ln == nil {
+		exitWithCleanup("Failed to start REST server")
+	}
 
 	// Create rest client
+	httpTransport = http.DefaultTransport.(*http.Transport).Clone()
+	httpTransport.Proxy = nil
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Transport: httpTransport,
+		Timeout:   30 * time.Second,
 	}
 
 	client, err := zenclient.NewClientWithResponses(
@@ -137,37 +176,40 @@ func TestMain(m *testing.M) {
 		zenclient.WithHTTPClient(httpClient),
 	)
 	if err != nil {
-		log.Error("failed to create rest client: %s", err)
-		os.Exit(1)
+		exitWithCleanup("failed to create rest client: %s", err)
 	}
 
 	app = Application{
-		httpAddr:   ln.Addr().String(),
-		node:       zenNode,
-		restClient: client,
+		httpAddr:      ln.Addr().String(),
+		httpTransport: httpTransport,
+		node:          zenNode,
+		restClient:    client,
 	}
 
 	// Start ZenBpm GRPC API
-	grpcSrv := grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
+	grpcSrv = grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
 	grpcSrv.Start()
 	app.grpcAddr = conf.GrpcServer.Addr
 
 	// wait until node is ready
 	timeout := time.Now().Add(30 * time.Second)
 	for {
-		time.Sleep(1)
+		time.Sleep(time.Second)
 		if time.Now().After(timeout) {
-			fmt.Println("Node failed to start until timeout was reached")
-			os.Exit(1)
+			exitWithCleanup("Node failed to start until timeout was reached")
 		}
 		s := ClusterStatus{}
 		resp, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
-		_ = err
-		_ = json.Unmarshal(resp, &s)
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(resp, &s); err != nil {
+			exitWithCleanup("Failed to parse cluster status: %v", err)
+		}
 		nodePartition := s.Nodes["test-node-1"].Partitions["1"]
 		if len(s.Partitions) > 0 && len(s.Nodes) > 0 &&
-			nodePartition.Role == int64(state.RoleLeader) &&
-			nodePartition.State == int64(state.NodePartitionStateInitialized) {
+			nodePartition.Role == state.RoleLeader.String() &&
+			nodePartition.State == state.NodePartitionStateInitialized.String() {
 			break
 		}
 	}
@@ -175,19 +217,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		testMainWithCleanup{
 			testMain: m,
-			cleanup: func() {
-				svr.Stop(appContext)
-				grpcSrv.Stop()
-				if err := zenNode.Stop(); err != nil {
-					log.Error("failed to properly stop zen node: %s", err)
-				}
-				openTelemetry.Stop(appContext)
-				ctxCancel()
-				err := os.RemoveAll(tempDir)
-				if err != nil {
-					return
-				}
-			},
+			cleanup:  cleanup,
 		},
 	)
 }

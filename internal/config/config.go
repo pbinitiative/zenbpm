@@ -150,7 +150,8 @@ type GrpcServer struct {
 type HttpServer struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
-	// MaxRequestBodyBytes bounds request buffering by the OpenAPI validator.
+	// MaxRequestBodyBytes bounds request buffering for every HTTP endpoint
+	// except the streaming cluster restore endpoint.
 	MaxRequestBodyBytes int64 `yaml:"maxRequestBodyBytes" json:"maxRequestBodyBytes" env:"REST_API_MAX_REQUEST_BODY_BYTES" env-default:"10485760"`
 	// LogMode controls request logging: "errors" (default, status >= 400 only),
 	// "all" (every request) or "off" (no request logging).

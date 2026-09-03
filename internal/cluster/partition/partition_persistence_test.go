@@ -180,11 +180,15 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLi
 	if err != nil {
 		t.Fatalf("failed to create mux: %s", err)
 	}
+	t.Cleanup(func() {
+		require.NoError(t, muxLn.Close())
+	})
 	c := GetRqLiteDefaultConfig(
 		"test-rq-lite",
 		muxLn.Addr().String(),
 		t.TempDir(),
 		[]string{muxLn.Addr().String()},
+		1, // single-node test
 	)
 	for _, configure := range configureRqLite {
 		configure(&c)
@@ -203,6 +207,9 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLi
 	}
 
 	ts := servertest.NewTestServer()
+	t.Cleanup(func() {
+		require.NoError(t, ts.Close())
+	})
 	ts.FindActiveMessageHandler = func(famr *zenproto.FindActiveMessageRequest) (*zenproto.FindActiveMessageResponse, error) {
 		err = fmt.Errorf("message subscription was not found %d", 1)
 		return &zenproto.FindActiveMessageResponse{
@@ -231,6 +238,9 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLi
 		leader: true,
 	}
 	clientMgr := client.NewClientManager(tStore)
+	t.Cleanup(func() {
+		require.NoError(t, clientMgr.Close())
+	})
 
 	partition, err := startZenPartitionNode(ctx, mux, conf, clientMgr, 1, PartitionChangesCallbacks{}, func() state.Cluster {
 		return state.Cluster{

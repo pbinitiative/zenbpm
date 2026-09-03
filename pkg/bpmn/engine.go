@@ -862,7 +862,12 @@ func (engine *Engine) createTimerStartEventTimers(
 	saved := *timer
 	_, viaEngineBatch := batch.(*EngineBatch)
 	batch.AddPostFlushAction(ctx, func() {
-		engine.timerManager.registerTimer(saved)
+		// Definition reconciliation during restore uses an engine that is never
+		// started. Persist the timer now; the real engine's timer manager will
+		// discover it when maintenance mode ends.
+		if engine.timerManager != nil {
+			engine.timerManager.registerTimer(saved)
+		}
 		if !viaEngineBatch {
 			engine.recordTimerMetric(ctx, saved)
 		}

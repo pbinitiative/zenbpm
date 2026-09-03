@@ -1,0 +1,328 @@
+openapi: 3.0.0
+
+# Operational-plane API specification.
+#
+# Convention: /v1/** is the business API (see api.yaml, served by generated
+# handlers); /system is the operational plane, hand-registered in
+# internal/rest/server.go. Unversioned probes sit directly under /system and
+# must stay stable for Kubernetes probes and Prometheus scrapers; operational
+# APIs that carry payload contracts are versioned under /system/v1/....
+#
+# This spec is DOCUMENTATION for those hand-registered handlers — no server
+# code is generated from it. Keep it in sync with internal/rest/server.go,
+# internal/rest/cluster_status.go and internal/rest/cluster_backup.go.
+
+info:
+  title: ZenBPM System OpenAPI
+  description: Operational REST API for ZenBPM (health, metrics, backup & restore)
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: info@pbinitiative.org
+  license:
+    name: AGPL
+    url: https://www.gnu.org/licenses/agpl-3.0.en.html
+
+servers:
+  - url: http://localhost:8080
+  - url: http://localhost:8081
+  - url: http://localhost:8082
+  - url: http://zenbpm.local
+
+tags:
+  - name: system
+  - name: cluster-backup
+
+paths:
+  /system/status:
+    get:
+      operationId: getClusterStatus
+      summary: Cluster status and node health
+      description: |
+        Returns the cluster topology as seen by the responding node, plus that
+        node's own health. Also serves as the readiness probe: returns 200 when
+        the node sees a working cluster raft, 503 otherwise (the body is the
+        same JSON in both cases).
+
+        Note: `nodes.*.addr` is the node's internal cluster (raft) address, not
+        its HTTP address — map the node to its HTTP base URL through your
+        deployment configuration.
+      tags:
+        - system
+      responses:
+        "200":
+          description: Node is healthy; body describes the cluster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterStatus"
+        "503":
+          description: Node is unhealthy (no quorum from its point of view).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterStatus"
+
+  /system/metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics
+      description: Metrics in the Prometheus text exposition format.
+      tags:
+        - system
+      responses:
+        "200":
+          description: Prometheus exposition payload.
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /system/v1/cluster/backup:
+    get:
+      operationId: downloadClusterBackup
+      summary: Stream a whole-cluster backup bundle
+      description: |
+        Streams a plain tar archive containing one gzipped SQLite snapshot per
+        partition (`partition-<id>.db.gz`) followed by `manifest.json` as the
+        last entry. Callable on any node; the responding node coordinates and
+        pulls snapshots from each partition leader. Non-blocking: the cluster
+        keeps serving traffic during the backup.
+
+        Failures after streaming has begun surface as a truncated archive
+        (missing `manifest.json`); a restore rejects such a bundle, so simply
+        retry the download.
+      tags:
+        - cluster-backup
+      responses:
+        "200":
+          description: |
+            The backup bundle. Sent with
+            `Content-Disposition: attachment; filename="zenbpm-backup-<unix>.tar"`.
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+
+  /system/v1/cluster/restore:
+    post:
+      operationId: restoreClusterBackup
+      summary: Restore the whole cluster from a backup bundle
+      description: |
+        Restores every partition from a bundle produced by the backup endpoint.
+        Must be sent to the current cluster raft leader (see /system/status).
+        The bundle is fully validated before anything destructive happens:
+        manifest present, partition count matches the cluster, checksums,
+        schema not newer than the binary. Without `force=true` the request is
+        refused unless the cluster is empty (no definitions, no instances).
+
+        During the restore the cluster is gated: engines are stopped and
+        mutating API calls are rejected; read-only endpoints stay up but may
+        observe mixed state. A failure mid-restore leaves the cluster gated —
+        retry the restore (the operation is idempotent).
+      tags:
+        - cluster-backup
+      parameters:
+        - name: force
+          in: query
+          required: false
+          description: Overwrite live data. Required unless the cluster is empty.
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Restore completed; the report describes what was done.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreReport"
+        "409":
+          description: |
+            Restore refused or failed. Reasons include: cluster holds data and
+            `force` was not set, invalid or truncated bundle, partition count
+            mismatch, bundle schema newer than the binary, a restore already in
+            progress, or a failure during the restore itself (in which case the
+            cluster remains gated and the restore should be retried).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    ClusterStatus:
+      type: object
+      required: [health, clusterConfig, partitions, nodes]
+      properties:
+        health:
+          type: object
+          required: [ok]
+          properties:
+            ok:
+              type: boolean
+            reason:
+              type: string
+              description: Present when ok is false.
+        clusterConfig:
+          type: object
+          required: [desiredPartitions]
+          properties:
+            desiredPartitions:
+              type: integer
+              format: int64
+        partitions:
+          type: object
+          description: Keyed by partition id.
+          additionalProperties:
+            $ref: "#/components/schemas/ClusterStatusPartition"
+        nodes:
+          type: object
+          description: Keyed by node id.
+          additionalProperties:
+            $ref: "#/components/schemas/ClusterStatusNode"
+
+    ClusterStatusPartition:
+      type: object
+      required: [id, leaderId]
+      properties:
+        id:
+          type: integer
+          format: int64
+        leaderId:
+          type: string
+
+    ClusterStatusNode:
+      type: object
+      required: [id, addr, suffrage, state, role, partitions]
+      properties:
+        id:
+          type: string
+        addr:
+          type: string
+          description: Internal cluster (raft) address, NOT the HTTP address.
+        suffrage:
+          type: string
+          enum: [Voter, Nonvoter, Staging]
+        state:
+          type: string
+          description: Go stringer name of the node state.
+          enum: [NodeStateError, NodeStateStarted, NodeStateShutdown]
+        role:
+          type: string
+          description: Go stringer name of the node role.
+          enum: [RoleFollower, RoleLeader]
+        partitions:
+          type: object
+          description: Keyed by partition id.
+          additionalProperties:
+            $ref: "#/components/schemas/ClusterStatusNodePartition"
+
+    ClusterStatusNodePartition:
+      type: object
+      required: [id, state, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+        state:
+          type: string
+          description: Go stringer name of the node-partition state.
+          enum:
+            - NodePartitionStateError
+            - NodePartitionStateJoining
+            - NodePartitionStateLeaving
+            - NodePartitionStateInitializing
+            - NodePartitionStateInitialized
+        role:
+          type: string
+          enum: [RoleFollower, RoleLeader]
+
+    RestoreReport:
+      type: object
+      description: |
+        Summary of a completed restore. Key fields are int64; JSON consumers
+        that parse numbers as IEEE-754 doubles may lose precision on keys
+        above 2^53.
+      required: [startedAtMillis, finishedAtMillis, pointersRebuilt]
+      properties:
+        startedAtMillis:
+          type: integer
+          format: int64
+        finishedAtMillis:
+          type: integer
+          format: int64
+        partitions:
+          type: array
+          items:
+            type: object
+            required: [partitionId, loadMillis]
+            properties:
+              partitionId:
+                type: integer
+                format: int64
+              loadMillis:
+                type: integer
+                format: int64
+        pointersRebuilt:
+          type: integer
+          description: Number of message-subscription pointers recreated.
+        pointerConflicts:
+          type: array
+          description: |
+            Duplicate active subscriptions found for the same (name,
+            correlationKey) — an artifact of backup snapshot skew. The newest
+            subscription won the pointer; losers may be instances waiting for
+            a message that will not arrive; review and cancel them if needed.
+          items:
+            type: object
+            required: [name, correlationKey, winnerKey]
+            properties:
+              name:
+                type: string
+              correlationKey:
+                type: string
+              winnerKey:
+                type: integer
+                format: int64
+              loserKeys:
+                type: array
+                items:
+                  type: integer
+                  format: int64
+        definitionsSynced:
+          type: array
+          description: Definitions copied to partitions that were missing them.
+          items:
+            type: object
+            required: [key, type, toPartitions]
+            properties:
+              key:
+                type: integer
+                format: int64
+              type:
+                type: string
+                enum: [process, dmn]
+              toPartitions:
+                type: array
+                items:
+                  type: integer
+                  format: int64
+
+    Error:
+      type: object
+      required: [message, code]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+          description: Machine-readable error code, e.g. RESTORE_FAILED.

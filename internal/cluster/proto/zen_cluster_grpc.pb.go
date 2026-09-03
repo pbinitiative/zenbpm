@@ -34,6 +34,11 @@ const (
 	ZenService_UnassignPartition_FullMethodName                      = "/cluster.ZenService/UnassignPartition"
 	ZenService_PartitionBackup_FullMethodName                        = "/cluster.ZenService/PartitionBackup"
 	ZenService_PartitionRestore_FullMethodName                       = "/cluster.ZenService/PartitionRestore"
+	ZenService_PartitionDataStats_FullMethodName                     = "/cluster.ZenService/PartitionDataStats"
+	ZenService_ListActiveMessageSubscriptions_FullMethodName         = "/cluster.ZenService/ListActiveMessageSubscriptions"
+	ZenService_RebuildMessageSubscriptionPointers_FullMethodName     = "/cluster.ZenService/RebuildMessageSubscriptionPointers"
+	ZenService_ListDefinitions_FullMethodName                        = "/cluster.ZenService/ListDefinitions"
+	ZenService_GetDefinitionResource_FullMethodName                  = "/cluster.ZenService/GetDefinitionResource"
 	ZenService_StartPprofServer_FullMethodName                       = "/cluster.ZenService/StartPprofServer"
 	ZenService_StopPprofServer_FullMethodName                        = "/cluster.ZenService/StopPprofServer"
 	ZenService_NodeCommand_FullMethodName                            = "/cluster.ZenService/NodeCommand"
@@ -97,13 +102,18 @@ type ZenServiceClient interface {
 	// called by a partition leader when member node becomes responsive after
 	// being marked as shut down
 	ResumePartitionNode(ctx context.Context, in *ResumePartitionNodeRequest, opts ...grpc.CallOption) (*ResumePartitionNodeResponse, error)
-	ClusterBackup(ctx context.Context, in *ClusterBackupRequest, opts ...grpc.CallOption) (*ClusterBackupResponse, error)
-	ClusterRestore(ctx context.Context, in *ClusterRestoreRequest, opts ...grpc.CallOption) (*ClusterRestoreResponse, error)
+	ClusterBackup(ctx context.Context, in *ClusterBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupChunk], error)
+	ClusterRestore(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[RestoreChunk, ClusterRestoreResponse], error)
 	ConfigurationUpdate(ctx context.Context, in *ConfigurationUpdateRequest, opts ...grpc.CallOption) (*ConfigurationUpdateResponse, error)
 	AssignPartition(ctx context.Context, in *AssignPartitionRequest, opts ...grpc.CallOption) (*AssignPartitionResponse, error)
 	UnassignPartition(ctx context.Context, in *UnassignPartitionRequest, opts ...grpc.CallOption) (*UnassignPartitionResponse, error)
-	PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (*PartitionBackupResponse, error)
-	PartitionRestore(ctx context.Context, in *PartitionRestoreRequest, opts ...grpc.CallOption) (*PartitionRestoreResponse, error)
+	PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupChunk], error)
+	PartitionRestore(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[RestoreChunk, PartitionRestoreResponse], error)
+	PartitionDataStats(ctx context.Context, in *PartitionDataStatsRequest, opts ...grpc.CallOption) (*PartitionDataStatsResponse, error)
+	ListActiveMessageSubscriptions(ctx context.Context, in *ListActiveMessageSubscriptionsRequest, opts ...grpc.CallOption) (*ListActiveMessageSubscriptionsResponse, error)
+	RebuildMessageSubscriptionPointers(ctx context.Context, in *RebuildMessageSubscriptionPointersRequest, opts ...grpc.CallOption) (*RebuildMessageSubscriptionPointersResponse, error)
+	ListDefinitions(ctx context.Context, in *ListDefinitionsRequest, opts ...grpc.CallOption) (*ListDefinitionsResponse, error)
+	GetDefinitionResource(ctx context.Context, in *GetDefinitionResourceRequest, opts ...grpc.CallOption) (*GetDefinitionResourceResponse, error)
 	StartPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStartResult, error)
 	StopPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStopResult, error)
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
@@ -227,25 +237,37 @@ func (c *zenServiceClient) ResumePartitionNode(ctx context.Context, in *ResumePa
 	return out, nil
 }
 
-func (c *zenServiceClient) ClusterBackup(ctx context.Context, in *ClusterBackupRequest, opts ...grpc.CallOption) (*ClusterBackupResponse, error) {
+func (c *zenServiceClient) ClusterBackup(ctx context.Context, in *ClusterBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ClusterBackupResponse)
-	err := c.cc.Invoke(ctx, ZenService_ClusterBackup_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_ClusterBackup_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[ClusterBackupRequest, BackupChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
 
-func (c *zenServiceClient) ClusterRestore(ctx context.Context, in *ClusterRestoreRequest, opts ...grpc.CallOption) (*ClusterRestoreResponse, error) {
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ClusterBackupClient = grpc.ServerStreamingClient[BackupChunk]
+
+func (c *zenServiceClient) ClusterRestore(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[RestoreChunk, ClusterRestoreResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ClusterRestoreResponse)
-	err := c.cc.Invoke(ctx, ZenService_ClusterRestore_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[1], ZenService_ClusterRestore_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[RestoreChunk, ClusterRestoreResponse]{ClientStream: stream}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ClusterRestoreClient = grpc.ClientStreamingClient[RestoreChunk, ClusterRestoreResponse]
 
 func (c *zenServiceClient) ConfigurationUpdate(ctx context.Context, in *ConfigurationUpdateRequest, opts ...grpc.CallOption) (*ConfigurationUpdateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -277,20 +299,82 @@ func (c *zenServiceClient) UnassignPartition(ctx context.Context, in *UnassignPa
 	return out, nil
 }
 
-func (c *zenServiceClient) PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (*PartitionBackupResponse, error) {
+func (c *zenServiceClient) PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PartitionBackupResponse)
-	err := c.cc.Invoke(ctx, ZenService_PartitionBackup_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[2], ZenService_PartitionBackup_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PartitionBackupRequest, BackupChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_PartitionBackupClient = grpc.ServerStreamingClient[BackupChunk]
+
+func (c *zenServiceClient) PartitionRestore(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[RestoreChunk, PartitionRestoreResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[3], ZenService_PartitionRestore_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RestoreChunk, PartitionRestoreResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_PartitionRestoreClient = grpc.ClientStreamingClient[RestoreChunk, PartitionRestoreResponse]
+
+func (c *zenServiceClient) PartitionDataStats(ctx context.Context, in *PartitionDataStatsRequest, opts ...grpc.CallOption) (*PartitionDataStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PartitionDataStatsResponse)
+	err := c.cc.Invoke(ctx, ZenService_PartitionDataStats_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zenServiceClient) PartitionRestore(ctx context.Context, in *PartitionRestoreRequest, opts ...grpc.CallOption) (*PartitionRestoreResponse, error) {
+func (c *zenServiceClient) ListActiveMessageSubscriptions(ctx context.Context, in *ListActiveMessageSubscriptionsRequest, opts ...grpc.CallOption) (*ListActiveMessageSubscriptionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PartitionRestoreResponse)
-	err := c.cc.Invoke(ctx, ZenService_PartitionRestore_FullMethodName, in, out, cOpts...)
+	out := new(ListActiveMessageSubscriptionsResponse)
+	err := c.cc.Invoke(ctx, ZenService_ListActiveMessageSubscriptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) RebuildMessageSubscriptionPointers(ctx context.Context, in *RebuildMessageSubscriptionPointersRequest, opts ...grpc.CallOption) (*RebuildMessageSubscriptionPointersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RebuildMessageSubscriptionPointersResponse)
+	err := c.cc.Invoke(ctx, ZenService_RebuildMessageSubscriptionPointers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) ListDefinitions(ctx context.Context, in *ListDefinitionsRequest, opts ...grpc.CallOption) (*ListDefinitionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDefinitionsResponse)
+	err := c.cc.Invoke(ctx, ZenService_ListDefinitions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetDefinitionResource(ctx context.Context, in *GetDefinitionResourceRequest, opts ...grpc.CallOption) (*GetDefinitionResourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDefinitionResourceResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetDefinitionResource_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +443,7 @@ func (c *zenServiceClient) DeployProcessDefinition(ctx context.Context, in *Depl
 
 func (c *zenServiceClient) ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_ActivateJob_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[4], ZenService_ActivateJob_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +692,7 @@ func (c *zenServiceClient) ResolveIncident(ctx context.Context, in *ResolveIncid
 
 func (c *zenServiceClient) SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[1], ZenService_SubscribeJob_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[5], ZenService_SubscribeJob_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -712,13 +796,18 @@ type ZenServiceServer interface {
 	// called by a partition leader when member node becomes responsive after
 	// being marked as shut down
 	ResumePartitionNode(context.Context, *ResumePartitionNodeRequest) (*ResumePartitionNodeResponse, error)
-	ClusterBackup(context.Context, *ClusterBackupRequest) (*ClusterBackupResponse, error)
-	ClusterRestore(context.Context, *ClusterRestoreRequest) (*ClusterRestoreResponse, error)
+	ClusterBackup(*ClusterBackupRequest, grpc.ServerStreamingServer[BackupChunk]) error
+	ClusterRestore(grpc.ClientStreamingServer[RestoreChunk, ClusterRestoreResponse]) error
 	ConfigurationUpdate(context.Context, *ConfigurationUpdateRequest) (*ConfigurationUpdateResponse, error)
 	AssignPartition(context.Context, *AssignPartitionRequest) (*AssignPartitionResponse, error)
 	UnassignPartition(context.Context, *UnassignPartitionRequest) (*UnassignPartitionResponse, error)
-	PartitionBackup(context.Context, *PartitionBackupRequest) (*PartitionBackupResponse, error)
-	PartitionRestore(context.Context, *PartitionRestoreRequest) (*PartitionRestoreResponse, error)
+	PartitionBackup(*PartitionBackupRequest, grpc.ServerStreamingServer[BackupChunk]) error
+	PartitionRestore(grpc.ClientStreamingServer[RestoreChunk, PartitionRestoreResponse]) error
+	PartitionDataStats(context.Context, *PartitionDataStatsRequest) (*PartitionDataStatsResponse, error)
+	ListActiveMessageSubscriptions(context.Context, *ListActiveMessageSubscriptionsRequest) (*ListActiveMessageSubscriptionsResponse, error)
+	RebuildMessageSubscriptionPointers(context.Context, *RebuildMessageSubscriptionPointersRequest) (*RebuildMessageSubscriptionPointersResponse, error)
+	ListDefinitions(context.Context, *ListDefinitionsRequest) (*ListDefinitionsResponse, error)
+	GetDefinitionResource(context.Context, *GetDefinitionResourceRequest) (*GetDefinitionResourceResponse, error)
 	StartPprofServer(context.Context, *PprofServerRequest) (*PprofServerStartResult, error)
 	StopPprofServer(context.Context, *PprofServerRequest) (*PprofServerStopResult, error)
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
@@ -793,11 +882,11 @@ func (UnimplementedZenServiceServer) RemovePartitionNode(context.Context, *Remov
 func (UnimplementedZenServiceServer) ResumePartitionNode(context.Context, *ResumePartitionNodeRequest) (*ResumePartitionNodeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResumePartitionNode not implemented")
 }
-func (UnimplementedZenServiceServer) ClusterBackup(context.Context, *ClusterBackupRequest) (*ClusterBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ClusterBackup not implemented")
+func (UnimplementedZenServiceServer) ClusterBackup(*ClusterBackupRequest, grpc.ServerStreamingServer[BackupChunk]) error {
+	return status.Errorf(codes.Unimplemented, "method ClusterBackup not implemented")
 }
-func (UnimplementedZenServiceServer) ClusterRestore(context.Context, *ClusterRestoreRequest) (*ClusterRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ClusterRestore not implemented")
+func (UnimplementedZenServiceServer) ClusterRestore(grpc.ClientStreamingServer[RestoreChunk, ClusterRestoreResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ClusterRestore not implemented")
 }
 func (UnimplementedZenServiceServer) ConfigurationUpdate(context.Context, *ConfigurationUpdateRequest) (*ConfigurationUpdateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfigurationUpdate not implemented")
@@ -808,11 +897,26 @@ func (UnimplementedZenServiceServer) AssignPartition(context.Context, *AssignPar
 func (UnimplementedZenServiceServer) UnassignPartition(context.Context, *UnassignPartitionRequest) (*UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnassignPartition not implemented")
 }
-func (UnimplementedZenServiceServer) PartitionBackup(context.Context, *PartitionBackupRequest) (*PartitionBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PartitionBackup not implemented")
+func (UnimplementedZenServiceServer) PartitionBackup(*PartitionBackupRequest, grpc.ServerStreamingServer[BackupChunk]) error {
+	return status.Errorf(codes.Unimplemented, "method PartitionBackup not implemented")
 }
-func (UnimplementedZenServiceServer) PartitionRestore(context.Context, *PartitionRestoreRequest) (*PartitionRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PartitionRestore not implemented")
+func (UnimplementedZenServiceServer) PartitionRestore(grpc.ClientStreamingServer[RestoreChunk, PartitionRestoreResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method PartitionRestore not implemented")
+}
+func (UnimplementedZenServiceServer) PartitionDataStats(context.Context, *PartitionDataStatsRequest) (*PartitionDataStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PartitionDataStats not implemented")
+}
+func (UnimplementedZenServiceServer) ListActiveMessageSubscriptions(context.Context, *ListActiveMessageSubscriptionsRequest) (*ListActiveMessageSubscriptionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListActiveMessageSubscriptions not implemented")
+}
+func (UnimplementedZenServiceServer) RebuildMessageSubscriptionPointers(context.Context, *RebuildMessageSubscriptionPointersRequest) (*RebuildMessageSubscriptionPointersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RebuildMessageSubscriptionPointers not implemented")
+}
+func (UnimplementedZenServiceServer) ListDefinitions(context.Context, *ListDefinitionsRequest) (*ListDefinitionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListDefinitions not implemented")
+}
+func (UnimplementedZenServiceServer) GetDefinitionResource(context.Context, *GetDefinitionResourceRequest) (*GetDefinitionResourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDefinitionResource not implemented")
 }
 func (UnimplementedZenServiceServer) StartPprofServer(context.Context, *PprofServerRequest) (*PprofServerStartResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartPprofServer not implemented")
@@ -1075,41 +1179,23 @@ func _ZenService_ResumePartitionNode_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_ClusterBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClusterBackupRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _ZenService_ClusterBackup_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ClusterBackupRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(ZenServiceServer).ClusterBackup(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ZenService_ClusterBackup_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).ClusterBackup(ctx, req.(*ClusterBackupRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(ZenServiceServer).ClusterBackup(m, &grpc.GenericServerStream[ClusterBackupRequest, BackupChunk]{ServerStream: stream})
 }
 
-func _ZenService_ClusterRestore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClusterRestoreRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ZenServiceServer).ClusterRestore(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ZenService_ClusterRestore_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).ClusterRestore(ctx, req.(*ClusterRestoreRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ClusterBackupServer = grpc.ServerStreamingServer[BackupChunk]
+
+func _ZenService_ClusterRestore_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ZenServiceServer).ClusterRestore(&grpc.GenericServerStream[RestoreChunk, ClusterRestoreResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ClusterRestoreServer = grpc.ClientStreamingServer[RestoreChunk, ClusterRestoreResponse]
 
 func _ZenService_ConfigurationUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ConfigurationUpdateRequest)
@@ -1165,38 +1251,110 @@ func _ZenService_UnassignPartition_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_PartitionBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PartitionBackupRequest)
+func _ZenService_PartitionBackup_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(PartitionBackupRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ZenServiceServer).PartitionBackup(m, &grpc.GenericServerStream[PartitionBackupRequest, BackupChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_PartitionBackupServer = grpc.ServerStreamingServer[BackupChunk]
+
+func _ZenService_PartitionRestore_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ZenServiceServer).PartitionRestore(&grpc.GenericServerStream[RestoreChunk, PartitionRestoreResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_PartitionRestoreServer = grpc.ClientStreamingServer[RestoreChunk, PartitionRestoreResponse]
+
+func _ZenService_PartitionDataStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PartitionDataStatsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZenServiceServer).PartitionBackup(ctx, in)
+		return srv.(ZenServiceServer).PartitionDataStats(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZenService_PartitionBackup_FullMethodName,
+		FullMethod: ZenService_PartitionDataStats_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).PartitionBackup(ctx, req.(*PartitionBackupRequest))
+		return srv.(ZenServiceServer).PartitionDataStats(ctx, req.(*PartitionDataStatsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_PartitionRestore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PartitionRestoreRequest)
+func _ZenService_ListActiveMessageSubscriptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListActiveMessageSubscriptionsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZenServiceServer).PartitionRestore(ctx, in)
+		return srv.(ZenServiceServer).ListActiveMessageSubscriptions(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZenService_PartitionRestore_FullMethodName,
+		FullMethod: ZenService_ListActiveMessageSubscriptions_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).PartitionRestore(ctx, req.(*PartitionRestoreRequest))
+		return srv.(ZenServiceServer).ListActiveMessageSubscriptions(ctx, req.(*ListActiveMessageSubscriptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_RebuildMessageSubscriptionPointers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RebuildMessageSubscriptionPointersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).RebuildMessageSubscriptionPointers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_RebuildMessageSubscriptionPointers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).RebuildMessageSubscriptionPointers(ctx, req.(*RebuildMessageSubscriptionPointersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_ListDefinitions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDefinitionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ListDefinitions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_ListDefinitions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ListDefinitions(ctx, req.(*ListDefinitionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetDefinitionResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDefinitionResourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetDefinitionResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetDefinitionResource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetDefinitionResource(ctx, req.(*GetDefinitionResourceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1903,14 +2061,6 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_ResumePartitionNode_Handler,
 		},
 		{
-			MethodName: "ClusterBackup",
-			Handler:    _ZenService_ClusterBackup_Handler,
-		},
-		{
-			MethodName: "ClusterRestore",
-			Handler:    _ZenService_ClusterRestore_Handler,
-		},
-		{
 			MethodName: "ConfigurationUpdate",
 			Handler:    _ZenService_ConfigurationUpdate_Handler,
 		},
@@ -1923,12 +2073,24 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_UnassignPartition_Handler,
 		},
 		{
-			MethodName: "PartitionBackup",
-			Handler:    _ZenService_PartitionBackup_Handler,
+			MethodName: "PartitionDataStats",
+			Handler:    _ZenService_PartitionDataStats_Handler,
 		},
 		{
-			MethodName: "PartitionRestore",
-			Handler:    _ZenService_PartitionRestore_Handler,
+			MethodName: "ListActiveMessageSubscriptions",
+			Handler:    _ZenService_ListActiveMessageSubscriptions_Handler,
+		},
+		{
+			MethodName: "RebuildMessageSubscriptionPointers",
+			Handler:    _ZenService_RebuildMessageSubscriptionPointers_Handler,
+		},
+		{
+			MethodName: "ListDefinitions",
+			Handler:    _ZenService_ListDefinitions_Handler,
+		},
+		{
+			MethodName: "GetDefinitionResource",
+			Handler:    _ZenService_GetDefinitionResource_Handler,
 		},
 		{
 			MethodName: "StartPprofServer",
@@ -2076,6 +2238,26 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ClusterBackup",
+			Handler:       _ZenService_ClusterBackup_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ClusterRestore",
+			Handler:       _ZenService_ClusterRestore_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "PartitionBackup",
+			Handler:       _ZenService_PartitionBackup_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "PartitionRestore",
+			Handler:       _ZenService_PartitionRestore_Handler,
+			ClientStreams: true,
+		},
 		{
 			StreamName:    "ActivateJob",
 			Handler:       _ZenService_ActivateJob_Handler,

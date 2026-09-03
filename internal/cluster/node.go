@@ -11,6 +11,7 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -94,7 +95,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		idGen:  idGen,
 	}
 
-	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr)
+	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr, network.WithAdvertise(conf.Cluster.Adv))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.Addr, err)
 	}
@@ -129,7 +130,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
+	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.client)
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}
@@ -191,6 +192,15 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.JobManager.Start()
 
 	return node, nil
+}
+
+// rejectIfRestoring blocks client-facing mutations while a cluster restore is
+// in progress.
+func (node *ZenNode) rejectIfRestoring() error {
+	if node.store.ClusterState().Restoring {
+		return zenerr.ClusterError(fmt.Errorf("cluster restore in progress; try again later"))
+	}
+	return nil
 }
 
 func (node *ZenNode) Stop() error {
@@ -321,6 +331,9 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 }
 
 func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, bool, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return 0, false, err
+	}
 	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -337,12 +350,12 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	for _, currentPartition := range clusterState.Partitions {
+		partitionId := currentPartition.Id
 
 		group.Go(func() error {
 			return node.deployDmnResourceDefinitionToPartition(
 				groupCtx,
-				clusterState,
-				currentPartition.LeaderId,
+				partitionId,
 				definitionKey.Int64(),
 				data,
 			)
@@ -356,7 +369,26 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	return definitionKey.Int64(), false, nil
 }
 
+// deployDmnResourceDefinitionToPartition deploys to the given partition's current
+// leader, retrying transient failures and re-resolving the leader each attempt
+// so the deploy follows leadership changes during cluster churn.
 func (node *ZenNode) deployDmnResourceDefinitionToPartition(
+	ctx context.Context,
+	partitionId uint32,
+	definitionKey int64,
+	data []byte,
+) error {
+	return node.retryDeploy(ctx, func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return errTransientDeploy
+		}
+		return node.deployDmnResourceDefinitionToPartitionOnce(ctx, clusterState, leaderId, definitionKey, data)
+	})
+}
+
+func (node *ZenNode) deployDmnResourceDefinitionToPartitionOnce(
 	ctx context.Context,
 	clusterState state.Cluster,
 	partitionLeaderId string,
@@ -432,6 +464,9 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 }
 
 func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return nil, err
+	}
 	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get node to evaluate decision: %w", err))
@@ -465,6 +500,9 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 // returned and no new deployment is performed, so callers can treat this as
 // success (idempotent deploy).
 func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return 0, false, err
+	}
 
 	processId, err := getProcessIdFromDefinition(data)
 	if err != nil {
@@ -504,14 +542,12 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	subscriptionPartitionId := partitionIds[partitionIdx]
 	group, groupCtx := errgroup.WithContext(ctx)
 	for _, partitionId := range partitionIds {
-		leaderId := clusterState.Partitions[partitionId].LeaderId
 		registerProcessDefinitionSubscriptions := subscriptionPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
 				groupCtx,
-				clusterState,
-				leaderId,
+				partitionId,
 				definitionKey.Int64(),
 				data,
 				resourceName,
@@ -565,7 +601,78 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 	return 0, nil
 }
 
+// transientDeployError reports whether a deploy error reflects a transient
+// condition during partition leadership churn — the routed leader's engine has
+// not started yet, or its rqlite store is briefly not open. Such deploys are
+// safe to retry against the current leader.
+func transientDeployError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no engine available") ||
+		strings.Contains(msg, "no engines available") ||
+		strings.Contains(msg, "store not open")
+}
+
+// errTransientDeploy marks a deploy attempt that should be retried even though
+// its error message is not itself a transient marker — e.g. the partition has no
+// elected leader yet.
+var errTransientDeploy = errors.New("transient deploy condition")
+
+const (
+	deployRetryFor      = 15 * time.Second
+	deployRetryInterval = 250 * time.Millisecond
+)
+
+// retryDeploy runs a deploy attempt, retrying transient failures (engine not yet
+// started / store not open / no leader) against a freshly resolved leader until
+// it succeeds, the context is cancelled, or the retry window elapses. The deploy
+// key is caller-assigned and deploys are idempotent on it, so retries are safe.
+func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) error {
+	deadline := time.Now().Add(deployRetryFor)
+	var lastErr error
+	for {
+		err := attempt()
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errTransientDeploy) && !transientDeployError(err) {
+			return err
+		}
+		lastErr = err
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			if errors.Is(lastErr, errTransientDeploy) {
+				return zenerr.ClusterError(fmt.Errorf("no partition leader available to deploy to within %s", deployRetryFor))
+			}
+			return lastErr
+		}
+		time.Sleep(deployRetryInterval)
+	}
+}
+
+// deployProcessDefinitionToPartition deploys to the given partition's current
+// leader, retrying transient failures and re-resolving the leader each attempt
+// so the deploy follows leadership changes during cluster churn.
 func (node *ZenNode) deployProcessDefinitionToPartition(
+	ctx context.Context,
+	partitionId uint32,
+	definitionKey int64,
+	data []byte,
+	resourceName string,
+	registerProcessDefinitionSubscriptions bool,
+) error {
+	return node.retryDeploy(ctx, func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return errTransientDeploy
+		}
+		return node.deployProcessDefinitionToPartitionOnce(ctx, clusterState, leaderId, definitionKey, data, resourceName, registerProcessDefinitionSubscriptions)
+	})
+}
+
+func (node *ZenNode) deployProcessDefinitionToPartitionOnce(
 	ctx context.Context,
 	clusterState state.Cluster,
 	partitionLeaderId string,
@@ -603,6 +710,9 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 }
 
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -628,6 +738,9 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 }
 
 func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) *zenerr.ZenError {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err.(*zenerr.ZenError)
+	}
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -647,6 +760,9 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 }
 
 func (node *ZenNode) FailJob(ctx context.Context, key int64, errorCode string, variables map[string]any) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 
@@ -675,6 +791,9 @@ func (node *ZenNode) FailJob(ctx context.Context, key int64, errorCode string, v
 }
 
 func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -693,6 +812,9 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 }
 
 func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	if correlationKey == nil {
 		return node.publishDefinitionMessageByName(ctx, name, variables)
 	}
@@ -1162,6 +1284,9 @@ func (node *ZenNode) CreateInstance(
 	variables map[string]any,
 	timeToLive *types.TTL,
 ) (*proto.CreateInstanceResponse, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return nil, err
+	}
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -1219,6 +1344,9 @@ func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, process
 }
 
 func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -1239,6 +1367,9 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 }
 
 func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceKey int64) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -1258,6 +1389,9 @@ func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceK
 }
 
 func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return nil, nil, err
+	}
 	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
@@ -1951,6 +2085,9 @@ func nodeReadinessReasons(cs state.Cluster, nodeID string) []string {
 }
 
 func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return nil, err
+	}
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -2030,6 +2167,9 @@ func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, 
 }
 
 func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
@@ -2043,6 +2183,9 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 }
 
 func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee *string) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
@@ -2052,6 +2195,9 @@ func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee 
 }
 
 func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {

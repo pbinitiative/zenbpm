@@ -75,14 +75,16 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 	// logger tees every request body into memory, so the cap must already be
 	// in place by the time it wraps r.Body. Oversized requests are rejected
 	// downstream (OpenAPIValidator) so the 413 still gets logged.
-	r.Use(middleware.RequestBodyLimit(conf.HttpServer.MaxRequestBodyBytes))
+	// Only cluster restore is exempt from the normal request cap. It handles the
+	// uploaded tar as a stream and validates its archive metadata and checksums.
+	r.Use(middleware.RequestBodyLimitExcept(conf.HttpServer.MaxRequestBodyBytes, "/system/v1/cluster/restore"))
 	r.Use(middleware.Logger(restLogger, &middleware.LoggingOpts{
 		Mode:            middleware.LogMode(conf.HttpServer.LogMode),
 		WithReferer:     true,
 		WithUserAgent:   true,
 		LogRequestBody:  conf.HttpServer.LogBody,
 		LogResponseBody: conf.HttpServer.LogBody,
-		IgnorePaths:     []string{"/system/metrics"},
+		IgnorePaths:     []string{"/system/metrics", "/system/v1/cluster/backup", "/system/v1/cluster/restore"},
 	}))
 	r.Use(errortracking.HTTPContext)
 	r.Use(middleware.Recovery())
@@ -119,13 +121,20 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 		r.Mount("/", h)
 	})
 	// register system endpoints
+	// Convention: /v1/** is the business API documented in openapi/api.yaml;
+	// /system is the operational plane — unversioned probes directly under
+	// /system (stable for k8s probes and Prometheus), versioned operational
+	// APIs with payload contracts under /system/v1/....
 	r.Route("/system", func(r chi.Router) {
+		r.Get("/v1/cluster/backup", s.handleClusterBackup)
+		r.Post("/v1/cluster/restore", s.handleClusterRestore)
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
 		// (raw cluster state, always 200) for existing consumers; readiness
 		// semantics live exclusively on /system/health/ready below.
 		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
-			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus()), "", " ")
+			healthy, reasons := node.Health()
+			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus(), healthy, reasons), "", " ")
 			if err != nil {
 				restLogger.Error("failed to marshal status", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)

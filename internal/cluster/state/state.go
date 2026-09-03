@@ -21,6 +21,9 @@ type Cluster struct {
 	Partitions map[uint32]Partition `json:"partitions"`
 	// Nodes stores information about current cluster members
 	Nodes map[string]Node `json:"nodes"`
+	// Restoring is true while a cluster restore is in progress. Engines are
+	// stopped and client-facing operations are rejected until it clears.
+	Restoring bool `json:"restoring"`
 }
 
 func (c Cluster) GetNode(nodeId string) (Node, error) {
@@ -68,33 +71,31 @@ func (c Cluster) GetLeastStressedNode() (Node, error) {
 
 // GetPartitionFollower preferably returns partition follower node and if it does not exist it returns the leader
 func (c Cluster) GetPartitionFollower(partition uint32) (Node, error) {
-	partitionState, ok := c.Partitions[partition]
-	if !ok {
+	if _, ok := c.Partitions[partition]; !ok {
 		return Node{}, fmt.Errorf("partition not found")
 	}
-	partitionLeaderId := partitionState.LeaderId
-	var partitionFollower Node
+
+	var aliveLeader Node
 	for _, node := range c.Nodes {
-		nodePartition, hasPartition := node.Partitions[partition]
-		if !hasPartition {
+		if node.State == NodeStateShutdown {
 			continue
 		}
-		if nodePartition.Role == RoleFollower && nodePartition.State == NodePartitionStateInitialized {
-			partitionFollower = node
-			break
+		p, ok := node.Partitions[partition]
+		if !ok || p.State != NodePartitionStateInitialized {
+			continue
+		}
+		switch p.Role {
+		case RoleFollower:
+			return node, nil // prefer any alive initialized follower
+		case RoleLeader:
+			aliveLeader = node // remember as fallback
 		}
 	}
-	var winningNode Node
-	if partitionFollower.Addr == "" {
-		leader, ok := c.Nodes[partitionLeaderId]
-		if !ok || leader.Partitions[partition].State != NodePartitionStateInitialized {
-			return Node{}, fmt.Errorf("partition has no initialized node")
-		}
-		winningNode = leader
-	} else {
-		winningNode = partitionFollower
+
+	if aliveLeader.Addr != "" {
+		return aliveLeader, nil
 	}
-	return winningNode, nil
+	return Node{}, fmt.Errorf("no healthy node hosts partition %d", partition)
 }
 
 // PartitionLeaderInitialized reports whether the recorded leader exists and

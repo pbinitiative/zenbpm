@@ -9,11 +9,13 @@ message Command {
     TYPE_NOOP = 1;
     TYPE_NODE_CHANGE = 2;
     TYPE_NODE_PARTITION_CHANGE = 3;
+    TYPE_CLUSTER_MAINTENANCE_CHANGE = 4;
   }
   Type type = 1;
   oneof request {
     NodeChange node_change = 2;
     NodePartitionChange node_partition_change = 3;
+    ClusterMaintenanceChange cluster_maintenance_change = 4;
   }
 }
 
@@ -67,4 +69,10 @@ message NodePartitionChange {
   uint32 partition_id = 2;  // partition id which changed on node
   NodePartitionState state = 3;
   Role role = 4;
+}
+
+// ClusterMaintenanceChange flips cluster-wide maintenance state.
+// restoring=true gates all engine traffic while a restore is in progress.
+message ClusterMaintenanceChange {
+  bool restoring = 1;
 }

@@ -505,6 +505,89 @@ func (c *countingControllerTestStore) IsLeader() bool {
 	return c.ControllerTestStore.IsLeader()
 }
 
+// TestRestoringFlagStopsEngines verifies that when Cluster.Restoring is set,
+// performMemberOperations stops all locally-running partition engines and
+// returns early.
+//
+// The test boots a partition exactly like TestEngineStartsOnRegainedPartitionLeadership
+// (same fixture), waits for the engine to be running, then flips Restoring=true
+// and fires ClusterStateChangeNotification. It asserts the engine is nil within
+// the poll timeout. Engine restart after the flag clears is covered by the
+// normal handlePartitionStateInitialized → startEngineIfLeader path and is
+// validated by TestEngineStartsOnRegainedPartitionLeadership.
+func TestRestoringFlagStopsEngines(t *testing.T) {
+	mux, ln, err := network.NewNodeMux("")
+	assert.NoError(t, err)
+	go func() {
+		err := mux.Serve()
+		assert.NoError(t, err)
+	}()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	assert.NoError(t, err)
+
+	tStore := &ControllerTestStore{
+		id:   "test-node-1",
+		addr: fmt.Sprintf("127.0.0.1:%s", port),
+		clusterState: state.Cluster{
+			Config:     state.ClusterConfig{DesiredPartitions: 1},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
+		},
+		leader: true,
+	}
+
+	srvLn := network.NewZenBpmClusterListener(mux)
+	srv := server.New(srvLn, tStore, nil, nil, nil)
+	assert.NoError(t, srv.Open())
+
+	clientMgr := client.NewClientManager(tStore)
+	ctrl, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft: config.ClusterRaft{
+			Dir:                    t.TempDir(),
+			JoinAttempts:           2,
+			JoinInterval:           100 * time.Millisecond,
+			JoinAddresses:          []string{tStore.addr},
+			BootstrapExpect:        1,
+			BootstrapExpectTimeout: 1 * time.Second,
+		},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, ctrl.Start(tStore, clientMgr))
+	defer ctrl.Stop()
+
+	// Seed the cluster state so the controller creates partition 1.
+	tStore.clusterState.Nodes[tStore.id] = state.Node{
+		Id:         tStore.id,
+		Addr:       tStore.addr,
+		Suffrage:   raft.Voter,
+		State:      state.NodeStateStarted,
+		Role:       state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{},
+	}
+	ctrl.ClusterStateChangeNotification(t.Context())
+
+	// Wait for partition 1 to be INITIALIZED with an engine running.
+	testPoll(t, func() bool {
+		pn := ctrl.GetPartition(t.Context(), 1)
+		return pn != nil && pn.Engine != nil
+	}, 100*time.Millisecond, 10*time.Second, "partition engine never started initially")
+
+	// Flip the Restoring flag and fire a cluster state change notification.
+	// performMemberOperations should stop all local engines and return early.
+	tStore.clusterState.Restoring = true
+	ctrl.ClusterStateChangeNotification(t.Context())
+
+	// The engine must be nil (stopped) after the notification.
+	testPoll(t, func() bool {
+		pn := ctrl.GetPartition(t.Context(), 1)
+		return pn != nil && pn.Engine == nil
+	}, 100*time.Millisecond, 5*time.Second, "engine was not stopped when Restoring flag was set")
+}
+
 type ControllerTestStore struct {
 	mu           sync.RWMutex
 	id           string
@@ -626,6 +709,10 @@ func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
 	c.clusterState = clusterState
 }
 
+func (c *ControllerTestStore) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
+	return nil
+}
+
 func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout time.Duration, msgAndArgs ...any) {
 	t.Helper()
 	tck := time.NewTicker(checkPeriod)
@@ -676,7 +763,7 @@ func setupControllerTestCluster(t *testing.T) (*ControllerTestStore, *client.Cli
 		leader: true,
 	}
 	srvLn := network.NewZenBpmClusterListener(mux)
-	srv := server.New(srvLn, tStore, nil, nil)
+	srv := server.New(srvLn, tStore, nil, nil, nil)
 	require.NoError(t, srv.Open())
 
 	clientMgr := client.NewClientManager(tStore)

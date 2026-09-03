@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"fmt"
-	"mime/multipart"
 	"strings"
 	"sync"
 	"testing"
@@ -479,20 +478,9 @@ func deployE2eTestDataDefinitionRaw(t testing.TB, filename string) (*zenclient.C
 		return nil, err
 	}
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(file); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 }
 
 func waitForEventBasedGatewayWaitingState(t testing.TB, processInstanceKey int64) {

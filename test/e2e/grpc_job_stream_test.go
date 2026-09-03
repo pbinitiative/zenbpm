@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"mime/multipart"
 	"net"
 	"os"
 	"path"
@@ -405,21 +404,9 @@ func deployDefinitionWithJobType(t testing.TB, filename string, processId string
 		file = bytes.ReplaceAll(file, oldBytes, newBytes)
 	}
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return result, fmt.Errorf("failed to create form file: %w", err)
-	}
-	_, err = part.Write(file)
-	if err != nil {
-		return result, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	err = writer.Close()
-	if err != nil {
-		return result, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 	if err != nil {
 		return result, fmt.Errorf("failed to deploy process definition: %w", err)
 	}

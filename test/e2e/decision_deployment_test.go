@@ -41,7 +41,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 			response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 				t.Context(),
-				"application/xml",
+				"application/octet-stream",
 				strings.NewReader(definition),
 			)
 
@@ -67,7 +67,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -100,7 +100,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -127,7 +127,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -161,7 +161,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -190,7 +190,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -213,7 +213,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -236,7 +236,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -259,7 +259,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -282,7 +282,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -305,7 +305,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(definition),
 		)
 
@@ -328,7 +328,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(`<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="`+definitionID+`" <<<unclosed`),
 		)
 
@@ -375,7 +375,7 @@ func TestDmnDeploymentValidation(t *testing.T) {
 
 		response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 			t.Context(),
-			"application/xml",
+			"application/octet-stream",
 			strings.NewReader(missingID),
 		)
 
@@ -408,7 +408,7 @@ func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {
 
 	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		strings.NewReader(original),
 	)
 	require.NoError(t, err)
@@ -417,7 +417,7 @@ func TestDmnFormattingOnlyRedeployReturnsExistingDefinition(t *testing.T) {
 
 	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		strings.NewReader(formatted),
 	)
 	require.NoError(t, err)
@@ -445,7 +445,7 @@ func TestDmnContentChangeAfterNewerVersionCreatesNewVersion(t *testing.T) {
 
 	first, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		strings.NewReader(original),
 	)
 	require.NoError(t, err)
@@ -455,7 +455,7 @@ func TestDmnContentChangeAfterNewerVersionCreatesNewVersion(t *testing.T) {
 
 	second, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		strings.NewReader(changed),
 	)
 	require.NoError(t, err)
@@ -466,7 +466,7 @@ func TestDmnContentChangeAfterNewerVersionCreatesNewVersion(t *testing.T) {
 
 	third, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		strings.NewReader(original),
 	)
 	require.NoError(t, err)

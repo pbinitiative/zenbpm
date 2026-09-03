@@ -19,22 +19,71 @@ The `zenclient` package provides two clients:
 #### Deploy a BPMN process definition and start a process instance
 Simplified example:
 ```go
-restClient, _ := zenclient.NewClient("http://localhost:8080/v1")
+restClient, err := zenclient.NewClientWithResponses("http://localhost:8080/v1")
+if err != nil {
+    panic(err)
+}
 
-var bodyBuf bytes.Buffer
-mw := multipart.NewWriter(&bodyBuf)
-...
-resp1, _ := restClient.CreateProcessDefinitionWithBody(
+resp1, err := restClient.CreateProcessDefinitionWithBodyWithResponse(
     ctx,
-    mw.FormDataContentType(),
-    &bodyBuf,
+    "application/octet-stream",
+    bytes.NewReader(bpmnBytes),
 )
+if err != nil {
+    panic(err)
+}
+var processDefinitionKey int64
+switch {
+case resp1.JSON201 != nil:
+    processDefinitionKey = resp1.JSON201.ProcessDefinitionKey
+case resp1.JSON200 != nil:
+    processDefinitionKey = resp1.JSON200.ProcessDefinitionKey
+default:
+    panic("process deployment failed")
+}
 
 startBody := zenclient.CreateProcessInstanceJSONRequestBody{
-    ProcessDefinitionKey: key,
+    ProcessDefinitionKey: processDefinitionKey,
 }
-resp2, _ := restClient.CreateProcessInstance(ctx, startBody)
+startResp, err := restClient.CreateProcessInstanceWithResponse(ctx, startBody)
+if err != nil {
+    panic(err)
+}
+if startResp.JSON201 == nil {
+    panic("process start failed")
+}
 ```
+
+A BPMN deployment is idempotent against the latest definition with the same BPMN process ID.
+It returns `200 OK` and that existing key when the XML content is identical after formatting normalization;
+a new process ID or a content change creates a new version and returns `201 Created`.
+
+#### Deploy a DMN resource definition
+
+Simplified example:
+```go
+restClient, err := zenclient.NewClientWithResponses("http://localhost:8080/v1")
+if err != nil {
+    panic(err)
+}
+
+resp, err := restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
+    ctx,
+    "application/octet-stream",
+    bytes.NewReader(dmnBytes),
+)
+if err != nil {
+    panic(err)
+}
+if resp.JSON201 == nil && resp.JSON200 == nil {
+    panic("DMN deployment failed")
+}
+```
+
+A DMN deployment follows the same rule using the DMN resource definition ID: `200 OK` returns the
+latest existing key for identical normalized XML, while a new ID or content change creates a new version
+and returns `201 Created`.
+
 #### Register a worker
 Simplified example:
 ```go

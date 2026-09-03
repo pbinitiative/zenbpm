@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,18 +119,52 @@ func TestMain(m *testing.M) {
 		log.Error("Failed to start Zen node: %s", err)
 		os.Exit(1)
 	}
-	zenNode, err := cluster.StartZenNode(appContext, conf)
-	if err != nil {
-		log.Error("Failed to start Zen node: %s", err)
+	var (
+		zenNode       *cluster.ZenNode
+		svr           *rest.Server
+		grpcSrv       *grpc.Server
+		httpTransport *http.Transport
+	)
+	cleanup := sync.OnceFunc(func() {
+		if httpTransport != nil {
+			httpTransport.CloseIdleConnections()
+		}
+		if svr != nil {
+			svr.Stop(appContext)
+		}
+		if grpcSrv != nil {
+			grpcSrv.Stop()
+		}
+		if zenNode != nil {
+			if err := zenNode.Stop(); err != nil {
+				log.Error("failed to properly stop zen node: %s", err)
+			}
+		}
+		openTelemetry.Stop(appContext)
+		ctxCancel()
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Error("failed to remove e2e test directory: %s", err)
+		}
+	})
+	exitWithCleanup := func(format string, args ...any) {
+		log.Error(format, args...)
+		cleanup()
 		os.Exit(1)
+	}
+	zenNode, err = cluster.StartZenNode(appContext, conf)
+	if err != nil {
+		exitWithCleanup("Failed to start Zen node: %s", err)
 	}
 	// Start the public API
 	buildInfo := buildinfo.Current()
-	svr := rest.NewServer(zenNode, conf, buildInfo)
+	svr = rest.NewServer(zenNode, conf, buildInfo)
 	ln := svr.Start()
+	if ln == nil {
+		exitWithCleanup("Failed to start REST server")
+	}
 
 	// Create rest client
-	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
+	httpTransport = http.DefaultTransport.(*http.Transport).Clone()
 	httpTransport.Proxy = nil
 	httpClient := &http.Client{
 		Transport: httpTransport,
@@ -141,8 +176,7 @@ func TestMain(m *testing.M) {
 		zenclient.WithHTTPClient(httpClient),
 	)
 	if err != nil {
-		log.Error("failed to create rest client: %s", err)
-		os.Exit(1)
+		exitWithCleanup("failed to create rest client: %s", err)
 	}
 
 	app = Application{
@@ -153,7 +187,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Start ZenBpm GRPC API
-	grpcSrv := grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
+	grpcSrv = grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
 	grpcSrv.Start()
 	app.grpcAddr = conf.GrpcServer.Addr
 
@@ -162,8 +196,7 @@ func TestMain(m *testing.M) {
 	for {
 		time.Sleep(time.Second)
 		if time.Now().After(timeout) {
-			fmt.Println("Node failed to start until timeout was reached")
-			os.Exit(1)
+			exitWithCleanup("Node failed to start until timeout was reached")
 		}
 		s := ClusterStatus{}
 		resp, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
@@ -171,8 +204,7 @@ func TestMain(m *testing.M) {
 			continue
 		}
 		if err := json.Unmarshal(resp, &s); err != nil {
-			fmt.Printf("Failed to parse cluster status: %v\n", err)
-			os.Exit(1)
+			exitWithCleanup("Failed to parse cluster status: %v", err)
 		}
 		nodePartition := s.Nodes["test-node-1"].Partitions["1"]
 		if len(s.Partitions) > 0 && len(s.Nodes) > 0 &&
@@ -185,20 +217,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		testMainWithCleanup{
 			testMain: m,
-			cleanup: func() {
-				httpTransport.CloseIdleConnections()
-				svr.Stop(appContext)
-				grpcSrv.Stop()
-				if err := zenNode.Stop(); err != nil {
-					log.Error("failed to properly stop zen node: %s", err)
-				}
-				openTelemetry.Stop(appContext)
-				ctxCancel()
-				err := os.RemoveAll(tempDir)
-				if err != nil {
-					return
-				}
-			},
+			cleanup:  cleanup,
 		},
 	)
 }

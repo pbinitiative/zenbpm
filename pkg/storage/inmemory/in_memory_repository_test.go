@@ -1,10 +1,12 @@
 package inmemory_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -23,6 +25,91 @@ func TestInMemoryStorage(t *testing.T) {
 		t.Run(name, testFunc(store, t))
 	}
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(store, t))
+}
+
+func TestBatchFlowNodeCountOperationsPreserveOrderAndPendingIncrement(t *testing.T) {
+	store := inmemory.NewStorage()
+	processInstanceKey := store.GenerateId()
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: processInstanceKey},
+	}))
+
+	batch := store.NewBatch()
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err := store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count, "a reset queued after an increment must run last")
+
+	batch = store.NewBatch()
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued after a reset must run last")
+
+	newProcessInstanceKey := store.GenerateId()
+	batch = store.NewBatch()
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), newProcessInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: newProcessInstanceKey},
+	}))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = store.GetFlowNodeCount(t.Context(), newProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued before process-instance creation must be retained")
+}
+
+func TestFlowNodeCountsAreConcurrentAndResetIsProcessScoped(t *testing.T) {
+	const concurrentIncrements = 100
+	store := inmemory.NewStorage()
+	processInstanceKey := store.GenerateId()
+	otherProcessInstanceKey := store.GenerateId()
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: processInstanceKey},
+	}))
+	require.NoError(t, store.SaveProcessInstance(t.Context(), &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{Key: otherProcessInstanceKey},
+	}))
+
+	require.NoError(t, store.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
+	var wg sync.WaitGroup
+	errs := make(chan error, concurrentIncrements)
+	for range concurrentIncrements {
+		wg.Go(func() {
+			errs <- store.IncrementFlowNodeCount(t.Context(), processInstanceKey)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	count, err := store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(concurrentIncrements), count)
+	require.NoError(t, store.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	count, err = store.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	otherCount, err := store.GetFlowNodeCount(t.Context(), otherProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), otherCount)
+}
+
+func TestFlowNodeCountMutationForMissingProcessInstanceIsNoOp(t *testing.T) {
+	store := inmemory.NewStorage()
+	missingKey := store.GenerateId()
+
+	require.NoError(t, store.IncrementFlowNodeCount(t.Context(), missingKey))
+	require.NoError(t, store.ResetProcessInstanceFlowNodeCount(t.Context(), missingKey))
+	count, err := store.GetFlowNodeCount(t.Context(), missingKey)
+	require.NoError(t, err)
+	assert.Zero(t, count)
 }
 
 // Verifies UpdateOutputFlowElementInstance mirrors SQL COALESCE on completed_at:

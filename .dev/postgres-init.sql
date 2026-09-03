@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS reporting.process_instance (
     history_ttl_sec BIGINT,
     history_delete_sec BIGINT,
     start_element_id TEXT,
-    nesting_depth BIGINT NOT NULL DEFAULT 0
+    nesting_depth BIGINT NOT NULL DEFAULT 0,
+    flow_node_count BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS reporting.decision_instance (
@@ -112,6 +113,11 @@ CREATE INDEX IF NOT EXISTS idx_fk_execution_token_process_instance_key
 CREATE INDEX IF NOT EXISTS idx_execution_token_state
     ON reporting.execution_token (state);
 
+-- NOTE: process_instance.flow_node_count and nesting_depth are runtime execution-control values, not audit
+-- data. flow_node_count changes for each successfully executed flow node, while nesting_depth is assigned
+-- once when a child process instance is created. They are replicated only because they live on the
+-- process_instance row; reporting consumers should not rely on them being up to date.
+
 CREATE TABLE IF NOT EXISTS reporting.flow_element_instance (
     key BIGINT PRIMARY KEY,
     element_id TEXT NOT NULL,
@@ -132,6 +138,7 @@ CREATE TABLE IF NOT EXISTS reporting.incident (
     element_instance_key BIGINT NOT NULL,
     element_id TEXT NOT NULL,
     process_instance_key BIGINT NOT NULL,
+    incident_type TEXT NOT NULL DEFAULT '',
     message TEXT NOT NULL,
     created_at BIGINT NOT NULL,
     resolved_at BIGINT,

@@ -265,6 +265,10 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 	}()
 
+	if err := validateExternalTriggerInstanceState(instance, fmt.Sprintf("complete job %d", jobKey)); err != nil {
+		return err
+	}
+
 	//refresh token
 	job, err = engine.refreshAndValidateJob(ctx, jobKey)
 	if err != nil {
@@ -349,23 +353,31 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 		engine.recordJobLifetime(ctx, job, "completed")
 		return nil
-	} else {
-		err = batch.Flush(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to complete job %+v: %w", job, err)
-		}
-
-		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
-		engine.recordJobLifetime(ctx, job, "completed")
-
-		if !messageEndEventHandled {
-			err := engine.RunProcessInstance(ctx, instance, tokens)
-			if err != nil {
-				return fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
-			}
-		}
-		return err
 	}
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+	}
+
+	engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
+	engine.recordJobLifetime(ctx, job, "completed")
+
+	if !messageEndEventHandled {
+		// The job completion has already been durably flushed above. A successfully persisted
+		// incident is a domain outcome and must not invite a retry of the completed job, while a
+		// technical continuation failure must remain observable so recovery can be triggered.
+		outcome := &runProcessInstanceOutcome{}
+		if runErr := engine.runProcessInstance(ctx, instance, tokens, outcome); runErr != nil {
+			if !outcome.isPersistedIncidentOnly() {
+				return fmt.Errorf("failed to continue process instance %d after completing job %d: %w",
+					instance.ProcessInstance().Key, job.Key, runErr)
+			}
+			engine.logger.Warn("failed to run process instance after completing job",
+				"job", job.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
+		}
+	}
+	return nil
 }
 
 // refreshAndValidateJob fetches the latest job state and returns an error if

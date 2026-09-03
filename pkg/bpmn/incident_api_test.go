@@ -62,6 +62,14 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
+	assert.Equal(t, runtime.IncidentTypeUnspecified, incidents[0].Type)
+
+	// artificially raise the instance's flow node counter to verify unrelated resolution keeps it
+	for range 3 {
+		require.NoError(t, store.IncrementFlowNodeCount(t.Context(), instance.ProcessInstance().Key))
+	}
+	countBeforeResolution, err := store.GetFlowNodeCount(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
 
 	// now fix the variable
 	pi := store.ProcessInstances[instance.ProcessInstance().Key]
@@ -77,6 +85,11 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	incident, err := bpmnEngine.persistence.FindIncidentByKey(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
+
+	count, err := store.GetFlowNodeCount(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, count, countBeforeResolution,
+		"resolving an unrelated incident must not reset the flow node counter")
 
 }
 

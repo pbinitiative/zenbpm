@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_technical_failure_error_subscription" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="technical-failure-error-subscription" isExecutable="true">
+    <bpmn:startEvent id="start">
+      <bpmn:outgoing>flow-start-first</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow-start-first" sourceRef="start" targetRef="first-task" />
+    <bpmn:serviceTask id="first-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="first-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow-start-first</bpmn:incoming>
+      <bpmn:outgoing>flow-first-second</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow-first-second" sourceRef="first-task" targetRef="second-task" />
+    <bpmn:userTask id="second-task">
+      <bpmn:incoming>flow-first-second</bpmn:incoming>
+      <bpmn:outgoing>flow-second-end</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:boundaryEvent id="second-task-error" attachedToRef="second-task">
+      <bpmn:outgoing>flow-error-end</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="second-task-error-definition" errorRef="technical-error" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="flow-second-end" sourceRef="second-task" targetRef="success-end" />
+    <bpmn:endEvent id="success-end">
+      <bpmn:incoming>flow-second-end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="flow-error-end" sourceRef="second-task-error" targetRef="error-end" />
+    <bpmn:endEvent id="error-end">
+      <bpmn:incoming>flow-error-end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="technical-error" errorCode="TECHNICAL" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="technical-failure-error-subscription">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start"><dc:Bounds x="100" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="first_task_di" bpmnElement="first-task"><dc:Bounds x="200" y="78" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="second_task_di" bpmnElement="second-task"><dc:Bounds x="370" y="78" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="second_task_error_di" bpmnElement="second-task-error"><dc:Bounds x="435" y="140" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="success_end_di" bpmnElement="success-end"><dc:Bounds x="550" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error_end_di" bpmnElement="error-end"><dc:Bounds x="550" y="220" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_start_first_di" bpmnElement="flow-start-first"><di:waypoint x="136" y="118" /><di:waypoint x="200" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_first_second_di" bpmnElement="flow-first-second"><di:waypoint x="300" y="118" /><di:waypoint x="370" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_second_end_di" bpmnElement="flow-second-end"><di:waypoint x="470" y="118" /><di:waypoint x="550" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_error_end_di" bpmnElement="flow-error-end"><di:waypoint x="453" y="176" /><di:waypoint x="453" y="238" /><di:waypoint x="550" y="238" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

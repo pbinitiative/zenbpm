@@ -49,7 +49,11 @@ func (engine *Engine) Start(ctx context.Context) error {
 		tokens   []runtime.ExecutionToken
 	}
 	instancesToStart := make(map[int64]instanceToStart)
+	skippedInstances := make(map[int64]struct{})
 	for _, token := range tokens {
+		if _, skipped := skippedInstances[token.ProcessInstanceKey]; skipped {
+			continue
+		}
 		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
 			val.tokens = append(val.tokens, token)
 			instancesToStart[token.ProcessInstanceKey] = val
@@ -57,6 +61,11 @@ func (engine *Engine) Start(ctx context.Context) error {
 			instance, err := engine.persistence.FindProcessInstanceByKey(engine.context, token.ProcessInstanceKey)
 			if err != nil {
 				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
+			}
+			// Failed instances resume only through incident resolution; terminal instances never resume.
+			if instance.ProcessInstance().State != runtime.ActivityStateReady && instance.ProcessInstance().State != runtime.ActivityStateActive {
+				skippedInstances[token.ProcessInstanceKey] = struct{}{}
+				continue
 			}
 			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
 				instance: instance,
@@ -132,6 +141,72 @@ func (engine *Engine) Stop() {
 // Lock will be released once the RunProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
 func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (retErr error) {
+	return engine.runProcessInstance(ctx, instance, executionTokens, nil)
+}
+
+type runProcessInstanceOutcome struct {
+	persistedIncident bool
+	technicalFailure  bool
+}
+
+type technicalFailureError struct {
+	err error
+}
+
+func (e *technicalFailureError) Error() string { return e.err.Error() }
+func (e *technicalFailureError) Unwrap() error { return e.err }
+
+func markTechnicalFailure(err error) error {
+	if err == nil {
+		return nil
+	}
+	var technicalErr *technicalFailureError
+	if errors.As(err, &technicalErr) {
+		return err
+	}
+	return &technicalFailureError{err: err}
+}
+
+func isTechnicalFailure(err error) bool {
+	var technicalErr *technicalFailureError
+	return errors.As(err, &technicalErr)
+}
+
+func validateExternalTriggerInstanceState(instance runtime.ProcessInstance, trigger string) error {
+	state := instance.ProcessInstance().State
+	if state == runtime.ActivityStateActive || state == runtime.ActivityStateReady {
+		return nil
+	}
+	return newEngineErrorf("cannot %s: process instance %d is in state %s, resolve the instance's incidents first",
+		trigger, instance.ProcessInstance().Key, state)
+}
+
+func (o *runProcessInstanceOutcome) recordIncident(err error) {
+	if o == nil {
+		return
+	}
+	if err != nil {
+		o.technicalFailure = true
+		return
+	}
+	o.persistedIncident = true
+}
+
+func (o *runProcessInstanceOutcome) recordTechnicalFailure() {
+	if o != nil {
+		o.technicalFailure = true
+	}
+}
+
+func (o *runProcessInstanceOutcome) isPersistedIncidentOnly() bool {
+	return o != nil && o.persistedIncident && !o.technicalFailure
+}
+
+func (o *runProcessInstanceOutcome) isPersistedFlowNodeCountReplacement(incidentType runtime.IncidentType) bool {
+	return incidentType == runtime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded && o.isPersistedIncidentOnly()
+}
+
+func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken, outcome *runProcessInstanceOutcome) (retErr error) {
 	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
@@ -146,6 +221,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	//refresh
 	err := engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
+		outcome.recordTechnicalFailure()
 		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	switch instance.ProcessInstance().State {
@@ -184,6 +260,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	instance.ProcessInstance().State = runtime.ActivityStateActive
 	err = engine.persistence.SaveProcessInstance(ctx, instance)
 	if err != nil {
+		outcome.recordTechnicalFailure()
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.ProcessInstance().Key), err)
 	}
 	defer func() {
@@ -195,10 +272,14 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	}()
 
 	// *** MAIN LOOP ***
+	// runFlowNodeCount caches the instance's total flow node execution counter for the duration
+	// of this run; see validateAndIncrementFlowNodeCount.
+	runFlowNodeCount := &flowNodeRunCount{}
 mainLoop:
 	for len(runningExecutionTokens) > 0 {
 		batch, err := engine.NewEngineBatchClean()
 		if err != nil {
+			outcome.recordTechnicalFailure()
 			return fmt.Errorf("failed to create engine batch: %w", err)
 		}
 		currentToken := runningExecutionTokens[0]
@@ -212,11 +293,29 @@ mainLoop:
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
 
+		if err := engine.validateAndIncrementFlowNodeCount(ctx, &batch, instance, currentToken, runFlowNodeCount); err != nil {
+			runErr = errors.Join(runErr, err)
+			if !errors.Is(err, ErrMaxProcessInstanceFlowNodeCountExceeded) {
+				outcome.recordTechnicalFailure()
+			}
+			engine.logger.Warn("flow node count guard tripped, recording incident", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
+			if incidentError != nil {
+				err = errors.Join(err, incidentError)
+				runErr = errors.Join(runErr, incidentError)
+			}
+			endErrorSpan(tokenSpan, err)
+			break mainLoop
+		}
+
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
+			outcome.recordTechnicalFailure()
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -228,8 +327,12 @@ mainLoop:
 		updatedTokens, err := engine.processFlowNode(ctx, &batch, instance, activity, currentToken)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
+			if isTechnicalFailure(err) {
+				outcome.recordTechnicalFailure()
+			}
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -239,6 +342,7 @@ mainLoop:
 		}
 
 		if saveErr := batch.saveTokens(ctx, updatedTokens); saveErr != nil {
+			outcome.recordTechnicalFailure()
 			saveErr = fmt.Errorf("failed to save updated tokens for process instance %d: %w", instance.ProcessInstance().Key, saveErr)
 			runErr = errors.Join(runErr, saveErr)
 			engine.logger.Warn("failed to save updated tokens", "processInstance", instance.ProcessInstance().Key, "err", saveErr)
@@ -257,9 +361,11 @@ mainLoop:
 		}
 		err = batch.SaveProcessInstance(ctx, instance)
 		if err != nil {
+			outcome.recordTechnicalFailure()
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to save process instance after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -273,8 +379,10 @@ mainLoop:
 				err := engine.handleParentProcessContinuation(ctx, &batch, instance, activity.Element())
 				if err != nil {
 					runErr = errors.Join(runErr, err)
+					outcome.recordTechnicalFailure()
 					engine.logger.Warn("failed to handle parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-					incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+					incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+					outcome.recordIncident(incidentError)
 					if incidentError != nil {
 						err = errors.Join(err, incidentError)
 						runErr = errors.Join(runErr, incidentError)
@@ -285,9 +393,11 @@ mainLoop:
 			}
 			err = batch.Flush(ctx)
 			if err != nil {
+				outcome.recordTechnicalFailure()
 				runErr = errors.Join(runErr, err)
 				engine.logger.Warn("failed to flush after processing parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-				incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+				incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+				outcome.recordIncident(incidentError)
 				if incidentError != nil {
 					err = errors.Join(err, incidentError)
 					runErr = errors.Join(runErr, incidentError)
@@ -295,15 +405,18 @@ mainLoop:
 				endErrorSpan(tokenSpan, err)
 				break mainLoop
 			}
+			instance.ProcessInstance().FlowNodeCount = runFlowNodeCount.count
 			tokenSpan.End()
 			break mainLoop
 		}
 
 		err = batch.Flush(ctx)
 		if err != nil {
+			outcome.recordTechnicalFailure()
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to flush after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
 			if incidentError != nil {
 				err = errors.Join(err, incidentError)
 				runErr = errors.Join(runErr, incidentError)
@@ -311,6 +424,7 @@ mainLoop:
 			endErrorSpan(tokenSpan, err)
 			continue
 		}
+		instance.ProcessInstance().FlowNodeCount = runFlowNodeCount.count
 		tokenSpan.End()
 	} // end of main loop
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -60,30 +61,25 @@ func (engine *Engine) NewEngineBatchClean() (EngineBatch, error) {
 }
 
 func (b *EngineBatch) hasLockedInstance(instanceKey int64) bool {
-	for _, touchedKey := range b.touchedInstances {
-		if touchedKey == instanceKey {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(b.touchedInstances, instanceKey)
 }
 
 // AddParentLockedInstance only refreshes the input instances. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstance bpmnruntime.ProcessInstance) error {
 	if b.hasLockedInstance(parentInstance.ProcessInstance().Key) {
-		return b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
+		return markTechnicalFailure(b.engine.persistence.RefreshProcessInstance(ctx, parentInstance))
 	}
 
 	//This does the same thing as AddLockedInstance because I havent found better way yet
 	//TODO: do this better
 	err := b.engine.runningInstances.tryLockInstance(ctx, parentInstance.ProcessInstance().Key)
 	if err != nil {
-		return fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err))
 	}
 	err = b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(parentInstance.ProcessInstance().Key)
-		return fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err))
 	}
 	b.touchedInstances = append(b.touchedInstances, parentInstance.ProcessInstance().Key)
 	return nil
@@ -92,14 +88,14 @@ func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstanc
 // AddLockedInstance only refreshes the input instance. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddLockedInstance(ctx context.Context, instance bpmnruntime.ProcessInstance) error {
 	if b.hasLockedInstance(instance.ProcessInstance().Key) {
-		return b.engine.persistence.RefreshProcessInstance(ctx, instance)
+		return markTechnicalFailure(b.engine.persistence.RefreshProcessInstance(ctx, instance))
 	}
 
 	b.engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
 	err := b.engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
-		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)
+		return markTechnicalFailure(fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err))
 	}
 	b.touchedInstances = append(b.touchedInstances, instance.ProcessInstance().Key)
 	return nil
@@ -214,6 +210,22 @@ func (b *EngineBatch) writeAndFlushTokenIncident(ctx context.Context, token bpmn
 	return b.Flush(ctx)
 }
 
+// writeAndFlushTokenIncidentWithCounterInvalidation keeps the per-run counter cache aligned
+// with persistence when WriteTokenIncident replaces and discards the token-processing batch.
+// It is applied uniformly at every token-incident site for consistency: on paths that continue
+// the run the invalidation is load-bearing (the next guard check re-reads storage); on paths
+// that end the run immediately, it is a harmless no-op.
+func (b *EngineBatch) writeAndFlushTokenIncidentWithCounterInvalidation(
+	ctx context.Context,
+	token bpmnruntime.ExecutionToken,
+	instance bpmnruntime.ProcessInstance,
+	cause error,
+	runCount *flowNodeRunCount,
+) error {
+	runCount.cached = false
+	return b.writeAndFlushTokenIncident(ctx, token, instance, cause)
+}
+
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
 	b.b = b.engine.persistence.NewBatch()
 	b.preFlushActions = []func() error{}
@@ -260,16 +272,16 @@ func (b *EngineBatch) AddPostFlushAction(ctx context.Context, f func()) {
 }
 
 func (b *EngineBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
-	return b.b.SaveProcessDefinition(ctx, definition)
+	return markTechnicalFailure(b.b.SaveProcessDefinition(ctx, definition))
 }
 
 func (b *EngineBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return b.b.SaveProcessInstance(ctx, processInstance)
+	return markTechnicalFailure(b.b.SaveProcessInstance(ctx, processInstance))
 }
 
 func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	if err := b.b.SaveTimer(ctx, timer); err != nil {
-		return err
+		return markTechnicalFailure(err)
 	}
 	b.postFlushActions = append(b.postFlushActions, func() {
 		b.engine.recordTimerMetric(ctx, timer)
@@ -278,23 +290,23 @@ func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) er
 }
 
 func (b *EngineBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
-	return b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+	return markTechnicalFailure(b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys))
 }
 
 func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
-	return b.b.SaveJob(ctx, job)
+	return markTechnicalFailure(b.b.SaveJob(ctx, job))
 }
 
 func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
-	return b.b.SaveMessageSubscription(ctx, subscription)
+	return markTechnicalFailure(b.b.SaveMessageSubscription(ctx, subscription))
 }
 
 func (b *EngineBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
-	return b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
+	return markTechnicalFailure(b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys))
 }
 
 func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
-	return b.b.SaveToken(ctx, token)
+	return markTechnicalFailure(b.b.SaveToken(ctx, token))
 }
 
 func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.ExecutionToken) error {
@@ -308,20 +320,28 @@ func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.Execu
 }
 
 func (b *EngineBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
-	return b.b.SaveFlowElementInstance(ctx, historyItem)
+	return markTechnicalFailure(b.b.SaveFlowElementInstance(ctx, historyItem))
 }
 
 func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
-	return b.b.UpdateOutputFlowElementInstance(ctx, historyItem)
+	return markTechnicalFailure(b.b.UpdateOutputFlowElementInstance(ctx, historyItem))
 }
 
 func (b *EngineBatch) CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error {
-	return b.b.CompleteFlowElementInstance(ctx, key, completedAt)
+	return markTechnicalFailure(b.b.CompleteFlowElementInstance(ctx, key, completedAt))
+}
+
+func (b *EngineBatch) IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return markTechnicalFailure(b.b.IncrementFlowNodeCount(ctx, processInstanceKey))
+}
+
+func (b *EngineBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error {
+	return markTechnicalFailure(b.b.ResetProcessInstanceFlowNodeCount(ctx, processInstanceKey))
 }
 
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	if err := b.b.SaveIncident(ctx, incident); err != nil {
-		return err
+		return markTechnicalFailure(err)
 	}
 	b.postFlushActions = append(b.postFlushActions, func() {
 		b.engine.recordIncidentMetric(ctx, incident)
@@ -378,5 +398,5 @@ func (engine *Engine) recordTimerMetric(ctx context.Context, timer bpmnruntime.T
 }
 
 func (b *EngineBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
-	return b.b.SaveErrorSubscription(ctx, subscription)
+	return markTechnicalFailure(b.b.SaveErrorSubscription(ctx, subscription))
 }

@@ -133,6 +133,7 @@ type Querier interface {
 	GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)
 	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)
+	GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error)
 	// https://github.com/sqlc-dev/sqlc/issues/2452
 	GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInStateByTokenKeyParams) ([]Job, error)
 	GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error)
@@ -146,6 +147,8 @@ type Querier interface {
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)
+	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
+	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
 	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error

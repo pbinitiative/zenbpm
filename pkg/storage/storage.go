@@ -28,6 +28,8 @@ type Storage interface {
 	DecisionStorage
 	FlowElementInstanceReader
 	FlowElementInstanceWriter
+	FlowNodeCounterReader
+	FlowNodeCounterWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 	ErrorSubscriptionStorageReader
@@ -57,6 +59,7 @@ type Batch interface {
 	MessageStorageWriter
 	TokenStorageWriter
 	FlowElementInstanceWriter
+	FlowNodeCounterWriter
 	IncidentStorageWriter
 	ErrorSubscriptionStorageWriter
 
@@ -232,6 +235,24 @@ type FlowElementInstanceWriter interface {
 	SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 	UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 	CompleteFlowElementInstance(ctx context.Context, key int64, completedAt time.Time) error
+}
+
+// FlowNodeCounterReader reads the runtime execution-control counter used by the engine
+// to prevent infinite sequence-flow loops within a single process instance.
+type FlowNodeCounterReader interface {
+	// GetFlowNodeCount returns the total number of flow node executions performed within the
+	// process instance. Returns 0 (and no error) when the process instance does not exist yet.
+	GetFlowNodeCount(ctx context.Context, processInstanceKey int64) (int64, error)
+}
+
+// FlowNodeCounterWriter mutates the runtime execution-control counter used by the engine
+// to prevent infinite sequence-flow loops within a single process instance.
+type FlowNodeCounterWriter interface {
+	// IncrementFlowNodeCount increments the total flow node execution counter of the process instance.
+	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
+	// ResetProcessInstanceFlowNodeCount resets the total flow node execution counter of the process
+	// instance to zero, granting a fresh execution budget after operator intervention.
+	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 }
 
 type IncidentStorageReader interface {

@@ -78,6 +78,26 @@ func TestWriteAndFlushTokenIncidentFlushesCompleteBatch(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 }
 
+func TestWriteAndFlushTokenIncidentInvalidatesDiscardedElementCount(t *testing.T) {
+	persistence := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(persistence))
+	cleanupIncidentTestEngine(t, &engine)
+	batch, err := engine.NewEngineBatchClean()
+	require.NoError(t, err)
+	token := incidentTestToken()
+	runCount := &flowNodeRunCount{cached: true, count: 7}
+
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), token.ProcessInstanceKey))
+	require.NoError(t, batch.writeAndFlushTokenIncidentWithCounterInvalidation(
+		t.Context(), token, incidentTestInstance(), errors.New("original failure"), runCount,
+	))
+
+	assert.False(t, runCount.cached, "the cached count must be invalidated so the next read re-seeds from storage")
+	count, err := persistence.GetFlowNodeCount(t.Context(), token.ProcessInstanceKey)
+	require.NoError(t, err)
+	assert.Zero(t, count, "the increment from the replaced batch must not be persisted")
+}
+
 func TestWriteAndFlushTokenIncidentPersistsCompleteFailureState(t *testing.T) {
 	persistence := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(persistence))

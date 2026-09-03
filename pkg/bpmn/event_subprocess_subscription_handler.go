@@ -68,6 +68,9 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 			batch.Clear(ctx)
 		}
 	}()
+	if err := validateExternalTriggerInstanceState(instance, fmt.Sprintf("trigger event subprocess element %s", t.elementId)); err != nil {
+		return err
+	}
 
 	// Re-fetch the trigger state now that the parent process instance is locked. When multiple interrupting
 	// event-subprocess triggers fire concurrently, the first one to be processed cancels all sibling

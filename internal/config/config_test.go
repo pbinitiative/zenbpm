@@ -152,6 +152,46 @@ func TestEngineMaxProcessInstanceNestingDepthFromYAML(t *testing.T) {
 	}
 }
 
+func TestEngineMaxProcessInstanceFlowNodeCountDefault(t *testing.T) {
+	unsetEngineMaxProcessInstanceFlowNodeCountEnv(t)
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxProcessInstanceFlowNodeCount != 10000 {
+		t.Errorf("expected default MaxProcessInstanceFlowNodeCount 10000, got %d", c.Cluster.Engine.MaxProcessInstanceFlowNodeCount)
+	}
+}
+
+func TestEngineMaxProcessInstanceFlowNodeCountFromEnv(t *testing.T) {
+	t.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT", "321")
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Engine.MaxProcessInstanceFlowNodeCount != 321 {
+		t.Errorf("expected MaxProcessInstanceFlowNodeCount 321, got %d", c.Cluster.Engine.MaxProcessInstanceFlowNodeCount)
+	}
+}
+
+func TestEngineMaxProcessInstanceFlowNodeCountFromYAML(t *testing.T) {
+	unsetEngineMaxProcessInstanceFlowNodeCountEnv(t)
+	configFile := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(configFile, []byte("cluster:\n  engine:\n    maxProcessInstanceFlowNodeCount: -1\n"), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	var c Config
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	if c.Cluster.Engine.MaxProcessInstanceFlowNodeCount != -1 {
+		t.Errorf("expected MaxProcessInstanceFlowNodeCount -1, got %d", c.Cluster.Engine.MaxProcessInstanceFlowNodeCount)
+	}
+}
+
 func unsetEngineMaxProcessInstanceNestingDepthEnv(t *testing.T) {
 	t.Helper()
 	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH")
@@ -168,5 +208,24 @@ func unsetEngineMaxProcessInstanceNestingDepthEnv(t *testing.T) {
 	})
 	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH"); err != nil {
 		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH: %v", err)
+	}
+}
+
+func unsetEngineMaxProcessInstanceFlowNodeCountEnv(t *testing.T) {
+	t.Helper()
+	value, wasSet := os.LookupEnv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT")
+	t.Cleanup(func() {
+		if wasSet {
+			if err := os.Setenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT", value); err != nil {
+				t.Errorf("failed to restore CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT: %v", err)
+			}
+			return
+		}
+		if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT"); err != nil {
+			t.Errorf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT during cleanup: %v", err)
+		}
+	})
+	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT"); err != nil {
+		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT: %v", err)
 	}
 }

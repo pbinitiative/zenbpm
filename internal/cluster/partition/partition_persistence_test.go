@@ -35,6 +35,120 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFlowNodeCounts(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-flow-node-count-db")
+
+	const concurrentIncrements = 20
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Flow_Node_Count_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("flow-node-count-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      fmt.Sprintf(data, definitionKey),
+		BpmnChecksum:  [16]byte{2},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	processInstanceKey := db.GenerateId()
+	otherProcessInstanceKey := db.GenerateId()
+	for _, key := range []int64{processInstanceKey, otherProcessInstanceKey} {
+		instance := runtime.DefaultProcessInstance{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &pd,
+				Key:            key,
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      time.Now(),
+				State:          runtime.ActivityStateActive,
+			},
+		}
+		require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+	}
+
+	count, err := db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	instance, err := db.FindProcessInstanceByKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	batch := db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), instance))
+	require.Len(t, batch.stmtToRun, 1, "counter increment must share the process-instance update")
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "flush must not apply the folded counter increment a second time")
+	refreshed, err := db.FindProcessInstanceByKey(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), refreshed.ProcessInstance().FlowNodeCount)
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count, "a reset queued after an increment must run last")
+
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), processInstanceKey))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued after a reset must run last")
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+
+	newProcessInstanceKey := db.GenerateId()
+	newInstance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            newProcessInstanceKey,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	batch = db.NewBatch().(*DBBatch)
+	require.NoError(t, batch.IncrementFlowNodeCount(t.Context(), newProcessInstanceKey))
+	require.NoError(t, batch.SaveProcessInstance(t.Context(), &newInstance))
+	require.NoError(t, batch.Flush(t.Context()))
+	count, err = db.GetFlowNodeCount(t.Context(), newProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count, "an increment queued before process-instance creation must be retained")
+
+	require.NoError(t, db.IncrementFlowNodeCount(t.Context(), otherProcessInstanceKey))
+	var wg sync.WaitGroup
+	errs := make(chan error, concurrentIncrements)
+	for range concurrentIncrements {
+		wg.Go(func() {
+			errs <- db.IncrementFlowNodeCount(t.Context(), processInstanceKey)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(concurrentIncrements), count)
+	require.NoError(t, db.ResetProcessInstanceFlowNodeCount(t.Context(), processInstanceKey))
+	count, err = db.GetFlowNodeCount(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	otherCount, err := db.GetFlowNodeCount(t.Context(), otherProcessInstanceKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), otherCount)
+}
+
 func prepareTestSetupWithTestMigration(t *testing.T) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
 	return prepareTestSetup(t, true)
 }
@@ -333,7 +447,7 @@ func TestRunRollbackMigration(t *testing.T) {
 // both a job and a matching flow_element_instance row. This test simulates
 // that state by rolling back migration 0013, inserting pre-migration data,
 // and re-running the migration. Orphan job rows (no matching
-// flow_element_instance) must keep the column default ('').
+// flow_element_instance) must keep the column default (”).
 func TestUpgradeBackfillsJobElementType(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer func() { require.NoError(t, partition.Stop()) }()
@@ -620,6 +734,11 @@ func TestDataCleanup(t *testing.T) {
 		}
 		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
+
+		err = db.IncrementFlowNodeCount(ctx, inst1.ProcessInstance().Key)
+		assert.NoError(t, err)
+		err = db.IncrementFlowNodeCount(ctx, inst2.ProcessInstance().Key)
+		assert.NoError(t, err)
 	}
 
 	idsToBeDeleted := []int64{}
@@ -703,6 +822,20 @@ func TestDataCleanup(t *testing.T) {
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from error_subscription")
 	require.Equal(t, remainingCalls, count)
+	// The flow node counter lives on process_instance; counters of deleted instances must be gone
+	// together with their instance rows.
+	count = queryCount(t, db, "select count(*) from process_instance where flow_node_count >= 0")
+	require.Equal(t, int64(len(idsToKeep)+len(idsWithoutTTL)), count)
+	rows, err := db.QueryContext(t.Context(), "select key from process_instance")
+	require.NoError(t, err)
+	var counterProcessInstanceKeys []int64
+	for rows.Next() {
+		var processInstanceKey int64
+		require.NoError(t, rows.Scan(&processInstanceKey))
+		counterProcessInstanceKeys = append(counterProcessInstanceKeys, processInstanceKey)
+	}
+	require.NoError(t, rows.Close())
+	require.ElementsMatch(t, slices.Concat(idsToKeep, idsWithoutTTL), counterProcessInstanceKeys)
 
 	// Should delete only one instance.
 	cleanupTriggered, err = db.dataCleanupWithLimit(t.Context(), time.Now().Add(2*time.Hour), 1)

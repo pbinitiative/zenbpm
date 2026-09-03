@@ -80,6 +80,7 @@ type Incident struct {
 	CreatedAt          int64         `json:"created_at"`
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
+	IncidentType       string        `json:"incident_type"`
 }
 
 type Job struct {
@@ -148,6 +149,7 @@ type ProcessInstance struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	NestingDepth                          int64          `json:"nesting_depth"`
+	FlowNodeCount                         int64          `json:"flow_node_count"`
 }
 
 type Timer struct {

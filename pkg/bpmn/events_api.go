@@ -142,6 +142,9 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			batch.Clear(ctx)
 		}
 	}()
+	if err := validateExternalTriggerInstanceState(instance, fmt.Sprintf("publish message %d", message.Key)); err != nil {
+		return err
+	}
 
 	//refresh the subscription state inside the critical section
 	messageSub, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)

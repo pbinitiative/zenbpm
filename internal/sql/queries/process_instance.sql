@@ -1,12 +1,13 @@
 -- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id, nesting_depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id, nesting_depth, flow_node_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(@flow_node_count_increment AS INTEGER))
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
         variables = excluded.variables,
         business_key = excluded.business_key,
-        start_element_id = excluded.start_element_id;
+        start_element_id = excluded.start_element_id,
+        flow_node_count = process_instance.flow_node_count + excluded.flow_node_count;
 
 -- name: SetProcessInstanceTTL :exec
 UPDATE

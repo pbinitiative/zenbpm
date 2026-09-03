@@ -135,6 +135,9 @@ type ProcessInstanceData struct {
 	// parent's depth incremented by one. It is used to detect potential infinite
 	// loops of process instances recursively spawning child instances.
 	NestingDepth int64
+	// FlowNodeCount is the persisted number of successfully executed flow nodes.
+	// It is an internal execution-control state used to enforce the per-instance limit.
+	FlowNodeCount int64
 }
 
 func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {
@@ -531,13 +534,25 @@ type FlowElementInstance struct {
 }
 
 // Incident represent an incident that happened in process execution
+type IncidentType string
+
+// Incident types persisted for machine-readable incident-specific recovery behavior.
+const (
+	IncidentTypeUnspecified                             IncidentType = ""
+	IncidentTypeMaxProcessInstanceFlowNodeCountExceeded IncidentType = "MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT_EXCEEDED"
+)
+
 type Incident struct {
 	Key                int64
 	ElementInstanceKey int64
 	ElementId          string
 	ProcessInstanceKey int64
-	Message            string
-	CreatedAt          time.Time
-	ResolvedAt         *time.Time
-	Token              ExecutionToken
+	// Type drives incident-specific recovery behavior inside the engine (see ResolveIncident).
+	// It is intentionally NOT exposed through the public gRPC/REST/OpenAPI contracts: external
+	// consumers resolve incidents by key and must not depend on engine-internal recovery semantics.
+	Type       IncidentType
+	Message    string
+	CreatedAt  time.Time
+	ResolvedAt *time.Time
+	Token      ExecutionToken
 }

@@ -20,11 +20,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// processDefinitionByVersionReader is an optional storage capability. Keeping it
-// separate from storage.ProcessDefinitionStorageReader avoids breaking existing custom
-// storage implementations, while built-in stores can provide optimized lookups.
-type processDefinitionByVersionReader interface {
+// Optional lookup capabilities remain separate from
+// storage.ProcessDefinitionStorageReader so existing custom stores need only
+// implement the operation they can optimize.
+type processDefinitionVersionReader interface {
 	FindProcessDefinitionByIDAndVersion(ctx context.Context, processDefinitionID string, version int32) (runtime.ProcessDefinition, error)
+}
+
+type processDefinitionVersionTagReader interface {
 	FindLatestProcessDefinitionByIDAndVersionTag(ctx context.Context, processDefinitionID string, versionTag string) (runtime.ProcessDefinition, error)
 }
 
@@ -34,7 +37,7 @@ func findProcessDefinitionByIDAndVersion(
 	processDefinitionID string,
 	version int32,
 ) (runtime.ProcessDefinition, error) {
-	if exactReader, ok := reader.(processDefinitionByVersionReader); ok {
+	if exactReader, ok := reader.(processDefinitionVersionReader); ok {
 		return exactReader.FindProcessDefinitionByIDAndVersion(ctx, processDefinitionID, version)
 	}
 
@@ -54,7 +57,10 @@ func (engine *Engine) resolveCalledProcessDefinition(ctx context.Context, proces
 	if selection.Version != nil {
 		processDefinition, err := findProcessDefinitionByIDAndVersion(ctx, engine.persistence, processID, *selection.Version)
 		if err != nil {
-			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s and version=%d was found", processID, *selection.Version), err)
+			if errors.Is(err, storage.ErrNotFound) {
+				return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s and version=%d was found", processID, *selection.Version), err)
+			}
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("failed to resolve process with id=%s and version=%d", processID, *selection.Version), err)
 		}
 		return processDefinition, nil
 	}
@@ -82,7 +88,10 @@ func (engine *Engine) resolveCalledProcessDefinition(ctx context.Context, proces
 	}
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processID)
 	if err != nil {
-		return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s was found", processID), err)
+		if errors.Is(err, storage.ErrNotFound) {
+			return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("no deployed process with id=%s was found", processID), err)
+		}
+		return runtime.ProcessDefinition{}, errors.Join(newEngineErrorf("failed to resolve latest process with id=%s", processID), err)
 	}
 	return processDefinition, nil
 }
@@ -110,7 +119,7 @@ func findProcessDefinitionByIDAndVersionTag(
 	processDefinitionID string,
 	versionTag string,
 ) (runtime.ProcessDefinition, error) {
-	if exactReader, ok := reader.(processDefinitionByVersionReader); ok {
+	if exactReader, ok := reader.(processDefinitionVersionTagReader); ok {
 		return exactReader.FindLatestProcessDefinitionByIDAndVersionTag(ctx, processDefinitionID, versionTag)
 	}
 

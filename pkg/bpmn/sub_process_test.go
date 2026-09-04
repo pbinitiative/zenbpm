@@ -140,6 +140,36 @@ func (reader *processDefinitionLookupStorage) FindProcessDefinitionByIDAndVersio
 	return reader.versionDefinition, reader.versionErr
 }
 
+type failingLatestProcessDefinitionStorage struct {
+	storage.Storage
+	err error
+}
+
+func (reader failingLatestProcessDefinitionStorage) FindLatestProcessDefinitionById(_ context.Context, _ string) (runtime.ProcessDefinition, error) {
+	return runtime.ProcessDefinition{}, reader.err
+}
+
+func TestCallActivityLookupErrorsAreNotReportedAsMissingDefinitions(t *testing.T) {
+	lookupErr := fmt.Errorf("storage unavailable")
+	version := int32(2)
+
+	t.Run("numeric version", func(t *testing.T) {
+		engine := &Engine{persistence: &processDefinitionLookupStorage{versionErr: lookupErr}}
+		_, err := engine.resolveCalledProcessDefinition(t.Context(), "child", extensions.VersionSelection{Version: &version})
+		require.ErrorIs(t, err, lookupErr)
+		assert.ErrorContains(t, err, "failed to resolve process with id=child and version=2")
+		assert.NotContains(t, err.Error(), "was found")
+	})
+
+	t.Run("latest version", func(t *testing.T) {
+		engine := &Engine{persistence: failingLatestProcessDefinitionStorage{Storage: inmemory.NewStorage(), err: lookupErr}}
+		_, err := engine.resolveCalledProcessDefinition(t.Context(), "child", extensions.VersionSelection{})
+		require.ErrorIs(t, err, lookupErr)
+		assert.ErrorContains(t, err, "failed to resolve latest process with id=child")
+		assert.NotContains(t, err.Error(), "was found")
+	})
+}
+
 func TestCallActivityNumericVersionTagFallbackOnlyOnNotFound(t *testing.T) {
 	t.Run("wrapped not found uses numeric fallback", func(t *testing.T) {
 		reader := &processDefinitionLookupStorage{
@@ -173,10 +203,15 @@ type storageWithoutExactProcessVersionLookup struct {
 
 var _ storage.Storage = storageWithoutExactProcessVersionLookup{}
 
+func TestInMemoryStorageProvidesVersionTagLookup(t *testing.T) {
+	_, hasTagLookup := any(inmemory.NewStorage()).(processDefinitionVersionTagReader)
+	assert.True(t, hasTagLookup)
+}
+
 func TestFindProcessDefinitionByIdAndVersionFallsBackForExistingStorageImplementations(t *testing.T) {
 	store := inmemory.NewStorage()
 	legacyCompatibleStore := storageWithoutExactProcessVersionLookup{Storage: store}
-	_, hasExactLookup := any(legacyCompatibleStore).(processDefinitionByVersionReader)
+	_, hasExactLookup := any(legacyCompatibleStore).(processDefinitionVersionReader)
 	require.False(t, hasExactLookup)
 
 	for _, definition := range []runtime.ProcessDefinition{

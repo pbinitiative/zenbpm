@@ -38,14 +38,12 @@ func TestCalledElementResolveVersion(t *testing.T) {
 			calledElement: TCalledElement{BindingType: stringPointer("latest"), VersionTag: stringPointer("v1")},
 		},
 		{
-			name:          "deployment binding is unsupported",
+			name:          "deployment binding preserves legacy latest behavior",
 			calledElement: TCalledElement{BindingType: stringPointer("deployment")},
-			expectedError: `unsupported called process bindingType "deployment"`,
 		},
 		{
-			name:          "unknown binding is unsupported",
+			name:          "unknown binding preserves legacy latest behavior",
 			calledElement: TCalledElement{BindingType: stringPointer("other")},
-			expectedError: `unsupported called process bindingType "other"`,
 		},
 		{
 			name:          "numeric and version tag conflict",

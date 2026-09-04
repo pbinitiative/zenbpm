@@ -73,8 +73,13 @@ func (calledElement TCalledElement) ResolveVersion() (VersionSelection, error) {
 		}
 		return VersionSelection{VersionTag: *calledElement.VersionTag}, nil
 	case "deployment":
-		return VersionSelection{}, fmt.Errorf(`unsupported called process bindingType "deployment"`)
+		// bindingType existed before call-activity version selection and was
+		// previously ignored. Preserve latest-version behavior for stored models.
+		return VersionSelection{}, nil
 	default:
-		return VersionSelection{}, fmt.Errorf("unsupported called process bindingType %q", *calledElement.BindingType)
+		// Unknown legacy binding values were also ignored, and therefore meant
+		// latest. Keeping that behavior prevents existing definitions from
+		// becoming unreadable after an upgrade.
+		return VersionSelection{}, nil
 	}
 }

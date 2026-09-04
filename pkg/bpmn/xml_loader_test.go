@@ -56,6 +56,14 @@ func TestLoadFromBytesRejectsDuplicateProcessVersionTag(t *testing.T) {
 	}
 	assert.NotNil(t, first)
 
+	// An identical deployment is idempotent even though a different definition
+	// with this (process ID, versionTag) is rejected below.
+	idempotent, err := engine.LoadFromBytes(t.Context(), []byte(firstProcessXML), engine.generateKey())
+	assert.NoError(t, err)
+	if assert.NotNil(t, idempotent) {
+		assert.Equal(t, first.Key, idempotent.Key)
+	}
+
 	secondProcessXML := strings.Replace(firstProcessXML, "first definition", "second definition", 1)
 	second, err := engine.LoadFromBytes(t.Context(), []byte(secondProcessXML), engine.generateKey())
 	assert.Nil(t, second)

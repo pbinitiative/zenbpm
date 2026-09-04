@@ -65,9 +65,6 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 	if len(processes) > 0 {
 		latest := &processes[0]
 		for i := range processes {
-			if processes[i].VersionTag == versionTag && versionTag != "" {
-				return nil, fmt.Errorf("process definition with id %q and version tag %q already exists: %w", definitions.Process.Id, versionTag, storage.ErrUniqueConstraint)
-			}
 			if latest.Version < processes[i].Version {
 				latest = &processes[i]
 			}
@@ -83,6 +80,11 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		}
 		if sameContent {
 			return latest, nil
+		}
+		for i := range processes {
+			if processes[i].VersionTag == versionTag && versionTag != "" {
+				return nil, fmt.Errorf("process definition with id %q and version tag %q already exists: %w", definitions.Process.Id, versionTag, storage.ErrUniqueConstraint)
+			}
 		}
 		if err := engine.deleteProcessDefinitionSubscriptions(ctx, latest); err != nil {
 			return nil, err

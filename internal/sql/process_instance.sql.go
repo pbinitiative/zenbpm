@@ -173,7 +173,7 @@ func (q *Queries) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx
 const findChildProcessInstancesPage = `-- name: FindChildProcessInstancesPage :many
 WITH paged AS (
 SELECT
-    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id,
+    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id, pd.version, pd.version_tag,
     COUNT(*) OVER () AS total_count
 FROM
     execution_token AS parent_token
@@ -223,6 +223,8 @@ SELECT
     paged.history_delete_sec,
     paged.start_element_id,
     paged.bpmn_process_id,
+    paged.version,
+    paged.version_tag,
     CAST((
         SELECT COUNT(*)
         FROM incident AS i
@@ -271,6 +273,8 @@ type FindChildProcessInstancesPageRow struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	Version                               int64          `json:"version"`
+	VersionTag                            string         `json:"version_tag"`
 	IncidentCount                         int64          `json:"incident_count"`
 	TotalCount                            int64          `json:"total_count"`
 }
@@ -308,6 +312,8 @@ func (q *Queries) FindChildProcessInstancesPage(ctx context.Context, arg FindChi
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
 			&i.BpmnProcessID,
+			&i.Version,
+			&i.VersionTag,
 			&i.IncidentCount,
 			&i.TotalCount,
 		); err != nil {
@@ -382,7 +388,7 @@ const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 WITH process_instance_candidates AS (
     -- Use the definition/created_at index only when both parts of its prefix
     -- are selective.
-    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id, pd.version, pd.version_tag
     FROM
         process_instance AS pi
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -404,7 +410,7 @@ WITH process_instance_candidates AS (
 
     -- Preserve the sequential scan for listings without an index-selective
     -- definition and lower time bound. The branches are mutually exclusive.
-    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pi.nesting_depth, pi.flow_node_count, pd.bpmn_process_id, pd.version, pd.version_tag
     FROM
         process_instance AS pi NOT INDEXED
         INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
@@ -436,7 +442,7 @@ WITH process_instance_candidates AS (
 ),
 paged AS (
 SELECT
-    process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.nesting_depth, process_instance_candidates.flow_node_count, process_instance_candidates.bpmn_process_id,
+    process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.nesting_depth, process_instance_candidates.flow_node_count, process_instance_candidates.bpmn_process_id, process_instance_candidates.version, process_instance_candidates.version_tag,
     COUNT(*) OVER () AS total_count
 FROM
     process_instance_candidates
@@ -522,6 +528,8 @@ SELECT
     paged.history_delete_sec,
     paged.start_element_id,
     paged.bpmn_process_id,
+    paged.version,
+    paged.version_tag,
     CAST((
         SELECT COUNT(*)
         FROM incident AS i
@@ -580,6 +588,8 @@ type FindProcessInstancesPageRow struct {
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 	StartElementID                        sql.NullString `json:"start_element_id"`
 	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	Version                               int64          `json:"version"`
+	VersionTag                            string         `json:"version_tag"`
 	IncidentCount                         int64          `json:"incident_count"`
 	TotalCount                            int64          `json:"total_count"`
 }
@@ -625,6 +635,8 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.HistoryDeleteSec,
 			&i.StartElementID,
 			&i.BpmnProcessID,
+			&i.Version,
+			&i.VersionTag,
 			&i.IncidentCount,
 			&i.TotalCount,
 		); err != nil {

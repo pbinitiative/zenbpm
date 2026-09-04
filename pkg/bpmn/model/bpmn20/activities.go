@@ -163,6 +163,7 @@ type TUserTask struct {
 func (userTask TUserTask) GetType() ElementType {
 	return ElementTypeUserTask
 }
+
 // GetTaskType returns the job type configured for the User Task via the
 // zenbpm:taskDefinition extension element. When the extension is absent or
 // its "type" attribute is empty, it falls back to "user-task-type".

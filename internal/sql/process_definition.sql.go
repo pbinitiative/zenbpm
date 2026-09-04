@@ -12,7 +12,7 @@ import (
 
 const findAllProcessDefinitions = `-- name: FindAllProcessDefinitions :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
 FROM
     process_definition
 ORDER BY
@@ -35,6 +35,7 @@ func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefin
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnProcessName,
+			&i.VersionTag,
 		); err != nil {
 			return nil, err
 		}
@@ -51,13 +52,14 @@ func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefin
 
 const findLatestProcessDefinitionById = `-- name: FindLatestProcessDefinitionById :one
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
 FROM
     process_definition
 WHERE
     bpmn_process_id = ?1
 ORDER BY
-    version DESC
+    version DESC,
+    "key" DESC
 LIMIT 1
 `
 
@@ -71,13 +73,81 @@ func (q *Queries) FindLatestProcessDefinitionById(ctx context.Context, bpmnProce
 		&i.BpmnData,
 		&i.BpmnChecksum,
 		&i.BpmnProcessName,
+		&i.VersionTag,
+	)
+	return i, err
+}
+
+const findLatestProcessDefinitionByIdAndVersionTag = `-- name: FindLatestProcessDefinitionByIdAndVersionTag :one
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = ?1
+    AND version_tag = ?2
+ORDER BY
+    version DESC,
+    "key" DESC
+LIMIT 1
+`
+
+type FindLatestProcessDefinitionByIdAndVersionTagParams struct {
+	BpmnProcessID string `json:"bpmn_process_id"`
+	VersionTag    string `json:"version_tag"`
+}
+
+// Returns the highest-version definition whose version_tag matches the supplied
+// value exactly. The partial index on (id, version_tag) accelerates this lookup;
+// the explicit ORDER BY acts as a defensive tiebreaker.
+func (q *Queries) FindLatestProcessDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestProcessDefinitionByIdAndVersionTagParams) (ProcessDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestProcessDefinitionByIdAndVersionTag, arg.BpmnProcessID, arg.VersionTag)
+	var i ProcessDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.BpmnProcessID,
+		&i.BpmnData,
+		&i.BpmnChecksum,
+		&i.BpmnProcessName,
+		&i.VersionTag,
+	)
+	return i, err
+}
+
+const findProcessDefinitionByIdAndVersion = `-- name: FindProcessDefinitionByIdAndVersion :one
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = ?1
+    AND version = ?2
+`
+
+type FindProcessDefinitionByIdAndVersionParams struct {
+	BpmnProcessID string `json:"bpmn_process_id"`
+	Version       int64  `json:"version"`
+}
+
+func (q *Queries) FindProcessDefinitionByIdAndVersion(ctx context.Context, arg FindProcessDefinitionByIdAndVersionParams) (ProcessDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findProcessDefinitionByIdAndVersion, arg.BpmnProcessID, arg.Version)
+	var i ProcessDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.BpmnProcessID,
+		&i.BpmnData,
+		&i.BpmnChecksum,
+		&i.BpmnProcessName,
+		&i.VersionTag,
 	)
 	return i, err
 }
 
 const findProcessDefinitionByKey = `-- name: FindProcessDefinitionByKey :one
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
 FROM
     process_definition
 WHERE
@@ -94,6 +164,7 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 		&i.BpmnData,
 		&i.BpmnChecksum,
 		&i.BpmnProcessName,
+		&i.VersionTag,
 	)
 	return i, err
 }
@@ -276,6 +347,7 @@ SELECT
   pd.version,
   pd.bpmn_process_id,
   pd.bpmn_process_name,
+  pd.version_tag,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
@@ -331,6 +403,7 @@ type FindProcessDefinitionsRow struct {
 	Version         int64  `json:"version"`
 	BpmnProcessID   string `json:"bpmn_process_id"`
 	BpmnProcessName string `json:"bpmn_process_name"`
+	VersionTag      string `json:"version_tag"`
 	TotalCount      int64  `json:"total_count"`
 }
 
@@ -357,6 +430,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 			&i.Version,
 			&i.BpmnProcessID,
 			&i.BpmnProcessName,
+			&i.VersionTag,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -374,13 +448,14 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 
 const findProcessDefinitionsById = `-- name: FindProcessDefinitionsById :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
 FROM
     process_definition
 WHERE
     bpmn_process_id = ?1
 ORDER BY
-    version asc
+    version ASC,
+    "key" ASC
 `
 
 func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
@@ -399,6 +474,7 @@ func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnProcessName,
+			&i.VersionTag,
 		); err != nil {
 			return nil, err
 		}
@@ -415,7 +491,7 @@ func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds
 
 const findProcessDefinitionsByKeys = `-- name: FindProcessDefinitionsByKeys :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag
 FROM
     process_definition
 WHERE
@@ -448,6 +524,7 @@ func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnProcessName,
+			&i.VersionTag,
 		); err != nil {
 			return nil, err
 		}
@@ -542,8 +619,8 @@ func (q *Queries) GetElementStatisticsByProcessDefinitionKey(ctx context.Context
 }
 
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
-INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name, version_tag)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveProcessDefinitionParams struct {
@@ -553,6 +630,7 @@ type SaveProcessDefinitionParams struct {
 	BpmnData        string `json:"bpmn_data"`
 	BpmnChecksum    []byte `json:"bpmn_checksum"`
 	BpmnProcessName string `json:"bpmn_process_name"`
+	VersionTag      string `json:"version_tag"`
 }
 
 func (q *Queries) SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error {
@@ -563,6 +641,7 @@ func (q *Queries) SaveProcessDefinition(ctx context.Context, arg SaveProcessDefi
 		arg.BpmnData,
 		arg.BpmnChecksum,
 		arg.BpmnProcessName,
+		arg.VersionTag,
 	)
 	return err
 }

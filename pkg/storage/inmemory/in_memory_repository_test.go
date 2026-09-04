@@ -14,6 +14,23 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 )
 
+func TestFindLatestProcessDefinitionByIDAndVersionTagReturnsZeroKey(t *testing.T) {
+	store := inmemory.NewStorage()
+	definition := bpmnruntime.ProcessDefinition{
+		Key:           0,
+		BpmnProcessId: "zero-key-process",
+		Version:       1,
+		VersionTag:    "stable",
+	}
+	require.NoError(t, store.SaveProcessDefinition(t.Context(), definition))
+
+	found, err := store.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), definition.BpmnProcessId, definition.VersionTag)
+
+	assert.NotErrorIs(t, err, storage.ErrNotFound)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), found.Key)
+}
+
 func TestInMemoryStorage(t *testing.T) {
 	var store storage.Storage = inmemory.NewStorage()
 

@@ -386,6 +386,8 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			ParentInstanceKey: nil,
 			BusinessKey:       instance.ProcessInstance().BusinessKey,
 			Type:              new(int64(instance.Type())),
+			Version:           new(int64(instance.ProcessInstance().Definition.Version)),
+			VersionTag:        &instance.ProcessInstance().Definition.VersionTag,
 		},
 		ExecutionTokens: responseTokens,
 	}, nil
@@ -431,6 +433,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: nil,
 			Type:              new(int64(instance.Type())),
+			Version:           new(int64(instance.ProcessInstance().Definition.Version)),
+			VersionTag:        &instance.ProcessInstance().Definition.VersionTag,
 		},
 	}, nil
 }
@@ -487,6 +491,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
 			Type:              new(int64(instance.Type())),
+			Version:           new(int64(instance.ProcessInstance().Definition.Version)),
+			VersionTag:        &instance.ProcessInstance().Definition.VersionTag,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -526,6 +532,8 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
 			BusinessKey:       nil,
 			Type:              new(int64(instance.Type())),
+			Version:           new(int64(instance.ProcessInstance().Definition.Version)),
+			VersionTag:        &instance.ProcessInstance().Definition.VersionTag,
 		},
 	}, nil
 }
@@ -801,6 +809,8 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 			ParentInstanceKey: parentInstanceKey,
 			BusinessKey:       businessKey,
 			Type:              &instance.ProcessType,
+			Version:           new(int64(definition.Version)),
+			VersionTag:        &definition.VersionTag,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -1223,6 +1233,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				BusinessKey:       businessKey,
 				Type:              new(instances[i].ProcessType),
 				IncidentCount:     new(instances[i].IncidentCount),
+				Version:           new(instances[i].Version),
+				VersionTag:        &instances[i].VersionTag,
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{
@@ -1292,6 +1304,8 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 			BusinessKey:       businessKey,
 			Type:              new(instances[i].ProcessType),
 			IncidentCount:     new(instances[i].IncidentCount),
+			Version:           new(instances[i].Version),
+			VersionTag:        &instances[i].VersionTag,
 		}
 	}
 

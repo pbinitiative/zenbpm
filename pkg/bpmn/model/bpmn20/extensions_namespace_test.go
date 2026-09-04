@@ -39,6 +39,67 @@ func TestUnmarshalZenbpmExtensions_CanonicalNamespace(t *testing.T) {
 	assert.Equal(t, "outVar", task.GetOutputMapping()[0].Target)
 }
 
+func TestUnmarshalZenbpmCalledElementVersion(t *testing.T) {
+	processXML := `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="` + zenbpmNS + `">
+  <bpmn:process id="call-activity-version" isExecutable="true">
+    <bpmn:callActivity id="versioned-call">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="called-process" version="2" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
+    <bpmn:callActivity id="version-tag-call">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="called-process" bindingType="versionTag" versionTag="v3" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
+    <bpmn:callActivity id="latest-call">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="called-process" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
+  </bpmn:process>
+</bpmn:definitions>`
+
+	var def TDefinitions
+	require.NoError(t, xml.Unmarshal([]byte(processXML), &def))
+	require.Len(t, def.Process.CallActivity, 3)
+	require.NotNil(t, def.Process.CallActivity[0].CalledElement.Version)
+	assert.Equal(t, int32(2), *def.Process.CallActivity[0].CalledElement.Version)
+
+	selection, err := def.Process.CallActivity[1].CalledElement.ResolveVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "v3", selection.VersionTag)
+	assert.Nil(t, selection.Version)
+
+	selection, err = def.Process.CallActivity[2].CalledElement.ResolveVersion()
+	require.NoError(t, err)
+	assert.False(t, selection.HasSelection())
+}
+
+func TestUnmarshalRejectsNonPositiveCalledElementVersion(t *testing.T) {
+	for _, version := range []string{"0", "-3"} {
+		t.Run(version, func(t *testing.T) {
+			processXML := `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="` + zenbpmNS + `">
+  <bpmn:process id="invalid-call-activity-version" isExecutable="true">
+    <bpmn:callActivity id="invalid-version-call">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="called-process" version="` + version + `" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
+  </bpmn:process>
+</bpmn:definitions>`
+
+			var def TDefinitions
+			err := xml.Unmarshal([]byte(processXML), &def)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), `invalid process version `+version)
+			assert.Contains(t, err.Error(), "version must be greater than zero")
+		})
+	}
+}
+
 func TestUnmarshalZenbpmExtensions_ArbitraryPrefix(t *testing.T) {
 	// Go's encoding/xml matches by local element name, not prefix.
 	// Any prefix that maps to our canonical URI should unmarshal correctly.
@@ -80,6 +141,11 @@ func TestUnmarshalZenbpmExtensions_ZeebeBackwardsCompat(t *testing.T) {
         </zeebe:ioMapping>
       </bpmn:extensionElements>
     </bpmn:serviceTask>
+    <bpmn:callActivity id="legacy-call">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="legacy-child" bindingType="versionTag" versionTag="v2" />
+      </bpmn:extensionElements>
+    </bpmn:callActivity>
   </bpmn:process>
 </bpmn:definitions>`
 
@@ -91,6 +157,17 @@ func TestUnmarshalZenbpmExtensions_ZeebeBackwardsCompat(t *testing.T) {
 	assert.Equal(t, "legacyType", task.TaskDefinition.TypeName)
 	assert.Equal(t, "oldIn", task.GetInputMapping()[0].Target)
 	assert.Equal(t, "oldOutVar", task.GetOutputMapping()[0].Target)
+	require.Len(t, def.Process.CallActivity, 1)
+	assert.Equal(t, "legacy-child", def.Process.CallActivity[0].CalledElement.ProcessId)
+	calledElement := def.Process.CallActivity[0].CalledElement
+	require.NotNil(t, calledElement.BindingType)
+	assert.Equal(t, "versionTag", *calledElement.BindingType)
+	require.NotNil(t, calledElement.VersionTag)
+	assert.Equal(t, "v2", *calledElement.VersionTag)
+	selection, err := calledElement.ResolveVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "v2", selection.VersionTag)
+	assert.Nil(t, selection.Version)
 }
 
 func TestUnmarshalZenbpmExtensions_BusinessKeyInput(t *testing.T) {

@@ -250,6 +250,49 @@ func getDefinitionDetail(t testing.TB, key int64) (public.ProcessDefinitionDetai
 	return detail, nil
 }
 
+func TestProcessDefinitionVersionTagInRestResponses(t *testing.T) {
+	uniqueSuffix := time.Now().UnixNano()
+	processID := fmt.Sprintf("process-definition-version-tag-%d", uniqueSuffix)
+	const versionTag = "stable-release"
+	bpmn := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0">
+  <bpmn:process id="%s" name="Process definition version tag" isExecutable="true">
+    <bpmn:extensionElements><zenbpm:versionTag value="%s" /></bpmn:extensionElements>
+    <bpmn:startEvent id="start"><bpmn:outgoing>to-end</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:endEvent id="end"><bpmn:incoming>to-end</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="to-end" sourceRef="start" targetRef="end" />
+  </bpmn:process>
+</bpmn:definitions>`, processID, versionTag)
+
+	deployResp := deployProcessDefinitionContent(t, processID+".bpmn", []byte(bpmn))
+	var processDefinitionKey int64
+	switch {
+	case deployResp.JSON201 != nil:
+		processDefinitionKey = deployResp.JSON201.ProcessDefinitionKey
+	case deployResp.JSON200 != nil:
+		processDefinitionKey = deployResp.JSON200.ProcessDefinitionKey
+	default:
+		t.Fatalf("deployment did not return a process definition key: %s", string(deployResp.Body))
+	}
+
+	listResp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+		BpmnProcessId: &processID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResp.StatusCode())
+	require.NotNil(t, listResp.JSON200)
+	require.Len(t, listResp.JSON200.Items, 1)
+	assert.Equal(t, processDefinitionKey, listResp.JSON200.Items[0].Key)
+	require.NotNil(t, listResp.JSON200.Items[0].VersionTag)
+	assert.Equal(t, versionTag, *listResp.JSON200.Items[0].VersionTag)
+
+	detail, err := getDefinitionDetail(t, processDefinitionKey)
+	require.NoError(t, err)
+	assert.Equal(t, processID, detail.BpmnProcessId)
+	require.NotNil(t, detail.VersionTag)
+	assert.Equal(t, versionTag, *detail.VersionTag)
+}
+
 func deployDefinition(t testing.TB, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
 	wd, err := os.Getwd()
 	if err != nil {

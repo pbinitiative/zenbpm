@@ -343,8 +343,39 @@ var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 func (mem *Storage) SaveProcessDefinition(_ context.Context, definition bpmnruntime.ProcessDefinition) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	for key, existing := range mem.ProcessDefinitions {
+		if key == definition.Key {
+			continue
+		}
+		if existing.BpmnProcessId == definition.BpmnProcessId && existing.Version == definition.Version {
+			return fmt.Errorf("process definition with id %q and version %d already exists: %w", definition.BpmnProcessId, definition.Version, storage.ErrUniqueConstraint)
+		}
+		if definition.VersionTag != "" && existing.BpmnProcessId == definition.BpmnProcessId && existing.VersionTag == definition.VersionTag {
+			return fmt.Errorf("process definition with id %q and version tag %q already exists: %w", definition.BpmnProcessId, definition.VersionTag, storage.ErrUniqueConstraint)
+		}
+	}
 	mem.ProcessDefinitions[definition.Key] = definition
 	return nil
+}
+
+func (mem *Storage) FindLatestProcessDefinitionByIDAndVersionTag(_ context.Context, processDefinitionID string, versionTag string) (bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	var res bpmnruntime.ProcessDefinition
+	found := false
+	for _, def := range mem.ProcessDefinitions {
+		if def.BpmnProcessId != processDefinitionID || def.VersionTag != versionTag {
+			continue
+		}
+		if !found || def.Version > res.Version || (def.Version == res.Version && def.Key > res.Key) {
+			res = def
+			found = true
+		}
+	}
+	if !found {
+		return bpmnruntime.ProcessDefinition{}, storage.ErrNotFound
+	}
+	return res, nil
 }
 
 var _ storage.ProcessInstanceStorageReader = &Storage{}

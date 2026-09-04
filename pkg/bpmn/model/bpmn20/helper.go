@@ -20,6 +20,9 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	if err := validateSubProcessStartEvents(&definitions.Process.TFlowElementsContainer); err != nil {
 		return err
 	}
+	if err := validateCallActivityVersions(&definitions.Process.TFlowElementsContainer); err != nil {
+		return err
+	}
 	// Build per-TFlowElementsContainer subtree indices for O(1) lookup of
 	// flow nodes and internal tasks. Each container level's index contains
 	// its own elements plus all elements owned by descendant sub-processes,
@@ -118,6 +121,21 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 	}
 	for i := range container.SubProcess {
 		if err := validateEventBasedGateways(&container.SubProcess[i].TFlowElementsContainer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCallActivityVersions(container *TFlowElementsContainer) error {
+	for i := range container.CallActivity {
+		callActivity := &container.CallActivity[i]
+		if _, err := callActivity.CalledElement.ResolveVersion(); err != nil {
+			return fmt.Errorf("call activity %q has %w", callActivity.GetId(), err)
+		}
+	}
+	for i := range container.SubProcess {
+		if err := validateCallActivityVersions(&container.SubProcess[i].TFlowElementsContainer); err != nil {
 			return err
 		}
 	}
@@ -355,12 +373,13 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 		switch fieldVal.Kind() {
 		case reflect.Slice:
 			var joinErr error
+			// Reset the slice so duplicate resolvables (e.g. when a struct field is
+			// walked both through the outer container and through a sub-process
+			// embedding) do not append the same reference multiple times.
+			fieldVal.Set(reflect.MakeSlice(fieldVal.Type(), 0, idField.Len()))
 			for i := range idField.Len() {
 				id := idField.Index(i)
 				err := singleIDprocessor(fieldVal, id, refs, func(value reflect.Value) error {
-					if fieldVal.IsNil() {
-						fieldVal.Set(reflect.MakeSlice(fieldVal.Type(), 0, idField.Len()))
-					}
 					if value.Type().AssignableTo(fieldVal.Type().Elem()) {
 						fieldVal.Set(reflect.Append(fieldVal, value))
 					} else {

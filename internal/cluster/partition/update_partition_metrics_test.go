@@ -3,6 +3,7 @@ package partition
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -66,10 +67,11 @@ func saveWaitingJob(t *testing.T, zpn *ZenPartitionNode, key int64) {
 	if err := zpn.DB.Queries.SaveProcessDefinition(ctx, internalsql.SaveProcessDefinitionParams{
 		Key:             key,
 		Version:         1,
-		BpmnProcessID:   "test-process",
+		BpmnProcessID:   fmt.Sprintf("test-process-%d", key),
 		BpmnData:        "<definitions/>",
 		BpmnChecksum:    []byte("checksum"),
 		BpmnProcessName: "Test Process",
+		VersionTag:      fmt.Sprintf("tag-%d", key),
 	}); err != nil {
 		t.Fatalf("saveWaitingJob/SaveProcessDefinition: %v", err)
 	}
@@ -109,10 +111,11 @@ func saveActiveProcessInstance(t *testing.T, zpn *ZenPartitionNode, key int64) {
 	if err := zpn.DB.Queries.SaveProcessDefinition(ctx, internalsql.SaveProcessDefinitionParams{
 		Key:             key,
 		Version:         1,
-		BpmnProcessID:   "test-process",
+		BpmnProcessID:   fmt.Sprintf("test-process-%d", key),
 		BpmnData:        "<definitions/>",
 		BpmnChecksum:    []byte("checksum"),
 		BpmnProcessName: "Test Process",
+		VersionTag:      fmt.Sprintf("tag-%d", key),
 	}); err != nil {
 		t.Fatalf("saveActiveProcessInstance/SaveProcessDefinition: %v", err)
 	}

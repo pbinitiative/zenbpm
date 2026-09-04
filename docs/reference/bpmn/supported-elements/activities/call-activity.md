@@ -20,15 +20,26 @@ Rendered as a rounded rectangle with a thick border and a plus marker at the bot
 
 Reference the process to call in a `zenbpm:calledElement` extension element. Optionally, control the data that flows into and out of the called instance with a `zenbpm:ioMapping`.
 
-| Extension element                    | Attribute          | Required | Description                                                                                                                            |
-| ------------------------------------ | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `zenbpm:calledElement`               | `processId`        | yes      | Id of the deployed process to start. Only a direct, static id is supported — expressions are not evaluated — and the latest deployed version is always used. |
-| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variable-mapping.md).                                                     |
-| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variable-mapping.md).                        |
+| Extension element                    | Attribute          | Required | Description |
+| ------------------------------------ | ------------------ | -------- | ----------- |
+| `zenbpm:calledElement`               | `processId`        | yes      | Id of the deployed process to start. Only a direct, static id is supported; expressions are not evaluated. |
+| `zenbpm:calledElement`               | `bindingType`      | no       | Set `bindingType="versionTag"` together with `versionTag="..."` for version-tag selection, or set `bindingType="latest"` to select the highest deployed numeric version. When omitted, `latest` is the default unless the direct `version` attribute is configured. |
+| `zenbpm:calledElement`               | `versionTag`       | with `bindingType="versionTag"` | The engine first looks for an exact match against the deployed process's stored `zenbpm:versionTag`. If no exact tag matches and the value has the form `v<positive-number>`, such as `v2`, the engine selects that exact numeric process-definition version. If neither definition exists, the Call Activity creates an incident; it does not fall back to the latest version. |
+| `zenbpm:calledElement`               | `version`          | no       | Selects an exact positive numeric process-definition version directly. Do not combine it with `bindingType`. |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variable-mapping.md). |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variable-mapping.md). |
+
+:::tip[Version tag precedence]
+
+An exact stored version tag always takes precedence over the numeric interpretation. For example, if a deployed definition has the stored version tag `v2`, `versionTag="v2"` selects that tagged definition even when it is not numeric version 2. The numeric-version lookup is attempted only when no exact stored tag matches.
+
+To avoid this ambiguity, do not use the `v<positive-number>` form for stored version tags unless this precedence is intentional.
+
+:::
 
 Execution flow:
 
-1. A token arrives at the Call Activity, input mappings are evaluated, and the engine resolves the latest deployed process definition with the configured `processId` — if none is deployed, the activity fails.
+1. A token arrives at the Call Activity and input mappings are evaluated. A direct numeric `version` selects that exact deployed process version. With `bindingType="versionTag"`, the engine first resolves an exact stored tag and then, only for an unmatched `versionTag="v<positive-number>"`, tries the corresponding numeric version. Without an explicit selection, the engine resolves the available version with the highest number. If all lookups applicable to an explicit selection fail, the activity creates an incident instead of falling back to the latest version.
 2. A new instance of the called process is created, linked to the parent and running on the same partition. It starts with a snapshot copy of the parent's variables plus the input-mapped values; changes inside the called instance do not write back to the parent. The parent token waits, and boundary events attached to the Call Activity are armed.
 3. The called instance executes like any other process instance.
 4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues.
@@ -56,4 +67,28 @@ A Call Activity that starts the latest deployed version of the `customer-verific
   <bpmn:incoming>Flow_In</bpmn:incoming>
   <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:callActivity>
+```
+
+To select exact numeric version 2:
+
+```xml
+<zenbpm:calledElement processId="customer-verification" version="2" />
+```
+
+To select by stored process version tag instead:
+
+```xml
+<zenbpm:calledElement
+  processId="customer-verification"
+  bindingType="versionTag"
+  versionTag="stable-release" />
+```
+
+To use the `versionTag` binding while selecting numeric version 2 when no definition has the exact stored tag `v2`:
+
+```xml
+<zenbpm:calledElement
+  processId="customer-verification"
+  bindingType="versionTag"
+  versionTag="v2" />
 ```

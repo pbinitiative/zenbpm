@@ -41,6 +41,14 @@ const (
 	PaginationDefaultSize int32 = 10
 )
 
+// optionalString returns nil for an empty optional string, so it is omitted from JSON responses.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 type Server struct {
 	sync.RWMutex
 	node      *cluster.ZenNode
@@ -743,10 +751,15 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for i, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:             p.GetKey(),
-			Version:         int(p.GetVersion()),
-			BpmnProcessId:   p.GetProcessId(),
-			BpmnProcessName: new(p.GetProcessName()),
+			Key:           p.GetKey(),
+			Version:       int(p.GetVersion()),
+			BpmnProcessId: p.GetProcessId(),
+		}
+		if processName := p.GetProcessName(); processName != "" {
+			processDefinitionSimple.BpmnProcessName = &processName
+		}
+		if versionTag := p.GetVersionTag(); versionTag != "" {
+			processDefinitionSimple.VersionTag = &versionTag
 		}
 		items[i] = processDefinitionSimple
 	}
@@ -780,14 +793,21 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 		return public.GetProcessDefinition500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 
-	return public.GetProcessDefinition200JSONResponse{
+	response := public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: definition.GetProcessId(),
 			Key:           definition.GetKey(),
 			Version:       int(definition.GetVersion()),
 		},
 		BpmnData: new(string(definition.GetDefinition())),
-	}, nil
+	}
+	if processName := definition.GetProcessName(); processName != "" {
+		response.ProcessDefinitionSimple.BpmnProcessName = &processName
+	}
+	if versionTag := definition.GetVersionTag(); versionTag != "" {
+		response.ProcessDefinitionSimple.VersionTag = &versionTag
+	}
+	return response, nil
 }
 
 func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, request public.GetProcessDefinitionElementStatisticsRequestObject) (public.GetProcessDefinitionElementStatisticsResponseObject, error) {
@@ -1062,6 +1082,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 			BpmnProcessId:        &bpmnProcessID,
 			BusinessKey:          request.Body.BusinessKey,
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Version:              int(process.GetVersion()),
+			VersionTag:           optionalString(process.GetVersionTag()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
 			State:                processInstanceState,
@@ -1112,6 +1134,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 	return public.StartProcessInstanceOnElements201JSONResponse{
 		ProcessInstancesSimple: public.ProcessInstancesSimple{
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Version:              int(process.GetVersion()),
+			VersionTag:           optionalString(process.GetVersionTag()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
 			State:                processInstanceState,
@@ -1228,8 +1252,12 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				return public.GetProcessInstances500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(errInstanceType))), nil
 			}
 
+			version := instance.GetVersion()
+			versionTag := instance.GetVersionTag()
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
 				BpmnProcessId:        instance.ProcessId,
+				Version:              int(version),
+				VersionTag:           optionalString(versionTag),
 				BusinessKey:          instance.BusinessKey,
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
 				Key:                  instance.GetKey(),
@@ -1300,6 +1328,8 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		ActiveElementInstances: respActiveElementInstances,
 		ProcessInstancesSimple: public.ProcessInstancesSimple{
 			CreatedAt:                time.UnixMilli(instance.GetCreatedAt()),
+			Version:                  int(instance.GetVersion()),
+			VersionTag:               optionalString(instance.GetVersionTag()),
 			Key:                      instance.GetKey(),
 			BusinessKey:              instance.BusinessKey,
 			ProcessDefinitionKey:     instance.GetDefinitionKey(),
@@ -1407,6 +1437,8 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
 				BpmnProcessId:        instance.ProcessId,
+				Version:              int(instance.GetVersion()),
+				VersionTag:           optionalString(instance.GetVersionTag()),
 				BusinessKey:          instance.BusinessKey,
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
 				Key:                  instance.GetKey(),
@@ -2270,6 +2302,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 		ProcessInstance: &public.ProcessInstance{
 			ProcessInstancesSimple: public.ProcessInstancesSimple{
 				CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+				Version:              int(process.GetVersion()),
+				VersionTag:           optionalString(process.GetVersionTag()),
 				Key:                  process.GetKey(),
 				ProcessDefinitionKey: process.GetDefinitionKey(),
 				ProcessType:          processInstanceType,

@@ -239,6 +239,7 @@ message ProcessDefinition {
   string process_id = 3;
   bytes definition = 4;
   string process_name = 5;
+  string version_tag = 6;
 }
 
 message ProcessDefinitionsPage {
@@ -258,6 +259,8 @@ message ProcessInstance {
   string business_key = 9;
   int64 type = 10;
   int64 incident_count = 11;
+  int64 version = 12;
+  string version_tag = 13;
 }
 
 message DecisionInstance {

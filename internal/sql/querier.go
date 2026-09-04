@@ -73,10 +73,15 @@ type Querier interface {
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)
 	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionID string) (DmnResourceDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
+	// Returns the highest-version definition whose version_tag matches the supplied
+	// value exactly. The partial index on (id, version_tag) accelerates this lookup;
+	// the explicit ORDER BY acts as a defensive tiebreaker.
+	FindLatestProcessDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestProcessDefinitionByIdAndVersionTagParams) (ProcessDefinition, error)
 	// Deterministic tie-break: when multiple subscriptions share (name, correlation_key, state) always resolve
 	// to the lowest key rather than an arbitrary row.
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
+	FindProcessDefinitionByIdAndVersion(ctx context.Context, arg FindProcessDefinitionByIdAndVersionParams) (ProcessDefinition, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	// with_incident_count is the number of process instances that have at least one
 	// directly associated unresolved incident. Each instance is counted once,

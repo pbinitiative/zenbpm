@@ -3,8 +3,13 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
+	"mime/multipart"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,38 +70,83 @@ func TestHighThroughputMultiNode(t *testing.T) {
 }
 
 func TestConcurrentDeployments(t *testing.T) {
-	t.Skip("deploy idempotency race is engine-scope: concurrent identical deploys hit " +
-		"'UNIQUE constraint failed: process_definition.key' in the read-then-insert save path " +
-		"(pkg/bpmn / pkg/storage / internal/sql), outside internal/cluster — see backlog")
+	// This is a manually enabled known-bug regression. It exercises the current
+	// read-then-insert deployment path: both distinct revisions should receive
+	// consecutive versions, rather than one deployment failing a unique constraint.
+	// Multi-partition formation is not available in this harness yet, so this
+	// proves the allocation race but not cross-partition divergence.
+	if os.Getenv("ZENBPM_RUN_KNOWN_BUG_TESTS") != "1" {
+		t.Skip("known concurrent-deployment race; set ZENBPM_RUN_KNOWN_BUG_TESTS=1 to reproduce")
+	}
 	skipIfShort(t)
 
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
-
 	WaitForHealthy(t, tc, 150*time.Second)
 
-	// Deploy the same definition concurrently from different nodes
-	var wg sync.WaitGroup
-	var successCount atomic.Int64
-	nodes := tc.RunningNodes()
+	const processID = "concurrent-different-revisions"
+	first := concurrentDeploymentDefinition(t, processID, "first revision")
+	second := concurrentDeploymentDefinition(t, processID, "second revision")
 
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			n := nodes[idx%len(nodes)]
-			resp := DeployDefinitionOnNode(t, n, "simple_task.bpmn")
-			if resp != nil {
-				successCount.Add(1)
-			}
-		}(i)
+	type deploymentResult struct {
+		responseStatus int
+		err            error
 	}
-
+	results := make(chan deploymentResult, 2)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for index, data := range [][]byte{first, second} {
+		wg.Add(1)
+		go func(node *TestNode, definition []byte) {
+			defer wg.Done()
+			<-start
+			response, err := deployDefinitionData(node, definition)
+			if err != nil {
+				results <- deploymentResult{err: err}
+				return
+			}
+			results <- deploymentResult{responseStatus: response.StatusCode()}
+		}(tc.RunningNodes()[index], data)
+	}
+	close(start)
 	wg.Wait()
+	close(results)
 
-	t.Logf("Concurrent deployments: %d successes out of 10", successCount.Load())
-	// At least some should succeed (conflicts are expected for duplicates)
-	assert.Greater(t, successCount.Load(), int64(0), "at least one deployment should succeed")
+	for result := range results {
+		require.NoError(t, result.err)
+		require.Equal(t, 201, result.responseStatus,
+			"both distinct revisions of one process must deploy successfully")
+	}
+}
+
+func concurrentDeploymentDefinition(t *testing.T, processID string, name string) []byte {
+	t.Helper()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	root := strings.ReplaceAll(wd, "/test/e2e/cluster", "")
+	data, err := os.ReadFile(filepath.Join(root, "pkg", "bpmn", "test-cases", "simple_task.bpmn"))
+	require.NoError(t, err)
+	definition := strings.Replace(string(data), "Simple_Task_Process", processID, 1)
+	definition = strings.Replace(definition, `name="aName"`, `name="`+name+`"`, 1)
+	return []byte(definition)
+}
+
+func deployDefinitionData(node *TestNode, data []byte) (*zenclient.CreateProcessDefinitionResponse, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("resource", "concurrent-deployment.bpmn")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := part.Write(data); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return node.RestClient.CreateProcessDefinitionWithBodyWithResponse(
+		context.Background(), writer.FormDataContentType(), &body,
+	)
 }
 
 func TestConcurrentInstanceCreation(t *testing.T) {

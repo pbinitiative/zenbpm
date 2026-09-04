@@ -67,7 +67,7 @@ func deployTestDataDefinition(t testing.TB, filename string, processId string, j
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/process-definitions").
 		WithMethod("POST").
-		WithMultipartBody(file, filename).
+		WithBinaryBody(file).
 		DoOk()
 	if err != nil {
 		return result, fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)

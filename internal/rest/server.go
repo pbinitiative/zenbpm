@@ -589,41 +589,17 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
-	var data []byte
-	var filename string
-	var found bool
-
-	// Iterate through multipart parts to find the "resource" field
-	for {
-		part, err := request.Body.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to read multipart form: %w", err)).ToApiError()), nil
-		}
-
-		if part.FormName() == "resource" {
-			found = true
-			filename = part.FileName()
-
-			// Read file data
-			data, err = io.ReadAll(part)
-			if err != nil {
-				return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
-			}
-			break
-		}
-		if _, err := io.Copy(io.Discard, part); err != nil {
-			return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to read multipart part %q: %w", part.FormName(), err)).ToApiError()), nil
-		}
+	data, err := io.ReadAll(request.Body)
+	if err != nil {
+		return public.CreateProcessDefinition400JSONResponse(
+			zenerr.BadRequest(fmt.Errorf("failed to read the request body: %w", err)).ToApiError(),
+		), nil
 	}
 
-	if !found {
-		return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("resource file is required")).ToApiError()), nil
-	}
+	// A raw binary request has no multipart filename; retain a stable resource name.
+	const resourceName = "process.bpmn"
 
-	processDefinitionKey, alreadyExisted, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
+	processDefinitionKey, alreadyExisted, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, resourceName)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {

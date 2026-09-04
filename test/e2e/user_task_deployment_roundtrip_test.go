@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,16 +35,8 @@ func TestUserTaskDefinitionDeploymentRoundTrip(t *testing.T) {
 	require.True(t, strings.Contains(bpmnString, expectedSnippet),
 		"sanity check: fixture %q must contain %q before deployment", bpmnFixturePath, expectedSnippet)
 
-	var body bytes.Buffer
-	w := multipart.NewWriter(&body)
-	part, err := w.CreateFormFile("resource", bpmnFixtureName)
-	require.NoError(t, err)
-	_, err = part.Write(bpmnBytes)
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
 	deployResp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
-		t.Context(), w.FormDataContentType(), &body,
+		t.Context(), "application/octet-stream", bytes.NewReader(bpmnBytes),
 	)
 	require.NoError(t, err)
 	require.Lessf(t, deployResp.StatusCode(), http.StatusBadRequest,

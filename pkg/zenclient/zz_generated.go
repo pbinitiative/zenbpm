@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for EvaluatedDecisionDecisionType.
@@ -1414,12 +1413,6 @@ type GetProcessDefinitionsParamsSortBy string
 // GetProcessDefinitionsParamsSortOrder defines parameters for GetProcessDefinitions.
 type GetProcessDefinitionsParamsSortOrder string
 
-// CreateProcessDefinitionMultipartBody defines parameters for CreateProcessDefinition.
-type CreateProcessDefinitionMultipartBody struct {
-	// Resource BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
-	Resource openapi_types.File `json:"resource"`
-}
-
 // GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
 type GetProcessDefinitionStatisticsParams struct {
 	// Page Page number (1-based indexing)
@@ -1634,9 +1627,6 @@ type ModifyProcessInstanceJSONRequestBody ModifyProcessInstanceJSONBody
 
 // StartProcessInstanceOnElementsJSONRequestBody defines body for StartProcessInstanceOnElements for application/json ContentType.
 type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElementsJSONBody
-
-// CreateProcessDefinitionMultipartRequestBody defines body for CreateProcessDefinition for multipart/form-data ContentType.
-type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipartBody
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody

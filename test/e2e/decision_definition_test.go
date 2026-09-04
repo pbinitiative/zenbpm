@@ -282,7 +282,7 @@ func deployDmnResourceDefinition(t testing.TB, filename string) (*zenclient.Crea
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
-	return app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/xml", file)
+	return app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", file)
 }
 
 func deployDmnResourceDefinitionE2e(t testing.TB, filePath string) (*zenclient.CreateDmnResourceDefinitionResponse, error) {
@@ -294,7 +294,7 @@ func deployDmnResourceDefinitionE2e(t testing.TB, filePath string) (*zenclient.C
 	file, err := os.Open(loc)
 	require.NoError(t, err)
 
-	return app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/xml", file)
+	return app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", file)
 }
 
 func deployDmnResourceDefinitionWithNewNameAndId(t testing.TB, filename string, newDmnDefinitionName, newDmnResourceDefinitionId *string) (int64, error) {
@@ -330,7 +330,7 @@ func deployDmnResourceDefinitionWithNewNameAndIdResponse(t testing.TB, filename 
 		stringFile = strings.ReplaceAll(stringFile, "example_canAutoLiquidate", *newDmnResourceDefinitionId)
 	}
 	fileReader := strings.NewReader(stringFile)
-	response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/xml", fileReader)
+	response, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", fileReader)
 	if err != nil {
 		if strings.Contains(err.Error(), "DUPLICATE") {
 			return response, nil

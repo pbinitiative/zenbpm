@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -176,18 +175,10 @@ func deployBpmn(t testing.TB, relPath string) *zenclient.CreateProcessDefinition
 	file, err := os.ReadFile(loc)
 	require.NoError(t, err, "reading BPMN file %s", loc)
 
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	part, err := mw.CreateFormFile("resource", filepath.Base(relPath))
-	require.NoError(t, err)
-	_, err = part.Write(file)
-	require.NoError(t, err)
-	require.NoError(t, mw.Close())
-
 	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
 		t.Context(),
-		mw.FormDataContentType(),
-		&body,
+		"application/octet-stream",
+		bytes.NewReader(file),
 	)
 	require.NoError(t, err)
 	require.True(t, resp.StatusCode() == http.StatusOK || resp.StatusCode() == http.StatusCreated,
@@ -204,7 +195,7 @@ func deployDmn(t testing.TB, relPath string) *zenclient.CreateDmnResourceDefinit
 
 	resp, err := app.restClient.CreateDmnResourceDefinitionWithBodyWithResponse(
 		t.Context(),
-		"application/xml",
+		"application/octet-stream",
 		file,
 	)
 	require.NoError(t, err)

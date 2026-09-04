@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -301,16 +300,8 @@ func DeployDefinitionOnNode(t *testing.T, n *TestNode, filename string) *zenclie
 	fileContent, err := os.ReadFile(loc)
 	require.NoError(t, err, "failed to read BPMN file: %s", loc)
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	require.NoError(t, err)
-	_, err = part.Write(fileContent)
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
-
 	resp, err := n.RestClient.CreateProcessDefinitionWithBodyWithResponse(
-		context.Background(), writer.FormDataContentType(), &requestBody,
+		context.Background(), "application/octet-stream", bytes.NewReader(fileContent),
 	)
 	require.NoError(t, err)
 	require.Less(t, resp.StatusCode(), 400, "deploy failed: %s", string(resp.Body))
@@ -357,7 +348,7 @@ func DeployDMNDefinitionOnNode(t *testing.T, n *TestNode, filename string) {
 	require.NoError(t, err, "failed to read DMN file: %s", loc)
 
 	resp, err := n.RestClient.CreateDmnResourceDefinitionWithBodyWithResponse(
-		context.Background(), "application/xml", bytes.NewReader(fileContent),
+		context.Background(), "application/octet-stream", bytes.NewReader(fileContent),
 	)
 	require.NoError(t, err)
 	require.Less(t, resp.StatusCode(), 400, "DMN deploy failed: %s", string(resp.Body))

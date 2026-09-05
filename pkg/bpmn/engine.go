@@ -49,6 +49,18 @@ type Engine struct {
 	feelRuntime    script.FeelRuntime
 	jsRuntime      script.JsRuntime
 
+	// ownsFeelRuntime reports whether the engine created feelRuntime itself and is therefore responsible for stopping it.
+	// Runtimes injected through EngineWithStorageAndFeel remain owned by the caller and are never stopped by the engine.
+	ownsFeelRuntime bool
+
+	// ownsJsRuntime reports whether the engine created jsRuntime itself and is therefore responsible for stopping it.
+	// Runtimes injected through EngineWithJs remain owned by the caller and are never stopped by the engine.
+	ownsJsRuntime bool
+
+	// stopOnce guarantees that Stop releases engine-owned resources exactly once, even when Stop is called multiple times
+	// or from multiple goroutines. It is a pointer because Engine values are copied (NewEngine returns Engine by value).
+	stopOnce *sync.Once
+
 	// pollTimerDelay is the interval between timer polling cycles.
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
@@ -84,6 +96,12 @@ type Engine struct {
 
 type EngineOption = func(*Engine)
 
+type engineFactories struct {
+	newFeelRuntime func() script.FeelRuntime
+	newJsRuntime   func() script.JsRuntime
+	newDmnEngine   func(storage.Storage, script.FeelRuntime) *dmn.ZenDmnEngine
+}
+
 // DefaultMaxProcessInstanceNestingDepth is the default maximum nesting depth of a process
 // instance in the parent-child chain. It can be overridden via EngineWithMaxProcessInstanceNestingDepth.
 const DefaultMaxProcessInstanceNestingDepth int64 = 100
@@ -97,6 +115,23 @@ const DefaultMaxProcessInstanceFlowNodeCount int64 = 10000
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
+	return newEngine(engineFactories{
+		newFeelRuntime: func() script.FeelRuntime {
+			return feel.NewFeelinRuntime(1, 1)
+		},
+		newJsRuntime: func() script.JsRuntime {
+			return js.NewJsRuntime(1, 1)
+		},
+		newDmnEngine: func(persistence storage.Storage, feelRuntime script.FeelRuntime) *dmn.ZenDmnEngine {
+			return dmn.NewEngine(
+				dmn.EngineWithStorage(persistence),
+				dmn.EngineWithFeel(feelRuntime),
+			)
+		},
+	}, options...)
+}
+
+func newEngine(factories engineFactories, options ...EngineOption) Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := hclog.Default()
 	meter := otel.GetMeterProvider().Meter("bpmn-engine")
@@ -106,8 +141,6 @@ func NewEngine(options ...EngineOption) Engine {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
 	persistence := inmemory.NewStorage()
-	feelRuntime := feel.NewFeelinRuntime(1, 1)
-	jsRuntime := js.NewJsRuntime(1, 1)
 
 	engine := Engine{
 		context:                         ctx,
@@ -122,16 +155,29 @@ func NewEngine(options ...EngineOption) Engine {
 		tracer:                          tracer,
 		meter:                           meter,
 		metrics:                         metrics,
-		feelRuntime:                     feelRuntime,
-		jsRuntime:                       jsRuntime,
 		maxProcessInstanceNestingDepth:  DefaultMaxProcessInstanceNestingDepth,
 		maxProcessInstanceFlowNodeCount: DefaultMaxProcessInstanceFlowNodeCount,
-		dmnEngine:                       dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
+		stopOnce:                        &sync.Once{},
 	}
 
 	for _, option := range options {
 		option(&engine)
 	}
+
+	// Create default runtimes only when none were injected through options.
+	// This avoids paying the pool startup cost (and leaving cleanup goroutines behind) for runtimes
+	// that would immediately be replaced. Defaults created here are owned by the engine and stopped in Stop;
+	// injected runtimes remain owned by their callers.
+	if engine.feelRuntime == nil {
+		engine.feelRuntime = factories.newFeelRuntime()
+		engine.ownsFeelRuntime = true
+	}
+	if engine.jsRuntime == nil {
+		engine.jsRuntime = factories.newJsRuntime()
+		engine.ownsJsRuntime = true
+	}
+	// The DMN engine always reuses the BPMN engine's FEEL runtime and storage, so it never owns a FEEL pool of its own.
+	engine.dmnEngine = factories.newDmnEngine(engine.persistence, engine.feelRuntime)
 
 	return engine
 }
@@ -140,32 +186,52 @@ func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
 	return func(engine *Engine) { engine.AddEventExporter(exporter) }
 }
 
+// EngineWithStorage sets the storage used by the BPMN engine and its embedded DMN engine.
+// It is meant for construction time only (through NewEngine).
+// The engine's FEEL runtime (default or injected) is reused for DMN evaluation, so no independent FEEL pool is created.
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
-		// The BPMN engine owns this runtime. Reuse it for DMN evaluation instead
-		// of creating a second default FEEL worker pool with no shutdown owner.
-		engine.dmnEngine = dmn.NewEngine(
-			dmn.EngineWithStorage(persistence),
-			dmn.EngineWithFeel(engine.feelRuntime),
-		)
 	}
 }
 
+// EngineWithStorageAndFeel sets the storage and the FEEL runtime used by the BPMN engine and its embedded DMN engine.
+// The supplied runtime remains owned by the caller: the engine will never stop it.
+// It is meant for construction time only (through NewEngine).
 func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
-		engine.feelRuntime.Stop()
+		engine.stopOwnedFeelRuntime()
 		engine.feelRuntime = feelRuntime
-		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime))
 	}
 }
 
+// EngineWithJs sets the JavaScript runtime used by the BPMN engine.
+// The supplied runtime remains owned by the caller: the engine will never stop it.
+// It is meant for construction time only (through NewEngine).
 func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
-		engine.jsRuntime.Stop()
+		engine.stopOwnedJsRuntime()
 		engine.jsRuntime = jsRuntime
 	}
+}
+
+// stopOwnedFeelRuntime stops the FEEL runtime if the engine owns it and clears
+// ownership so the runtime cannot be stopped a second time.
+func (engine *Engine) stopOwnedFeelRuntime() {
+	if engine.ownsFeelRuntime && engine.feelRuntime != nil {
+		engine.feelRuntime.Stop()
+	}
+	engine.ownsFeelRuntime = false
+}
+
+// stopOwnedJsRuntime stops the JavaScript runtime if the engine owns it and
+// clears ownership so the runtime cannot be stopped a second time.
+func (engine *Engine) stopOwnedJsRuntime() {
+	if engine.ownsJsRuntime && engine.jsRuntime != nil {
+		engine.jsRuntime.Stop()
+	}
+	engine.ownsJsRuntime = false
 }
 
 func EngineWithLogger(logger hclog.Logger) EngineOption {

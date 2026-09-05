@@ -131,11 +131,23 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 	return errors.Join(errs...)
 }
 
+// Stop shuts the engine down and releases engine-owned resources exactly once: the timer manager, the engine context,
+// the embedded DMN engine, and the FEEL and JavaScript script pools created by the engine itself.
+// Runtimes injected through EngineWithStorageAndFeel or EngineWithJs remain owned by the caller and are left running.
+// Calling Stop multiple times is safe.
 func (engine *Engine) Stop() {
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
-	}
-	engine.contextCancel()
+	engine.stopOnce.Do(func() {
+		if engine.timerManager != nil {
+			engine.timerManager.stop()
+		}
+		engine.contextCancel()
+		if engine.dmnEngine != nil {
+			// The DMN engine never owns the shared FEEL runtime, so this only releases DMN-owned resources (if any).
+			engine.dmnEngine.Stop()
+		}
+		engine.stopOwnedFeelRuntime()
+		engine.stopOwnedJsRuntime()
+	})
 }
 
 // RunProcessInstance will run the process instance with supplied tokens.

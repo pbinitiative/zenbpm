@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -34,6 +35,7 @@ const dmnEngineName = "dmn-engine"
 type ZenDmnEngine struct {
 	persistence     storage.DecisionStorage
 	feelRuntime     script.FeelRuntime
+	runtimeMu       sync.Mutex
 	ownsFeelRuntime bool
 
 	tracer             trace.Tracer
@@ -43,8 +45,16 @@ type ZenDmnEngine struct {
 
 type EngineOption = func(*ZenDmnEngine)
 
+type feelRuntimeFactory func() script.FeelRuntime
+
 // NewEngine creates a new instance of the DMN Engine;
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
+	return newEngine(func() script.FeelRuntime {
+		return feel.NewFeelinRuntime(1, 1)
+	}, options...)
+}
+
+func newEngine(newFeelRuntime feelRuntimeFactory, options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
 		tracer:      otel.GetTracerProvider().Tracer(dmnEngineName),
@@ -68,7 +78,7 @@ func NewEngine(options ...EngineOption) *ZenDmnEngine {
 		option(&engine)
 	}
 	if engine.feelRuntime == nil {
-		engine.feelRuntime = feel.NewFeelinRuntime(1, 1)
+		engine.feelRuntime = newFeelRuntime()
 		engine.ownsFeelRuntime = true
 	}
 
@@ -90,6 +100,8 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 	return func(engine *ZenDmnEngine) {
 		engine.Stop()
+		engine.runtimeMu.Lock()
+		defer engine.runtimeMu.Unlock()
 		engine.feelRuntime = feel
 		engine.ownsFeelRuntime = false
 	}
@@ -109,11 +121,16 @@ func (engine *ZenDmnEngine) decisionTableFeelRuntime() (script.DmnFeelRuntime, e
 // Stop releases resources created and owned by the DMN engine. A runtime
 // supplied through EngineWithFeel remains owned by the caller.
 func (engine *ZenDmnEngine) Stop() {
+	engine.runtimeMu.Lock()
 	if !engine.ownsFeelRuntime || engine.feelRuntime == nil {
+		engine.runtimeMu.Unlock()
 		return
 	}
+	feelRuntime := engine.feelRuntime
 	engine.ownsFeelRuntime = false
-	engine.feelRuntime.Stop()
+	engine.runtimeMu.Unlock()
+
+	feelRuntime.Stop()
 }
 
 func (engine *ZenDmnEngine) ParseDmnFromFile(filename string) (*dmn.TDefinitions, []byte, error) {

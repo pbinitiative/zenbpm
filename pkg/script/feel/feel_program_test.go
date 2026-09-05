@@ -1,3 +1,6 @@
+// Package feel provides FEEL (Friendly Enough Expression Language) evaluation
+// support backed by the Goja JavaScript runtime, including compilation and
+// reuse of FEEL programs across independent runners.
 package feel
 
 import (

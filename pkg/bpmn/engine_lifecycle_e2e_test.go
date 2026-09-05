@@ -37,9 +37,9 @@ func TestEngineLifecycleEndToEnd(t *testing.T) {
 
 	// DMN evaluation: business rule task evaluated by the embedded DMN engine,
 	// which shares the BPMN engine's FEEL runtime.
-	dmnDefinition, dmnXml, err := engine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	dmnDefinition, dmnXML, err := engine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	require.NoError(t, err)
-	_, _, err = engine.dmnEngine.SaveDmnResourceDefinition(t.Context(), dmnDefinition, dmnXml, engine.generateKey())
+	_, _, err = engine.dmnEngine.SaveDmnResourceDefinition(t.Context(), dmnDefinition, dmnXML, engine.generateKey())
 	require.NoError(t, err)
 
 	ruleProcess, err := engine.LoadFromFile(t.Context(), filepath.Join(".", "test-cases", "business_rule", "simple-business-rule-task-local.bpmn"))

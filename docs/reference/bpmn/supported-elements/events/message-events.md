@@ -63,7 +63,7 @@ Message start, message intermediate catch, and message boundary events receive m
 | `bpmn:message`                            | `name`           | yes      | The message name. Publishers address messages by this name.                                                                                                                                        |
 | `bpmn:message` → `zenbpm:subscription`    | `correlationKey` | recommended | A literal value or a FEEL expression (prefixed with `=`) evaluated against the instance variables when the subscription is created; a published message must carry the same key to be correlated. Without it, messages are matched by name alone, so any waiting instance can consume the publish. Not used by message start events. |
 | `bpmn:messageEventDefinition`             | `messageRef`     | yes      | References the `bpmn:message` this event waits for.                                                                                                                                                |
-| `zenbpm:ioMapping` → `zenbpm:output`      | `source`, `target` | no     | Filters which payload variables are propagated to the instance. Catching events have no input side. Not applied on message start events. See [Variables](../../variable-mapping.md).                      |
+| `zenbpm:ioMapping` → `zenbpm:output`      | `source`, `target` | no     | Maps payload values to instance variables, including on message start events. Without mappings, the full payload is propagated; with mappings, only mapped values are propagated. Catching events have no input side. See [Variables](../../variable-mapping.md). |
 
 How a message reaches a catching event:
 
@@ -74,7 +74,9 @@ How a message reaches a catching event:
 
 #### Message start event
 
-Starts a new process instance whenever a matching message is published. The subscription exists at the process definition level, so no correlation key is involved — every published message with the matching name creates a fresh instance, and the full message payload becomes the instance's initial variables (output mappings are not applied on start events). Note that each published message is consumed by exactly one subscription: if several deployed processes subscribe to the same message name, one publish creates a single instance, not one per process.
+Starts a new process instance whenever a matching message is published. The subscription exists at the process definition level, so no correlation key is involved. Without output mappings, the full message payload becomes the instance's initial variables. With `zenbpm:output` mappings, expressions evaluate against the payload before instance creation and only the mapped values become initial variables; unmapped payload fields are omitted. The start-event token does not evaluate these mappings again. If mapping evaluation fails, the subscription remains available and no instance is created.
+
+Each published message is consumed by exactly one subscription: if several deployed processes subscribe to the same message name, one publish creates a single instance, not one per process.
 
 A message start event inside an [Event sub process](../activities/event-sub-process.md) works differently: its subscription is created per instance of the containing scope and **does** use a correlation key.
 

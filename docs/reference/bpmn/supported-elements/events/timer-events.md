@@ -65,11 +65,15 @@ Where each specification applies:
 
 Schedules process instance creation without any external trigger. A `timeDate` timer creates one instance at the given moment; a `timeCycle` timer creates an instance at each occurrence and re-arms itself until the cycle's repetitions or end date are exhausted. The schedule is registered when the process definition is deployed.
 
+A top-level timer start carries no payload and creates an instance with an empty root variable scope. It supports `zenbpm:output` mappings that initialize root variables from literals or expressions before the outgoing flow runs. A mapping evaluation failure creates an incident on the start event and leaves the root variables unchanged.
+
 A timer start event inside an [Event sub process](../activities/event-sub-process.md) additionally supports `timeDuration`, measured from when its containing scope becomes active.
 
 ### Timer intermediate catch event
 
 Pauses the flow: the token waits at the event until the timer fires — after a `timeDuration` measured from the token's arrival, or at an absolute `timeDate` — and then continues along the outgoing flow. Together with an [Event-based gateway](../gateways/event-based-gateway.md), a timer catch event commonly models a timeout branch racing against a message.
+
+Timer intermediate catch events carry no payload and do not apply output mappings. Process variables remain unchanged, including when the timer follows an event-based gateway.
 
 ### Timer boundary event
 
@@ -77,6 +81,8 @@ Arms a timer when the attached activity starts and cancels it when the activity 
 
 - **Interrupting** (solid border) — the activity is cancelled and the token continues along the boundary event's outgoing flow. Use for timeouts and SLAs.
 - **Non-interrupting** (dashed border, `cancelActivity="false"`) — the activity keeps running and a parallel token is created on the outgoing flow. With a `timeCycle`, the timer re-arms after each occurrence for as long as the activity is active — use for repeated reminders.
+
+Timer boundary events support `zenbpm:output` mappings. When the timer fires, expressions evaluate against the containing process scope and mapped values are propagated to that scope before the outgoing flow. Without mappings, the timer adds no variables.
 
 ## Related documentation
 

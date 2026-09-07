@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strconv"
 	"time"
@@ -344,7 +345,19 @@ mainLoop:
 			continue
 		}
 
-		updatedTokens, err := engine.processFlowNode(ctx, &batch, instance, activity, currentToken)
+		executionInstance := instance
+		if startEvent, ok := activity.Element().(*bpmn20.TStartEvent); ok && len(startEvent.GetOutputMapping()) > 0 && !isMessageStartEvent(startEvent) {
+			if defaultInstance, ok := instance.(*runtime.DefaultProcessInstance); ok {
+				mappedInstance := *defaultInstance
+				mappedInstance.VariableHolder = runtime.NewVariableHolder(nil, maps.Clone(defaultInstance.VariableHolder.LocalVariables()))
+				executionInstance = &mappedInstance
+				batch.AddPostFlushAction(ctx, func() {
+					defaultInstance.VariableHolder = mappedInstance.VariableHolder
+				})
+			}
+		}
+
+		updatedTokens, err := engine.processFlowNode(ctx, &batch, executionInstance, activity, currentToken)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			if isTechnicalFailure(err) {
@@ -369,17 +382,12 @@ mainLoop:
 			endErrorSpan(tokenSpan, saveErr)
 			return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
 		}
-		for _, tok := range updatedTokens {
-			if tok.State == runtime.TokenStateRunning {
-				runningExecutionTokens = append(runningExecutionTokens, tok)
-			}
-		}
-
 		// if we encounter any error we switch the instance to failed state
 		if runErr != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
+			executionInstance.ProcessInstance().State = runtime.ActivityStateFailed
 		}
-		err = batch.SaveProcessInstance(ctx, instance)
+		err = batch.SaveProcessInstance(ctx, executionInstance)
 		if err != nil {
 			outcome.recordTechnicalFailure()
 			runErr = errors.Join(runErr, err)
@@ -445,6 +453,11 @@ mainLoop:
 			continue
 		}
 		instance.ProcessInstance().FlowNodeCount = runFlowNodeCount.count
+		for _, tok := range updatedTokens {
+			if tok.State == runtime.TokenStateRunning {
+				runningExecutionTokens = append(runningExecutionTokens, tok)
+			}
+		}
 		tokenSpan.End()
 	} // end of main loop
 

@@ -41,12 +41,13 @@ Both sides carry a `bpmn:linkEventDefinition` whose `name` pairs them up.
 | Markup                     | Attribute | Required | Description                                                                                      |
 | -------------------------- | --------- | -------- | ------------------------------------------------------------------------------------------------ |
 | `bpmn:linkEventDefinition` | `name`    | yes      | The link name. Throw and catch events with the same name in the same process form a pair.        |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no | Derives or overwrites process variables on either the throw or catch event. Expressions read the current process scope. |
 
 Rules:
 
 - The throw event has one incoming sequence flow and **no outgoing flow**; the catch event has one outgoing sequence flow and **no incoming flow**.
 - Throw and catch must be in the same process — a link cannot cross a process or sub process boundary.
-- When a token reaches the throw event, it continues immediately at the matching catch event's outgoing flow. There is no wait state, and the process variables are unchanged.
+- When a token reaches the throw event, it continues immediately to the matching catch event and its outgoing flow. There is no wait state. Without output mappings, process variables remain unchanged; with mappings, the throw event propagates its mapped values first, and the catch event can read and map those values before continuing.
 - A throw event whose link name has no matching catch event fails the token at runtime.
 
 ### Link intermediate throw event

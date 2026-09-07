@@ -128,6 +128,10 @@ The trigger depends on the type:
 - **[Message start event](./message-events.md#message-start-event)** — a new instance is created each time a matching message is published.
 - **[Timer start event](./timer-events.md#timer-start-event)** — instances are created on a schedule, without any external trigger.
 
+At the top level, none and timer start events can use `zenbpm:output` mappings to initialize or derive root process variables before the outgoing flow runs. A none start event evaluates mappings against the variables supplied when the instance is created; a timer start creates an instance with an empty root scope, which mappings can initialize from literals or expressions. Mapped values add to or overwrite existing root variables.
+
+For a top-level message start event, output mappings evaluate against the message payload before the instance is created. Without mappings, the full payload becomes the instance's initial variables; with mappings, only the mapped values do. Start events do not support `zenbpm:input` mappings; variables supplied through the create-instance API already belong to the root process scope.
+
 Start events also appear inside an [Event sub process](../activities/event-sub-process.md), where message, timer, and error triggers are supported and the start event may be non-interrupting.
 
 ## Intermediate events
@@ -161,13 +165,17 @@ What happens when the token arrives depends on the type:
 
 ## Variables
 
-Events handle variables differently from activities — the direction of the event decides which mappings apply:
+Events handle variables differently from activities. The event type determines which mappings apply:
 
 | Event kind                                                                                        | Mappings          | Behavior                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Catching events that receive a payload — message start, message catch, message boundary, error boundary | `zenbpm:output`   | **Without output mappings, the entire payload is propagated** to the catching scope as-is. Add output mappings to propagate only selected variables — except on message start events, where the full payload always becomes the new instance's variables. Note that this is the opposite default from activities, which propagate nothing unmapped. |
+| Catching events that receive a payload — message start, message catch, message boundary, error boundary | `zenbpm:output`   | **Without output mappings, the entire payload is propagated** to the catching scope as-is. With output mappings, only mapped values are propagated. For message starts, these become the new instance's initial variables. This is the opposite default from activities, which propagate nothing unmapped. |
 | Throwing message events — message intermediate throw, message end                                  | `zenbpm:input` / `zenbpm:output` | Executed as a job, exactly like a [Send task](../activities/tasks/send-task.md): input mappings prepare the variables the worker sees, output mappings propagate the worker's result following the activity rules.                              |
-| Timer and link events                                                                             | —                 | Carry no payload; the process variables are unchanged.                                                                                                                                                                                         |
+| Top-level none start events                                                                       | `zenbpm:output`   | Evaluate mappings against create-instance root variables and add or overwrite mapped values before the outgoing flow. Without mappings, the supplied variables remain unchanged. |
+| Top-level timer start events                                                                      | `zenbpm:output`   | Carry no payload. Mappings can initialize root variables before the outgoing flow; a scheduled instance starts with an empty root scope. |
+| Timer boundary events                                                                             | `zenbpm:output`   | Carry no payload. When the timer fires, mappings evaluate against the containing process scope and propagate mapped values to it. Without mappings, variables remain unchanged. |
+| Timer intermediate catch events                                                                   | —                 | Carry no payload and do not apply output mappings; process variables remain unchanged, including when the timer follows an event-based gateway. |
+| Link throw and catch events                                                                       | `zenbpm:output`   | Carry no payload. Each event can derive or overwrite process variables; the catch event can read values mapped by the throw event. Without mappings, variables remain unchanged. |
 
 See [Variables](../../variable-mapping.md) for the full propagation rules.
 

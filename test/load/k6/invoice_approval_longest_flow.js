@@ -134,9 +134,10 @@ function parseJsonPreservingIds(body) {
 }
 
 function deployBpmn(filename, content) {
-  const response = http.post(`${BASE_URL}/process-definitions`, {
-    resource: http.file(content, filename, 'application/xml'),
-  }, { tags: { name: 'POST /process-definitions', op: 'deploy_process' } });
+  const response = http.post(`${BASE_URL}/process-definitions`, content, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+    tags: { name: 'POST /process-definitions', op: 'deploy_process' },
+  });
   const ok = check(response, {
     'invoice BPMN deployment 2xx': (r) => r.status === 200 || r.status === 201,
   });
@@ -147,7 +148,7 @@ function deployBpmn(filename, content) {
 
 function deployDmn(filename, content) {
   const response = http.post(`${BASE_URL}/dmn-resource-definitions`, content, {
-    headers: { 'Content-Type': 'application/xml' },
+    headers: { 'Content-Type': 'application/octet-stream' },
     tags: { name: 'POST /dmn-resource-definitions', op: 'deploy_dmn', resource: filename },
   });
   const ok = check(response, {

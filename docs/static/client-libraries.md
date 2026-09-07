@@ -7,6 +7,21 @@ ZenBPM provides officially supported client libraries in multiple programming la
 
 The versions of the libraries are aligned with the ZenBPM engine versions.
 
+## Migrating resource uploads to ZenBPM 1.8
+
+BPMN and DMN deployment requests now send the file contents directly as the request body
+with `Content-Type: application/octet-stream`. The endpoint paths remain
+`POST /v1/process-definitions` and `POST /v1/dmn-resource-definitions`.
+
+Update BPMN clients that send a multipart `resource` field and DMN clients that send
+`application/xml`; these previous content types now receive `415 Unsupported Media Type`.
+For curl, replace `-F "resource=@process.bpmn"` with
+`-H "Content-Type: application/octet-stream" --data-binary @process.bpmn`.
+In Go, use the `CreateProcessDefinitionWithBodyWithResponse` or
+`CreateDmnResourceDefinitionWithBodyWithResponse` method shown below. The generated
+`CreateProcessDefinitionMultipartBody` and `CreateProcessDefinitionMultipartRequestBody`
+types have been removed.
+
 ## Go Client
 
 The Go client is part of the ZenBPM engine and is available as package `github.com/pbinitiative/zenbpm/pkg/zenclient`.

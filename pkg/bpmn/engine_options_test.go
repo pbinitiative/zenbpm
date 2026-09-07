@@ -113,6 +113,38 @@ func TestEngineRuntimeOptionsArePureSetters(t *testing.T) {
 	require.False(t, engine.ownsJsRuntime, "injected JS runtime must be caller-owned")
 }
 
+// TestEngineRuntimeOptionsRejectConstructedEngine verifies that applying a runtime-injecting option to an
+// already constructed engine panics instead of silently orphaning the engine-owned runtimes, and that the
+// owned runtimes are still released by Stop afterwards.
+func TestEngineRuntimeOptionsRejectConstructedEngine(t *testing.T) {
+	defer goleak.VerifyNone(t, sharedEngineGoleakOptions()...)
+
+	tracker := newEngineConstructionTracker()
+	injectedFeel := &stopCountingFeelRuntime{}
+	injectedJs := &stopCountingJsRuntime{}
+	engine := newEngine(tracker.factories(), EngineWithStorage(inmemory.NewStorage()))
+	require.True(t, engine.ownsFeelRuntime)
+	require.True(t, engine.ownsJsRuntime)
+
+	require.PanicsWithValue(t,
+		"bpmn: EngineWithStorageAndFeel must only be passed to NewEngine; applying it to a constructed engine is not supported",
+		func() { EngineWithStorageAndFeel(inmemory.NewStorage(), injectedFeel)(&engine) })
+	require.PanicsWithValue(t,
+		"bpmn: EngineWithJs must only be passed to NewEngine; applying it to a constructed engine is not supported",
+		func() { EngineWithJs(injectedJs)(&engine) })
+
+	require.Same(t, tracker.feelRuntime, engine.feelRuntime.(*stopCountingFeelRuntime), "rejected option must not replace the FEEL runtime")
+	require.Same(t, tracker.jsRuntime, engine.jsRuntime.(*stopCountingJsRuntime), "rejected option must not replace the JS runtime")
+	require.True(t, engine.ownsFeelRuntime, "rejected option must not clear FEEL ownership")
+	require.True(t, engine.ownsJsRuntime, "rejected option must not clear JS ownership")
+
+	engine.Stop()
+	require.EqualValues(t, 1, tracker.feelRuntime.stopCalls.Load(), "owned FEEL runtime must still be released by Stop")
+	require.EqualValues(t, 1, tracker.jsRuntime.stopCalls.Load(), "owned JS runtime must still be released by Stop")
+	require.Zero(t, injectedFeel.stopCalls.Load(), "runtime from the rejected option must never be touched")
+	require.Zero(t, injectedJs.stopCalls.Load(), "runtime from the rejected option must never be touched")
+}
+
 // sharedEngineGoleakOptions returns the goleak options used by engine
 // construction tests. The shared package-level bpmnEngine (started in TestMain)
 // keeps polling timers in the background. Its timer manager may spawn transient

@@ -38,6 +38,11 @@ type ZenDmnEngine struct {
 	runtimeMu       sync.Mutex
 	ownsFeelRuntime bool
 
+	// constructed is set once NewEngine has finished applying options and creating default runtimes.
+	// Runtime-injecting options consult it to reject being applied to an already constructed engine,
+	// which would orphan an engine-owned runtime and swap the runtime under in-flight evaluations.
+	constructed bool
+
 	tracer             trace.Tracer
 	evaluationsTotal   metric.Int64Counter
 	evaluationDuration metric.Float64Histogram
@@ -81,6 +86,7 @@ func newEngine(newFeelRuntime feelRuntimeFactory, options ...EngineOption) *ZenD
 		engine.feelRuntime = newFeelRuntime()
 		engine.ownsFeelRuntime = true
 	}
+	engine.constructed = true
 
 	return &engine
 }
@@ -95,15 +101,26 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 // supplied runtime remains owned by the caller: the engine will never stop it.
 // DMN decision tables require the supplied runtime to implement
 // script.DmnFeelRuntime; incomplete runtimes are rejected during deployment and
-// evaluation. It is meant for construction time only (through NewEngine), where
-// it is applied before any default runtime is created, so no engine-owned pool
-// ever needs to be released here.
+// evaluation. It must only be passed to NewEngine, where it is applied before
+// any default runtime is created, so no engine-owned pool ever needs to be
+// released here. Applying it to an already constructed engine panics: doing so
+// would orphan the engine-owned runtime and replace the runtime underneath
+// in-flight evaluations.
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 	return func(engine *ZenDmnEngine) {
+		engine.mustBeUnderConstruction("EngineWithFeel")
 		engine.runtimeMu.Lock()
 		defer engine.runtimeMu.Unlock()
 		engine.feelRuntime = feel
 		engine.ownsFeelRuntime = false
+	}
+}
+
+// mustBeUnderConstruction panics when a construction-only option is applied to
+// an engine that NewEngine has already finished building.
+func (engine *ZenDmnEngine) mustBeUnderConstruction(option string) {
+	if engine.constructed {
+		panic(fmt.Sprintf("dmn: %s must only be passed to NewEngine; applying it to a constructed engine is not supported", option))
 	}
 }
 

@@ -93,6 +93,27 @@ func TestDmnEngineStopIsConcurrentAndExactlyOnce(t *testing.T) {
 	require.False(t, engine.ownsFeelRuntime, "shutdown must clear runtime ownership")
 }
 
+// TestEngineWithFeelRejectsConstructedEngine verifies that applying EngineWithFeel to an already
+// constructed engine panics instead of silently orphaning the engine-owned runtime, and that the
+// owned runtime is still released by Stop afterwards.
+func TestEngineWithFeelRejectsConstructedEngine(t *testing.T) {
+	ownedRuntime := &stopCountingDmnFeelRuntime{}
+	injectedRuntime := &stopCountingDmnFeelRuntime{}
+	engine := newEngine(func() script.FeelRuntime { return ownedRuntime })
+	require.True(t, engine.ownsFeelRuntime)
+
+	require.PanicsWithValue(t,
+		"dmn: EngineWithFeel must only be passed to NewEngine; applying it to a constructed engine is not supported",
+		func() { EngineWithFeel(injectedRuntime)(engine) })
+
+	require.Same(t, ownedRuntime, engine.feelRuntime.(*stopCountingDmnFeelRuntime), "rejected option must not replace the runtime")
+	require.True(t, engine.ownsFeelRuntime, "rejected option must not clear ownership")
+
+	engine.Stop()
+	require.EqualValues(t, 1, ownedRuntime.stopCalls.Load(), "owned runtime must still be released by Stop")
+	require.Zero(t, injectedRuntime.stopCalls.Load(), "runtime from the rejected option must never be touched")
+}
+
 // TestDmnEngineStopWaitsForInFlightShutdown verifies that a Stop call racing with another
 // Stop call does not return before the owned runtime has actually finished shutting down.
 func TestDmnEngineStopWaitsForInFlightShutdown(t *testing.T) {

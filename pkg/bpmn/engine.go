@@ -63,6 +63,11 @@ type Engine struct {
 	// copied (NewEngine returns Engine by value).
 	stopOnce *sync.Once
 
+	// constructed is set once newEngine has finished applying options and creating default runtimes.
+	// Runtime-injecting options consult it to reject being applied to an already constructed engine,
+	// which would orphan an engine-owned runtime and swap the runtime under in-flight evaluations.
+	constructed bool
+
 	// pollTimerDelay is the interval between timer polling cycles.
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
@@ -180,6 +185,7 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 	}
 	// The DMN engine always reuses the BPMN engine's FEEL runtime and storage, so it never owns a FEEL pool of its own.
 	engine.dmnEngine = factories.newDmnEngine(engine.persistence, engine.feelRuntime)
+	engine.constructed = true
 
 	return engine
 }
@@ -199,10 +205,12 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 
 // EngineWithStorageAndFeel sets the storage and the FEEL runtime used by the BPMN engine and its embedded DMN engine.
 // The supplied runtime remains owned by the caller: the engine will never stop it.
-// It is meant for construction time only (through NewEngine), where options are applied before any default
-// runtime is created, so no engine-owned pool ever needs to be released here.
+// It must only be passed to NewEngine, where options are applied before any default runtime is created, so no
+// engine-owned pool ever needs to be released here. Applying it to an already constructed engine panics: doing so
+// would orphan the engine-owned runtime and replace the runtime underneath in-flight evaluations.
 func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
 	return func(engine *Engine) {
+		engine.mustBeUnderConstruction("EngineWithStorageAndFeel")
 		engine.persistence = persistence
 		engine.feelRuntime = feelRuntime
 		engine.ownsFeelRuntime = false
@@ -211,12 +219,22 @@ func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.Fe
 
 // EngineWithJs sets the JavaScript runtime used by the BPMN engine.
 // The supplied runtime remains owned by the caller: the engine will never stop it.
-// It is meant for construction time only (through NewEngine), where options are applied before any default
-// runtime is created, so no engine-owned pool ever needs to be released here.
+// It must only be passed to NewEngine, where options are applied before any default runtime is created, so no
+// engine-owned pool ever needs to be released here. Applying it to an already constructed engine panics: doing so
+// would orphan the engine-owned runtime and replace the runtime underneath in-flight evaluations.
 func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
+		engine.mustBeUnderConstruction("EngineWithJs")
 		engine.jsRuntime = jsRuntime
 		engine.ownsJsRuntime = false
+	}
+}
+
+// mustBeUnderConstruction panics when a construction-only option is applied to an engine that newEngine has
+// already finished building.
+func (engine *Engine) mustBeUnderConstruction(option string) {
+	if engine.constructed {
+		panic(fmt.Sprintf("bpmn: %s must only be passed to NewEngine; applying it to a constructed engine is not supported", option))
 	}
 }
 

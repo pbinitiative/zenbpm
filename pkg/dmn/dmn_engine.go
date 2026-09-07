@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -34,7 +35,13 @@ const dmnEngineName = "dmn-engine"
 type ZenDmnEngine struct {
 	persistence     storage.DecisionStorage
 	feelRuntime     script.FeelRuntime
+	runtimeMu       sync.Mutex
 	ownsFeelRuntime bool
+
+	// constructed is set once NewEngine has finished applying options and creating default runtimes.
+	// Runtime-injecting options consult it to reject being applied to an already constructed engine,
+	// which would orphan an engine-owned runtime and swap the runtime under in-flight evaluations.
+	constructed bool
 
 	tracer             trace.Tracer
 	evaluationsTotal   metric.Int64Counter
@@ -43,8 +50,16 @@ type ZenDmnEngine struct {
 
 type EngineOption = func(*ZenDmnEngine)
 
+type feelRuntimeFactory func() script.FeelRuntime
+
 // NewEngine creates a new instance of the DMN Engine;
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
+	return newEngine(func() script.FeelRuntime {
+		return feel.NewFeelinRuntime(1, 1)
+	}, options...)
+}
+
+func newEngine(newFeelRuntime feelRuntimeFactory, options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
 		tracer:      otel.GetTracerProvider().Tracer(dmnEngineName),
@@ -68,9 +83,10 @@ func NewEngine(options ...EngineOption) *ZenDmnEngine {
 		option(&engine)
 	}
 	if engine.feelRuntime == nil {
-		engine.feelRuntime = feel.NewFeelinRuntime(1, 1)
+		engine.feelRuntime = newFeelRuntime()
 		engine.ownsFeelRuntime = true
 	}
+	engine.constructed = true
 
 	return &engine
 }
@@ -81,17 +97,30 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 	}
 }
 
-// EngineWithFeel sets the FEEL runtime used for expression evaluation and hands
-// its ownership to the caller. DMN decision tables require the supplied runtime
-// to implement script.DmnFeelRuntime; incomplete runtimes are rejected during
-// deployment and evaluation. It is meant for construction time only (through
-// NewEngine): applying it to a running engine stops an already owned runtime and
-// with it any FEEL evaluation in flight.
+// EngineWithFeel sets the FEEL runtime used for expression evaluation. The
+// supplied runtime remains owned by the caller: the engine will never stop it.
+// DMN decision tables require the supplied runtime to implement
+// script.DmnFeelRuntime; incomplete runtimes are rejected during deployment and
+// evaluation. It must only be passed to NewEngine, where it is applied before
+// any default runtime is created, so no engine-owned pool ever needs to be
+// released here. Applying it to an already constructed engine panics: doing so
+// would orphan the engine-owned runtime and replace the runtime underneath
+// in-flight evaluations.
 func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 	return func(engine *ZenDmnEngine) {
-		engine.Stop()
+		engine.mustBeUnderConstruction("EngineWithFeel")
+		engine.runtimeMu.Lock()
+		defer engine.runtimeMu.Unlock()
 		engine.feelRuntime = feel
 		engine.ownsFeelRuntime = false
+	}
+}
+
+// mustBeUnderConstruction panics when a construction-only option is applied to
+// an engine that NewEngine has already finished building.
+func (engine *ZenDmnEngine) mustBeUnderConstruction(option string) {
+	if engine.constructed {
+		panic(fmt.Sprintf("dmn: %s must only be passed to NewEngine; applying it to a constructed engine is not supported", option))
 	}
 }
 
@@ -108,7 +137,13 @@ func (engine *ZenDmnEngine) decisionTableFeelRuntime() (script.DmnFeelRuntime, e
 
 // Stop releases resources created and owned by the DMN engine. A runtime
 // supplied through EngineWithFeel remains owned by the caller.
+// Stop is safe to call multiple times and from multiple goroutines: the owned
+// runtime is stopped exactly once, and every caller returns only after that
+// shutdown has completed (concurrent callers block on runtimeMu until the
+// first one has finished releasing the runtime).
 func (engine *ZenDmnEngine) Stop() {
+	engine.runtimeMu.Lock()
+	defer engine.runtimeMu.Unlock()
 	if !engine.ownsFeelRuntime || engine.feelRuntime == nil {
 		return
 	}

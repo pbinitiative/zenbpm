@@ -203,11 +203,7 @@ func newCancelTerminateTestEngine(t *testing.T, options ...EngineOption) Engine 
 	t.Helper()
 
 	engine := NewEngine(options...)
-	t.Cleanup(func() {
-		engine.contextCancel()
-		engine.feelRuntime.Stop()
-		engine.jsRuntime.Stop()
-	})
+	t.Cleanup(engine.Stop)
 	return engine
 }
 

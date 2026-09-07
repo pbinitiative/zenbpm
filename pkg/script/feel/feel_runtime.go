@@ -2,6 +2,7 @@ package feel
 
 import (
 	_ "embed"
+	"sync"
 
 	"github.com/dop251/goja"
 	"github.com/pbinitiative/zenbpm/pkg/script"
@@ -126,18 +127,25 @@ type FeelinRunner struct {
 
 func (r *FeelinRunner) Runner() {}
 
+// compiledPrograms lazily compiles the Intl polyfill, the embedded feelin bundle,
+// and the FEEL runtime extensions exactly once into immutable *goja.Program instances.
+// goja.Program is safe for concurrent use by multiple goja.Runtime instances, so every new runner only has to execute
+// the already-compiled programs instead of recompiling the whole JavaScript bundle from source.
+var compiledPrograms = sync.OnceValue(func() []*goja.Program {
+	return []*goja.Program{
+		goja.MustCompile("intl-polyfill.js", intlPolyfill, false),
+		goja.MustCompile("feelin/index.esm.js", feelinSource, false),
+		goja.MustCompile("feel-runtime-extensions.js", feelRuntimeExtensions, false),
+	}
+})
+
 func newFeelRunner() *FeelinRunner {
 	r := FeelinRunner{vm: goja.New()}
-	if _, err := r.vm.RunString(intlPolyfill); err != nil {
-		panic(err)
-	}
-	//TODO: this can be optimized into using already compiled *Program to skip compilation step
-	_, err := r.vm.RunString(feelinSource)
-	if err != nil {
-		panic(err)
-	}
-	if _, err := r.vm.RunString(feelRuntimeExtensions); err != nil {
-		panic(err)
+	// Each runner owns an independent goja.Runtime; only the immutable compiled programs are shared between runners.
+	for _, program := range compiledPrograms() {
+		if _, err := r.vm.RunProgram(program); err != nil {
+			panic(err)
+		}
 	}
 	r.exportEvaluate()
 	r.exportUnaryTest()

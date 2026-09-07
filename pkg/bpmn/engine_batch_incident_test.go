@@ -242,8 +242,5 @@ func incidentTestInstance() runtime.ProcessInstance {
 
 func cleanupIncidentTestEngine(t *testing.T, engine *Engine) {
 	t.Helper()
-	t.Cleanup(func() {
-		engine.feelRuntime.Stop()
-		engine.jsRuntime.Stop()
-	})
+	t.Cleanup(engine.Stop)
 }

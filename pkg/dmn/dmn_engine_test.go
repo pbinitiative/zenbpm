@@ -203,16 +203,19 @@ func TestZenDmnEngineStopPreservesInjectedRuntime(t *testing.T) {
 	assert.Equal(t, 0, runtime.stopCount)
 }
 
-func TestEngineWithFeelStopsReplacedOwnedRuntime(t *testing.T) {
-	ownedRuntime := &trackingFeelRuntime{}
+func TestEngineWithFeelIsAPureSetter(t *testing.T) {
+	previousRuntime := &trackingFeelRuntime{}
 	injectedRuntime := &trackingFeelRuntime{}
-	engine := &ZenDmnEngine{feelRuntime: ownedRuntime, ownsFeelRuntime: true}
+	engine := &ZenDmnEngine{feelRuntime: previousRuntime, ownsFeelRuntime: true}
 
 	EngineWithFeel(injectedRuntime)(engine)
 
-	assert.Equal(t, 1, ownedRuntime.stopCount)
+	assert.Equal(t, 0, previousRuntime.stopCount, "construction options must not perform cleanup")
 	assert.Same(t, injectedRuntime, engine.feelRuntime)
 	assert.False(t, engine.ownsFeelRuntime)
+
+	engine.Stop()
+	assert.Equal(t, 0, injectedRuntime.stopCount, "injected runtime stays caller-owned")
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {

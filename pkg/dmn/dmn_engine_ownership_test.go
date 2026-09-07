@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
@@ -92,6 +93,53 @@ func TestDmnEngineStopIsConcurrentAndExactlyOnce(t *testing.T) {
 	require.False(t, engine.ownsFeelRuntime, "shutdown must clear runtime ownership")
 }
 
+// TestDmnEngineStopWaitsForInFlightShutdown verifies that a Stop call racing with another
+// Stop call does not return before the owned runtime has actually finished shutting down.
+func TestDmnEngineStopWaitsForInFlightShutdown(t *testing.T) {
+	feelRuntime := &blockingStopDmnFeelRuntime{
+		stopCountingDmnFeelRuntime: stopCountingDmnFeelRuntime{},
+		entered:                    make(chan struct{}),
+		release:                    make(chan struct{}),
+	}
+	engine := &ZenDmnEngine{feelRuntime: feelRuntime, ownsFeelRuntime: true}
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		engine.Stop()
+	}()
+	<-feelRuntime.entered // first caller is now inside feelRuntime.Stop()
+
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		engine.Stop()
+	}()
+
+	select {
+	case <-secondDone:
+		t.Fatal("second Stop returned while the owned runtime shutdown was still in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(feelRuntime.release)
+	require.Eventually(t, func() bool {
+		select {
+		case <-firstDone:
+		default:
+			return false
+		}
+		select {
+		case <-secondDone:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 5*time.Millisecond, "both Stop callers must return once shutdown completes")
+	require.True(t, feelRuntime.finished.Load(), "runtime shutdown must have completed before Stop returned")
+	require.EqualValues(t, 1, feelRuntime.stopCalls.Load(), "owned FEEL runtime must be stopped exactly once")
+}
+
 // stopCountingDmnFeelRuntime is a caller-owned script.DmnFeelRuntime stub that
 // counts how many times the engine tried to stop it.
 type stopCountingDmnFeelRuntime struct {
@@ -120,4 +168,20 @@ func (r *stopCountingDmnFeelRuntime) ValidateUnaryTest(string) error {
 
 func (r *stopCountingDmnFeelRuntime) Stop() {
 	r.stopCalls.Add(1)
+}
+
+// blockingStopDmnFeelRuntime is a script.DmnFeelRuntime stub whose Stop blocks until
+// released, so tests can observe an in-flight shutdown.
+type blockingStopDmnFeelRuntime struct {
+	stopCountingDmnFeelRuntime
+	entered  chan struct{}
+	release  chan struct{}
+	finished atomic.Bool
+}
+
+func (r *blockingStopDmnFeelRuntime) Stop() {
+	r.stopCountingDmnFeelRuntime.Stop()
+	close(r.entered)
+	<-r.release
+	r.finished.Store(true)
 }

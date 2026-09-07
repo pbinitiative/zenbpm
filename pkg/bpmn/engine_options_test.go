@@ -93,6 +93,26 @@ func TestEngineStopIsIdempotentWithOwnedRuntimes(t *testing.T) {
 	require.False(t, engine.ownsJsRuntime, "ownership must be cleared after Stop")
 }
 
+// TestEngineRuntimeOptionsArePureSetters verifies that construction options only assign the injected
+// runtime and record caller ownership; they never stop a previously assigned runtime. Cleanup is Stop's job.
+func TestEngineRuntimeOptionsArePureSetters(t *testing.T) {
+	previousFeel := &stopCountingFeelRuntime{}
+	previousJs := &stopCountingJsRuntime{}
+	injectedFeel := &stopCountingFeelRuntime{}
+	injectedJs := &stopCountingJsRuntime{}
+	engine := &Engine{feelRuntime: previousFeel, ownsFeelRuntime: true, jsRuntime: previousJs, ownsJsRuntime: true}
+
+	EngineWithStorageAndFeel(inmemory.NewStorage(), injectedFeel)(engine)
+	EngineWithJs(injectedJs)(engine)
+
+	require.Zero(t, previousFeel.stopCalls.Load(), "options must not stop the previous FEEL runtime")
+	require.Zero(t, previousJs.stopCalls.Load(), "options must not stop the previous JS runtime")
+	require.Same(t, injectedFeel, engine.feelRuntime.(*stopCountingFeelRuntime))
+	require.Same(t, injectedJs, engine.jsRuntime.(*stopCountingJsRuntime))
+	require.False(t, engine.ownsFeelRuntime, "injected FEEL runtime must be caller-owned")
+	require.False(t, engine.ownsJsRuntime, "injected JS runtime must be caller-owned")
+}
+
 // sharedEngineGoleakOptions returns the goleak options used by engine
 // construction tests. The shared package-level bpmnEngine (started in TestMain)
 // keeps polling timers in the background. Its timer manager may spawn transient

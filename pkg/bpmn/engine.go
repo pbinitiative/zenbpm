@@ -57,8 +57,10 @@ type Engine struct {
 	// Runtimes injected through EngineWithJs remain owned by the caller and are never stopped by the engine.
 	ownsJsRuntime bool
 
-	// stopOnce guarantees that Stop releases engine-owned resources exactly once, even when Stop is called multiple times
-	// or from multiple goroutines. It is a pointer because Engine values are copied (NewEngine returns Engine by value).
+	// stopOnce guarantees that Stop releases engine-owned script pools (DMN engine, FEEL and JavaScript runtimes)
+	// exactly once, even when Stop is called multiple times or from multiple goroutines. Timer manager shutdown and
+	// context cancellation are intentionally NOT guarded by it (see Stop). It is a pointer because Engine values are
+	// copied (NewEngine returns Engine by value).
 	stopOnce *sync.Once
 
 	// pollTimerDelay is the interval between timer polling cycles.
@@ -197,27 +199,29 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 
 // EngineWithStorageAndFeel sets the storage and the FEEL runtime used by the BPMN engine and its embedded DMN engine.
 // The supplied runtime remains owned by the caller: the engine will never stop it.
-// It is meant for construction time only (through NewEngine).
+// It is meant for construction time only (through NewEngine), where options are applied before any default
+// runtime is created, so no engine-owned pool ever needs to be released here.
 func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
-		engine.stopOwnedFeelRuntime()
 		engine.feelRuntime = feelRuntime
+		engine.ownsFeelRuntime = false
 	}
 }
 
 // EngineWithJs sets the JavaScript runtime used by the BPMN engine.
 // The supplied runtime remains owned by the caller: the engine will never stop it.
-// It is meant for construction time only (through NewEngine).
+// It is meant for construction time only (through NewEngine), where options are applied before any default
+// runtime is created, so no engine-owned pool ever needs to be released here.
 func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
-		engine.stopOwnedJsRuntime()
 		engine.jsRuntime = jsRuntime
+		engine.ownsJsRuntime = false
 	}
 }
 
 // stopOwnedFeelRuntime stops the FEEL runtime if the engine owns it and clears
-// ownership so the runtime cannot be stopped a second time.
+// ownership so the runtime cannot be stopped a second time. It is only called from Stop.
 func (engine *Engine) stopOwnedFeelRuntime() {
 	if engine.ownsFeelRuntime && engine.feelRuntime != nil {
 		engine.feelRuntime.Stop()
@@ -226,7 +230,7 @@ func (engine *Engine) stopOwnedFeelRuntime() {
 }
 
 // stopOwnedJsRuntime stops the JavaScript runtime if the engine owns it and
-// clears ownership so the runtime cannot be stopped a second time.
+// clears ownership so the runtime cannot be stopped a second time. It is only called from Stop.
 func (engine *Engine) stopOwnedJsRuntime() {
 	if engine.ownsJsRuntime && engine.jsRuntime != nil {
 		engine.jsRuntime.Stop()

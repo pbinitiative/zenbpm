@@ -12,15 +12,18 @@ import (
 )
 
 // TestEngineLifecycleEndToEnd exercises a complete engine lifecycle:
-// construction with default (engine-owned) script runtimes, FEEL evaluation
-// through gateway conditions, DMN decision evaluation through the embedded DMN
-// engine (which reuses the BPMN engine's FEEL runtime), and shutdown. After
-// Stop, goleak verifies that no engine-owned script-pool cleanup goroutines are left running.
+// construction with default (engine-owned) script runtimes, Start (which brings up the
+// timer manager), FEEL evaluation through gateway conditions, DMN decision evaluation
+// through the embedded DMN engine (which reuses the BPMN engine's FEEL runtime), and
+// shutdown. After Stop, goleak verifies that neither the timer manager goroutine nor any
+// engine-owned script-pool cleanup goroutines are left running.
 func TestEngineLifecycleEndToEnd(t *testing.T) {
 	defer goleak.VerifyNone(t, sharedEngineGoleakOptions()...)
 
 	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
 	defer engine.Stop()
+	require.NoError(t, engine.Start(t.Context()))
+	require.NotNil(t, engine.timerManager, "Start must create the timer manager")
 
 	// FEEL evaluation: exclusive gateway with a FEEL condition.
 	gatewayProcess, err := engine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
@@ -50,8 +53,10 @@ func TestEngineLifecycleEndToEnd(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, ruleInstance.ProcessInstance().State)
 	assert.Equal(t, true, ruleInstance.ProcessInstance().VariableHolder.LocalVariables()["OutputTestResultVariable"])
 
-	// Shutdown: Stop must terminate the engine-owned FEEL and JS pools exactly
-	// once; the deferred goleak verification proves their cleanup goroutines exit.
+	// Shutdown: Stop must terminate the timer manager and the engine-owned FEEL and JS pools
+	// exactly once; the deferred goleak verification proves their goroutines exit.
 	engine.Stop()
 	engine.Stop()
+	require.Error(t, engine.timerManager.ctx.Err(), "timer manager must be stopped")
+	require.Error(t, engine.context.Err(), "engine context must be cancelled")
 }

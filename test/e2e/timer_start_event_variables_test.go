@@ -81,6 +81,6 @@ func deployTimerStartEventDefinition(t testing.TB, startEventExtensionElements s
 	require.Contains(t, content, emptyExtensionElements)
 	content = strings.Replace(content, emptyExtensionElements, startEventExtensionElements, 1)
 
-	deployBPMNTestCaseContent(t, "timer_start_event.bpmn", []byte(content))
+	deployBPMNTestCaseContent(t, []byte(content))
 	return uniqueProcessID
 }

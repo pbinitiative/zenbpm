@@ -80,5 +80,5 @@ func deployStartEventDefinition(t testing.TB, startEventExtensionElements string
 		content = strings.Replace(content, emptyExtensionElements, startEventExtensionElements, 1)
 	}
 
-	return deployBPMNTestCaseContent(t, "start_event.bpmn", []byte(content))
+	return deployBPMNTestCaseContent(t, []byte(content))
 }

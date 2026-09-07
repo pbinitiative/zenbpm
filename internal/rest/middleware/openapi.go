@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -19,28 +17,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
-
-// registerXMLBodyDecoder installs the application/xml decoder into
-// kin-openapi's global decoder registry exactly once.
-//
-// kin-openapi has no built-in decoder for application/xml, so without this
-// registration every XML request body (e.g. DMN resource deployment) is
-// rejected by the validator. The spec models XML bodies as plain strings
-// (type: string, format: xml), so the raw payload is returned as-is and
-// structural XML validation stays with the handlers/engine.
-var registerXMLBodyDecoder = sync.OnceFunc(func() {
-	openapi3filter.RegisterBodyDecoder("application/xml", xmlBodyDecoder)
-})
-
-// xmlBodyDecoder decodes an application/xml request body into a raw string so
-// it can be validated against the `type: string` schema declared in the spec.
-func xmlBodyDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return nil, &openapi3filter.ParseError{Kind: openapi3filter.KindInvalidFormat, Cause: err}
-	}
-	return string(data), nil
-}
 
 // OpenAPIValidator returns a middleware that validates incoming requests
 // (path, query, headers and body) against the provided OpenAPI 3 spec.
@@ -55,7 +31,6 @@ func xmlBodyDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ open
 // (Host) validation is disabled because the spec `servers` entry only
 // documents a sample deployment URL.
 func OpenAPIValidator(spec *openapi3.T, pathPrefix string) func(next http.Handler) http.Handler {
-	registerXMLBodyDecoder()
 	// built before the validator: OapiRequestValidatorWithOptions clears
 	// spec.Servers, but spec.Paths (the only part read here) is left intact.
 	allowedMethods := newAllowedMethodsIndex(spec, pathPrefix)

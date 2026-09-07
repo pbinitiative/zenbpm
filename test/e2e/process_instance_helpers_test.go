@@ -57,7 +57,7 @@ func deployAndGetUniqueProcessDefinition(t *testing.T, filePath string) zenclien
 	return processDefinition
 }
 
-func deployProcessDefinitionContent(t testing.TB, filename string, content []byte) *zenclient.CreateProcessDefinitionResponse {
+func deployProcessDefinitionContent(t testing.TB, content []byte) *zenclient.CreateProcessDefinitionResponse {
 	t.Helper()
 
 	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(

@@ -111,7 +111,7 @@ func deployMessageCatchCorrelationDefinition(t testing.TB) (int64, string) {
 		`correlationKey="=correlationKey"`,
 	).Replace(string(bpmnData))
 
-	return deployBPMNTestCaseContent(t, "message-intermediate-catch-event-correlation.bpmn", []byte(content)), messageName
+	return deployBPMNTestCaseContent(t, []byte(content)), messageName
 }
 
 func createMessageCatchCorrelationInstance(t testing.TB, definitionKey int64, correlationKey string) zenclient.ProcessInstance {

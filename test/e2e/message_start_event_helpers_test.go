@@ -75,7 +75,7 @@ func deployMessageStartDefinitionWithContent(
 		content = strings.Replace(content, "<bpmn:extensionElements />", startEventExtensionElements, 1)
 	}
 
-	return deployBPMNTestCaseContent(t, "message-start-event-process.bpmn", []byte(content))
+	return deployBPMNTestCaseContent(t, []byte(content))
 }
 
 func publishMessageStartEvent(t testing.TB, messageName string, variables map[string]any) {

@@ -114,5 +114,5 @@ func deployCallActivityMessageBoundaryDefinitionsWithInterrupting(t testing.TB, 
 	content = replaceInBPMNFixture(t, parentFilename, content,
 		`correlationKey="=correlationKey"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey))
 
-	return deployBPMNTestCaseContent(t, parentFilename, []byte(content)), messageName, correlationKey
+	return deployBPMNTestCaseContent(t, []byte(content)), messageName, correlationKey
 }

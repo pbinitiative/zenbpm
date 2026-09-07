@@ -458,7 +458,7 @@ func deployEventBasedGatewayDefinition(t testing.TB, timerDuration string) int64
 		fmt.Sprintf(">%s<", timerDuration),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMessageTimerPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -503,7 +503,7 @@ func deployEventBasedGatewayMessageOnlyDefinition(t testing.TB) int64 {
 		fmt.Sprintf(`bpmn:process id="%s"`, processID),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMessageOnlyPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -545,7 +545,7 @@ func deployEventBasedGatewayMultiEventDefinition(t testing.TB, timerDuration str
 		fmt.Sprintf(">%s<", timerDuration),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMultiEventPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -565,7 +565,7 @@ func deployEventBasedGatewayReentryDefinition(t testing.TB) int64 {
 		fmt.Sprintf(`bpmn:process id="%s"`, processID),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayReentryPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)

@@ -115,7 +115,7 @@ func deployEventBasedGatewayMappingDefinition(t testing.TB) int64 {
       </bpmn:extensionElements>`,
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMessageTimerPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)

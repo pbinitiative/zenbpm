@@ -80,7 +80,7 @@ func deployTimerCycleSimpleAndWaitFor2Instances(t *testing.T, timerCycle, unique
 		"timer-cycle-start-event-simple", uniqueProcessId,
 	).Replace(string(bpmnData)))
 
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/timer-cycle-start-event-simple.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn)
 	require.NoError(t, err)
 
 	var definitionKey int64

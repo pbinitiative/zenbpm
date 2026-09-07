@@ -61,15 +61,21 @@ func (w *respWriterWrapper) Header() http.Header {
 	return w.ResponseWriter.Header()
 }
 
-func (w *respWriterWrapper) Write(p []byte) (int, error) {
-	// Keep the safe default adjacent to the response body write so static
-	// analysis as well as browsers can establish that untyped output is not HTML.
-	headers := w.ResponseWriter.Header()
+// applySafeContentTypeHeaders commits a non-HTML default Content-Type and the
+// nosniff option so an untyped response body cannot be MIME-sniffed as HTML by a
+// browser. An explicit Content-Type chosen by the handler is preserved. It is
+// invoked from WriteHeader, the single point where the response headers are
+// flushed, so every write path is covered exactly once.
+func applySafeContentTypeHeaders(headers http.Header) {
 	if headers.Get("Content-Type") == "" {
 		headers.Set("Content-Type", "text/plain; charset=utf-8")
 	}
 	headers.Set("X-Content-Type-Options", "nosniff")
+}
 
+func (w *respWriterWrapper) Write(p []byte) (int, error) {
+	// Write funnels through WriteHeader, which commits the safe default headers
+	// before the status line is flushed.
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
@@ -86,14 +92,10 @@ func (w *respWriterWrapper) WriteHeader(statusCode int) {
 		return
 	}
 
-	// A handler that writes an untyped response can otherwise be MIME-sniffed as
-	// HTML by a browser. Use a non-HTML default while preserving any explicit
-	// content type selected by the handler.
+	// Commit a non-HTML default before the headers are flushed so an untyped
+	// response body cannot be MIME-sniffed as HTML by a browser.
 	headers := w.ResponseWriter.Header()
-	if headers.Get("Content-Type") == "" {
-		headers.Set("Content-Type", "text/plain; charset=utf-8")
-	}
-	headers.Set("X-Content-Type-Options", "nosniff")
+	applySafeContentTypeHeaders(headers)
 
 	w.wroteHeader = true
 	w.statusCode = statusCode

@@ -991,7 +991,7 @@ func deployUniqueDefinitionWithDmnDefinitionId(t testing.TB, filePath string, dm
 	replacedDefinitionId := new(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileStringWithNewProcessId := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	fileStringWithNewProcessIdAndBusinessRuleDmnDefinitionId := strings.ReplaceAll(fileStringWithNewProcessId, "replace_me", dmnDefinitionId)
-	deployProcessDefinitionContent(t, filePath, []byte(fileStringWithNewProcessIdAndBusinessRuleDmnDefinitionId))
+	deployProcessDefinitionContent(t, []byte(fileStringWithNewProcessIdAndBusinessRuleDmnDefinitionId))
 
 	definitions, err := listProcessDefinitions(t)
 	require.NoError(t, err)

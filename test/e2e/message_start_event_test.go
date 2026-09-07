@@ -143,7 +143,7 @@ func TestPlainStartEvent_WithMessageStartEvent(t *testing.T) {
 		"messageStartEventProcessRef", uniqueMessageName,
 	).Replace(string(bpmnData)))
 
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/message-start-event-process.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn)
 	require.NoError(t, err)
 
 	var definitionKey int64
@@ -393,7 +393,7 @@ func TestMessageStartEvent_SameMessageForInstanceAndSubprocess(t *testing.T) {
 		"Process_messageEventSubProcessInterrupting2", uniqueProcessId,
 		"globalMessageRef", uniqueMessageName,
 	).Replace(string(bpmnData)))
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/message-start-event-same-message-for-instance-and-subprocess.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn)
 	require.NoError(t, err)
 	var definitionKey int64
 	if deployResp.JSON201 != nil {

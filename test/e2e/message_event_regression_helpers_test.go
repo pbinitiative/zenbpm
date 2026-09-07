@@ -93,7 +93,7 @@ func deployMessageBoundaryDefinitionWithInterrupting(t testing.TB, filename stri
 	content = replaceInBPMNFixture(t, filename, content,
 		`correlationKey="=correlationKey"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKey))
 
-	return deployBPMNTestCaseContent(t, filename, []byte(content)), messageName, correlationKey
+	return deployBPMNTestCaseContent(t, []byte(content)), messageName, correlationKey
 }
 
 func deployTwoMessageBoundaryDefinition(t testing.TB, filename string, baseProcessID string) (int64, string, string, string, string) {
@@ -117,7 +117,7 @@ func deployTwoMessageBoundaryDefinition(t testing.TB, filename string, baseProce
 	content = replaceInBPMNFixture(t, filename, content,
 		`correlationKey="=correlationKeyB"`, fmt.Sprintf(`correlationKey="=&#34;%s&#34;"`, correlationKeyB))
 
-	definitionKey := deployBPMNTestCaseContent(t, filename, []byte(content))
+	definitionKey := deployBPMNTestCaseContent(t, []byte(content))
 	return definitionKey, messageAName, correlationKeyA, messageBName, correlationKeyB
 }
 
@@ -132,10 +132,10 @@ func createMessageBoundaryInstance(t testing.TB, definitionKey int64) zenclient.
 	return processInstance
 }
 
-func deployBPMNTestCaseContent(t testing.TB, filename string, content []byte) int64 {
+func deployBPMNTestCaseContent(t testing.TB, content []byte) int64 {
 	t.Helper()
 
-	response, err := deployDefinitionFromBytes(t, content, filename)
+	response, err := deployDefinitionFromBytes(t, content)
 	require.NoError(t, err)
 
 	if response.JSON201 != nil {

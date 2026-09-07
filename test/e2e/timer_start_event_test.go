@@ -117,7 +117,7 @@ func TestPlainStartEvent_WithFutureTimerStartEvent(t *testing.T) {
 		"timer-start-event-process-1", uniqueProcessId,
 	).Replace(string(bpmnData)))
 
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/timer-start-event-process.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn)
 	require.NoError(t, err)
 
 	var definitionKey int64
@@ -433,7 +433,7 @@ func TestTimerCycleStartEvent_InstanceAndDurationSubprocess(t *testing.T) {
 		"Process_timerEventSubProcessInterrupting2_cycle", uniqueProcessId,
 	).Replace(string(bpmnData)))
 
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/timer-cycle-start-event-instance-and-duration-subprocess.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn)
 	require.NoError(t, err)
 
 	var definitionKey int64

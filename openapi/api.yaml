@@ -38,17 +38,11 @@ paths:
       requestBody:
         required: true
         content:
-          application/xml:
+          application/octet-stream:
             schema:
               type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <definitions>
-                <decision id="loan-approval" name="Loan Approval">
-                  ...
-                </decision>
-              </definitions>
+              format: binary
+              description: DMN resource definition file (.dmn format)
       responses:
         201:
           description: Dmn resource definition deployed
@@ -66,9 +60,9 @@ paths:
                 dmnResourceDefinitionKey: 4503599627370495
         200:
           description: >
-            DMN resource definition with the same dmnResourceDefinitionId and version already exists
-            and the content is identical — deployment ignored, returns the key of the existing definition.
-            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
+            The latest DMN resource definition with the same dmnResourceDefinitionId has identical
+            content after XML formatting normalization. No new version is created; returns the existing key.
+            A new ID or a content change creates a new version and returns 201.
           content:
             application/json:
               schema:
@@ -597,19 +591,11 @@ paths:
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/octet-stream:
             schema:
-              type: object
-              required:
-                - resource
-              properties:
-                resource:
-                  type: string
-                  format: binary
-                  description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
-            encoding:
-              resource:
-                contentType: application/octet-stream, application/xml
+              type: string
+              format: binary
+              description: BPMN process definition file (.bpmn format only, size limited by httpServer.maxRequestBodyBytes, 10 MiB by default)
       responses:
         201:
           description: Process definition deployed
@@ -627,9 +613,9 @@ paths:
                 processDefinitionKey: 4503599627370498
         200:
           description: >
-            Process definition with the same BPMN process ID and version already exists
-            and the content is identical — deployment ignored, returns the key of the existing definition.
-            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
+            The latest process definition with the same BPMN process ID has identical content after
+            XML formatting normalization. No new version is created; returns the existing key.
+            A new ID or a content change creates a new version and returns 201.
           content:
             application/json:
               schema:

@@ -130,7 +130,7 @@ func deployDelayedEventBasedGatewayDefinition(t testing.TB) int64 {
 		fmt.Sprintf(`bpmn:process id="%s"`, processID),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayDelayedPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)

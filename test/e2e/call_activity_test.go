@@ -128,7 +128,7 @@ func TestCallActivityProcessVersionSelection(t *testing.T) {
 
 func deployCallActivityVersionBPMN(t testing.TB, filename string, bpmn string) int64 {
 	t.Helper()
-	response := deployProcessDefinitionContent(t, filename, []byte(bpmn))
+	response := deployProcessDefinitionContent(t, []byte(bpmn))
 	if response.JSON201 != nil {
 		return response.JSON201.ProcessDefinitionKey
 	}

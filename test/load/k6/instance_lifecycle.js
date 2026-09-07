@@ -261,9 +261,10 @@ function waitForTerminalState(instanceKey) {
 export function setup() {
   validateOpenModelLoadShape();
 
-  const res = http.post(`${BASE_URL}/process-definitions`, {
-    resource: http.file(bpmnFile, 'simple_task.bpmn', 'application/xml'),
-  }, { tags: { name: 'POST /process-definitions', op: 'deploy_process' } });
+  const res = http.post(`${BASE_URL}/process-definitions`, bpmnFile, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+    tags: { name: 'POST /process-definitions', op: 'deploy_process' },
+  });
   if (!check(res, { 'deploy 2xx': (r) => r.status === 200 || r.status === 201 })) {
     fail(`deploy failed: ${res.status} ${res.body}`);
   }

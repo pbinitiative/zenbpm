@@ -139,7 +139,8 @@ BPMN="$REPO/pkg/bpmn/test-cases/simple_task.bpmn"
 echo
 echo ">> POST /v1/process-definitions on node-1"
 curl -fsS -X POST "http://localhost:8081/v1/process-definitions" \
-  -F "resource=@$BPMN" | jq .
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "@$BPMN" | jq .
 
 echo
 echo ">> fetch definition key from node-1 (preserving int64 precision)"

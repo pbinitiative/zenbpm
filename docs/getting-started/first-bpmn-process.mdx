@@ -42,11 +42,12 @@ A **process definition** is a `.bpmn` file. This chapter's process is (`first-bp
 cd 02-first-bpmn-process
 ```
 
-Deploy it with a multipart upload:
+Deploy it by sending the file as the request body:
 
 ```bash
 curl -X POST http://localhost:8080/v1/process-definitions \
-  -F "resource=@first-bpmn-process.bpmn"
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @first-bpmn-process.bpmn
 ```
 
 The response contains a `processDefinitionKey` — a generated number that uniquely identifies this deployed definition. Note it; you'll start an instance from it next.
@@ -287,7 +288,8 @@ Change the greeting and redeploy to see versioning in action. In `first-bpmn-pro
 
 ```bash
 curl -X POST http://localhost:8080/v1/process-definitions \
-  -F "resource=@first-bpmn-process.bpmn"
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @first-bpmn-process.bpmn
 ```
 
 Because the process id is unchanged, the engine stores this as a **new version** and returns a new `processDefinitionKey`. Start an instance against the new key (Step 2) with your worker still running — your new greeting prints. Older instances keep running on the version they started with.

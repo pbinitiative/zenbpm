@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -217,10 +216,10 @@ func TestRestApiProcessDefinitionRedeployOlderContentCreatesNewVersion(t *testin
 	version1Definition := versioningTestProcessDefinition(t, processID, "version 1")
 	version2Definition := versioningTestProcessDefinition(t, processID, "version 2")
 
-	version1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusCreated)
-	version2Key := deployDefinitionFromBytesExpectingStatus(t, version2Definition, "redeploy_older_content-v2.bpmn", http.StatusCreated)
-	redeployedVersion1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusCreated)
-	duplicateLatestKey := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusOK)
+	version1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, http.StatusCreated)
+	version2Key := deployDefinitionFromBytesExpectingStatus(t, version2Definition, http.StatusCreated)
+	redeployedVersion1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, http.StatusCreated)
+	duplicateLatestKey := deployDefinitionFromBytesExpectingStatus(t, version1Definition, http.StatusOK)
 
 	require.NotEqual(t, version1Key, version2Key)
 	require.NotEqual(t, version1Key, redeployedVersion1Key)
@@ -264,7 +263,7 @@ func TestProcessDefinitionVersionTagInRestResponses(t *testing.T) {
   </bpmn:process>
 </bpmn:definitions>`, processID, versionTag)
 
-	deployResp := deployProcessDefinitionContent(t, processID+".bpmn", []byte(bpmn))
+	deployResp := deployProcessDefinitionContent(t, []byte(bpmn))
 	var processDefinitionKey int64
 	switch {
 	case deployResp.JSON201 != nil:
@@ -305,7 +304,7 @@ func deployDefinition(t testing.TB, filename string) (*zenclient.CreateProcessDe
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	return deployProcessDefinitionContent(t, filename, file), nil
+	return deployProcessDefinitionContent(t, file), nil
 }
 
 func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId *string, err error) {
@@ -332,7 +331,7 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 
 	replacedDefinitionId = new(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
-	deployProcessDefinitionContent(t, filename, []byte(fileString))
+	deployProcessDefinitionContent(t, []byte(fileString))
 
 	return replacedDefinitionId, nil
 }
@@ -363,21 +362,9 @@ func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionI
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 
-	// Create multipart form data
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-
-	// Create the resource field as required by the OpenAPI spec
-	part, err := writer.CreateFormFile("resource", filepath)
-	require.NoError(t, err, fmt.Errorf("failed to create form file: %w", err))
-
-	_, err = part.Write(file)
-	require.NoError(t, err, fmt.Errorf("failed to write file to multipart form: %w", err))
-
-	err = writer.Close()
-	require.NoError(t, err, fmt.Errorf("failed to close multipart writer: %w", err))
-
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 	require.NoError(t, err, fmt.Errorf("failed to deploy process definition: %w", err))
 
 	isErrorResponse := resp.StatusCode() >= 400
@@ -415,20 +402,10 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 	}
 }
 
-func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(content); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+func deployDefinitionFromBytes(t testing.TB, content []byte) (*zenclient.CreateProcessDefinitionResponse, error) {
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(content),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
 	}
@@ -438,10 +415,10 @@ func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*
 	return resp, nil
 }
 
-func deployDefinitionFromBytesExpectingStatus(t testing.TB, content []byte, filename string, expectedStatus int) int64 {
+func deployDefinitionFromBytesExpectingStatus(t testing.TB, content []byte, expectedStatus int) int64 {
 	t.Helper()
 
-	resp, err := deployDefinitionFromBytes(t, content, filename)
+	resp, err := deployDefinitionFromBytes(t, content)
 	require.NoError(t, err)
 	require.Equal(t, expectedStatus, resp.StatusCode())
 
@@ -469,20 +446,9 @@ func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProces
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(file); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 }
 
 type expectedProcessDefinitionVersion struct {
@@ -577,12 +543,12 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		</bpmn:process>
 	</bpmn:definitions>`, processID))
 
-		first, err := deployDefinitionFromBytes(t, original, "formatting-original.bpmn")
+		first, err := deployDefinitionFromBytes(t, original)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, first.StatusCode())
 		require.NotNil(t, first.JSON201)
 
-		second, err := deployDefinitionFromBytes(t, formatted, "formatting-redeploy.bpmn")
+		second, err := deployDefinitionFromBytes(t, formatted)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, second.StatusCode())
 		require.NotNil(t, second.JSON200)
@@ -618,12 +584,12 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 </bpmn:definitions>`, processID))
 		require.NotEqual(t, original, formatted, "test inputs must exercise the formatting fallback")
 
-		first, err := deployDefinitionFromBytes(t, original, "zenbpm-formatting-original.bpmn")
+		first, err := deployDefinitionFromBytes(t, original)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, first.StatusCode())
 		require.NotNil(t, first.JSON201)
 
-		second, err := deployDefinitionFromBytes(t, formatted, "zenbpm-formatting-redeploy.bpmn")
+		second, err := deployDefinitionFromBytes(t, formatted)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, second.StatusCode())
 		require.NotNil(t, second.JSON200)

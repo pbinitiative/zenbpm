@@ -43,7 +43,8 @@ Deploy the process and start an instance, exactly as in the previous tutorial:
 ```bash
 # Deploy
 curl -X POST http://localhost:8080/v1/process-definitions \
-  -F "resource=@approval-process.bpmn"
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @approval-process.bpmn
 # -> note the returned processDefinitionKey
 
 # Start an instance

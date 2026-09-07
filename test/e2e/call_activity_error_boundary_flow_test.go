@@ -295,7 +295,7 @@ func deployMultiInstanceCallActivityLeaf(t testing.TB, processID string, jobType
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/process-definitions").
 		WithMethod("POST").
-		WithMultipartBody(file, path.Base(loc)).
+		WithBinaryBody(file).
 		DoOk()
 	require.NoError(t, err)
 

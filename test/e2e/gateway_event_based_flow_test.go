@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"fmt"
-	"mime/multipart"
 	"strings"
 	"sync"
 	"testing"
@@ -459,7 +458,7 @@ func deployEventBasedGatewayDefinition(t testing.TB, timerDuration string) int64
 		fmt.Sprintf(">%s<", timerDuration),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMessageTimerPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -479,20 +478,9 @@ func deployE2eTestDataDefinitionRaw(t testing.TB, filename string) (*zenclient.C
 		return nil, err
 	}
 
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-	if _, err = part.Write(file); err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-	if err = writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(
+		t.Context(), "application/octet-stream", bytes.NewReader(file),
+	)
 }
 
 func waitForEventBasedGatewayWaitingState(t testing.TB, processInstanceKey int64) {
@@ -515,7 +503,7 @@ func deployEventBasedGatewayMessageOnlyDefinition(t testing.TB) int64 {
 		fmt.Sprintf(`bpmn:process id="%s"`, processID),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMessageOnlyPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -557,7 +545,7 @@ func deployEventBasedGatewayMultiEventDefinition(t testing.TB, timerDuration str
 		fmt.Sprintf(">%s<", timerDuration),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayMultiEventPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)
@@ -577,7 +565,7 @@ func deployEventBasedGatewayReentryDefinition(t testing.TB) int64 {
 		fmt.Sprintf(`bpmn:process id="%s"`, processID),
 	).Replace(string(file))
 
-	response, err := deployDefinitionFromBytes(t, []byte(content), eventBasedGatewayReentryPath)
+	response, err := deployDefinitionFromBytes(t, []byte(content))
 	require.NoError(t, err)
 	require.Equal(t, 201, response.StatusCode())
 	require.NotNil(t, response.JSON201)

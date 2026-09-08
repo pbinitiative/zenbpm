@@ -45,6 +45,14 @@ service ZenService {
   rpc PartitionBackup(PartitionBackupRequest) returns (stream BackupChunk);
   rpc PartitionRestore(stream RestoreChunk) returns (PartitionRestoreResponse);
   rpc PartitionDataStats(PartitionDataStatsRequest) returns (PartitionDataStatsResponse);
+  // PartitionRestoreStatus reports whether a locally hosted partition has
+  // entered (or left) maintenance mode for the given restore operation. The
+  // restore coordinator polls it as a distributed barrier before loading data
+  // and as a readiness check after the restore completes.
+  rpc PartitionRestoreStatus(PartitionRestoreStatusRequest) returns (PartitionRestoreStatusResponse);
+  // ImportDefinition writes a BPMN or DMN definition straight into a fenced
+  // partition during restore reconciliation, without a running engine.
+  rpc ImportDefinition(ImportDefinitionRequest) returns (ImportDefinitionResponse);
   rpc ListActiveMessageSubscriptions(ListActiveMessageSubscriptionsRequest) returns (ListActiveMessageSubscriptionsResponse);
   rpc RebuildMessageSubscriptionPointers(RebuildMessageSubscriptionPointersRequest) returns (RebuildMessageSubscriptionPointersResponse);
   rpc ListDefinitions(ListDefinitionsRequest) returns (ListDefinitionsResponse);
@@ -805,6 +813,11 @@ message RestoreMeta {
   string sha256 = 2;     // hex digest of the gzipped stream that follows
   int64 size_bytes = 3;
   bool force = 4;        // only meaningful on ClusterRestore
+  // restore_operation_id / restore_epoch identify the restore operation that
+  // owns the cluster (PartitionRestore only). The partition leader rejects
+  // loads from a stale or unknown owner.
+  string restore_operation_id = 5;
+  uint64 restore_epoch = 6;
 }
 
 // RestoreChunk: first chunk carries meta, subsequent chunks carry data, last has eof=true.
@@ -845,6 +858,8 @@ message ListActiveMessageSubscriptionsResponse {
 message RebuildMessageSubscriptionPointersRequest {
   uint32 partition_id = 1;
   repeated MessageSubscriptionRow pointers = 2;
+  string restore_operation_id = 3;
+  uint64 restore_epoch = 4;
 }
 message RebuildMessageSubscriptionPointersResponse { ErrorResult error = 1; }
 
@@ -872,6 +887,38 @@ message GetDefinitionResourceResponse {
   bytes data = 2;
   string resource_name = 3;
 }
+
+message PartitionRestoreStatusRequest {
+  uint32 partition_id = 1;
+  string restore_operation_id = 2;
+  uint64 restore_epoch = 3;
+}
+message PartitionRestoreStatusResponse {
+  ErrorResult error = 1;
+  bool hosted = 2;          // the partition runs on this node
+  bool leader = 3;          // this node is the partition raft leader
+  bool restore_applied = 4; // this node's cluster state shows the given operation/epoch as the active restore
+  bool engine_stopped = 5;  // no execution engine runs for the partition on this node
+  bool write_fenced = 6;    // the partition database rejects writes that do not carry the restore token
+  bool engine_running = 7;  // an execution engine runs for the partition on this node
+  bool initialized = 8;     // this node's cluster state shows the partition as INITIALIZED on this node
+}
+
+message ImportDefinitionRequest {
+  uint32 partition_id = 1;
+  string restore_operation_id = 2;
+  uint64 restore_epoch = 3;
+  DefinitionType type = 4;
+  int64 key = 5;
+  bytes data = 6;
+  string resource_name = 7;
+  // register_process_definition_subscriptions creates the definition-level
+  // subscriptions (timer/message start events, instantiating receive tasks)
+  // on this partition. The coordinator sets it only for the partition that
+  // owns the subscriptions under normal deployment rules.
+  bool register_process_definition_subscriptions = 8;
+}
+message ImportDefinitionResponse { ErrorResult error = 1; }
 
 message UnassignPartitionRequest {}
 message UnassignPartitionResponse {}

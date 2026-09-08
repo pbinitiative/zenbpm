@@ -3,6 +3,7 @@
 package cluster
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -128,4 +129,39 @@ func TestNodeHeartbeatTimeout(t *testing.T) {
 		// Cluster should still have partitions and a leader
 		return len(s.Partitions) > 0
 	}, 60*time.Second, 500*time.Millisecond, "cluster should remain functional after node kill")
+}
+
+// TestAddNodeJoinsRunningCluster covers the AddNode port handoff: the cluster
+// port reserved for the new node stays bound until the node itself takes it
+// over, so nothing else can claim it during proxy/config setup, and the node
+// joins and becomes healthy.
+func TestAddNodeJoinsRunningCluster(t *testing.T) {
+	tc := NewTestCluster(t, 1)
+	defer tc.Teardown(t)
+	WaitForHealthy(t, tc, 60*time.Second)
+
+	// While proxy and configuration setup run, a competing bind of the
+	// reserved cluster port must fail: the reservation covers the whole
+	// window up to the handoff to StartZenNode.
+	var competingBindErr error
+	hookCalled := false
+	added := tc.addNode(t, func(reservedClusterAddr string) {
+		hookCalled = true
+		ln, err := net.Listen("tcp4", reservedClusterAddr)
+		if err == nil {
+			_ = ln.Close()
+		}
+		competingBindErr = err
+	})
+	require.True(t, hookCalled)
+	require.Error(t, competingBindErr, "the cluster port must stay reserved through node setup")
+
+	// the reserved port now belongs to the node's cluster listener
+	conn, err := net.DialTimeout("tcp", added.ClusterAddr, 2*time.Second)
+	require.NoError(t, err, "the added node must be listening on the cluster address it was handed")
+	require.NoError(t, conn.Close())
+
+	WaitForNodeCount(t, tc, 2, 60*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
+	AssertStateConverged(t, tc, 30*time.Second)
 }

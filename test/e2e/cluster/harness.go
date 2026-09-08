@@ -148,7 +148,8 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 					// FEEL/JS VM pools would default to 0/0 and NewRunnerPool blocks forever
 					// on the first FEEL evaluation (e.g. a message correlation key). Set sane
 					// pool sizes explicitly so FEEL-using processes work in e2e.
-					Script: defaultScriptConfig(),
+					Script:            defaultScriptConfig(),
+					DesiredPartitions: uint32(o.partitions),
 				},
 				HttpServer: config.HttpServer{
 					Addr: "127.0.0.1:0", // will be overridden by listener
@@ -273,6 +274,15 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 // The new node joins via the existing nodes' proxy addresses.
 func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 	t.Helper()
+	return tc.addNode(t, nil)
+}
+
+// addNode is AddNode with a hook that runs after proxy and configuration
+// setup, while the node's cluster port is still reserved and immediately
+// before it is handed to StartZenNode. Tests use it to prove the reservation
+// covers the whole setup window.
+func (tc *TestCluster) addNode(t *testing.T, beforeStart func(reservedClusterAddr string)) *TestNode {
+	t.Helper()
 
 	idx := len(tc.Nodes) + 1
 	nodeID := fmt.Sprintf("test-node-%d", idx)
@@ -281,13 +291,23 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 		t.Fatalf("failed to create node temp dir: %s", err)
 	}
 
-	// Get a free port for the cluster address
+	// Reserve a port for the cluster address. The listener stays open through
+	// proxy and configuration setup and is released only immediately before
+	// StartZenNode binds the port — the same handoff NewTestCluster uses — so
+	// no other process can claim the port in between.
 	realLn, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen for node %s: %s", nodeID, err)
 	}
 	realAddr := realLn.Addr().String()
-	realLn.Close()
+	portReleased := false
+	releasePort := func() {
+		if !portReleased {
+			portReleased = true
+			_ = realLn.Close()
+		}
+	}
+	defer releasePort()
 
 	proxy, err := NewNodeProxy(realAddr)
 	if err != nil {
@@ -322,9 +342,14 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 		GrpcServer: config.GrpcServer{Addr: "127.0.0.1:0"},
 	}
 	conf.Cluster.Raft.JoinAddresses = joinAddrs
+	conf.Cluster.DesiredPartitions = uint32(tc.opts.partitions)
 
 	nodeCtx, nodeCancel := context.WithCancel(context.Background())
 
+	if beforeStart != nil {
+		beforeStart(realAddr)
+	}
+	releasePort()
 	zenNode, err := cluster.StartZenNode(nodeCtx, conf)
 	if err != nil {
 		nodeCancel()

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWriteMaintenanceChangeError(t *testing.T) {
+func TestWriteRestoreChangeError(t *testing.T) {
 	t.Run("returns the Raft error when the node is not the leader", func(t *testing.T) {
 		cfg := config.Cluster{
 			NodeId: "non-leader",
@@ -22,7 +22,10 @@ func TestWriteMaintenanceChangeError(t *testing.T) {
 		require.NoError(t, store.Open())
 		t.Cleanup(func() { require.NoError(t, store.Close(true)) })
 
-		err := store.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: new(true)})
+		_, err := store.WriteRestoreChange(t.Context(), &proto.RestoreOperationChange{
+			Action:      proto.RestoreOperationChange_RESTORE_ACTION_ACQUIRE.Enum(),
+			OperationId: new("op-1"),
+		})
 
 		require.ErrorIs(t, err, raft.ErrNotLeader)
 	})

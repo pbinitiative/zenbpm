@@ -2,13 +2,26 @@ package backup
 
 import (
 	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/internal/safego"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ClientProvider is the subset of client.ClientManager the coordinator needs.
@@ -59,112 +72,622 @@ func fetchFromLeader(clients ClientProvider) FetchFunc {
 	}
 }
 
+// Errors a restore can fail with before it takes ownership of the cluster.
+// Failures after that are reported as *PhaseError.
+var (
+	// ErrRestoreInProgress another coordinator owns an active restore.
+	ErrRestoreInProgress = errors.New("a cluster restore is already in progress")
+	// ErrInvalidBundle the bundle was rejected during validation.
+	ErrInvalidBundle = errors.New("invalid backup bundle")
+	// ErrClusterNotEmpty force=false and the fenced cluster still holds data.
+	ErrClusterNotEmpty = errors.New("cluster contains data; pass force=true to overwrite it")
+	// ErrRestoreOwnershipLost the coordinator was fenced out (its lease
+	// expired and another coordinator took over, or the operation was aborted).
+	ErrRestoreOwnershipLost = errors.New("restore ownership lost")
+)
+
+// IsDeadlineExceeded reports whether err stems from a phase deadline, whether
+// it surfaced as a context error or as a gRPC DeadlineExceeded status.
+func IsDeadlineExceeded(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded
+}
+
+// IsCanceled reports whether err stems from a cancelled request, whether it
+// surfaced as a context error or as a gRPC Canceled status.
+func IsCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
+}
+
+// PhaseError reports which restore phase failed. The operation is marked as
+// FAILED in the cluster state with the same message.
+type PhaseError struct {
+	OperationID string
+	Phase       state.RestorePhase
+	Err         error
+}
+
+func (e *PhaseError) Error() string {
+	return fmt.Sprintf("restore %s failed in phase %s: %v", e.OperationID, e.Phase, e.Err)
+}
+
+func (e *PhaseError) Unwrap() error {
+	return e.Err
+}
+
+// RestoreTimeouts bounds every phase of a restore; a zero value takes the
+// default. See config.Restore for the meaning of each field.
+type RestoreTimeouts struct {
+	Lease         time.Duration
+	Barrier       time.Duration
+	PartitionLoad time.Duration
+	Reconcile     time.Duration
+	Readiness     time.Duration
+	StateApply    time.Duration
+	// Ingest bounds receiving and validating the bundle before ownership is taken.
+	Ingest time.Duration
+}
+
+// DefaultRestoreTimeouts returns the timeouts used when a field is zero.
+func DefaultRestoreTimeouts() RestoreTimeouts {
+	return RestoreTimeouts{
+		Lease:         30 * time.Second,
+		Barrier:       time.Minute,
+		PartitionLoad: 30 * time.Minute,
+		Reconcile:     10 * time.Minute,
+		Readiness:     2 * time.Minute,
+		StateApply:    10 * time.Second,
+		Ingest:        time.Hour,
+	}
+}
+
+// RestoreTimeoutsFromConfig maps the cluster configuration onto RestoreTimeouts.
+func RestoreTimeoutsFromConfig(c config.Restore) RestoreTimeouts {
+	return RestoreTimeouts{
+		Lease:         c.LeaseDuration,
+		Barrier:       c.BarrierTimeout,
+		PartitionLoad: c.PartitionLoadTimeout,
+		Reconcile:     c.ReconcileTimeout,
+		Readiness:     c.ReadinessTimeout,
+		StateApply:    c.StateApplyTimeout,
+		Ingest:        c.IngestTimeout,
+	}
+}
+
+func (t RestoreTimeouts) withDefaults() RestoreTimeouts {
+	def := DefaultRestoreTimeouts()
+	pick := func(v, d time.Duration) time.Duration {
+		if v <= 0 {
+			return d
+		}
+		return v
+	}
+	return RestoreTimeouts{
+		Lease:         pick(t.Lease, def.Lease),
+		Barrier:       pick(t.Barrier, def.Barrier),
+		PartitionLoad: pick(t.PartitionLoad, def.PartitionLoad),
+		Reconcile:     pick(t.Reconcile, def.Reconcile),
+		Readiness:     pick(t.Readiness, def.Readiness),
+		StateApply:    pick(t.StateApply, def.StateApply),
+		Ingest:        pick(t.Ingest, def.Ingest),
+	}
+}
+
 // RestoreDeps carries the coordinator's dependencies so both ZenNode (REST)
 // and the gRPC server can drive a restore.
 type RestoreDeps struct {
-	Clients             ClientProvider
-	ClusterState        func() state.Cluster
-	SetRestoring        func(restoring bool) error
+	Clients      ClientProvider
+	ClusterState func() state.Cluster
+	// ApplyRestoreChange commits a restore transition through the cluster raft
+	// and returns the resulting operation. A refused transition is reported as
+	// a *state.RestoreRejectedError.
+	ApplyRestoreChange func(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
+	// CoordinatorID is the id of the node driving the restore.
+	CoordinatorID       string
 	BinarySchemaVersion string
 	SpoolDir            string
+	Timeouts            RestoreTimeouts
+	Limits              RestoreLimits
+	// NewOperationID generates restore operation ids; defaults to UUIDs.
+	NewOperationID func() string
+	// Now is the coordinator's clock; defaults to time.Now.
+	Now func() time.Time
+	// PollInterval paces barrier and readiness polling; defaults to 100ms.
+	PollInterval time.Duration
 }
 
-// RunClusterRestore validates the bundle, gates the cluster, loads every
-// partition sequentially, reconciles derived state, and un-gates.
-// On failure after gating, the cluster is deliberately LEFT in Restoring
-// state — the operator retries the restore (the operation is idempotent).
+func (d RestoreDeps) withDefaults() RestoreDeps {
+	d.Timeouts = d.Timeouts.withDefaults()
+	d.Limits = d.Limits.withDefaults()
+	if d.NewOperationID == nil {
+		d.NewOperationID = uuid.NewString
+	}
+	if d.Now == nil {
+		d.Now = time.Now
+	}
+	if d.PollInterval <= 0 {
+		d.PollInterval = 100 * time.Millisecond
+	}
+	return d
+}
+
+// RunClusterRestore validates the bundle, acquires the cluster-wide restore
+// operation, waits until every partition leader is quiesced, loads every
+// partition sequentially, reconciles derived state, lifts the gate and waits
+// for the engines to come back.
+//
+// Every phase is bounded by deps.Timeouts and fails with a *PhaseError. A
+// failure after partition data was touched leaves the cluster gated; the
+// operator retries the restore (with force=true) or aborts the operation.
 func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force bool) (*RestoreReport, error) {
-	report := &RestoreReport{StartedAtMillis: time.Now().UnixMilli()}
+	deps = deps.withDefaults()
+	report := &RestoreReport{StartedAtMillis: deps.Now().UnixMilli()}
 	cs := deps.ClusterState()
-
-	if cs.Restoring {
-		return nil, fmt.Errorf("a cluster restore is already in progress; wait for it to finish (or retry it) before starting another")
+	if len(cs.Partitions) == 0 {
+		return nil, fmt.Errorf("cluster has no partitions")
+	}
+	// cheap early refusal; the authoritative check is the atomic acquisition below
+	if cs.Restore.Active() && !cs.Restore.LeaseExpired(deps.Now().UnixMilli()) {
+		return nil, fmt.Errorf("%w: operation %s owned by %s", ErrRestoreInProgress, cs.Restore.ID, cs.Restore.CoordinatorID)
 	}
 
-	bundle, err := OpenBundle(r, deps.SpoolDir)
+	partitionCount := uint32(len(cs.Partitions)) // #nosec G115 -- partition counts are far below MaxUint32
+	// receiving and validating the upload is bounded on its own: a client that
+	// stalls an incomplete bundle must not hold the request open forever
+	ingestCtx, cancelIngest := context.WithTimeout(ctx, deps.Timeouts.Ingest)
+	defer cancelIngest()
+	// A Read blocked on a stalled upload cannot observe the context; closing
+	// the source when the deadline passes is what unblocks it (the REST layer
+	// additionally arms a body read deadline).
+	stopClosing := context.AfterFunc(ingestCtx, func() {
+		if closer, ok := r.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	})
+	bundle, err := OpenBundle(&contextReader{ctx: ingestCtx, r: r}, deps.SpoolDir, partitionCount, deps.Limits)
+	stopClosing()
 	if err != nil {
-		return nil, fmt.Errorf("invalid backup bundle: %w", err)
+		if ingestCtx.Err() != nil && ctx.Err() == nil {
+			return nil, fmt.Errorf("%w: bundle upload did not finish within %s: %w", ErrInvalidBundle, deps.Timeouts.Ingest, ingestCtx.Err())
+		}
+		return nil, fmt.Errorf("%w: %w", ErrInvalidBundle, err)
 	}
-	defer bundle.Close()
-	if err := bundle.Manifest.Validate(uint32(len(cs.Partitions)), deps.BinarySchemaVersion); err != nil { // #nosec G115 -- partition counts are far below MaxUint32
-		return nil, fmt.Errorf("bundle cannot be restored into this cluster: %w", err)
+	defer func() {
+		// a leftover spool file must not turn a finished restore into a failure
+		if err := bundle.Close(); err != nil {
+			log.Warn("failed to remove restore spool files: %v", err)
+		}
+	}()
+	if err := bundle.Manifest.Validate(partitionCount, deps.BinarySchemaVersion); err != nil {
+		return nil, fmt.Errorf("%w: bundle cannot be restored into this cluster: %w", ErrInvalidBundle, err)
 	}
 
-	if !force {
-		empty, err := clusterIsEmpty(ctx, cs, deps.Clients)
+	run := &restoreRun{deps: deps, bundle: bundle, force: force, report: report}
+	return run.execute(ctx)
+}
+
+// restoreRun is one restore attempt that owns the cluster.
+type restoreRun struct {
+	deps   RestoreDeps
+	bundle *Bundle
+	force  bool
+	report *RestoreReport
+
+	// identity is the fencing token of this run. It is written once by
+	// acquire, before the heartbeat starts, and never changes afterwards, so
+	// it can be read without locking.
+	identity restoreIdentity
+
+	// progressMu guards the mutable operation record, phase and progress. It
+	// serializes every UPDATE so that the lease heartbeat can never move the
+	// phase backwards behind the main flow.
+	progressMu sync.Mutex
+	op         state.RestoreOperation
+	phase      state.RestorePhase
+	completed  uint32
+}
+
+// restoreIdentity is the immutable (id, epoch) of an acquired operation.
+type restoreIdentity struct {
+	id            string
+	epoch         uint64
+	coordinatorID string
+}
+
+func (run *restoreRun) token() (string, uint64) {
+	return run.identity.id, run.identity.epoch
+}
+
+// contextReader fails reads once ctx is done so a stalled upload cannot block
+// bundle ingestion past its deadline.
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
+func (run *restoreRun) execute(ctx context.Context) (*RestoreReport, error) {
+	if err := run.acquire(ctx); err != nil {
+		return nil, err
+	}
+	run.report.OperationID = run.identity.id
+	run.report.Epoch = run.identity.epoch
+	run.report.CoordinatorID = run.identity.coordinatorID
+
+	// The heartbeat keeps the lease alive during long loads; losing the lease
+	// cancels the whole run so a fenced-out coordinator stops touching partitions.
+	runCtx, cancel := context.WithCancelCause(ctx)
+	heartbeatDone := make(chan struct{})
+	safego.Go("cluster-restore-lease-heartbeat", safego.DefaultLogger, func() {
+		defer close(heartbeatDone)
+		run.heartbeat(runCtx, cancel)
+	})
+	err := run.phases(runCtx)
+	cancel(nil)
+	<-heartbeatDone
+
+	if err != nil {
+		if cause := context.Cause(runCtx); errors.Is(cause, ErrRestoreOwnershipLost) {
+			err = &PhaseError{OperationID: run.identity.id, Phase: run.currentPhase(), Err: cause}
+		}
+		run.report.Phase = run.currentPhase()
+		run.fail(ctx, err)
+		return run.report, err
+	}
+	run.report.Phase = state.RestorePhaseDone
+	run.report.FinishedAtMillis = run.deps.Now().UnixMilli()
+	return run.report, nil
+}
+
+func (run *restoreRun) currentPhase() state.RestorePhase {
+	run.progressMu.Lock()
+	defer run.progressMu.Unlock()
+	return run.phase
+}
+
+// acquire takes exclusive ownership of the restore. The FSM refuses it while
+// another coordinator holds a live lease.
+func (run *restoreRun) acquire(ctx context.Context) error {
+	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
+	defer cancel()
+	op, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+		Action:          protoc.RestoreOperationChange_RESTORE_ACTION_ACQUIRE.Enum(),
+		OperationId:     new(run.deps.NewOperationID()),
+		CoordinatorId:   new(run.deps.CoordinatorID),
+		Force:           new(run.force),
+		TotalPartitions: new(uint32(len(run.bundle.Manifest.Partitions))), // #nosec G115 -- partition counts are far below MaxUint32
+		TimestampMillis: new(run.deps.Now().UnixMilli()),
+		LeaseMillis:     new(run.deps.Timeouts.Lease.Milliseconds()),
+	})
+	if err != nil {
+		var rejected *state.RestoreRejectedError
+		if errors.As(err, &rejected) {
+			return fmt.Errorf("%w: %w", ErrRestoreInProgress, err)
+		}
+		if errors.Is(err, zenerr.ErrNotLeader) {
+			return fmt.Errorf("cluster restore must be started on the cluster raft leader: %w", err)
+		}
+		return fmt.Errorf("failed to acquire cluster restore: %w", err)
+	}
+	run.identity = restoreIdentity{id: op.ID, epoch: op.Epoch, coordinatorID: op.CoordinatorID}
+	run.progressMu.Lock()
+	run.op = op
+	run.phase = op.Phase
+	run.progressMu.Unlock()
+	return nil
+}
+
+// update advances the phase / progress of the owned operation and renews the
+// lease. A rejection means the coordinator was fenced out.
+func (run *restoreRun) update(ctx context.Context, phase state.RestorePhase, completed uint32) error {
+	run.progressMu.Lock()
+	defer run.progressMu.Unlock()
+	if phase.Index() > run.phase.Index() {
+		run.phase = phase
+	}
+	run.completed = completed
+	return run.sendUpdateLocked(ctx)
+}
+
+func (run *restoreRun) sendUpdateLocked(ctx context.Context) error {
+	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
+	defer cancel()
+	id, epoch := run.token()
+	op, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+		Action:              protoc.RestoreOperationChange_RESTORE_ACTION_UPDATE.Enum(),
+		OperationId:         new(id),
+		Epoch:               new(epoch),
+		Phase:               restorePhaseToProto(run.phase).Enum(),
+		CompletedPartitions: new(run.completed),
+		TotalPartitions:     new(uint32(len(run.bundle.Manifest.Partitions))), // #nosec G115 -- partition counts are far below MaxUint32
+		TimestampMillis:     new(run.deps.Now().UnixMilli()),
+		LeaseMillis:         new(run.deps.Timeouts.Lease.Milliseconds()),
+	})
+	if err != nil {
+		var rejected *state.RestoreRejectedError
+		if errors.As(err, &rejected) {
+			return fmt.Errorf("%w: %w", ErrRestoreOwnershipLost, err)
+		}
+		return fmt.Errorf("failed to record restore progress (phase %s): %w", run.phase, err)
+	}
+	run.op = op
+	return nil
+}
+
+// heartbeat renews the lease until ctx ends. Being fenced out cancels the run.
+func (run *restoreRun) heartbeat(ctx context.Context, cancel context.CancelCauseFunc) {
+	interval := run.deps.Timeouts.Lease / 3
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		run.progressMu.Lock()
+		err := run.sendUpdateLocked(ctx)
+		run.progressMu.Unlock()
+		if errors.Is(err, ErrRestoreOwnershipLost) {
+			cancel(err)
+			return
+		}
+		// transport failures are retried on the next tick; the main flow fails
+		// on its own if the leader is gone
+	}
+}
+
+// fail records the failure on the operation. It uses a context detached from
+// the (possibly cancelled) request so the terminal status is always durable.
+func (run *restoreRun) fail(ctx context.Context, cause error) {
+	applyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), run.deps.Timeouts.StateApply)
+	defer cancel()
+	id, epoch := run.token()
+	_, _ = run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+		Action:          protoc.RestoreOperationChange_RESTORE_ACTION_FAIL.Enum(),
+		OperationId:     new(id),
+		Epoch:           new(epoch),
+		Error:           new(cause.Error()),
+		TimestampMillis: new(run.deps.Now().UnixMilli()),
+	})
+}
+
+func (run *restoreRun) complete(ctx context.Context) error {
+	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
+	defer cancel()
+	id, epoch := run.token()
+	op, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+		Action:          protoc.RestoreOperationChange_RESTORE_ACTION_COMPLETE.Enum(),
+		OperationId:     new(id),
+		Epoch:           new(epoch),
+		TimestampMillis: new(run.deps.Now().UnixMilli()),
+	})
+	if err != nil {
+		var rejected *state.RestoreRejectedError
+		if errors.As(err, &rejected) {
+			return fmt.Errorf("%w: %w", ErrRestoreOwnershipLost, err)
+		}
+		return fmt.Errorf("failed to mark restore as completed: %w", err)
+	}
+	run.progressMu.Lock()
+	run.op = op
+	run.phase = op.Phase
+	run.progressMu.Unlock()
+	return nil
+}
+
+func (run *restoreRun) phaseErr(phase state.RestorePhase, err error) error {
+	return &PhaseError{OperationID: run.identity.id, Phase: phase, Err: err}
+}
+
+func (run *restoreRun) phases(ctx context.Context) error {
+	ids := run.partitionIDs()
+
+	// QUIESCING: nothing destructive may happen before every partition leader
+	// has applied the restore state, stopped its engine and fenced writes.
+	if err := run.update(ctx, state.RestorePhaseQuiescing, 0); err != nil {
+		return run.phaseErr(state.RestorePhaseQuiescing, err)
+	}
+	if err := run.waitForPartitions(ctx, ids, run.deps.Timeouts.Barrier, "partition leader has not entered restore maintenance", quiescedCondition); err != nil {
+		return run.phaseErr(state.RestorePhaseQuiescing, err)
+	}
+
+	// VALIDATING: checks that only hold once writes are fenced.
+	if err := run.update(ctx, state.RestorePhaseValidating, 0); err != nil {
+		return run.phaseErr(state.RestorePhaseValidating, err)
+	}
+	if !run.force {
+		checkCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.Barrier)
+		empty, err := clusterIsEmpty(checkCtx, ids, run.deps.Clients)
+		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("failed to check whether cluster is empty: %w", err)
+			return run.phaseErr(state.RestorePhaseValidating, fmt.Errorf("failed to check whether cluster is empty: %w", err))
 		}
 		if !empty {
-			return nil, fmt.Errorf("cluster contains data; pass force=true to overwrite it")
+			return run.phaseErr(state.RestorePhaseValidating, ErrClusterNotEmpty)
 		}
 	}
 
-	if err := deps.SetRestoring(true); err != nil {
-		return nil, fmt.Errorf("failed to enter restore mode: %w", err)
+	// LOADING: sequential loads bound coordinator memory — each store.Load
+	// holds one full partition image as a single raft entry.
+	if err := run.update(ctx, state.RestorePhaseLoading, 0); err != nil {
+		return run.phaseErr(state.RestorePhaseLoading, err)
 	}
-	// Poll until Restoring is observed as true before any destructive load.
-	if err := pollRestoring(ctx, deps.ClusterState, true, 5*time.Second, 100*time.Millisecond); err != nil {
-		return nil, fmt.Errorf("cluster did not enter restoring state (possible raft not-leader error; retry on leader): %w", err)
+	for i, id := range ids {
+		start := run.deps.Now()
+		if err := run.loadPartition(ctx, id); err != nil {
+			return run.phaseErr(state.RestorePhaseLoading, fmt.Errorf("restore of partition %d failed: %w", id, err))
+		}
+		run.report.Partitions = append(run.report.Partitions, PartitionRestoreResult{
+			PartitionID: id,
+			LoadMillis:  run.deps.Now().Sub(start).Milliseconds(),
+		})
+		if err := run.update(ctx, state.RestorePhaseLoading, uint32(i+1)); err != nil { // #nosec G115 -- partition counts are far below MaxUint32
+			return run.phaseErr(state.RestorePhaseLoading, err)
+		}
 	}
 
-	ids := make([]uint32, 0, len(bundle.Manifest.Partitions))
-	for id := range bundle.Manifest.Partitions {
+	// RECONCILING: derived state, still fenced.
+	if err := run.update(ctx, state.RestorePhaseReconciling, run.completedCount()); err != nil {
+		return run.phaseErr(state.RestorePhaseReconciling, err)
+	}
+	reconcileCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.Reconcile)
+	err := run.reconcile(reconcileCtx, ids)
+	cancel()
+	if err != nil {
+		return run.phaseErr(state.RestorePhaseReconciling, err)
+	}
+
+	// RESUMING: the gate is lifted; wait until the engines are back before
+	// reporting success.
+	if err := run.update(ctx, state.RestorePhaseResuming, run.completedCount()); err != nil {
+		return run.phaseErr(state.RestorePhaseResuming, err)
+	}
+	if err := run.waitForPartitions(ctx, ids, run.deps.Timeouts.Readiness, "partition has not resumed after restore", resumedCondition); err != nil {
+		return run.phaseErr(state.RestorePhaseResuming, err)
+	}
+	if err := run.complete(ctx); err != nil {
+		return run.phaseErr(state.RestorePhaseResuming, err)
+	}
+	return nil
+}
+
+func (run *restoreRun) completedCount() uint32 {
+	run.progressMu.Lock()
+	defer run.progressMu.Unlock()
+	return run.completed
+}
+
+func (run *restoreRun) partitionIDs() []uint32 {
+	ids := make([]uint32, 0, len(run.bundle.Manifest.Partitions))
+	for id := range run.bundle.Manifest.Partitions {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	// sequential loads bound coordinator memory: each store.Load holds one
-	// full partition image as a single raft entry
-	for _, id := range ids {
-		start := time.Now()
-		if err := restoreOnePartition(ctx, deps, bundle, id); err != nil {
-			return nil, fmt.Errorf("restore of partition %d failed (cluster left in restoring state; retry the restore): %w", id, err)
-		}
-		report.Partitions = append(report.Partitions, PartitionRestoreResult{
-			PartitionID: id,
-			LoadMillis:  time.Since(start).Milliseconds(),
-		})
-	}
-
-	if err := reconcile(ctx, deps, report); err != nil {
-		return nil, fmt.Errorf("post-restore reconciliation failed (cluster left in restoring state; retry the restore): %w", err)
-	}
-
-	if err := deps.SetRestoring(false); err != nil {
-		return nil, fmt.Errorf("restore finished but failed to leave restore mode: %w", err)
-	}
-	// Poll until Restoring is observed as false.
-	if err := pollRestoring(ctx, deps.ClusterState, false, 5*time.Second, 100*time.Millisecond); err != nil {
-		return report, fmt.Errorf("restore completed but cluster is still gated in restoring state (retry un-gate manually): %w", err)
-	}
-	report.FinishedAtMillis = time.Now().UnixMilli()
-	return report, nil
+	return ids
 }
 
-func restoreOnePartition(ctx context.Context, deps RestoreDeps, bundle *Bundle, id uint32) error {
-	leader, err := deps.Clients.PartitionLeader(id)
+// partitionCondition decides whether a partition status satisfies a barrier.
+type partitionCondition func(*proto.PartitionRestoreStatusResponse) bool
+
+func quiescedCondition(st *proto.PartitionRestoreStatusResponse) bool {
+	return st.GetHosted() && st.GetLeader() && st.GetRestoreApplied() && st.GetEngineStopped() && st.GetWriteFenced()
+}
+
+func resumedCondition(st *proto.PartitionRestoreStatusResponse) bool {
+	return st.GetHosted() && st.GetLeader() && st.GetEngineRunning() && st.GetInitialized()
+}
+
+// waitForPartitions polls every partition leader until cond holds for all of
+// them, or timeout passes. The leader is re-resolved on every poll so that a
+// leader change during the wait is followed.
+func (run *restoreRun) waitForPartitions(ctx context.Context, ids []uint32, timeout time.Duration, what string, cond partitionCondition) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	id, epoch := run.token()
+	pending := make(map[uint32]string, len(ids))
+	for _, pid := range ids {
+		pending[pid] = "not checked yet"
+	}
+	ticker := time.NewTicker(run.deps.PollInterval)
+	defer ticker.Stop()
+	for {
+		for pid := range pending {
+			leader, err := run.deps.Clients.PartitionLeader(pid)
+			if err != nil {
+				pending[pid] = fmt.Sprintf("no leader: %s", err)
+				continue
+			}
+			st, err := leader.PartitionRestoreStatus(waitCtx, &proto.PartitionRestoreStatusRequest{
+				PartitionId:        new(pid),
+				RestoreOperationId: new(id),
+				RestoreEpoch:       new(epoch),
+			})
+			if err != nil {
+				pending[pid] = fmt.Sprintf("status call failed: %s", err)
+				continue
+			}
+			if cond(st) {
+				delete(pending, pid)
+				continue
+			}
+			pending[pid] = describePartitionStatus(st)
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return fmt.Errorf("%s: %w", what, ctx.Err())
+			}
+			// keep the deadline identity so callers map it to a timeout response
+			return fmt.Errorf("%s within %s (%w): %s", what, timeout, waitCtx.Err(), describePending(pending))
+		case <-ticker.C:
+		}
+	}
+}
+
+func describePartitionStatus(st *proto.PartitionRestoreStatusResponse) string {
+	return fmt.Sprintf("hosted=%t leader=%t restoreApplied=%t engineStopped=%t writeFenced=%t engineRunning=%t initialized=%t",
+		st.GetHosted(), st.GetLeader(), st.GetRestoreApplied(), st.GetEngineStopped(), st.GetWriteFenced(), st.GetEngineRunning(), st.GetInitialized())
+}
+
+func describePending(pending map[uint32]string) string {
+	ids := make([]uint32, 0, len(pending))
+	for id := range pending {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	out := ""
+	for i, id := range ids {
+		if i > 0 {
+			out += "; "
+		}
+		out += fmt.Sprintf("partition %d: %s", id, pending[id])
+	}
+	return out
+}
+
+// loadPartition ships one partition image to its leader within the partition
+// load timeout. The stream carries the restore token so a stale coordinator is
+// refused by the partition.
+func (run *restoreRun) loadPartition(ctx context.Context, id uint32) (err error) {
+	loadCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.PartitionLoad)
+	defer cancel()
+	leader, err := run.deps.Clients.PartitionLeader(id)
 	if err != nil {
 		return fmt.Errorf("failed to get leader client: %w", err)
 	}
-	stream, err := leader.PartitionRestore(ctx)
+	stream, err := leader.PartitionRestore(loadCtx)
 	if err != nil {
 		return fmt.Errorf("failed to open restore stream: %w", err)
 	}
-	meta := bundle.Manifest.Partitions[id]
+	opID, epoch := run.token()
+	meta := run.bundle.Manifest.Partitions[id]
 	err = stream.Send(&proto.RestoreChunk{Payload: &proto.RestoreChunk_Meta{Meta: &proto.RestoreMeta{
-		PartitionId: new(id),
-		Sha256:      new(meta.SHA256),
-		SizeBytes:   new(meta.SizeBytes),
+		PartitionId:        new(id),
+		Sha256:             new(meta.SHA256),
+		SizeBytes:          new(meta.SizeBytes),
+		RestoreOperationId: new(opID),
+		RestoreEpoch:       new(epoch),
 	}}})
 	if err != nil {
 		return fmt.Errorf("failed to send restore meta: %w", err)
 	}
-	f, err := bundle.PartitionFile(id)
+	f, err := run.bundle.PartitionFile(id)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer zenerr.CloseJoin(f, &err, fmt.Sprintf("partition %d spool file", id))
 	buf := make([]byte, backupChunkSize)
 	for {
 		n, rerr := f.Read(buf)
@@ -182,13 +705,16 @@ func restoreOnePartition(ctx context.Context, deps RestoreDeps, bundle *Bundle, 
 		}
 	}
 	if _, err := stream.CloseAndRecv(); err != nil {
+		if loadCtx.Err() != nil && ctx.Err() == nil {
+			return fmt.Errorf("partition leader did not finish loading within %s (%w): %w", run.deps.Timeouts.PartitionLoad, loadCtx.Err(), err)
+		}
 		return fmt.Errorf("partition leader rejected restore: %w", err)
 	}
 	return nil
 }
 
-func clusterIsEmpty(ctx context.Context, cs state.Cluster, clients ClientProvider) (bool, error) {
-	for id := range cs.Partitions {
+func clusterIsEmpty(ctx context.Context, ids []uint32, clients ClientProvider) (bool, error) {
+	for _, id := range ids {
 		leader, err := clients.PartitionLeader(id)
 		if err != nil {
 			return false, err
@@ -204,36 +730,20 @@ func clusterIsEmpty(ctx context.Context, cs state.Cluster, clients ClientProvide
 	return true, nil
 }
 
-// pollRestoring polls ClusterState until Restoring matches want, up to timeout.
-func pollRestoring(ctx context.Context, clusterState func() state.Cluster, want bool, timeout, interval time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		if clusterState().Restoring == want {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for Restoring=%v", want)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(interval):
-		}
-	}
-}
-
 // reconcile rebuilds derived state (pointer tables, definition sync) after all
 // partition images have been loaded. It is idempotent — safe to retry if a
-// prior attempt failed mid-way.
-func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) error {
-	if err := syncDefinitions(ctx, deps, report); err != nil { // Task 13; stub returns nil until then
+// prior attempt failed mid-way — and runs while the partitions are still
+// fenced, so nothing but this coordinator writes to them.
+func (run *restoreRun) reconcile(ctx context.Context, ids []uint32) error {
+	if err := run.syncDefinitions(ctx, ids); err != nil {
 		return err
 	}
-	cs := deps.ClusterState()
+	cs := run.deps.ClusterState()
+	opID, epoch := run.token()
 
 	var all []*proto.MessageSubscriptionRow
-	for id := range cs.Partitions {
-		leader, err := deps.Clients.PartitionLeader(id)
+	for _, id := range ids {
+		leader, err := run.deps.Clients.PartitionLeader(id)
 		if err != nil {
 			return fmt.Errorf("pointer scan: failed to get leader for partition %d: %w", id, err)
 		}
@@ -245,36 +755,44 @@ func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) err
 	}
 
 	plan := PlanPointerRebuild(all, cs.GetPartitionIdForMessageSubscriptionPointer)
-	report.PointerConflicts = plan.Conflicts
+	run.report.PointerConflicts = plan.Conflicts
 
 	// every partition gets a rebuild call — even with zero rows — to wipe stale pointers
-	for id := range cs.Partitions {
+	for _, id := range ids {
 		rows := plan.ByPartition[id]
-		leader, err := deps.Clients.PartitionLeader(id)
+		leader, err := run.deps.Clients.PartitionLeader(id)
 		if err != nil {
 			return fmt.Errorf("pointer rebuild: failed to get leader for partition %d: %w", id, err)
 		}
 		_, err = leader.RebuildMessageSubscriptionPointers(ctx, &proto.RebuildMessageSubscriptionPointersRequest{
-			PartitionId: new(id),
-			Pointers:    rows,
+			PartitionId:        new(id),
+			Pointers:           rows,
+			RestoreOperationId: new(opID),
+			RestoreEpoch:       new(epoch),
 		})
 		if err != nil {
 			return fmt.Errorf("pointer rebuild on partition %d failed: %w", id, err)
 		}
-		report.PointersRebuilt += len(rows)
+		run.report.PointersRebuilt += len(rows)
 	}
 	return nil
 }
 
-// syncDefinitions lists definitions on every partition, computes which partitions
-// are missing definitions (due to a deploy landing mid-backup), and re-deploys
-// them via the idempotent deploy RPCs. It must run BEFORE pointer rebuild so
-// that subscriptions created by sync deploys are included in the pointer scan.
-func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreReport) error {
-	cs := deps.ClusterState()
+// syncDefinitions lists definitions on every partition, computes which
+// partitions are missing definitions (a deploy landed mid-backup), and imports
+// them through the restore-only import path — no engine is involved, so the
+// cluster stays fenced. It runs BEFORE the pointer rebuild so that
+// subscriptions created for imported definitions are included in the scan.
+//
+// Definition-level subscriptions are registered on exactly the partition that
+// owns them under the normal deployment rule (state.Cluster.
+// DefinitionSubscriptionPartition), so no partition ends up with duplicates.
+func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error {
+	cs := run.deps.ClusterState()
+	opID, epoch := run.token()
 	perPartition := map[uint32][]*proto.DefinitionRef{}
-	for id := range cs.Partitions {
-		leader, err := deps.Clients.PartitionLeader(id)
+	for _, id := range ids {
+		leader, err := run.deps.Clients.PartitionLeader(id)
 		if err != nil {
 			return fmt.Errorf("definition scan: failed to get leader for partition %d: %w", id, err)
 		}
@@ -286,43 +804,50 @@ func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreRepor
 	}
 
 	missing := MissingDefinitions(perPartition)
+	targets := make([]uint32, 0, len(missing))
+	for part := range missing {
+		targets = append(targets, part)
+	}
+	slices.Sort(targets)
+
 	synced := map[int64]*DefinitionSyncEntry{}
-	for part, refs := range missing {
-		for _, ref := range refs {
-			data, resourceName, err := fetchDefinition(ctx, deps, perPartition, ref)
+	for _, part := range targets {
+		for _, ref := range missing[part] {
+			data, resourceName, err := fetchDefinition(ctx, run.deps, perPartition, ref)
 			if err != nil {
 				return err
 			}
-			target, err := deps.Clients.PartitionLeader(part)
+			target, err := run.deps.Clients.PartitionLeader(part)
 			if err != nil {
 				return fmt.Errorf("failed to get leader for target partition %d: %w", part, err)
 			}
-			switch ref.GetType() {
-			case proto.DefinitionType_DEFINITION_TYPE_PROCESS:
-				resp, err := target.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-					Key:                                    new(ref.GetKey()),
-					Data:                                   data,
-					ResourceName:                           new(resourceName),
-					RegisterProcessDefinitionSubscriptions: new(true),
-				})
-				if err != nil || resp.GetError() != nil {
-					return fmt.Errorf("failed to sync process definition %d to partition %d: %v %v", ref.GetKey(), part, err, resp.GetError())
+			req := &proto.ImportDefinitionRequest{
+				PartitionId:        new(part),
+				RestoreOperationId: new(opID),
+				RestoreEpoch:       new(epoch),
+				Type:               ref.GetType().Enum(),
+				Key:                new(ref.GetKey()),
+				Data:               data,
+				ResourceName:       new(resourceName),
+			}
+			typ := "dmn"
+			if ref.GetType() == proto.DefinitionType_DEFINITION_TYPE_PROCESS {
+				typ = "process"
+				processID, err := processIDFromDefinition(data)
+				if err != nil {
+					return fmt.Errorf("failed to read process id of definition %d: %w", ref.GetKey(), err)
 				}
-			case proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
-				resp, err := target.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
-					Key:  new(ref.GetKey()),
-					Data: data,
-				})
-				if err != nil || resp.GetError() != nil {
-					return fmt.Errorf("failed to sync dmn definition %d to partition %d: %v %v", ref.GetKey(), part, err, resp.GetError())
-				}
+				req.RegisterProcessDefinitionSubscriptions = new(cs.DefinitionSubscriptionPartition(processID) == part)
+			}
+			resp, err := target.ImportDefinition(ctx, req)
+			if err != nil {
+				return fmt.Errorf("failed to import %s definition %d into partition %d: %w", typ, ref.GetKey(), part, err)
+			}
+			if resp.GetError() != nil {
+				return fmt.Errorf("failed to import %s definition %d into partition %d: %s", typ, ref.GetKey(), part, resp.GetError().GetMessage())
 			}
 			entry, ok := synced[ref.GetKey()]
 			if !ok {
-				typ := "process"
-				if ref.GetType() == proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE {
-					typ = "dmn"
-				}
 				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: typ}
 				synced[ref.GetKey()] = entry
 			}
@@ -330,17 +855,33 @@ func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreRepor
 		}
 	}
 	for _, e := range synced {
-		report.DefinitionsSynced = append(report.DefinitionsSynced, *e)
+		run.report.DefinitionsSynced = append(run.report.DefinitionsSynced, *e)
 	}
-	sort.Slice(report.DefinitionsSynced, func(i, j int) bool {
-		return report.DefinitionsSynced[i].Key < report.DefinitionsSynced[j].Key
+	sort.Slice(run.report.DefinitionsSynced, func(i, j int) bool {
+		return run.report.DefinitionsSynced[i].Key < run.report.DefinitionsSynced[j].Key
 	})
 	return nil
 }
 
+func processIDFromDefinition(data []byte) (string, error) {
+	var definitions bpmn20.TDefinitions
+	if err := xml.Unmarshal(data, &definitions); err != nil {
+		return "", fmt.Errorf("failed to unmarshal BPMN: %w", err)
+	}
+	if definitions.Process.Id == "" {
+		return "", fmt.Errorf("BPMN has no process id")
+	}
+	return definitions.Process.Id, nil
+}
+
 func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uint32][]*proto.DefinitionRef, ref *proto.DefinitionRef) ([]byte, string, error) {
-	for part, refs := range perPartition {
-		for _, r := range refs {
+	sources := make([]uint32, 0, len(perPartition))
+	for part := range perPartition {
+		sources = append(sources, part)
+	}
+	slices.Sort(sources)
+	for _, part := range sources {
+		for _, r := range perPartition[part] {
 			if r.GetKey() == ref.GetKey() && r.GetType() == ref.GetType() {
 				leader, err := deps.Clients.PartitionLeader(part)
 				if err != nil {
@@ -357,4 +898,18 @@ func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uin
 		}
 	}
 	return nil, "", fmt.Errorf("definition %d not found on any partition", ref.GetKey())
+}
+
+var restorePhaseToProtoValue = map[state.RestorePhase]protoc.RestorePhase{
+	state.RestorePhasePending:     protoc.RestorePhase_RESTORE_PHASE_PENDING,
+	state.RestorePhaseQuiescing:   protoc.RestorePhase_RESTORE_PHASE_QUIESCING,
+	state.RestorePhaseValidating:  protoc.RestorePhase_RESTORE_PHASE_VALIDATING,
+	state.RestorePhaseLoading:     protoc.RestorePhase_RESTORE_PHASE_LOADING,
+	state.RestorePhaseReconciling: protoc.RestorePhase_RESTORE_PHASE_RECONCILING,
+	state.RestorePhaseResuming:    protoc.RestorePhase_RESTORE_PHASE_RESUMING,
+	state.RestorePhaseDone:        protoc.RestorePhase_RESTORE_PHASE_DONE,
+}
+
+func restorePhaseToProto(phase state.RestorePhase) protoc.RestorePhase {
+	return restorePhaseToProtoValue[phase]
 }

@@ -169,8 +169,9 @@ func TestGrpcStreamDuringNodeIsolation(t *testing.T) {
 	require.NotEmpty(t, followers)
 	tc.IsolateNode(t, followers[0].ID)
 
-	// Remaining nodes should still be able to serve gRPC requests
-	time.Sleep(3 * time.Second)
+	// Remaining nodes should still be able to serve gRPC requests once the
+	// isolation is observed by the majority.
+	WaitForNodeObservedDown(t, tc, followers[0].ID, 60*time.Second)
 
 	leader := tc.Leader()
 	if leader != nil {

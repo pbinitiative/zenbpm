@@ -45,6 +45,8 @@ func TestManifestValidate(t *testing.T) {
 		{name: "partition count mismatch", mutate: func(m *Manifest) {}, count: 3, wantErr: "partition count"},
 		{name: "wrong format version", mutate: func(m *Manifest) { m.FormatVersion = 99 }, count: 2, wantErr: "format version"},
 		{name: "missing partition entry", mutate: func(m *Manifest) { delete(m.Partitions, 2) }, count: 2, wantErr: "missing partition"},
+		{name: "partition outside the expected set", mutate: func(m *Manifest) { m.Partitions[3] = m.Partitions[1] }, count: 2, wantErr: "outside the expected partitions"},
+		{name: "partition zero", mutate: func(m *Manifest) { m.Partitions[0] = m.Partitions[1] }, count: 2, wantErr: "outside the expected partitions"},
 		{name: "empty checksum", mutate: func(m *Manifest) { p := m.Partitions[1]; p.SHA256 = ""; m.Partitions[1] = p }, count: 2, wantErr: "checksum"},
 		{name: "schema newer than binary", mutate: func(m *Manifest) { p := m.Partitions[1]; p.SchemaVersion = "9999_future.up.sql"; m.Partitions[1] = p }, count: 2, wantErr: "schema"},
 	}

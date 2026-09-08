@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"time"
+
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 )
@@ -13,6 +15,55 @@ type clusterStatusView struct {
 	ClusterConfig clusterStatusConfigView      `json:"clusterConfig"`
 	Partitions    map[uint32]state.Partition   `json:"partitions"`
 	Nodes         map[string]clusterStatusNode `json:"nodes"`
+	// Restore is the current or most recent restore operation, absent when the
+	// cluster was never restored.
+	Restore *restoreOperationView `json:"restore,omitempty"`
+}
+
+// restoreOperationView is the presentation shape of state.RestoreOperation.
+// Next to the replicated record it carries two facts derived at read time:
+// whether the coordinator's lease has expired and whether the operation still
+// gates the cluster.
+type restoreOperationView struct {
+	ID                   string              `json:"id"`
+	Epoch                uint64              `json:"epoch"`
+	CoordinatorID        string              `json:"coordinatorId"`
+	Phase                state.RestorePhase  `json:"phase"`
+	Status               state.RestoreStatus `json:"status"`
+	Force                bool                `json:"force"`
+	DataModified         bool                `json:"dataModified"`
+	GatesCluster         bool                `json:"gatesCluster"`
+	TotalPartitions      uint32              `json:"totalPartitions"`
+	CompletedPartitions  uint32              `json:"completedPartitions"`
+	Error                string              `json:"error,omitempty"`
+	StartedAtMillis      int64               `json:"startedAtMillis"`
+	UpdatedAtMillis      int64               `json:"updatedAtMillis"`
+	FinishedAtMillis     int64               `json:"finishedAtMillis,omitempty"`
+	LeaseExpiresAtMillis int64               `json:"leaseExpiresAtMillis"`
+	LeaseExpired         bool                `json:"leaseExpired"`
+	PreviousOperationID  string              `json:"previousOperationId,omitempty"`
+}
+
+func buildRestoreOperationView(op state.RestoreOperation, now time.Time) restoreOperationView {
+	return restoreOperationView{
+		ID:                   op.ID,
+		Epoch:                op.Epoch,
+		CoordinatorID:        op.CoordinatorID,
+		Phase:                op.Phase,
+		Status:               op.Status,
+		Force:                op.Force,
+		DataModified:         op.DataModified,
+		GatesCluster:         op.GatesCluster(),
+		TotalPartitions:      op.TotalPartitions,
+		CompletedPartitions:  op.CompletedPartitions,
+		Error:                op.Error,
+		StartedAtMillis:      op.StartedAtMillis,
+		UpdatedAtMillis:      op.UpdatedAtMillis,
+		FinishedAtMillis:     op.FinishedAtMillis,
+		LeaseExpiresAtMillis: op.LeaseExpiresAtMillis,
+		LeaseExpired:         op.LeaseExpired(now.UnixMilli()),
+		PreviousOperationID:  op.PreviousOperationID,
+	}
 }
 
 type clusterStatusHealth struct {
@@ -59,11 +110,16 @@ func buildClusterStatusView(c state.Cluster) clusterStatusView {
 			Partitions: parts,
 		}
 	}
-	return clusterStatusView{
+	view := clusterStatusView{
 		ClusterConfig: clusterStatusConfigView{DesiredPartitions: c.Config.DesiredPartitions},
 		Partitions:    c.Partitions,
 		Nodes:         nodes,
 	}
+	if c.Restore.Exists() {
+		restore := buildRestoreOperationView(c.Restore, time.Now())
+		view.Restore = &restore
+	}
+	return view
 }
 
 func suffrageName(s raft.ServerSuffrage) string {

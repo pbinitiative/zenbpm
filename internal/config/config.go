@@ -48,6 +48,45 @@ type Cluster struct {
 	Engine      Engine      `yaml:"engine" json:"engine"`
 	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
+	// DesiredPartitions is the number of partitions the cluster forms on
+	// bootstrap. It is read when the cluster state is created; changing it on
+	// an existing cluster has no effect.
+	DesiredPartitions uint32  `yaml:"desiredPartitions" json:"desiredPartitions" env:"CLUSTER_DESIRED_PARTITIONS" env-default:"1"`
+	Restore           Restore `yaml:"restore" json:"restore"`
+}
+
+// Restore bounds the phases of a cluster restore. Every phase fails with a
+// phase-specific error when its deadline passes, so a restore request always
+// reaches a terminal response.
+type Restore struct {
+	// LeaseDuration is how long the restore coordinator's ownership stays valid
+	// without a progress update. After a coordinator crash a new restore can be
+	// started once the lease expired.
+	LeaseDuration time.Duration `yaml:"leaseDuration" json:"leaseDuration" env:"CLUSTER_RESTORE_LEASE_DURATION" env-default:"30s"`
+	// BarrierTimeout bounds the wait for every partition leader to stop its
+	// engine and fence writes before any partition data is overwritten.
+	BarrierTimeout time.Duration `yaml:"barrierTimeout" json:"barrierTimeout" env:"CLUSTER_RESTORE_BARRIER_TIMEOUT" env-default:"1m"`
+	// PartitionLoadTimeout bounds streaming and loading one partition image.
+	PartitionLoadTimeout time.Duration `yaml:"partitionLoadTimeout" json:"partitionLoadTimeout" env:"CLUSTER_RESTORE_PARTITION_LOAD_TIMEOUT" env-default:"30m"`
+	// ReconcileTimeout bounds definition sync and pointer rebuild.
+	ReconcileTimeout time.Duration `yaml:"reconcileTimeout" json:"reconcileTimeout" env:"CLUSTER_RESTORE_RECONCILE_TIMEOUT" env-default:"10m"`
+	// ReadinessTimeout bounds the wait for partition engines to come back after
+	// the restore lifted the gate.
+	ReadinessTimeout time.Duration `yaml:"readinessTimeout" json:"readinessTimeout" env:"CLUSTER_RESTORE_READINESS_TIMEOUT" env-default:"2m"`
+	// StateApplyTimeout bounds a single restore state transition through raft.
+	StateApplyTimeout time.Duration `yaml:"stateApplyTimeout" json:"stateApplyTimeout" env:"CLUSTER_RESTORE_STATE_APPLY_TIMEOUT" env-default:"10s"`
+	// IngestTimeout bounds receiving and validating the uploaded bundle
+	// before the restore takes ownership of the cluster.
+	IngestTimeout time.Duration `yaml:"ingestTimeout" json:"ingestTimeout" env:"CLUSTER_RESTORE_INGEST_TIMEOUT" env-default:"1h"`
+	// MaxManifestBytes caps the bundle manifest.
+	MaxManifestBytes int64 `yaml:"maxManifestBytes" json:"maxManifestBytes" env:"CLUSTER_RESTORE_MAX_MANIFEST_BYTES" env-default:"1048576"`
+	// MaxPartitionImageBytes caps one stored (gzipped) partition image, both in
+	// the uploaded bundle and on the partition leader receiving it.
+	MaxPartitionImageBytes int64 `yaml:"maxPartitionImageBytes" json:"maxPartitionImageBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_IMAGE_BYTES" env-default:"8589934592"`
+	// MaxPartitionDatabaseBytes caps one decompressed partition database. A
+	// partition leader holds the whole database in memory while loading it, so
+	// this bounds that allocation.
+	MaxPartitionDatabaseBytes int64 `yaml:"maxPartitionDatabaseBytes" json:"maxPartitionDatabaseBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_DATABASE_BYTES" env-default:"17179869184"`
 }
 
 // Engine configures the behaviour of the BPMN engines running on the node partitions.

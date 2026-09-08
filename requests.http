@@ -97,6 +97,36 @@ GET {{host}}/system/metrics
 ### Status
 GET {{host}}/system/status
 
+### Back up
+GET {{host}}/system/v1/cluster/backup
+
+### Restore (empty cluster)
+POST {{host}}/system/v1/cluster/restore
+Content-Type: application/x-tar
+
+< ~/Downloads/zenbpm-backup-1788898698.tar
+
+### Restore (force, live cluster)
+POST {{host}}/system/v1/cluster/restore?force=true
+Content-Type: application/x-tar
+
+< ~/Downloads/zenbpm-backup-1788898698.tar
+
+### GetRestoreOperations (current / most recent)
+GET {{host}}/system/v1/cluster/restore/operations
+
+### GetRestoreOperation by id
+@restore_operation_id=db4b2c4e-391b-4978-8438-c2390f83c080
+GET {{host}}/system/v1/cluster/restore/operations/{{restore_operation_id}}
+
+### AbortRestoreOperation
+POST {{host}}/system/v1/cluster/restore/operations/{{restore_operation_id}}/abort
+Content-Type: application/json
+
+{
+  "reason": "aborting restore manually"
+}
+
 ### StartPprofServer
 POST {{host}}/v1/tests/{{node}}/start-pprof-server
 

@@ -1,5 +1,7 @@
 package backup
 
+import "github.com/pbinitiative/zenbpm/internal/cluster/state"
+
 type PartitionRestoreResult struct {
 	PartitionID uint32 `json:"partitionId"`
 	LoadMillis  int64  `json:"loadMillis"`
@@ -18,8 +20,14 @@ type DefinitionSyncEntry struct {
 	ToPartitions []uint32 `json:"toPartitions"`
 }
 
-// RestoreReport is returned to the operator after a cluster restore.
+// RestoreReport is returned to the operator after a cluster restore. The
+// operation id identifies the durable restore record in the cluster state
+// (see the restore status endpoint); Phase is the phase the restore ended in.
 type RestoreReport struct {
+	OperationID       string                   `json:"operationId"`
+	Epoch             uint64                   `json:"epoch"`
+	CoordinatorID     string                   `json:"coordinatorId"`
+	Phase             state.RestorePhase       `json:"phase"`
 	StartedAtMillis   int64                    `json:"startedAtMillis"`
 	FinishedAtMillis  int64                    `json:"finishedAtMillis"`
 	Partitions        []PartitionRestoreResult `json:"partitions"`

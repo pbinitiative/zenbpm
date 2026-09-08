@@ -148,6 +148,66 @@ func WaitForPartitions(t *testing.T, tc *TestCluster, count int, timeout time.Du
 	}, timeout, 100*time.Millisecond, "expected %d partitions initialized on all running nodes within %s", count, timeout)
 }
 
+// noClusterLeaderReason is the readiness reason a node reports while it sees
+// no cluster raft leader (see ZenNode.Health).
+const noClusterLeaderReason = "no cluster leader elected"
+
+// WaitForNodeObservedDown waits until the replicated cluster state, as read
+// from every running node, records nodeID as shut down. That is the observable
+// effect of a kill, stop or isolation: the cluster leader flips the node's
+// state once its heartbeats fail.
+func WaitForNodeObservedDown(t *testing.T, tc *TestCluster, nodeID string, timeout time.Duration) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		running := tc.RunningNodes()
+		if len(running) == 0 {
+			return false
+		}
+		for _, n := range running {
+			if n.ID == nodeID {
+				continue
+			}
+			s, err := getStatus(n)
+			if err != nil {
+				return false
+			}
+			entry, ok := s.Nodes[nodeID]
+			if !ok || entry.State != state.NodeStateShutdown.String() {
+				return false
+			}
+		}
+		return true
+	}, timeout, 100*time.Millisecond, "node %s was not observed as shut down within %s", nodeID, timeout)
+}
+
+// WaitForNoClusterLeader waits until every given node reports that it sees no
+// cluster raft leader — the observable effect of losing quorum.
+func WaitForNoClusterLeader(t *testing.T, nodes []*TestNode, timeout time.Duration) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		for _, n := range nodes {
+			if n.stopped || nodeSeesClusterLeader(n) {
+				return false
+			}
+		}
+		return true
+	}, timeout, 100*time.Millisecond, "nodes still see a cluster leader after %s", timeout)
+}
+
+// nodeSeesClusterLeader reports whether the node's own raft knows a leader.
+func nodeSeesClusterLeader(n *TestNode) bool {
+	if n.stopped {
+		return false
+	}
+	_, reasons := n.ZenNode.Health()
+	for _, r := range reasons {
+		if r == noClusterLeaderReason {
+			return false
+		}
+	}
+	return true
+}
+
 // WaitForLeader waits until a base cluster leader is elected.
 func WaitForLeader(t *testing.T, tc *TestCluster, timeout time.Duration) {
 	t.Helper()

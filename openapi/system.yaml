@@ -39,10 +39,15 @@ paths:
       operationId: getClusterStatus
       summary: Cluster status and node health
       description: |
-        Returns the cluster topology as seen by the responding node, plus that
-        node's own health. Also serves as the readiness probe: returns 200 when
-        the node sees a working cluster raft, 503 otherwise (the body is the
-        same JSON in both cases).
+        Verbose diagnostic endpoint. Returns the cluster topology as seen by
+        the responding node, the node's build information, its own health
+        evaluation and — once a restore was ever run — the current or most
+        recent restore operation.
+
+        This endpoint always answers `200`, even when `health.ok` is false;
+        it keeps the legacy contract for existing consumers. Readiness
+        semantics (`503` while not ready) live exclusively on
+        `/system/health/ready`.
 
         Note: `nodes.*.addr` is the node's internal cluster (raft) address, not
         its HTTP address — map the node to its HTTP base URL through your
@@ -51,17 +56,58 @@ paths:
         - system
       responses:
         "200":
-          description: Node is healthy; body describes the cluster.
+          description: Cluster status as seen by the responding node.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClusterStatus"
+        "500":
+          description: The status document could not be rendered.
+
+  /system/health/live:
+    get:
+      operationId: getLiveness
+      summary: Liveness probe
+      description: |
+        Reports only that the process is up and serving HTTP. It deliberately
+        does not look at raft state so that a leaderless node is not restarted
+        in a loop by an orchestrator. Always `200` with `status: "UP"`.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /system/health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      description: |
+        `200` with `status: "UP"` when the node sees a cluster leader, is
+        registered in the cluster state and every partition assigned to it is
+        INITIALIZED; `503` with `status: "DOWN"` and the reasons otherwise.
+        Cluster-wide partition health is deliberately excluded so that a
+        degraded remote partition does not remove the whole cluster from a
+        load balancer.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The node is ready to serve traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
         "503":
-          description: Node is unhealthy (no quorum from its point of view).
+          description: The node is not ready; `reasons` says why.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClusterStatus"
+                $ref: "#/components/schemas/Health"
 
   /system/metrics:
     get:
@@ -112,15 +158,33 @@ paths:
       description: |
         Restores every partition from a bundle produced by the backup endpoint.
         Must be sent to the current cluster raft leader (see /system/status).
-        The bundle is fully validated before anything destructive happens:
-        manifest present, partition count matches the cluster, checksums,
-        schema not newer than the binary. Without `force=true` the request is
-        refused unless the cluster is empty (no definitions, no instances).
 
-        During the restore the cluster is gated: engines are stopped and
-        mutating API calls are rejected; read-only endpoints stay up but may
-        observe mixed state. A failure mid-restore leaves the cluster gated —
-        retry the restore (the operation is idempotent).
+        The request is synchronous: it returns once the restore reached a
+        terminal state, and closing the connection cancels the restore (the
+        operation record stays durable and is marked FAILED). Every phase is
+        bounded by the `cluster.restore.*` deadlines, so the request always
+        terminates.
+
+        Lifecycle of one request:
+
+        1. **Validation** — bundle entries, manifest, checksums, partition set
+           and schema version are checked before anything else. A bad bundle
+           is refused with `409` and nothing is recorded.
+        2. **Acquisition** — a restore operation with a unique id is acquired
+           atomically through raft. While another coordinator holds a live
+           lease the request is refused with `409`.
+        3. **Quiescing** — the coordinator waits until every partition leader
+           has stopped its engine and fenced application writes.
+        4. **Validating** — without `force=true` the (now fenced) cluster must
+           be empty: no definitions, no instances.
+        5. **Loading / reconciling** — partition images are loaded, missing
+           definitions imported and message-subscription pointers rebuilt.
+        6. **Resuming** — the gate is lifted and the request waits until the
+           partition engines are back before answering `200`.
+
+        A failure after partition data was touched leaves the cluster gated
+        (engines stopped, mutating calls rejected). Retry the restore with
+        `force=true`, or abort the operation to lift the gate explicitly.
       tags:
         - cluster-backup
       parameters:
@@ -140,38 +204,221 @@ paths:
               format: binary
       responses:
         "200":
-          description: Restore completed; the report describes what was done.
+          description: Restore completed and the partitions are serving again; the report describes what was done.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RestoreReport"
         "409":
           description: |
-            Restore refused or failed. Reasons include: cluster holds data and
-            `force` was not set, invalid or truncated bundle, partition count
-            mismatch, bundle schema newer than the binary, a restore already in
-            progress, or a failure during the restore itself (in which case the
-            cluster remains gated and the restore should be retried).
+            Restore refused before it took ownership of the cluster (code
+            `RESTORE_REFUSED`): a restore is already in progress, the bundle is
+            invalid or truncated, its partition set does not match the
+            cluster, its schema is newer than the binary — or (code
+            `RESTORE_REFUSED`, with `operationId`) the cluster holds data and
+            `force` was not set.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/RestoreError"
+        "413":
+          description: |
+            The bundle, its manifest or a partition image exceeds a configured
+            `cluster.restore.max*` size limit (code `RESTORE_REFUSED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "500":
+          description: |
+            A phase of the restore failed (code `RESTORE_FAILED`). The body
+            names the operation and the phase; the operation is recorded as
+            FAILED and can be inspected through the operations endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "503":
+          description: |
+            The responding node is not the cluster raft leader (code
+            `NOT_CLUSTER_LEADER`); repeat the request on the leader.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "504":
+          description: |
+            A phase of the restore exceeded its configured deadline (code
+            `RESTORE_FAILED`), or the bundle upload did not finish within
+            `cluster.restore.ingestTimeout` (code `RESTORE_REFUSED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+
+  /system/v1/cluster/restore/operations:
+    get:
+      operationId: listRestoreOperations
+      summary: List restore operations
+      description: |
+        Returns the restore operation recorded in the cluster state — the
+        current one or the most recent one — as a list (empty when the
+        cluster was never restored). Readable on any node.
+      tags:
+        - cluster-backup
+      responses:
+        "200":
+          description: Recorded restore operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [operations]
+                properties:
+                  operations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RestoreOperation"
+
+  /system/v1/cluster/restore/operations/{operationId}:
+    get:
+      operationId: getRestoreOperation
+      summary: Restore operation status and progress
+      description: |
+        Durable status of a restore operation: phase, progress, terminal
+        status or error, timestamps and lease. Readable on any node.
+      tags:
+        - cluster-backup
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The restore operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreOperation"
+        "404":
+          description: No restore operation with that id is recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+
+  /system/v1/cluster/restore/operations/{operationId}/abort:
+    post:
+      operationId: abortRestoreOperation
+      summary: Abort a restore operation
+      description: |
+        Terminates the operation regardless of its owner and lifts the cluster
+        gate: engines restart and mutating calls are accepted again. Use it
+        after a coordinator crash or for a failed restore that cannot be
+        retried. Partially restored data is left as it is — the record keeps
+        `dataModified: true` so that is visible. A completed or already
+        aborted operation cannot be aborted. Must be sent to the cluster raft
+        leader.
+      tags:
+        - cluster-backup
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Recorded on the operation as its error.
+      responses:
+        "200":
+          description: The aborted operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreOperation"
+        "404":
+          description: No restore operation with that id is recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "409":
+          description: The operation is already completed or aborted (code `RESTORE_ABORT_REFUSED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "503":
+          description: The responding node is not the cluster raft leader (code `NOT_CLUSTER_LEADER`); repeat the request on the leader.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
+        "500":
+          description: The abort could not be committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreError"
 
 components:
   schemas:
+    Health:
+      type: object
+      required: [status, reasons]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+        reasons:
+          type: array
+          description: Why the node is not ready; empty when `status` is `UP`.
+          items:
+            type: string
+
     ClusterStatus:
       type: object
-      required: [health, clusterConfig, partitions, nodes]
+      required: [git, build, health, clusterConfig, partitions, nodes]
       properties:
+        git:
+          type: object
+          required: [branch, commitId]
+          properties:
+            branch:
+              type: string
+            commitId:
+              type: string
+              description: Short (12 character) commit id of the running binary.
+        build:
+          type: object
+          required: [version, time]
+          properties:
+            version:
+              type: string
+            time:
+              type: string
         health:
           type: object
-          required: [ok]
+          required: [ok, reasons]
           properties:
             ok:
               type: boolean
-            reason:
-              type: string
-              description: Present when ok is false.
+              description: The same evaluation `/system/health/ready` answers with.
+            reasons:
+              type: array
+              description: Why the node is not ready; empty when `ok` is true.
+              items:
+                type: string
         clusterConfig:
           type: object
           required: [desiredPartitions]
@@ -189,6 +436,8 @@ components:
           description: Keyed by node id.
           additionalProperties:
             $ref: "#/components/schemas/ClusterStatusNode"
+        restore:
+          $ref: "#/components/schemas/RestoreOperation"
 
     ClusterStatusPartition:
       type: object
@@ -244,7 +493,98 @@ components:
             - NodePartitionStateInitialized
         role:
           type: string
-          enum: [RoleFollower, RoleLeader]
+          description: |
+            Go stringer name of the role. `Role(0)` appears while the role is
+            unknown (for example right after the node's heartbeat failed).
+          enum: [RoleFollower, RoleLeader, Role(0)]
+
+    RestoreOperation:
+      type: object
+      description: |
+        Raft-replicated record of a cluster restore. `id` and `epoch` form the
+        fencing token every partition operation of the restore carries; a
+        coordinator whose epoch is no longer current has been fenced out.
+      required:
+        - id
+        - epoch
+        - coordinatorId
+        - phase
+        - status
+        - force
+        - dataModified
+        - gatesCluster
+        - totalPartitions
+        - completedPartitions
+        - startedAtMillis
+        - updatedAtMillis
+        - leaseExpiresAtMillis
+        - leaseExpired
+      properties:
+        id:
+          type: string
+        epoch:
+          type: integer
+          format: int64
+        coordinatorId:
+          type: string
+          description: Id of the node that drives (or drove) the restore.
+        phase:
+          type: string
+          description: |
+            How far the restore got. PENDING: acquired; QUIESCING: waiting for
+            partition leaders to stop engines and fence writes; VALIDATING:
+            fenced checks (empty cluster); LOADING: partition images are being
+            loaded; RECONCILING: definition sync and pointer rebuild;
+            RESUMING: gate lifted, waiting for engines; DONE: completed.
+          enum: [PENDING, QUIESCING, VALIDATING, LOADING, RECONCILING, RESUMING, DONE]
+        status:
+          type: string
+          description: |
+            ACTIVE while a coordinator owns the operation; COMPLETED, FAILED or
+            ABORTED are terminal. A FAILED operation that already modified data
+            keeps the cluster gated until a retry succeeds or it is aborted.
+          enum: [ACTIVE, COMPLETED, FAILED, ABORTED]
+        force:
+          type: boolean
+        dataModified:
+          type: boolean
+          description: Partition data was (at least partially) overwritten by this operation or the one it retried.
+        gatesCluster:
+          type: boolean
+          description: Engines are stopped and mutating requests rejected because of this operation.
+        totalPartitions:
+          type: integer
+          format: int64
+        completedPartitions:
+          type: integer
+          format: int64
+          description: Partitions whose image has been loaded.
+        error:
+          type: string
+          description: Failure or abort reason; absent otherwise.
+        startedAtMillis:
+          type: integer
+          format: int64
+        updatedAtMillis:
+          type: integer
+          format: int64
+        finishedAtMillis:
+          type: integer
+          format: int64
+          description: Present once the operation is terminal.
+        leaseExpiresAtMillis:
+          type: integer
+          format: int64
+          description: Until when the coordinator's ownership is valid without a progress update.
+        leaseExpired:
+          type: boolean
+          description: |
+            The operation is ACTIVE but its coordinator stopped renewing the
+            lease (crashed or lost raft leadership). A new restore may be
+            started; it fences the old coordinator out.
+        previousOperationId:
+          type: string
+          description: The operation this one retried, if any.
 
     RestoreReport:
       type: object
@@ -252,8 +592,20 @@ components:
         Summary of a completed restore. Key fields are int64; JSON consumers
         that parse numbers as IEEE-754 doubles may lose precision on keys
         above 2^53.
-      required: [startedAtMillis, finishedAtMillis, pointersRebuilt]
+      required: [operationId, epoch, coordinatorId, phase, startedAtMillis, finishedAtMillis, pointersRebuilt]
       properties:
+        operationId:
+          type: string
+          description: Id of the durable restore operation (see the operations endpoint).
+        epoch:
+          type: integer
+          format: int64
+        coordinatorId:
+          type: string
+        phase:
+          type: string
+          description: The phase the restore ended in; `DONE` for a successful restore.
+          enum: [PENDING, QUIESCING, VALIDATING, LOADING, RECONCILING, RESUMING, DONE]
         startedAtMillis:
           type: integer
           format: int64
@@ -300,7 +652,7 @@ components:
                   format: int64
         definitionsSynced:
           type: array
-          description: Definitions copied to partitions that were missing them.
+          description: Definitions imported into partitions that were missing them.
           items:
             type: object
             required: [key, type, toPartitions]
@@ -317,6 +669,23 @@ components:
                   type: integer
                   format: int64
 
+    RestoreError:
+      type: object
+      required: [message, code]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+          description: Machine-readable error code, e.g. RESTORE_REFUSED, RESTORE_FAILED, RESTORE_ABORT_REFUSED, NOT_CLUSTER_LEADER, NOT_FOUND.
+        operationId:
+          type: string
+          description: Present when the restore had taken ownership of the cluster.
+        phase:
+          type: string
+          description: The phase that failed, when known.
+          enum: [PENDING, QUIESCING, VALIDATING, LOADING, RECONCILING, RESUMING, DONE]
+
     Error:
       type: object
       required: [message, code]
@@ -325,4 +694,4 @@ components:
           type: string
         code:
           type: string
-          description: Machine-readable error code, e.g. RESTORE_FAILED.
+          description: Machine-readable error code.

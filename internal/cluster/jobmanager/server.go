@@ -168,7 +168,7 @@ func (s *jobServer) distributeJobs() {
 			}
 		}
 		if jobsToLoad <= 0 {
-			time.Sleep(20 * time.Millisecond)
+			s.pause(20 * time.Millisecond)
 			continue
 		}
 		if jobsToLoad > s.maxJobLoadCount {
@@ -178,16 +178,16 @@ func (s *jobServer) distributeJobs() {
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
 			// give it some time not to overwhelm the node we might not be a leader anymore
-			time.Sleep(1 * time.Second)
+			s.pause(1 * time.Second)
 			continue
 		}
 		if len(jobs) == 0 {
 			// wait for something to happen
 			s.emptyDistributionCounter++
 			if s.emptyDistributionCounter >= emptyDistributionCounterSleep {
-				time.Sleep(1 * time.Second)
+				s.pause(1 * time.Second)
 			} else {
-				time.Sleep(100*time.Millisecond + time.Duration(s.emptyDistributionCounter)*time.Millisecond)
+				s.pause(100*time.Millisecond + time.Duration(s.emptyDistributionCounter)*time.Millisecond)
 			}
 			continue
 		}
@@ -284,8 +284,19 @@ func (s *jobServer) distributeJobs() {
 		if assignedJobs == 0 {
 			// every loaded job was skipped (saturated or unavailable clients),
 			// back off to avoid a tight database-query loop until capacity changes
-			time.Sleep(100 * time.Millisecond)
+			s.pause(100 * time.Millisecond)
 		}
+	}
+}
+
+// pause delays the distribution loop for d, returning early when the server
+// context ends so that shutdown never waits for a back-off to elapse.
+func (s *jobServer) pause(d time.Duration) {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-s.ctx.Done():
 	}
 }
 

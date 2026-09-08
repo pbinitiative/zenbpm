@@ -8,11 +8,12 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSchemaVersion(t *testing.T) {
 	partition, _, _, _, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := partition.DB
 
@@ -33,7 +34,7 @@ func TestSchemaVersion(t *testing.T) {
 
 func TestDataStats(t *testing.T) {
 	partition, _, _, _, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	db := partition.DB
 
@@ -45,7 +46,7 @@ func TestDataStats(t *testing.T) {
 
 func TestListDefinitionRefs(t *testing.T) {
 	partition, _, _, _, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	ctx := t.Context()
 	db := partition.DB
@@ -81,7 +82,7 @@ func TestListDefinitionRefs(t *testing.T) {
 
 func TestGetDefinitionResource(t *testing.T) {
 	partition, _, _, _, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	ctx := t.Context()
 	db := partition.DB
@@ -119,7 +120,7 @@ func TestGetDefinitionResource(t *testing.T) {
 
 func TestListActiveMessageSubscriptionsAndRebuildPointers(t *testing.T) {
 	partition, _, _, _, _ := prepareTestSetup(t, false)
-	defer partition.Stop()
+	defer func() { require.NoError(t, partition.Stop()) }()
 
 	ctx := t.Context()
 	db := partition.DB

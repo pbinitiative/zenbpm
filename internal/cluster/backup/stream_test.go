@@ -2,7 +2,6 @@ package backup
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeBackupSource struct {
@@ -76,6 +77,10 @@ type fakeLoadTarget struct {
 	err    error
 }
 
+func (f *fakeLoadTarget) load(lr *rqcmd.LoadRequest) error {
+	return f.Load(context.Background(), lr)
+}
+
 func (f *fakeLoadTarget) Load(ctx context.Context, lr *rqcmd.LoadRequest) error {
 	f.loaded = lr.Data
 	return f.err
@@ -107,41 +112,63 @@ func chunkFeed(meta *proto.RestoreMeta, data []byte, chunk int) func() (*proto.R
 
 func TestReceivePartitionRestore(t *testing.T) {
 	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte("d"), 5000)...)
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write(raw)
-	zw.Close()
-	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
+	gz := gzipBytes(t, raw)
+	sum := sha256.Sum256(gz)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(len(gz)))}
 
 	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
 	assert.NoError(t, err)
 	assert.Equal(t, raw, dst.loaded)
 }
 
 func TestReceivePartitionRestoreBadDigest(t *testing.T) {
 	raw := append([]byte("SQLite format 3\x00"), []byte("data")...)
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write(raw)
-	zw.Close()
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new("deadbeef"), SizeBytes: new(int64(gz.Len()))}
+	gz := gzipBytes(t, raw)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new("deadbeef"), SizeBytes: new(int64(len(gz)))}
 	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
 	assert.ErrorContains(t, err, "digest mismatch")
 	assert.Nil(t, dst.loaded)
 }
 
 func TestReceivePartitionRestoreNotSQLite(t *testing.T) {
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write([]byte("not a database at all"))
-	zw.Close()
-	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
+	gz := gzipBytes(t, []byte("not a database at all"))
+	sum := sha256.Sum256(gz)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(len(gz)))}
 	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
 	assert.ErrorContains(t, err, "not a valid SQLite")
 	assert.Nil(t, dst.loaded)
+}
+
+func TestReceivePartitionRestoreEnforcesLimits(t *testing.T) {
+	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte{0}, 4096)...)
+	gz := gzipBytes(t, raw)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(shaHex(gz)), SizeBytes: new(int64(len(gz)))}
+
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionImageBytes: int64(len(gz)) - 1}, dst.load)
+	require.ErrorIs(t, err, zenerr.ErrResourceLimit)
+	assert.Nil(t, dst.loaded, "an oversized image is never loaded")
+
+	err = ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionDatabaseBytes: 1024}, dst.load)
+	require.ErrorIs(t, err, zenerr.ErrResourceLimit, "a compressible image must not expand past the database limit")
+	assert.Nil(t, dst.loaded)
+
+	err = ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionImageBytes: int64(len(gz)), PartitionDatabaseBytes: int64(len(raw))}, dst.load)
+	require.NoError(t, err)
+	assert.Equal(t, raw, dst.loaded)
+}
+
+func TestReceivePartitionRestoreStopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1))}
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(ctx, t.TempDir(), meta, func() (*proto.RestoreChunk, error) {
+		t.Fatal("recv must not be called once the context is done")
+		return nil, nil
+	}, RestoreLimits{}, dst.load)
+	require.ErrorIs(t, err, context.Canceled)
 }

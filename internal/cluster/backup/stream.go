@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -66,26 +68,34 @@ func StreamPartitionBackup(ctx context.Context, src BackupSource, schemaVersion 
 	})
 }
 
-// LoadTarget is the subset of *rqlite/store.Store used for restores.
-type LoadTarget interface {
-	Load(ctx context.Context, lr *rqcmd.LoadRequest) error
-}
-
 // ReceivePartitionRestore spools the incoming gzipped stream, verifies its
 // digest against meta, gunzips and validates the SQLite image, then loads it
-// through the partition's raft log.
-func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), dst LoadTarget) error {
+// through load. The stored image and the decompressed database are capped by
+// limits; the caller wraps the actual store load (for example to hold the
+// partition's restore fence while it runs).
+func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), limits RestoreLimits, load func(*rqcmd.LoadRequest) error) (err error) {
+	limits = limits.withDefaults()
 	spool, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-recv-p%d-*", meta.GetPartitionId()))
 	if err != nil {
 		return fmt.Errorf("failed to create restore spool: %w", err)
 	}
-	defer os.Remove(spool.Name())
-	defer spool.Close()
+	defer func() {
+		// runs after the close below; a leftover spool file must not fail a
+		// restore that already loaded
+		if removeErr := os.Remove(spool.Name()); removeErr != nil {
+			log.Warn("failed to remove restore spool file %s: %v", spool.Name(), removeErr)
+		}
+	}()
+	defer zenerr.CloseJoin(spool, &err, "restore spool file")
 
 	h := sha256.New()
 	w := io.MultiWriter(spool, h)
+	var received int64
 recvLoop:
 	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("restore stream cancelled: %w", err)
+		}
 		chunk, err := recv()
 		if err == io.EOF {
 			break
@@ -98,6 +108,10 @@ recvLoop:
 			// tolerated duplicate of the header chunk; ignore
 			_ = p
 		case *proto.RestoreChunk_Data:
+			received += int64(len(p.Data))
+			if received > limits.PartitionImageBytes {
+				return fmt.Errorf("%w: partition image exceeds %d bytes", zenerr.ErrResourceLimit, limits.PartitionImageBytes)
+			}
 			if _, err := w.Write(p.Data); err != nil {
 				return fmt.Errorf("failed to spool restore data: %w", err)
 			}
@@ -119,14 +133,19 @@ recvLoop:
 	if err != nil {
 		return fmt.Errorf("restore payload is not gzip: %w", err)
 	}
-	raw, err := io.ReadAll(zr)
+	// the store needs the whole database in memory for a single load command;
+	// the configured limit bounds that allocation
+	raw, err := io.ReadAll(io.LimitReader(zr, limits.PartitionDatabaseBytes+1))
 	if err != nil {
 		return fmt.Errorf("failed to decompress restore payload: %w", err)
+	}
+	if int64(len(raw)) > limits.PartitionDatabaseBytes {
+		return fmt.Errorf("%w: decompressed database exceeds %d bytes", zenerr.ErrResourceLimit, limits.PartitionDatabaseBytes)
 	}
 	if len(raw) < 16 || string(raw[:16]) != "SQLite format 3\x00" {
 		return fmt.Errorf("restore payload is not a valid SQLite database")
 	}
-	if err := dst.Load(ctx, &rqcmd.LoadRequest{Data: raw}); err != nil {
+	if err := load(&rqcmd.LoadRequest{Data: raw}); err != nil {
 		return fmt.Errorf("failed to load database into partition %d: %w", meta.GetPartitionId(), err)
 	}
 	return nil

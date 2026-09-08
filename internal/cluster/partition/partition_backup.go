@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
@@ -12,12 +13,12 @@ import (
 // ListDefinitionRefs lists all process and DMN definition keys on this partition.
 func (rq *DB) ListDefinitionRefs(ctx context.Context) ([]*zenproto.DefinitionRef, error) {
 	var out []*zenproto.DefinitionRef
-	collect := func(query string, typ zenproto.DefinitionType) error {
+	collect := func(query string, typ zenproto.DefinitionType) (err error) {
 		rows, err := rq.QueryContext(ctx, query)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer zenerr.CloseJoin(rows, &err, "definition rows")
 		for rows.Next() {
 			var key int64
 			if err := rows.Scan(&key); err != nil {
@@ -89,15 +90,14 @@ func (rq *DB) DataStats(ctx context.Context) (definitions int64, instances int64
 // partition — the authoritative source for rebuilding pointer tables. There is
 // deliberately no sqlc query for this (internal/sql is out of scope), so it
 // uses the raw read path.
-func (rq *DB) ListActiveMessageSubscriptions(ctx context.Context) ([]*zenproto.MessageSubscriptionRow, error) {
+func (rq *DB) ListActiveMessageSubscriptions(ctx context.Context) (out []*zenproto.MessageSubscriptionRow, err error) {
 	rows, err := rq.QueryContext(ctx,
 		"SELECT key, name, correlation_key, created_at, state FROM message_subscription WHERE state = ?",
 		int64(bpmnruntime.ActivityStateActive))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list active message subscriptions: %w", err)
 	}
-	defer rows.Close()
-	var out []*zenproto.MessageSubscriptionRow
+	defer zenerr.CloseJoin(rows, &err, "message subscription rows")
 	for rows.Next() {
 		r := &zenproto.MessageSubscriptionRow{}
 		var key, createdAt, state int64

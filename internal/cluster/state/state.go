@@ -3,7 +3,9 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
+	"slices"
 
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
@@ -21,9 +23,10 @@ type Cluster struct {
 	Partitions map[uint32]Partition `json:"partitions"`
 	// Nodes stores information about current cluster members
 	Nodes map[string]Node `json:"nodes"`
-	// Restoring is true while a cluster restore is in progress. Engines are
-	// stopped and client-facing operations are rejected until it clears.
-	Restoring bool `json:"restoring"`
+	// Restore is the current (or most recent) cluster restore operation. While
+	// it gates the cluster (see RestoreOperation.GatesCluster) engines are
+	// stopped and client-facing mutations are rejected.
+	Restore RestoreOperation `json:"restore"`
 }
 
 func (c Cluster) GetNode(nodeId string) (Node, error) {
@@ -98,6 +101,25 @@ func (c Cluster) GetPartitionFollower(partition uint32) (Node, error) {
 	return Node{}, fmt.Errorf("no healthy node hosts partition %d", partition)
 }
 
+// ActivePartitionLeader returns the address and id of the node that currently
+// leads the partition, or empty strings when the recorded leader is shut down,
+// no longer holds the leader role for the partition, or is unknown.
+func (c Cluster) ActivePartitionLeader(partitionID uint32) (addr string, nodeID string) {
+	partitionState, ok := c.Partitions[partitionID]
+	if !ok || partitionState.LeaderId == "" {
+		return "", ""
+	}
+	leader, ok := c.Nodes[partitionState.LeaderId]
+	if !ok || leader.State == NodeStateShutdown {
+		return "", ""
+	}
+	leaderPartition, ok := leader.Partitions[partitionID]
+	if !ok || leaderPartition.Role != RoleLeader {
+		return "", ""
+	}
+	return leader.Addr, leader.Id
+}
+
 // PartitionLeaderInitialized reports whether the recorded leader exists and
 // has completed its local partition initialization.
 func (c Cluster) PartitionLeaderInitialized(partitionID uint32) bool {
@@ -151,6 +173,25 @@ func (c Cluster) GetPartitionIdFromString(str string) uint32 {
 		bitSum = bitSum + uint32(character)
 	}
 	return bitSum%uint32(len(c.Partitions)) + 1
+}
+
+// DefinitionSubscriptionPartition returns the partition that owns the
+// definition-level subscriptions (timer/message start events, instantiating
+// receive tasks) of a process. Deployment registers them there and nowhere
+// else, engine startup recovers them there, and restore reconciliation imports
+// them there, so the three must always agree on this function.
+func (c Cluster) DefinitionSubscriptionPartition(processId string) uint32 {
+	partitionIds := make([]uint32, 0, len(c.Partitions))
+	for partitionId := range c.Partitions {
+		partitionIds = append(partitionIds, partitionId)
+	}
+	slices.Sort(partitionIds)
+	if len(partitionIds) == 0 {
+		return 0
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(processId))
+	return partitionIds[int(hash.Sum32()%uint32(len(partitionIds)))]
 }
 
 // GetPartitionIdForMessageSubscriptionPointer returns the partition that owns the routing pointer for a

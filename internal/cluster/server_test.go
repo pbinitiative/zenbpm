@@ -324,6 +324,10 @@ func (s *StoreSvc) ClusterState() state.Cluster {
 	return state.Cluster{}
 }
 
-func (s *StoreSvc) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
-	return nil
+func (s *StoreSvc) WriteRestoreChange(ctx context.Context, change *proto.RestoreOperationChange) (state.RestoreOperation, error) {
+	return state.RestoreOperation{}, nil
+}
+
+func (s *StoreSvc) NodeID() string {
+	return "test-node"
 }

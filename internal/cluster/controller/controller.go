@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,8 +32,11 @@ import (
 type Controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions              map[uint32]*partition.ZenPartitionNode
-	partitionsMu            sync.RWMutex
+	partitions   map[uint32]*partition.ZenPartitionNode
+	partitionsMu sync.RWMutex
+	// quiesced records, per locally hosted partition, the restore token for
+	// which the engine has been stopped completely (guarded by partitionsMu)
+	quiesced                map[uint32]partition.RestoreToken
 	store                   ControlledStore
 	client                  *client.ClientManager
 	Config                  config.Cluster
@@ -74,6 +75,7 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		Config:                  conf,
 		mux:                     mux,
 		partitions:              make(map[uint32]*partition.ZenPartitionNode),
+		quiesced:                make(map[uint32]partition.RestoreToken),
 		logger:                  hclog.Default().Named("zen-controller"),
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
@@ -229,26 +231,15 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Debug("Skipping member operation checks due to expired context")
 		return
 	}
-	if c.store.ClusterState().Restoring {
-		c.partitionsMu.RLock()
-		local := make(map[uint32]*partition.ZenPartitionNode, len(c.partitions))
-		for id, pn := range c.partitions {
-			local[id] = pn
-		}
-		c.partitionsMu.RUnlock()
-		for id, pn := range local {
-			c.partitionsMu.Lock()
-			engine := pn.Engine
-			pn.Engine = nil
-			c.partitionsMu.Unlock()
-			if engine != nil {
-				engine.Stop()
-				c.logger.Info("Stopped engine while cluster restore is in progress", "partitionId", id)
-			}
-		}
-		return
-	}
 	cs := c.store.ClusterState()
+	if cs.RestoreInProgress() {
+		// Maintenance stops engines and fences writes, but partition stores keep
+		// being opened and rejoined below: a node restarted mid-restore must
+		// come back with its partitions fenced, not without them.
+		c.enterRestoreMaintenance(cs.Restore)
+	} else {
+		c.leaveRestoreMaintenance()
+	}
 	currentNode, err := cs.GetNode(c.store.ID())
 	if err != nil {
 		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
@@ -294,6 +285,97 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 	//    - see if it has lost some assigned partition that it needs to leave
 	//  - check if it is leader of any partition that does not have engine running yet and start it
 	//  - check if it lost its leadership of any partition and needs to stop the engine (this should be preceded by previous error logs from the engine not being able to store changes)
+}
+
+// enterRestoreMaintenance puts every locally hosted partition into maintenance
+// mode for the given restore operation: the partition database only accepts
+// writes carrying the operation's token (entering the fence waits for admitted
+// writes to finish) and the execution engine is stopped. The partition is
+// recorded as quiesced only after Stop returned, so a maintenance barrier
+// never acknowledges a partition whose engine is still shutting down.
+// Re-entering with a newer operation replaces the fence token, which fences
+// out the previous coordinator. Lifecycle handling of the same partition is
+// serialized through its operation mutex.
+func (c *Controller) enterRestoreMaintenance(op state.RestoreOperation) {
+	token := partition.RestoreToken{OperationID: op.ID, Epoch: op.Epoch}
+	for id, pn := range c.GetPartitions() {
+		c.quiescePartition(id, pn, token)
+	}
+}
+
+func (c *Controller) quiescePartition(id uint32, pn *partition.ZenPartitionNode, token partition.RestoreToken) {
+	partitionOp := c.partitionOperationMutex(id)
+	partitionOp.Lock()
+	defer partitionOp.Unlock()
+	c.quiescePartitionLocked(id, pn, token)
+}
+
+// quiescePartitionLocked is quiescePartition for callers that already hold the
+// partition's operation mutex (the partition state handlers).
+func (c *Controller) quiescePartitionLocked(id uint32, pn *partition.ZenPartitionNode, token partition.RestoreToken) {
+	c.partitionsMu.RLock()
+	alreadyQuiesced := c.quiesced[id] == token
+	c.partitionsMu.RUnlock()
+	if alreadyQuiesced {
+		return
+	}
+	pn.DB.EnterRestoreFence(token)
+	c.partitionsMu.Lock()
+	engine := pn.Engine
+	pn.Engine = nil
+	c.partitionsMu.Unlock()
+	if engine != nil {
+		engine.Stop()
+		c.logger.Info("Stopped engine while cluster restore is in progress", "partitionId", id, "restore", token.String())
+	}
+	c.partitionsMu.Lock()
+	c.quiesced[id] = token
+	c.partitionsMu.Unlock()
+}
+
+// leaveRestoreMaintenance lifts the write fence of every locally hosted
+// partition; engines are restarted by the regular partition state handling.
+func (c *Controller) leaveRestoreMaintenance() {
+	for id, pn := range c.GetPartitions() {
+		pn.DB.LeaveRestoreFence()
+		c.partitionsMu.Lock()
+		delete(c.quiesced, id)
+		c.partitionsMu.Unlock()
+	}
+}
+
+// restoreGate returns the restore token when the cluster is currently gated.
+func (c *Controller) restoreGate() (partition.RestoreToken, bool) {
+	cs := c.store.ClusterState()
+	if !cs.RestoreInProgress() {
+		return partition.RestoreToken{}, false
+	}
+	return partition.RestoreToken{OperationID: cs.Restore.ID, Epoch: cs.Restore.Epoch}, true
+}
+
+// PartitionMaintenanceStatus reports the maintenance state of a locally hosted
+// partition for the given restore token.
+func (c *Controller) PartitionMaintenanceStatus(ctx context.Context, partitionID uint32, token partition.RestoreToken) partition.MaintenanceStatus {
+	c.partitionsMu.RLock()
+	pn, ok := c.partitions[partitionID]
+	var engineRunning, quiesced bool
+	if ok {
+		engineRunning = pn.Engine != nil
+		quiesced = c.quiesced[partitionID] == token
+	}
+	c.partitionsMu.RUnlock()
+	if !ok {
+		return partition.MaintenanceStatus{}
+	}
+	fence, fenced := pn.DB.RestoreFence()
+	return partition.MaintenanceStatus{
+		Hosted:        true,
+		Leader:        pn.IsLeader(ctx),
+		EngineRunning: engineRunning,
+		Quiesced:      quiesced,
+		Fenced:        fenced && fence == token,
+		Initialized:   localPartitionInitialized(c.store.ClusterState(), c.store.ID(), partitionID),
+	}
 }
 
 func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionID uint32) {
@@ -364,6 +446,10 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	c.partitionsMu.Lock()
 	c.partitions[partitionID] = partitionNode
 	c.partitionsMu.Unlock()
+	if token, gated := c.restoreGate(); gated {
+		// opened while a restore holds the cluster: fenced from the start
+		c.quiescePartitionLocked(partitionID, partitionNode, token)
+	}
 
 	c.handlePartitionStateInitializing(partitionID)
 }
@@ -395,6 +481,21 @@ func (c *Controller) handlePartitionStateInitializing(partitionID uint32) {
 	}
 
 	isLeader := partitionNode.IsLeader(c.lifecycleCtx)
+	if token, gated := c.restoreGate(); gated {
+		// While a restore holds the cluster the partition store is open and
+		// fenced, but no engine may run. The state is still reported so the
+		// restore coordinator can find the partition leader.
+		c.quiescePartitionLocked(partitionID, partitionNode, token)
+		role := proto.Role_ROLE_TYPE_FOLLOWER
+		if isLeader {
+			role = proto.Role_ROLE_TYPE_LEADER
+		}
+		if err := c.reportPartitionState(partitionID, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED, role); err != nil {
+			c.logger.Warn(fmt.Sprintf("Failed to update state of the fenced partition to INITIALIZED %d: %s", partitionID, err))
+			c.schedulePartitionRetry(partitionID, "partition-initialized-state-retry")
+		}
+		return
+	}
 	if partitionNode.FeelRuntime == nil && isLeader {
 		c.partitionsMu.Lock()
 		partitionNode.FeelRuntime = feel.NewFeelinRuntime(c.Config.Script.Feel.MaxVmPoolSize, c.Config.Script.Feel.MinVmPoolSize)
@@ -471,6 +572,10 @@ func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partit
 	if !ok {
 		// we restarted the node and it needs to re-initialize its partition state
 		c.handlePartitionStateJoining(ctx, partitionID)
+		return
+	}
+	if _, gated := c.restoreGate(); gated {
+		// engines stay stopped until the restore lifts the gate
 		return
 	}
 	isLeader := partitionNode.IsLeader(ctx)
@@ -649,24 +754,9 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		bpmn.EngineWithMaxProcessInstanceNestingDepth(c.Config.Engine.MaxProcessInstanceNestingDepth),
 		bpmn.EngineWithMaxProcessInstanceFlowNodeCount(c.Config.Engine.MaxProcessInstanceFlowNodeCount),
 		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
-			return db.Partition == definitionSubscriptionPartition(c.store.ClusterState(), definition.BpmnProcessId)
+			return db.Partition == c.store.ClusterState().DefinitionSubscriptionPartition(definition.BpmnProcessId)
 		}),
 	)), nil
-}
-
-func definitionSubscriptionPartition(clusterState state.Cluster, processId string) uint32 {
-	partitionIds := make([]uint32, 0, len(clusterState.Partitions))
-	for partitionId := range clusterState.Partitions {
-		partitionIds = append(partitionIds, partitionId)
-	}
-	slices.Sort(partitionIds)
-	if len(partitionIds) == 0 {
-		return 0
-	}
-
-	hash := fnv.New32a()
-	_, _ = hash.Write([]byte(processId))
-	return partitionIds[int(hash.Sum32()%uint32(len(partitionIds)))]
 }
 
 func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {

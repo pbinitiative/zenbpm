@@ -71,8 +71,63 @@ message NodePartitionChange {
   Role role = 4;
 }
 
-// ClusterMaintenanceChange flips cluster-wide maintenance state.
-// restoring=true gates all engine traffic while a restore is in progress.
+// ClusterMaintenanceChange carries a cluster-wide maintenance operation.
+// Field 1 is the plain "restoring" flag written by earlier binaries. It is
+// only read when replaying such logs: a true flag is migrated into a gated
+// legacy restore operation (see state.Cluster.ApplyLegacyRestoringFlag), a
+// false flag completes it. New binaries never write it.
 message ClusterMaintenanceChange {
-  bool restoring = 1;
+  bool restoring = 1 [deprecated = true];
+  RestoreOperationChange restore = 2;
+}
+
+// RestorePhase mirrors state.RestorePhase; it tracks how far a restore got.
+enum RestorePhase {
+  RESTORE_PHASE_UNKNOWN = 0;
+  RESTORE_PHASE_PENDING = 1;
+  RESTORE_PHASE_QUIESCING = 2;
+  RESTORE_PHASE_VALIDATING = 3;
+  RESTORE_PHASE_LOADING = 4;
+  RESTORE_PHASE_RECONCILING = 5;
+  RESTORE_PHASE_RESUMING = 6;
+  RESTORE_PHASE_DONE = 7;
+}
+
+// RestoreOperationChange is applied atomically by the FSM. Every action is
+// fenced by (operation_id, epoch): only the coordinator that acquired the
+// operation, and only while its epoch is current, can advance it.
+message RestoreOperationChange {
+  enum Action {
+    RESTORE_ACTION_UNKNOWN = 0;
+    // ACQUIRE starts a new operation. It is rejected while another operation
+    // is active and its lease has not expired.
+    RESTORE_ACTION_ACQUIRE = 1;
+    // UPDATE advances the phase / progress of the owned operation and renews
+    // its lease.
+    RESTORE_ACTION_UPDATE = 2;
+    // COMPLETE marks the owned operation as successfully finished.
+    RESTORE_ACTION_COMPLETE = 3;
+    // FAIL marks the owned operation as failed with an error.
+    RESTORE_ACTION_FAIL = 4;
+    // ABORT terminates the operation identified by operation_id regardless of
+    // its owner (operator decision); it lifts the cluster gate.
+    RESTORE_ACTION_ABORT = 5;
+  }
+  Action action = 1;
+  string operation_id = 2;
+  // epoch of the owned operation (UPDATE/COMPLETE/FAIL). Ignored by ACQUIRE
+  // (the FSM assigns the next epoch) and by ABORT.
+  uint64 epoch = 3;
+  string coordinator_id = 4;
+  RestorePhase phase = 5;
+  uint32 total_partitions = 6;
+  uint32 completed_partitions = 7;
+  string error = 8;
+  bool force = 9;
+  // timestamp_millis is the writer's clock; the FSM never reads the wall clock
+  // so that every replica applies the command identically.
+  int64 timestamp_millis = 10;
+  // lease_millis is how long the coordinator's ownership stays valid without
+  // a further UPDATE (ACQUIRE and UPDATE).
+  int64 lease_millis = 11;
 }

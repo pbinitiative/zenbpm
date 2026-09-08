@@ -519,11 +519,8 @@ func (c *countingControllerTestStore) IsLeader() bool {
 // validated by TestEngineStartsOnRegainedPartitionLeadership.
 func TestRestoringFlagStopsEngines(t *testing.T) {
 	mux, ln, err := network.NewNodeMux("")
-	assert.NoError(t, err)
-	go func() {
-		err := mux.Serve()
-		assert.NoError(t, err)
-	}()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
 
 	_, port, err := net.SplitHostPort(ln.Addr().String())
 	assert.NoError(t, err)
@@ -631,11 +628,8 @@ func TestRestoringFlagStopsEngines(t *testing.T) {
 // engine starts through the regular path.
 func TestGatedControllerOpensPartitionsWithoutEngines(t *testing.T) {
 	mux, ln, err := network.NewNodeMux("")
-	assert.NoError(t, err)
-	go func() {
-		err := mux.Serve()
-		assert.NoError(t, err)
-	}()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
 
 	_, port, err := net.SplitHostPort(ln.Addr().String())
 	assert.NoError(t, err)

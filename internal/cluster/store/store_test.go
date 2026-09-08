@@ -25,8 +25,8 @@ func TestNonOpenStore(t *testing.T) {
 		NodeId: random.String(),
 	}
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 
 	if err := s.Stepdown(false); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
@@ -69,8 +69,8 @@ func TestOpenStoreSingleNode(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -185,8 +185,8 @@ func TestShutdownNodeIsIdempotent(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -253,8 +253,8 @@ func TestShutdownNodeClearsPartitionRoles(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -340,8 +340,8 @@ func TestResumeNodeRestoresPartitionFollowerRole(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -422,8 +422,8 @@ func TestSingleNodeSnapshot(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -548,8 +548,8 @@ func TestWriteRestoreChange(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}

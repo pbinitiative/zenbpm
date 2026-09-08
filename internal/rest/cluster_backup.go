@@ -47,8 +47,9 @@ const (
 )
 
 // handleClusterRestore runs a restore synchronously. The request context
-// cancels the restore when the client disconnects; the operation record in
-// the cluster state stays durable either way.
+// cancels the restore when the client disconnects. Once the restore has
+// acquired the cluster, the operation record in the cluster state stays
+// durable and is marked FAILED; a disconnect during ingest leaves no record.
 func (s *Server) handleClusterRestore(w http.ResponseWriter, r *http.Request) {
 	force := r.URL.Query().Get("force") == "true"
 	// A stalled upload must not hold the request open: the body read deadline

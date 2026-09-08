@@ -618,7 +618,9 @@ func transientDeployError(err error) bool {
 // no partition answered — e.g. the partition has no elected leader yet.
 var errTransientDeploy = errors.New("transient deploy condition")
 
-const (
+// deployRetryFor and deployRetryInterval bound the transient-failure retry
+// loop. They are variables so tests can shorten the window.
+var (
 	deployRetryFor      = 15 * time.Second
 	deployRetryInterval = 250 * time.Millisecond
 )

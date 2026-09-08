@@ -116,7 +116,7 @@ curl -s http://<any-node>:<port>/system/status | jq '.nodes | to_entries[] | sel
 The `addr` field returned above is the node's internal cluster (raft) address, not its HTTP API endpoint. You must map the leader node to its HTTP base URL from your deployment configuration (e.g., the pod/service address) before issuing the restore request.
 :::
 
-The request is synchronous: it returns when the restore reached a terminal state and the partition engines are serving again. Closing the connection cancels the restore; the operation record (see below) stays durable and is marked `FAILED`.
+The request is synchronous: it returns when the restore reached a terminal state. After a successful restore the partition engines are serving again; a restore that failed after acquiring the cluster leaves the cluster gated until it is retried or aborted (see below). Closing the connection cancels the restore. Once the restore has acquired the cluster, the operation record (see below) stays durable and is marked `FAILED`; a cancellation while the bundle is still being received and validated leaves no record, because nothing has been recorded or modified at that point.
 
 #### Restore on an empty cluster
 
@@ -191,7 +191,7 @@ The same record is embedded as `restore` in `/system/status`.
 
 ### What happens during a restore
 
-1. **Validation** (`cluster.restore.ingestTimeout`) — bundle entries are well-formed regular files within the configured size limits, manifest present exactly once and free of duplicate members, partition set matches the cluster, sha256 checksums pass, backup schema version is not newer than the running binary, and every partition file is a valid SQLite image. All checks run before anything is recorded or modified.
+1. **Validation** (`cluster.restore.ingestTimeout`) — bundle entries are well-formed regular files within the configured size limits, manifest present exactly once and free of duplicate members, partition set matches the cluster, sha256 checksums pass, backup schema version is not newer than the running binary, and every partition file is a valid SQLite image. These bundle checks run before the operation is acquired, so a rejected bundle leaves nothing recorded or modified; the non-empty-cluster check runs later, under the partition fence (step 4).
 2. **Acquisition** — the restore operation is acquired atomically through raft. From here on the cluster is gated:
    - Mutating API calls (deploy, start instance, publish message, etc.) are rejected with an error naming the operation.
    - Read-only endpoints remain available but may see mixed state during the operation.

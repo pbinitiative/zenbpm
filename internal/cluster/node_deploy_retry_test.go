@@ -76,12 +76,21 @@ func TestRetryDeployHonoursContextCancellation(t *testing.T) {
 }
 
 func TestRetryDeployReportsMissingLeaderAsClusterError(t *testing.T) {
-	// keep the test fast: a context that expires before the retry window
-	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
-	defer cancel()
+	// shorten the retry window so the test reaches the exhausted-window
+	// branch instead of a context deadline
+	window, interval := deployRetryFor, deployRetryInterval
+	deployRetryFor, deployRetryInterval = 200*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() { deployRetryFor, deployRetryInterval = window, interval })
+
 	node := &ZenNode{}
-	err := node.retryDeploy(ctx, func() error { return errTransientDeploy })
+	attempts := 0
+	err := node.retryDeploy(context.Background(), func() error {
+		attempts++
+		return errTransientDeploy
+	})
 	require.Error(t, err)
+	assert.ErrorContains(t, err, "no partition leader available")
+	assert.Greater(t, attempts, 1, "a missing leader is retried until the window expires")
 	var zerr *zenerr.ZenError
 	require.ErrorAs(t, err, &zerr)
 	assert.Equal(t, zenerr.ClusterErrorCode, zerr.Code)

@@ -104,13 +104,13 @@ GET {{host}}/system/v1/cluster/backup
 POST {{host}}/system/v1/cluster/restore
 Content-Type: application/x-tar
 
-< ~/Downloads/zenbpm-backup-1788898698.tar
+< ./zenbpm-backup-1788898698.tar
 
 ### Restore (force, live cluster)
 POST {{host}}/system/v1/cluster/restore?force=true
 Content-Type: application/x-tar
 
-< ~/Downloads/zenbpm-backup-1788898698.tar
+< ./zenbpm-backup-1788898698.tar
 
 ### GetRestoreOperations (current / most recent)
 GET {{host}}/system/v1/cluster/restore/operations

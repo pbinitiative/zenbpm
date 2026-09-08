@@ -146,12 +146,14 @@ func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interf
 	if change == nil {
 		// a "restoring" flag written by a binary that predates restore
 		// operations: migrate it instead of dropping the safety gate
+		//lint:ignore SA1019 the deprecated flag is read on purpose: it only exists to replay raft logs written by earlier binaries
+		legacyRestoring := cmd.GetRestoring()
 		f.store.stateMu.Lock()
 		defer f.store.stateMu.Unlock()
 		newState := *f.store.state.DeepCopy()
-		newState.ApplyLegacyRestoringFlag(cmd.GetRestoring(), 0)
+		newState.ApplyLegacyRestoringFlag(legacyRestoring, 0)
 		f.store.state = newState
-		f.store.logger.Warn("migrated legacy cluster restoring flag", "restoring", cmd.GetRestoring(), "restore", newState.Restore.ID)
+		f.store.logger.Warn("migrated legacy cluster restoring flag", "restoring", legacyRestoring, "restore", newState.Restore.ID)
 		return RestoreApplyResult{Operation: newState.Restore}
 	}
 	f.store.stateMu.Lock()

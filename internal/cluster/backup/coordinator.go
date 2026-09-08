@@ -153,6 +153,12 @@ func RestoreTimeoutsFromConfig(c config.Restore) RestoreTimeouts {
 	}
 }
 
+// WithDefaults returns the timeouts with every zero field replaced by its
+// default, so callers outside the coordinator apply the same bounds it does.
+func (t RestoreTimeouts) WithDefaults() RestoreTimeouts {
+	return t.withDefaults()
+}
+
 func (t RestoreTimeouts) withDefaults() RestoreTimeouts {
 	def := DefaultRestoreTimeouts()
 	pick := func(v, d time.Duration) time.Duration {

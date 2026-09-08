@@ -71,7 +71,7 @@ func (node *ZenNode) applyRestoreChange(ctx context.Context, change *protoc.Rest
 // RestoreIngestTimeout is how long receiving and validating an uploaded
 // bundle may take; the REST layer applies it as the request read deadline.
 func (node *ZenNode) RestoreIngestTimeout() time.Duration {
-	return backup.RestoreTimeoutsFromConfig(node.controller.Config.Restore).Ingest
+	return backup.RestoreTimeoutsFromConfig(node.controller.Config.Restore).WithDefaults().Ingest
 }
 
 // RestoreOperation returns the current (or most recent) restore operation

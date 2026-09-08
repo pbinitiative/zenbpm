@@ -747,6 +747,11 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		return nil, err
 	}
 
+	// The recovery filter runs once per eligible definition during engine
+	// start. ClusterState deep-copies the replicated state on every call, so
+	// take one snapshot at first use: cheaper, and every definition in the
+	// pass is routed against the same partition set.
+	clusterState := sync.OnceValue(c.store.ClusterState)
 	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.Partition))
 	return new(bpmn.NewEngine(
 		bpmn.EngineWithStorageAndFeel(db, feelRuntime),
@@ -754,7 +759,7 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		bpmn.EngineWithMaxProcessInstanceNestingDepth(c.Config.Engine.MaxProcessInstanceNestingDepth),
 		bpmn.EngineWithMaxProcessInstanceFlowNodeCount(c.Config.Engine.MaxProcessInstanceFlowNodeCount),
 		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
-			return db.Partition == c.store.ClusterState().DefinitionSubscriptionPartition(definition.BpmnProcessId)
+			return db.Partition == clusterState().DefinitionSubscriptionPartition(definition.BpmnProcessId)
 		}),
 	)), nil
 }

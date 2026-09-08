@@ -191,7 +191,7 @@ func (c Cluster) DefinitionSubscriptionPartition(processId string) uint32 {
 	}
 	hash := fnv.New32a()
 	_, _ = hash.Write([]byte(processId))
-	return partitionIds[int(hash.Sum32()%uint32(len(partitionIds)))]
+	return partitionIds[int(hash.Sum32()%uint32(len(partitionIds)))] // #nosec G115 -- partition counts are far below MaxUint32
 }
 
 // GetPartitionIdForMessageSubscriptionPointer returns the partition that owns the routing pointer for a

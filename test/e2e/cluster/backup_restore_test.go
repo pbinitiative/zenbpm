@@ -22,6 +22,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// skipSecondPartitionNeverForms explains why tests needing two partitions are
+// skipped: the controller assigns a new partition to a single node, while that
+// node's partition raft group inherits the cluster-wide bootstrap-expect and
+// waits for members that are never assigned. Partition membership is tracked
+// in docs/cluster-implementation-plan.md.
+const skipSecondPartitionNeverForms = "a second partition never forms: its raft group inherits the cluster bootstrap-expect while only one node is assigned to it (partition membership is not implemented, see docs/cluster-implementation-plan.md)"
+
 // defaultScriptConfig returns FEEL/JS VM pool sizes matching the cleanenv
 // env-defaults (Max 10 / Min 2). The harness builds config.Config as a struct
 // literal, which bypasses those defaults, leaving the pools at 0/0 — in which
@@ -259,13 +266,18 @@ func TestClusterRestoreOperationEndpoints(t *testing.T) {
 // snapshots deliberately disagree: partition 1 was captured after a deploy,
 // partition 2 before it. The restore must import the missing definition into
 // partition 2 while the cluster is fenced, and the process must run on every
-// partition once the cluster is un-gated. Skipped while multi-partition
-// formation is not available (Phase 2).
+// partition once the cluster is un-gated.
+//
+// It needs two partitions and is skipped until a second partition can form:
+// the controller assigns a new partition to a single node, while that node's
+// partition raft group inherits the cluster-wide bootstrap-expect and so waits
+// for members that are never assigned (see docs/cluster-implementation-plan.md,
+// partition membership).
 func TestRestoreReconcilesDefinitionSnapshotSkew(t *testing.T) {
 	tc := NewTestCluster(t, 3, WithPartitions(2))
 	defer tc.Teardown(t)
 	if !partitionsFormed(t, tc, 2, 30*time.Second) {
-		t.Skip("blocked on Phase 2 multi-partition formation: a second partition raft group never bootstraps (its rqlite node inherits the cluster bootstrap-expect while only one node is assigned to the partition) — see clustering backlog")
+		t.Skip(skipSecondPartitionNeverForms)
 	}
 	WaitForHealthy(t, tc, 150*time.Second)
 	leader := tc.Leader()
@@ -416,10 +428,10 @@ func TestClusterRestoreRejectsCorruptBundle(t *testing.T) {
 // correlate through the rebuilt pointer and complete the instance.
 //
 // Multi-partition is preferred (pointer and subscription may live on different
-// partitions). Phase-2 multi-partition formation is not fully landed, so if a
-// 2-partition cluster cannot form the multi-partition variant is skipped (per
-// the clustering backlog) and the single-partition variant below still asserts
-// the full pointer-rebuild flow.
+// partitions). A second partition cannot form yet (see
+// skipSecondPartitionNeverForms), so when a 2-partition cluster does not form
+// within a bounded window the multi-partition variant is skipped and the
+// single-partition variant below still asserts the full pointer-rebuild flow.
 func TestBackupRestoreMessagePointerReconciliation(t *testing.T) {
 	t.Run("single_partition", func(t *testing.T) {
 		runPointerReconciliation(t, 1, 1)
@@ -428,11 +440,10 @@ func TestBackupRestoreMessagePointerReconciliation(t *testing.T) {
 	t.Run("multi_partition", func(t *testing.T) {
 		tc := NewTestCluster(t, 3, WithPartitions(2))
 		defer tc.Teardown(t)
-		// Give multi-partition formation a bounded window; if it never forms,
-		// skip (Phase-2 gap) rather than fail. We probe with a recover guard so
-		// the require.Eventually inside WaitForPartitions does not fail the test.
+		// partitionsFormed probes with a recover guard so the require.Eventually
+		// inside WaitForPartitions does not fail the test when formation stalls
 		if !partitionsFormed(t, tc, 2, 30*time.Second) {
-			t.Skip("blocked on Phase 2 multi-partition formation: a second partition raft group never bootstraps (its rqlite node inherits the cluster bootstrap-expect while only one node is assigned to the partition) — see clustering backlog")
+			t.Skip(skipSecondPartitionNeverForms)
 		}
 		runPointerReconciliationOnCluster(t, tc)
 	})

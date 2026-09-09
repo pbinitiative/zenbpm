@@ -229,3 +229,18 @@ func unsetEngineMaxProcessInstanceFlowNodeCountEnv(t *testing.T) {
 		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT: %v", err)
 	}
 }
+
+func TestClusterDesiredPartitionsValidation(t *testing.T) {
+	for _, desired := range []uint32{0, 1} {
+		if err := (Cluster{DesiredPartitions: desired}).ValidateDesiredPartitions(); err != nil {
+			t.Errorf("desiredPartitions=%d must be accepted, got %v", desired, err)
+		}
+	}
+	err := Cluster{DesiredPartitions: 2}.ValidateDesiredPartitions()
+	if err == nil {
+		t.Fatal("expected validation error: a second partition can never finish bootstrapping")
+	}
+	if !strings.Contains(err.Error(), "desiredPartitions=2") {
+		t.Errorf("error should name the offending value, got %q", err.Error())
+	}
+}

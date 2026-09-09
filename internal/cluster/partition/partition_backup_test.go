@@ -93,28 +93,47 @@ func TestGetDefinitionResource(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	data, resourceName, err := db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
+	resource, err := db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
 	assert.NoError(t, err)
-	assert.Equal(t, []byte("<bpmn-xml/>"), data)
-	assert.Equal(t, "my-process.bpmn", resourceName)
+	assert.Equal(t, []byte("<bpmn-xml/>"), resource.Data)
+	assert.Equal(t, "my-process.bpmn", resource.ResourceName)
+	assert.Equal(t, int32(1), resource.Version)
+	assert.Empty(t, resource.Decisions)
 
-	// seed dmn resource definition
+	// seed dmn resource definition with two decisions
 	err = db.Queries.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
-		Key: 20, Version: 1, DmnResourceDefinitionID: "my-dmn", DmnData: "<dmn-xml/>", DmnChecksum: []byte{2}, DmnDefinitionName: "My DMN",
+		Key: 20, Version: 3, DmnResourceDefinitionID: "my-dmn", DmnData: "<dmn-xml/>", DmnChecksum: []byte{2}, DmnDefinitionName: "My DMN",
 	})
 	assert.NoError(t, err)
+	for _, d := range []struct {
+		key     int64
+		id      string
+		version int64
+	}{{21, "decision-b", 3}, {22, "decision-a", 2}} {
+		err = db.Queries.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+			Key: d.key, Version: d.version, DecisionID: d.id, VersionTag: "", DmnResourceDefinitionID: "my-dmn", DmnResourceDefinitionKey: 20,
+		})
+		assert.NoError(t, err)
+	}
 
-	data, resourceName, err = db.GetDefinitionResource(ctx, 20, proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE)
+	resource, err = db.GetDefinitionResource(ctx, 20, proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE)
 	assert.NoError(t, err)
-	assert.Equal(t, []byte("<dmn-xml/>"), data)
-	assert.Equal(t, "", resourceName)
+	assert.Equal(t, []byte("<dmn-xml/>"), resource.Data)
+	assert.Equal(t, "", resource.ResourceName)
+	assert.Equal(t, int32(3), resource.Version)
+	if assert.Len(t, resource.Decisions, 2) {
+		assert.Equal(t, "decision-a", resource.Decisions[0].GetDecisionId())
+		assert.Equal(t, int32(2), resource.Decisions[0].GetVersion())
+		assert.Equal(t, "decision-b", resource.Decisions[1].GetDecisionId())
+		assert.Equal(t, int32(3), resource.Decisions[1].GetVersion())
+	}
 
 	// not found returns error
-	_, _, err = db.GetDefinitionResource(ctx, 9999, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
+	_, err = db.GetDefinitionResource(ctx, 9999, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
 	assert.Error(t, err)
 
 	// unknown type returns error
-	_, _, err = db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_UNKNOWN)
+	_, err = db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_UNKNOWN)
 	assert.Error(t, err)
 }
 

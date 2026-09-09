@@ -10,6 +10,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,17 +83,17 @@ func TestDefinitionImporterImportsWithoutStartingExecution(t *testing.T) {
 	fencedCtx := WithRestoreToken(ctx, token)
 
 	importer := partition.NewDefinitionImporter()
-	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4711, startEnd, false))
-	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4712, timerStart, true))
-	require.NoError(t, importer.ImportDmnResourceDefinition(fencedCtx, 4713, dmn))
-	// importing is idempotent: the same content under the same key is a no-op
-	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4711, startEnd, false))
+	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4711, 1, startEnd, false))
+	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4712, 1, timerStart, true))
+	require.NoError(t, importer.ImportDmnResourceDefinition(fencedCtx, 4713, 1, dmn, map[string]int32{"example_canAutoLiquidateRule": 1}))
+	// importing is idempotent: the same key is a no-op
+	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4711, 1, startEnd, false))
 	importer.Close()
 
 	// the fence held: an import without the owner's token is refused
 	simpleTask := readFixture(t, "..", "..", "..", "pkg", "bpmn", "test-cases", "simple_task.bpmn")
 	unfenced := partition.NewDefinitionImporter()
-	err := unfenced.ImportProcessDefinition(ctx, 4714, simpleTask, false)
+	err := unfenced.ImportProcessDefinition(ctx, 4714, 1, simpleTask, false)
 	unfenced.Close()
 	require.ErrorIs(t, err, ErrPartitionFenced)
 
@@ -114,6 +115,7 @@ func TestDefinitionImporterImportsWithoutStartingExecution(t *testing.T) {
 	dmnDef, err := db.FindDmnResourceDefinitionByKey(ctx, 4713)
 	require.NoError(t, err)
 	assert.Equal(t, int64(4713), dmnDef.Key)
+	assert.Equal(t, int64(1), dmnDef.Version)
 
 	// once the partition is un-gated a regular engine executes the imported process
 	db.LeaveRestoreFence()
@@ -208,10 +210,51 @@ func TestDefinitionImporterRegistersMessageStartWithoutPointerRPC(t *testing.T) 
 	db.EnterRestoreFence(token)
 	importer := partition.NewDefinitionImporter()
 	defer importer.Close()
-	require.NoError(t, importer.ImportProcessDefinition(WithRestoreToken(ctx, token), 4721, messageStart, true))
+	require.NoError(t, importer.ImportProcessDefinition(WithRestoreToken(ctx, token), 4721, 1, messageStart, true))
 
 	assert.Equal(t, int64(1), queryCount(t, db, "SELECT COUNT(*) FROM message_subscription WHERE process_definition_key = 4721"),
 		"the definition-level message subscription is stored on the owning partition")
 	assert.Equal(t, int64(0), queryCount(t, db, "SELECT COUNT(*) FROM message_subscription_pointer"),
 		"no routing pointer is written while fenced; the restore coordinator rebuilds them")
+}
+
+// TestDefinitionImporterKeepsHistoricalVersionsHistorical covers the
+// reconciliation of a partition whose version history has a hole: version 2
+// of a process is present, version 1 is imported afterwards. The import must
+// store it as version 1, leave version 2 the latest one with its
+// subscriptions intact, and refuse a copy that would collide with a version
+// the partition already holds under another key.
+func TestDefinitionImporterKeepsHistoricalVersionsHistorical(t *testing.T) {
+	partition, _, _, _, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, partition.Stop()) }()
+	ctx := t.Context()
+	db := partition.DB
+
+	timerStart := readFixture(t, "..", "..", "..", "test", "e2e", "testdata", "timer_start_event", "timer_start_event.bpmn")
+	token := RestoreToken{OperationID: "op-1", Epoch: 1}
+	db.EnterRestoreFence(token)
+	fencedCtx := WithRestoreToken(ctx, token)
+	importer := partition.NewDefinitionImporter()
+	defer importer.Close()
+
+	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4802, 2, timerStart, true))
+	require.NoError(t, importer.ImportProcessDefinition(fencedCtx, 4801, 1, timerStart, true))
+
+	v1, err := db.FindProcessDefinitionByKey(ctx, 4801)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), v1.Version, "the version is copied from the source partition")
+	latest, err := db.FindLatestProcessDefinitionById(ctx, v1.BpmnProcessId)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4802), latest.Key, "a historical version never becomes the latest one")
+
+	timers, err := db.FindProcessDefinitionTimers(ctx, 4802, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	assert.Len(t, timers, 1, "the subscriptions of the latest version survive the import")
+	timers, err = db.FindProcessDefinitionTimers(ctx, 4801, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	assert.Empty(t, timers, "a historical version registers no subscriptions")
+
+	err = importer.ImportProcessDefinition(fencedCtx, 4803, 2, timerStart, true)
+	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "version 2 is already held by another definition")
+	assert.Equal(t, int64(2), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
 }

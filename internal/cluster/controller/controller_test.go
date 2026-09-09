@@ -911,3 +911,65 @@ func repairBrokenMigrationFixture(t *testing.T, dir string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("SELECT 1;"), 0o600))
 }
+
+// TestConcurrentNotificationsNeverLiftAnActiveRestoreFence reproduces two
+// cluster state change notifications running at the same time, the older one
+// having read a state without a restore and the newer one a state that gates
+// the cluster. Whatever the interleaving, the partition must end up fenced:
+// maintenance transitions are serialized and re-read the state, so the stale
+// notification cannot undo the fence the newer one installed.
+func TestConcurrentNotificationsNeverLiftAnActiveRestoreFence(t *testing.T) {
+	for round := range 20 {
+		gated := state.Cluster{
+			Config:     state.ClusterConfig{DesiredPartitions: 1},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
+			Restore:    state.RestoreOperation{ID: "op-9", Epoch: 9, Status: state.RestoreStatusActive, Phase: state.RestorePhaseLoading},
+		}
+		ungated := *gated.DeepCopy()
+		ungated.Restore = state.RestoreOperation{}
+		tStore := &sequencedControllerTestStore{
+			ControllerTestStore: &ControllerTestStore{id: "test-node-1", addr: "127.0.0.1:0", clusterState: gated},
+			first:               ungated,
+		}
+		ctrl, err := NewController(nil, config.Cluster{NodeId: tStore.id})
+		require.NoError(t, err)
+		ctrl.store = tStore
+		db, err := partition.NewDB(nil, 1, hclog.NewNullLogger(), config.Persistence{}, nil, tStore.ClusterState)
+		require.NoError(t, err)
+		t.Cleanup(db.Close)
+		ctrl.partitions[1] = &partition.ZenPartitionNode{PartitionId: 1, DB: db}
+
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() {
+				ctrl.syncRestoreMaintenance()
+			})
+		}
+		wg.Wait()
+
+		fence, fenced := db.RestoreFence()
+		require.True(t, fenced, "round %d: the stale notification lifted the fence of an active restore", round)
+		assert.Equal(t, partition.RestoreToken{OperationID: "op-9", Epoch: 9}, fence)
+		ctrl.partitionsMu.RLock()
+		quiesced := ctrl.quiesced[1]
+		ctrl.partitionsMu.RUnlock()
+		assert.Equal(t, fence, quiesced, "the partition is recorded as quiesced for the active restore")
+	}
+}
+
+// sequencedControllerTestStore hands out an older cluster state to the first
+// ClusterState call and the current one afterwards, which is what two
+// notifications dispatched in quick succession observe.
+type sequencedControllerTestStore struct {
+	*ControllerTestStore
+	first state.Cluster
+	calls atomic.Int32
+}
+
+func (s *sequencedControllerTestStore) ClusterState() state.Cluster {
+	if s.calls.Add(1) == 1 {
+		return *s.first.DeepCopy()
+	}
+	return s.ControllerTestStore.ClusterState()
+}

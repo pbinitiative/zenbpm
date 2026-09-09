@@ -222,6 +222,8 @@ func TestRunClusterRestoreReconcilesDefinitionSkew(t *testing.T) {
 		{Key: new(int64(200)), Type: proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE.Enum()},
 	}
 	fc.partitions[1].resources = map[int64][]byte{100: bpmn, 200: dmn}
+	fc.partitions[1].versions = map[int64]int32{100: 3, 200: 2}
+	fc.partitions[1].decisions = map[int64][]*proto.DecisionDefinitionRef{200: {{DecisionId: new("d1"), Version: new(int32(2))}}}
 
 	report, err := RunClusterRestore(context.Background(), fc.deps(), bytes.NewReader(fc.bundle(t)), true)
 	require.NoError(t, err)
@@ -237,16 +239,50 @@ func TestRunClusterRestoreReconcilesDefinitionSkew(t *testing.T) {
 	}
 	assert.Equal(t, bpmn, byKey[100].GetData())
 	assert.Equal(t, proto.DefinitionType_DEFINITION_TYPE_PROCESS, byKey[100].GetType())
+	assert.Equal(t, int32(3), byKey[100].GetVersion(), "the version of the source partition is preserved")
 	owner := fc.ClusterState().DefinitionSubscriptionPartition("skewed-process")
 	assert.Equal(t, owner == 2, byKey[100].GetRegisterProcessDefinitionSubscriptions(),
 		"subscriptions are registered only on the partition that owns them under the deployment rule")
 	assert.Equal(t, dmn, byKey[200].GetData())
 	assert.Equal(t, proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE, byKey[200].GetType())
 	assert.False(t, byKey[200].GetRegisterProcessDefinitionSubscriptions())
+	assert.Equal(t, int32(2), byKey[200].GetVersion())
+	if assert.Len(t, byKey[200].GetDecisions(), 1) {
+		assert.Equal(t, "d1", byKey[200].GetDecisions()[0].GetDecisionId())
+		assert.Equal(t, int32(2), byKey[200].GetDecisions()[0].GetVersion())
+	}
 
 	assert.Equal(t, []DefinitionSyncEntry{
 		{Key: 100, Type: "process", ToPartitions: []uint32{2}},
 		{Key: 200, Type: "dmn", ToPartitions: []uint32{2}},
+	}, report.DefinitionsSynced)
+}
+
+// TestRunClusterRestoreReportsDivergedDefinitionVersions covers a partition
+// that already holds another definition at the version a missing one has on
+// its source: the copy is refused by the partition, the restore still
+// completes, and the report names the conflict instead of the sync.
+func TestRunClusterRestoreReportsDivergedDefinitionVersions(t *testing.T) {
+	fc := newFakeCluster(t, 2)
+	bpmn := []byte(`<?xml version="1.0"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="diverged-process" isExecutable="true"/></bpmn:definitions>`)
+	fc.partitions[1].definitionRefs = []*proto.DefinitionRef{
+		{Key: new(int64(100)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+		{Key: new(int64(101)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+	}
+	fc.partitions[1].resources = map[int64][]byte{100: bpmn, 101: bpmn}
+	fc.partitions[1].versions = map[int64]int32{100: 1, 101: 2}
+	fc.partitions[2].definitionRefs = []*proto.DefinitionRef{
+		{Key: new(int64(101)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+	}
+	fc.partitions[2].resources = map[int64][]byte{101: bpmn}
+	fc.partitions[2].refuseImport = map[int64]string{100: "definition 101 already holds version 1"}
+
+	report, err := RunClusterRestore(context.Background(), fc.deps(), bytes.NewReader(fc.bundle(t)), true)
+	require.NoError(t, err, "a diverged version history does not fail the restore")
+	assert.Equal(t, state.RestorePhaseDone, report.Phase)
+	assert.Empty(t, fc.partitions[2].imported, "the partition keeps its own version history")
+	assert.Equal(t, []DefinitionSyncEntry{
+		{Key: 100, Type: "process", Conflicts: []DefinitionSyncConflict{{Partition: 2, Reason: "definition 101 already holds version 1"}}},
 	}, report.DefinitionsSynced)
 }
 
@@ -330,6 +366,9 @@ type fakePartition struct {
 
 	definitionRefs      []*proto.DefinitionRef
 	resources           map[int64][]byte
+	versions            map[int64]int32 // definition versions, 1 when absent
+	decisions           map[int64][]*proto.DecisionDefinitionRef
+	refuseImport        map[int64]string // import of these keys is refused as a version conflict
 	imported            []*proto.ImportDefinitionRequest
 	importedWhileFenced bool
 	subs                []*proto.MessageSubscriptionRow
@@ -598,7 +637,11 @@ func (c *fakeClient) GetDefinitionResource(ctx context.Context, req *proto.GetDe
 	if !ok {
 		return nil, fmt.Errorf("definition %d not on partition %d", req.GetKey(), c.p.id)
 	}
-	return &proto.GetDefinitionResourceResponse{Data: data, ResourceName: new("r")}, nil
+	version := int32(1)
+	if v, ok := c.p.versions[req.GetKey()]; ok {
+		version = v
+	}
+	return &proto.GetDefinitionResourceResponse{Data: data, ResourceName: new("r"), Version: new(version), Decisions: c.p.decisions[req.GetKey()]}, nil
 }
 
 func (c *fakeClient) ImportDefinition(ctx context.Context, req *proto.ImportDefinitionRequest, _ ...grpc.CallOption) (*proto.ImportDefinitionResponse, error) {
@@ -607,6 +650,9 @@ func (c *fakeClient) ImportDefinition(ctx context.Context, req *proto.ImportDefi
 	}
 	c.fc.mu.Lock()
 	defer c.fc.mu.Unlock()
+	if reason, refused := c.p.refuseImport[req.GetKey()]; refused {
+		return nil, status.Error(codes.AlreadyExists, reason)
+	}
 	c.p.imported = append(c.p.imported, req)
 	c.p.importedWhileFenced = c.p.quiesced
 	c.p.definitionRefs = append(c.p.definitionRefs, &proto.DefinitionRef{Key: new(req.GetKey()), Type: req.GetType().Enum()})

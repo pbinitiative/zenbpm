@@ -36,7 +36,12 @@ type Controller struct {
 	partitionsMu sync.RWMutex
 	// quiesced records, per locally hosted partition, the restore token for
 	// which the engine has been stopped completely (guarded by partitionsMu)
-	quiesced                map[uint32]partition.RestoreToken
+	quiesced map[uint32]partition.RestoreToken
+	// maintenanceMu serializes entering and leaving restore maintenance.
+	// Cluster state change notifications run concurrently, and the decision
+	// whether the cluster is gated is re-read under this mutex, so an older
+	// notification can never undo the fence a newer one installed.
+	maintenanceMu           sync.Mutex
 	store                   ControlledStore
 	client                  *client.ClientManager
 	Config                  config.Cluster
@@ -231,15 +236,8 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Debug("Skipping member operation checks due to expired context")
 		return
 	}
+	c.syncRestoreMaintenance()
 	cs := c.store.ClusterState()
-	if cs.RestoreInProgress() {
-		// Maintenance stops engines and fences writes, but partition stores keep
-		// being opened and rejoined below: a node restarted mid-restore must
-		// come back with its partitions fenced, not without them.
-		c.enterRestoreMaintenance(cs.Restore)
-	} else {
-		c.leaveRestoreMaintenance()
-	}
 	currentNode, err := cs.GetNode(c.store.ID())
 	if err != nil {
 		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
@@ -285,6 +283,29 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 	//    - see if it has lost some assigned partition that it needs to leave
 	//  - check if it is leader of any partition that does not have engine running yet and start it
 	//  - check if it lost its leadership of any partition and needs to stop the engine (this should be preceded by previous error logs from the engine not being able to store changes)
+}
+
+// syncRestoreMaintenance brings the locally hosted partitions in line with the
+// restore gate: maintenance is entered while a restore holds the cluster and
+// left once it does not. Maintenance stops engines and fences writes, but
+// partition stores keep being opened and rejoined by the state handlers: a
+// node restarted mid-restore must come back with its partitions fenced, not
+// without them.
+//
+// Notifications are dispatched concurrently and an older one may run after a
+// newer one. The gate is therefore re-read under maintenanceMu, right before
+// the transition: whichever notification transitions last has read a cluster
+// state at least as new as any earlier transition did, so the partitions
+// always end up matching the newest state observed.
+func (c *Controller) syncRestoreMaintenance() {
+	c.maintenanceMu.Lock()
+	defer c.maintenanceMu.Unlock()
+	cs := c.store.ClusterState()
+	if cs.RestoreInProgress() {
+		c.enterRestoreMaintenance(cs.Restore)
+	} else {
+		c.leaveRestoreMaintenance()
+	}
 }
 
 // enterRestoreMaintenance puts every locally hosted partition into maintenance
@@ -335,13 +356,23 @@ func (c *Controller) quiescePartitionLocked(id uint32, pn *partition.ZenPartitio
 
 // leaveRestoreMaintenance lifts the write fence of every locally hosted
 // partition; engines are restarted by the regular partition state handling.
+// Like entering, it is ordered against the partition state handlers (which
+// fence a partition they open while the gate holds) through the partition's
+// operation mutex.
 func (c *Controller) leaveRestoreMaintenance() {
 	for id, pn := range c.GetPartitions() {
-		pn.DB.LeaveRestoreFence()
-		c.partitionsMu.Lock()
-		delete(c.quiesced, id)
-		c.partitionsMu.Unlock()
+		c.unfencePartition(id, pn)
 	}
+}
+
+func (c *Controller) unfencePartition(id uint32, pn *partition.ZenPartitionNode) {
+	partitionOp := c.partitionOperationMutex(id)
+	partitionOp.Lock()
+	defer partitionOp.Unlock()
+	pn.DB.LeaveRestoreFence()
+	c.partitionsMu.Lock()
+	delete(c.quiesced, id)
+	c.partitionsMu.Unlock()
 }
 
 // restoreGate returns the restore token when the cluster is currently gated.

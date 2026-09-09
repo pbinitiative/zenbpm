@@ -249,11 +249,11 @@ func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force
 			_ = closer.Close()
 		}
 	})
-	bundle, err := OpenBundle(&contextReader{ctx: ingestCtx, r: r}, deps.SpoolDir, partitionCount, deps.Limits)
+	bundle, err := OpenBundle(ingestCtx, r, deps.SpoolDir, partitionCount, deps.Limits)
 	stopClosing()
 	if err != nil {
 		if ingestCtx.Err() != nil && ctx.Err() == nil {
-			return nil, fmt.Errorf("%w: bundle upload did not finish within %s: %w", ErrInvalidBundle, deps.Timeouts.Ingest, ingestCtx.Err())
+			return nil, ingestTimeoutError(deps.Timeouts.Ingest, ingestCtx.Err())
 		}
 		return nil, fmt.Errorf("%w: %w", ErrInvalidBundle, err)
 	}
@@ -265,6 +265,12 @@ func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force
 	}()
 	if err := bundle.Manifest.Validate(partitionCount, deps.BinarySchemaVersion); err != nil {
 		return nil, fmt.Errorf("%w: bundle cannot be restored into this cluster: %w", ErrInvalidBundle, err)
+	}
+	// The ingest deadline bounds the whole validation phase, not only the
+	// upload: a bundle whose verification outlived it must not go on to take
+	// ownership of the cluster under the (unbounded) request context.
+	if err := ingestCtx.Err(); err != nil && ctx.Err() == nil {
+		return nil, ingestTimeoutError(deps.Timeouts.Ingest, err)
 	}
 
 	run := &restoreRun{deps: deps, bundle: bundle, force: force, report: report}
@@ -283,11 +289,10 @@ type restoreRun struct {
 	// it can be read without locking.
 	identity restoreIdentity
 
-	// progressMu guards the mutable operation record, phase and progress. It
+	// progressMu guards the phase and progress of the owned operation. It
 	// serializes every UPDATE so that the lease heartbeat can never move the
 	// phase backwards behind the main flow.
 	progressMu sync.Mutex
-	op         state.RestoreOperation
 	phase      state.RestorePhase
 	completed  uint32
 }
@@ -303,18 +308,12 @@ func (run *restoreRun) token() (string, uint64) {
 	return run.identity.id, run.identity.epoch
 }
 
-// contextReader fails reads once ctx is done so a stalled upload cannot block
-// bundle ingestion past its deadline.
-type contextReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (c *contextReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
+// ingestTimeoutError is the refusal for an upload or validation that outlived
+// the ingest deadline. It carries both ErrInvalidBundle (nothing was recorded,
+// the request may be repeated) and the deadline error, so the API layers can
+// report it as a timeout rather than as a corrupt archive.
+func ingestTimeoutError(timeout time.Duration, cause error) error {
+	return fmt.Errorf("%w: bundle upload and validation did not finish within %s: %w", ErrInvalidBundle, timeout, cause)
 }
 
 func (run *restoreRun) execute(ctx context.Context) (*RestoreReport, error) {
@@ -382,7 +381,6 @@ func (run *restoreRun) acquire(ctx context.Context) error {
 	}
 	run.identity = restoreIdentity{id: op.ID, epoch: op.Epoch, coordinatorID: op.CoordinatorID}
 	run.progressMu.Lock()
-	run.op = op
 	run.phase = op.Phase
 	run.progressMu.Unlock()
 	return nil
@@ -404,7 +402,7 @@ func (run *restoreRun) sendUpdateLocked(ctx context.Context) error {
 	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
 	defer cancel()
 	id, epoch := run.token()
-	op, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+	_, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
 		Action:              protoc.RestoreOperationChange_RESTORE_ACTION_UPDATE.Enum(),
 		OperationId:         new(id),
 		Epoch:               new(epoch),
@@ -421,7 +419,6 @@ func (run *restoreRun) sendUpdateLocked(ctx context.Context) error {
 		}
 		return fmt.Errorf("failed to record restore progress (phase %s): %w", run.phase, err)
 	}
-	run.op = op
 	return nil
 }
 
@@ -451,19 +448,26 @@ func (run *restoreRun) heartbeat(ctx context.Context, cancel context.CancelCause
 	}
 }
 
-// fail records the failure on the operation. It uses a context detached from
-// the (possibly cancelled) request so the terminal status is always durable.
+// fail attempts to record the failure on the operation. It uses a context
+// detached from the (possibly cancelled) request so that a client disconnect
+// does not prevent the terminal status from being written. The write itself
+// can still fail (leadership lost, apply timeout); the operation then stays
+// ACTIVE until its lease expires, so the outcome is logged with the operation
+// id for the operator to correlate.
 func (run *restoreRun) fail(ctx context.Context, cause error) {
 	applyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), run.deps.Timeouts.StateApply)
 	defer cancel()
 	id, epoch := run.token()
-	_, _ = run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
+	_, err := run.deps.ApplyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
 		Action:          protoc.RestoreOperationChange_RESTORE_ACTION_FAIL.Enum(),
 		OperationId:     new(id),
 		Epoch:           new(epoch),
 		Error:           new(cause.Error()),
 		TimestampMillis: new(run.deps.Now().UnixMilli()),
 	})
+	if err != nil {
+		log.Error("failed to record failure of cluster restore %s (epoch %d, cause: %v); the operation stays active until its lease expires: %v", id, epoch, cause, err)
+	}
 }
 
 func (run *restoreRun) complete(ctx context.Context) error {
@@ -484,7 +488,6 @@ func (run *restoreRun) complete(ctx context.Context) error {
 		return fmt.Errorf("failed to mark restore as completed: %w", err)
 	}
 	run.progressMu.Lock()
-	run.op = op
 	run.phase = op.Phase
 	run.progressMu.Unlock()
 	return nil
@@ -785,30 +788,23 @@ func (run *restoreRun) reconcile(ctx context.Context, ids []uint32) error {
 }
 
 // syncDefinitions lists definitions on every partition, computes which
-// partitions are missing definitions (a deploy landed mid-backup), and imports
+// partitions are missing definitions (a deploy landed mid-backup), and copies
 // them through the restore-only import path — no engine is involved, so the
 // cluster stays fenced. It runs BEFORE the pointer rebuild so that
 // subscriptions created for imported definitions are included in the scan.
 //
-// Definition-level subscriptions are registered on exactly the partition that
-// owns them under the normal deployment rule (state.Cluster.
-// DefinitionSubscriptionPartition), so no partition ends up with duplicates.
+// A copy keeps the key and version it has on the source partition; a
+// partition that already holds a different definition at that version is not
+// changed (which definition is the latest must not silently flip) and the
+// conflict is reported instead. Definition-level subscriptions are registered
+// on exactly the partition that owns them under the normal deployment rule
+// (state.Cluster.DefinitionSubscriptionPartition), so no partition ends up
+// with duplicates.
 func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error {
-	cs := run.deps.ClusterState()
-	opID, epoch := run.token()
-	perPartition := map[uint32][]*proto.DefinitionRef{}
-	for _, id := range ids {
-		leader, err := run.deps.Clients.PartitionLeader(id)
-		if err != nil {
-			return fmt.Errorf("definition scan: failed to get leader for partition %d: %w", id, err)
-		}
-		resp, err := leader.ListDefinitions(ctx, &proto.ListDefinitionsRequest{PartitionId: new(id)})
-		if err != nil {
-			return fmt.Errorf("definition scan on partition %d failed: %w", id, err)
-		}
-		perPartition[id] = resp.GetDefinitions()
+	perPartition, err := run.scanDefinitions(ctx, ids)
+	if err != nil {
+		return err
 	}
-
 	missing := MissingDefinitions(perPartition)
 	targets := make([]uint32, 0, len(missing))
 	for part := range missing {
@@ -819,43 +815,18 @@ func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error 
 	synced := map[int64]*DefinitionSyncEntry{}
 	for _, part := range targets {
 		for _, ref := range missing[part] {
-			data, resourceName, err := fetchDefinition(ctx, run.deps, perPartition, ref)
+			entry, ok := synced[ref.GetKey()]
+			if !ok {
+				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: definitionTypeName(ref.GetType())}
+				synced[ref.GetKey()] = entry
+			}
+			conflict, err := run.importDefinition(ctx, perPartition, ref, part)
 			if err != nil {
 				return err
 			}
-			target, err := run.deps.Clients.PartitionLeader(part)
-			if err != nil {
-				return fmt.Errorf("failed to get leader for target partition %d: %w", part, err)
-			}
-			req := &proto.ImportDefinitionRequest{
-				PartitionId:        new(part),
-				RestoreOperationId: new(opID),
-				RestoreEpoch:       new(epoch),
-				Type:               ref.GetType().Enum(),
-				Key:                new(ref.GetKey()),
-				Data:               data,
-				ResourceName:       new(resourceName),
-			}
-			typ := "dmn"
-			if ref.GetType() == proto.DefinitionType_DEFINITION_TYPE_PROCESS {
-				typ = "process"
-				processID, err := processIDFromDefinition(data)
-				if err != nil {
-					return fmt.Errorf("failed to read process id of definition %d: %w", ref.GetKey(), err)
-				}
-				req.RegisterProcessDefinitionSubscriptions = new(cs.DefinitionSubscriptionPartition(processID) == part)
-			}
-			resp, err := target.ImportDefinition(ctx, req)
-			if err != nil {
-				return fmt.Errorf("failed to import %s definition %d into partition %d: %w", typ, ref.GetKey(), part, err)
-			}
-			if resp.GetError() != nil {
-				return fmt.Errorf("failed to import %s definition %d into partition %d: %s", typ, ref.GetKey(), part, resp.GetError().GetMessage())
-			}
-			entry, ok := synced[ref.GetKey()]
-			if !ok {
-				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: typ}
-				synced[ref.GetKey()] = entry
+			if conflict != "" {
+				entry.Conflicts = append(entry.Conflicts, DefinitionSyncConflict{Partition: part, Reason: conflict})
+				continue
 			}
 			entry.ToPartitions = append(entry.ToPartitions, part)
 		}
@@ -869,6 +840,80 @@ func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error 
 	return nil
 }
 
+// scanDefinitions lists the definition refs every partition holds.
+func (run *restoreRun) scanDefinitions(ctx context.Context, ids []uint32) (map[uint32][]*proto.DefinitionRef, error) {
+	perPartition := map[uint32][]*proto.DefinitionRef{}
+	for _, id := range ids {
+		leader, err := run.deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return nil, fmt.Errorf("definition scan: failed to get leader for partition %d: %w", id, err)
+		}
+		resp, err := leader.ListDefinitions(ctx, &proto.ListDefinitionsRequest{PartitionId: new(id)})
+		if err != nil {
+			return nil, fmt.Errorf("definition scan on partition %d failed: %w", id, err)
+		}
+		perPartition[id] = resp.GetDefinitions()
+	}
+	return perPartition, nil
+}
+
+// importDefinition copies one definition from a partition that holds it into
+// part, preserving its key and versions. A target that already holds another
+// definition at the same version refuses the copy; that is returned as a
+// conflict reason (and logged) rather than an error, so the restore completes
+// and the operator sees the diverged history in the report.
+func (run *restoreRun) importDefinition(ctx context.Context, perPartition map[uint32][]*proto.DefinitionRef, ref *proto.DefinitionRef, part uint32) (conflict string, err error) {
+	typ := definitionTypeName(ref.GetType())
+	source, err := fetchDefinition(ctx, run.deps, perPartition, ref)
+	if err != nil {
+		return "", err
+	}
+	target, err := run.deps.Clients.PartitionLeader(part)
+	if err != nil {
+		return "", fmt.Errorf("failed to get leader for target partition %d: %w", part, err)
+	}
+	opID, epoch := run.token()
+	req := &proto.ImportDefinitionRequest{
+		PartitionId:        new(part),
+		RestoreOperationId: new(opID),
+		RestoreEpoch:       new(epoch),
+		Type:               ref.GetType().Enum(),
+		Key:                new(ref.GetKey()),
+		Version:            new(source.version),
+		Decisions:          source.decisions,
+		Data:               source.data,
+		ResourceName:       new(source.resourceName),
+	}
+	if ref.GetType() == proto.DefinitionType_DEFINITION_TYPE_PROCESS {
+		processID, err := processIDFromDefinition(source.data)
+		if err != nil {
+			return "", fmt.Errorf("failed to read process id of definition %d: %w", ref.GetKey(), err)
+		}
+		req.RegisterProcessDefinitionSubscriptions = new(run.deps.ClusterState().DefinitionSubscriptionPartition(processID) == part)
+	}
+	resp, err := target.ImportDefinition(ctx, req)
+	if status.Code(err) == codes.AlreadyExists {
+		reason := status.Convert(err).Message()
+		log.Warn("restore %s: %s definition %d was not imported into partition %d, the partition already holds another definition at version %d: %s",
+			opID, typ, ref.GetKey(), part, source.version, reason)
+		return reason, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to import %s definition %d into partition %d: %w", typ, ref.GetKey(), part, err)
+	}
+	if resp.GetError() != nil {
+		return "", fmt.Errorf("failed to import %s definition %d into partition %d: %s", typ, ref.GetKey(), part, resp.GetError().GetMessage())
+	}
+	return "", nil
+}
+
+func definitionTypeName(typ proto.DefinitionType) string {
+	if typ == proto.DefinitionType_DEFINITION_TYPE_PROCESS {
+		return "process"
+	}
+	return "dmn"
+}
+
 func processIDFromDefinition(data []byte) (string, error) {
 	var definitions bpmn20.TDefinitions
 	if err := xml.Unmarshal(data, &definitions); err != nil {
@@ -880,7 +925,17 @@ func processIDFromDefinition(data []byte) (string, error) {
 	return definitions.Process.Id, nil
 }
 
-func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uint32][]*proto.DefinitionRef, ref *proto.DefinitionRef) ([]byte, string, error) {
+// definitionSource is a definition as read from the partition that holds it.
+type definitionSource struct {
+	data         []byte
+	resourceName string
+	version      int32
+	decisions    []*proto.DecisionDefinitionRef
+}
+
+// fetchDefinition reads the definition from the lowest-numbered partition
+// that holds it, together with the versions it has there.
+func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uint32][]*proto.DefinitionRef, ref *proto.DefinitionRef) (definitionSource, error) {
 	sources := make([]uint32, 0, len(perPartition))
 	for part := range perPartition {
 		sources = append(sources, part)
@@ -891,19 +946,19 @@ func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uin
 			if r.GetKey() == ref.GetKey() && r.GetType() == ref.GetType() {
 				leader, err := deps.Clients.PartitionLeader(part)
 				if err != nil {
-					return nil, "", err
+					return definitionSource{}, err
 				}
 				resp, err := leader.GetDefinitionResource(ctx, &proto.GetDefinitionResourceRequest{
 					PartitionId: new(part), Key: new(ref.GetKey()), Type: ref.GetType().Enum(),
 				})
 				if err != nil {
-					return nil, "", fmt.Errorf("failed to fetch definition %d from partition %d: %w", ref.GetKey(), part, err)
+					return definitionSource{}, fmt.Errorf("failed to fetch definition %d from partition %d: %w", ref.GetKey(), part, err)
 				}
-				return resp.GetData(), resp.GetResourceName(), nil
+				return definitionSource{data: resp.GetData(), resourceName: resp.GetResourceName(), version: resp.GetVersion(), decisions: resp.GetDecisions()}, nil
 			}
 		}
 	}
-	return nil, "", fmt.Errorf("definition %d not found on any partition", ref.GetKey())
+	return definitionSource{}, fmt.Errorf("definition %d not found on any partition", ref.GetKey())
 }
 
 var restorePhaseToProtoValue = map[state.RestorePhase]protoc.RestorePhase{

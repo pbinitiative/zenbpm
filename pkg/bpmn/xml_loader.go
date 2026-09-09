@@ -36,28 +36,13 @@ func (engine *Engine) LoadFromBytes(ctx context.Context, xmlData []byte, key int
 }
 
 func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*runtime.ProcessDefinition, error) {
-	md5sum := md5.Sum(xmlData)
-	var definitions bpmn20.TDefinitions
-	err := xml.Unmarshal(xmlData, &definitions)
+	processInfo, err := parseProcessDefinition(xmlData, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal xml data: %w", err)
+		return nil, err
 	}
-
-	versionTag, err := extractProcessVersionTag(xmlData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse process version tag: %w", err)
-	}
-
-	processInfo := runtime.ProcessDefinition{
-		Version:         1,
-		BpmnProcessId:   definitions.Process.Id,
-		BpmnProcessName: definitions.Process.Name,
-		Key:             key,
-		Definitions:     definitions,
-		BpmnData:        string(xmlData),
-		BpmnChecksum:    md5sum,
-		VersionTag:      versionTag,
-	}
+	md5sum := processInfo.BpmnChecksum
+	definitions := processInfo.Definitions
+	versionTag := processInfo.VersionTag
 	processes, err := engine.persistence.FindProcessDefinitionsById(ctx, definitions.Process.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load processes by id %s: %w", definitions.Process.Id, err)
@@ -98,6 +83,31 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 
 	engine.exportNewProcessEvent(processInfo, xmlData, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil
+}
+
+// parseProcessDefinition builds the definition record for xmlData under the
+// given key without touching storage. The version starts at 1; the caller
+// decides whether to assign the next one (deployment) or keep a given one
+// (import).
+func parseProcessDefinition(xmlData []byte, key int64) (runtime.ProcessDefinition, error) {
+	var definitions bpmn20.TDefinitions
+	if err := xml.Unmarshal(xmlData, &definitions); err != nil {
+		return runtime.ProcessDefinition{}, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+	versionTag, err := extractProcessVersionTag(xmlData)
+	if err != nil {
+		return runtime.ProcessDefinition{}, fmt.Errorf("failed to parse process version tag: %w", err)
+	}
+	return runtime.ProcessDefinition{
+		Version:         1,
+		BpmnProcessId:   definitions.Process.Id,
+		BpmnProcessName: definitions.Process.Name,
+		Key:             key,
+		Definitions:     definitions,
+		BpmnData:        string(xmlData),
+		BpmnChecksum:    md5.Sum(xmlData),
+		VersionTag:      versionTag,
+	}, nil
 }
 
 type processVersionTagDefinitions struct {

@@ -113,7 +113,7 @@ func TestOpenBundleRoundTrip(t *testing.T) {
 	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1, 2}, testFetch(payloads))
 	assert.NoError(t, err)
 
-	b, err := OpenBundle(&buf, t.TempDir(), 0, RestoreLimits{})
+	b, err := OpenBundle(context.Background(), &buf, t.TempDir(), 0, RestoreLimits{})
 	assert.NoError(t, err)
 	defer func() { require.NoError(t, b.Close()) }()
 	assert.Equal(t, uint32(2), b.Manifest.PartitionCount)
@@ -132,7 +132,7 @@ func TestOpenBundleTruncated(t *testing.T) {
 	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1}, testFetch(payloads))
 	assert.NoError(t, err)
 	trunc := buf.Bytes()[:buf.Len()-600] // cut into/before the manifest entry
-	_, err = OpenBundle(bytes.NewReader(trunc), t.TempDir(), 0, RestoreLimits{})
+	_, err = OpenBundle(context.Background(), bytes.NewReader(trunc), t.TempDir(), 0, RestoreLimits{})
 	assert.Error(t, err)
 }
 
@@ -144,7 +144,7 @@ func TestOpenBundleCorruptedPartitionFile(t *testing.T) {
 	raw := buf.Bytes()
 	// flip a byte inside the partition file body (first entry data starts at 512)
 	raw[520] ^= 0xFF
-	_, err = OpenBundle(bytes.NewReader(raw), t.TempDir(), 0, RestoreLimits{})
+	_, err = OpenBundle(context.Background(), bytes.NewReader(raw), t.TempDir(), 0, RestoreLimits{})
 	assert.ErrorContains(t, err, "checksum")
 }
 
@@ -153,7 +153,7 @@ func TestOpenBundleNotSQLite(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1}, testFetch(payloads))
 	assert.NoError(t, err)
-	_, err = OpenBundle(bytes.NewReader(buf.Bytes()), t.TempDir(), 0, RestoreLimits{})
+	_, err = OpenBundle(context.Background(), bytes.NewReader(buf.Bytes()), t.TempDir(), 0, RestoreLimits{})
 	assert.ErrorContains(t, err, "not a valid SQLite")
 }
 
@@ -267,7 +267,7 @@ func TestOpenBundleRejectsMalformedEntries(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			spool := t.TempDir()
-			b, err := OpenBundle(bytes.NewReader(writeRawBundle(t, tc.entries)), spool, 2, RestoreLimits{})
+			b, err := OpenBundle(context.Background(), bytes.NewReader(writeRawBundle(t, tc.entries)), spool, 2, RestoreLimits{})
 			assert.Nil(t, b)
 			assert.ErrorContains(t, err, tc.wantErr)
 			assert.Equal(t, 0, spoolFilesLeft(t, spool), "spool files of a rejected bundle must be removed")
@@ -280,7 +280,7 @@ func TestOpenBundleAcceptsWellFormedRawBundle(t *testing.T) {
 	two := gzipBytes(t, sqliteish(t, "two"))
 	payloads := map[uint32][]byte{1: one, 2: two}
 	spool := t.TempDir()
-	b, err := OpenBundle(bytes.NewReader(writeRawBundle(t, []rawEntry{
+	b, err := OpenBundle(context.Background(), bytes.NewReader(writeRawBundle(t, []rawEntry{
 		{name: "partition-2.db.gz", data: two},
 		{name: "partition-1.db.gz", data: one},
 		{name: ManifestFileName, data: manifestFor(t, payloads)},
@@ -319,7 +319,7 @@ func TestDecodeManifestRejectsDuplicateMembersAndTrailingData(t *testing.T) {
 			assert.NotErrorIs(t, err, zenerr.ErrResourceLimit)
 
 			spool := t.TempDir()
-			b, err := OpenBundle(bytes.NewReader(writeRawBundle(t, []rawEntry{
+			b, err := OpenBundle(context.Background(), bytes.NewReader(writeRawBundle(t, []rawEntry{
 				{name: "partition-1.db.gz", data: one},
 				{name: ManifestFileName, data: []byte(manifest)},
 			})), spool, 1, RestoreLimits{})
@@ -349,18 +349,18 @@ func TestOpenBundleEnforcesSizeLimits(t *testing.T) {
 
 	t.Run("stored image too large", func(t *testing.T) {
 		spool := t.TempDir()
-		_, err := OpenBundle(bytes.NewReader(bundle), spool, 1, RestoreLimits{PartitionImageBytes: int64(len(one)) - 1})
+		_, err := OpenBundle(context.Background(), bytes.NewReader(bundle), spool, 1, RestoreLimits{PartitionImageBytes: int64(len(one)) - 1})
 		require.ErrorIs(t, err, zenerr.ErrResourceLimit)
 		assert.Equal(t, 0, spoolFilesLeft(t, spool))
 	})
 	t.Run("decompressed database too large", func(t *testing.T) {
 		spool := t.TempDir()
-		_, err := OpenBundle(bytes.NewReader(bundle), spool, 1, RestoreLimits{PartitionDatabaseBytes: 17})
+		_, err := OpenBundle(context.Background(), bytes.NewReader(bundle), spool, 1, RestoreLimits{PartitionDatabaseBytes: 17})
 		require.ErrorIs(t, err, zenerr.ErrResourceLimit)
 		assert.Equal(t, 0, spoolFilesLeft(t, spool))
 	})
 	t.Run("within limits", func(t *testing.T) {
-		b, err := OpenBundle(bytes.NewReader(bundle), t.TempDir(), 1, RestoreLimits{PartitionImageBytes: int64(len(one)), PartitionDatabaseBytes: 32})
+		b, err := OpenBundle(context.Background(), bytes.NewReader(bundle), t.TempDir(), 1, RestoreLimits{PartitionImageBytes: int64(len(one)), PartitionDatabaseBytes: 32})
 		require.NoError(t, err)
 		require.NoError(t, b.Close())
 	})

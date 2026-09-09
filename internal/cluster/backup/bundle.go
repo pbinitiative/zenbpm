@@ -276,14 +276,16 @@ type Bundle struct {
 // once and free of duplicate members, every partition file present with
 // matching sha256 and size, sizes within limits, and gunzipped content that
 // looks like SQLite. Spool files of a rejected bundle are removed.
-func OpenBundle(r io.Reader, spoolDir string, expectedPartitions uint32, limits RestoreLimits) (*Bundle, error) {
+func OpenBundle(ctx context.Context, r io.Reader, spoolDir string, expectedPartitions uint32, limits RestoreLimits) (*Bundle, error) {
 	limits = limits.withDefaults()
 	b := &Bundle{files: map[uint32]string{}}
 	fail := func(err error) (*Bundle, error) {
 		_ = b.Close()
 		return nil, err
 	}
-	tr := tar.NewReader(r)
+	// every read of the upload observes ctx; verification of the spooled
+	// files below does the same, so the whole ingest is bounded by one deadline
+	tr := tar.NewReader(&contextReader{ctx: ctx, r: r})
 	shas := map[uint32]string{}
 	sizes := map[uint32]int64{}
 	manifestSeen := false
@@ -353,7 +355,7 @@ func OpenBundle(r io.Reader, spoolDir string, expectedPartitions uint32, limits 
 		if sizes[id] != meta.SizeBytes {
 			return fail(fmt.Errorf("size mismatch for partition %d", id))
 		}
-		if err := verifySQLiteGzip(b.files[id], limits.PartitionDatabaseBytes); err != nil {
+		if err := verifySQLiteGzip(ctx, b.files[id], limits.PartitionDatabaseBytes); err != nil {
 			return fail(fmt.Errorf("partition %d: %w", id, err))
 		}
 	}
@@ -369,13 +371,15 @@ func OpenBundle(r io.Reader, spoolDir string, expectedPartitions uint32, limits 
 // and drains the stream so gzip verifies its CRC over the whole content. The
 // decompressed size is capped by maxDatabaseBytes so a highly compressible
 // image cannot expand without bound.
-func verifySQLiteGzip(path string, maxDatabaseBytes int64) (err error) {
+func verifySQLiteGzip(ctx context.Context, path string, maxDatabaseBytes int64) (err error) {
 	f, err := os.Open(path) // #nosec G304 -- path is a spool file this process created via os.CreateTemp
 	if err != nil {
 		return err
 	}
 	defer zenerr.CloseJoin(f, &err, "spool file "+filepath.Base(path))
-	zr, err := gzip.NewReader(f)
+	// decompressing a multi-gigabyte image takes a while; the drain below
+	// stops at the ingest deadline instead of running to the end regardless
+	zr, err := gzip.NewReader(&contextReader{ctx: ctx, r: f})
 	if err != nil {
 		return fmt.Errorf("not gzip data: %w", err)
 	}
@@ -391,12 +395,26 @@ func verifySQLiteGzip(path string, maxDatabaseBytes int64) (err error) {
 	// discarded, so memory use stays constant, and the decompressed size is
 	// capped.
 	if _, err := copyAtMost(io.Discard, zr, maxDatabaseBytes-int64(len(head)), "decompressed database"); err != nil {
-		if errors.Is(err, zenerr.ErrResourceLimit) {
+		if errors.Is(err, zenerr.ErrResourceLimit) || ctx.Err() != nil {
 			return err
 		}
 		return fmt.Errorf("gzip stream corrupt: %w", err)
 	}
 	return nil
+}
+
+// contextReader fails reads once ctx is done, so neither a stalled upload nor
+// a long verification can run past the ingest deadline.
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // PartitionFile returns a ReadCloser over the stored (still-gzipped) bytes for

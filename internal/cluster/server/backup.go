@@ -17,6 +17,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -144,11 +145,20 @@ func (s *Server) ImportDefinition(ctx context.Context, req *proto.ImportDefiniti
 	defer importer.Close()
 	switch req.GetType() {
 	case proto.DefinitionType_DEFINITION_TYPE_PROCESS:
-		err = importer.ImportProcessDefinition(ctx, req.GetKey(), req.GetData(), req.GetRegisterProcessDefinitionSubscriptions())
+		err = importer.ImportProcessDefinition(ctx, req.GetKey(), req.GetVersion(), req.GetData(), req.GetRegisterProcessDefinitionSubscriptions())
 	case proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
-		err = importer.ImportDmnResourceDefinition(ctx, req.GetKey(), req.GetData())
+		decisionVersions := make(map[string]int32, len(req.GetDecisions()))
+		for _, d := range req.GetDecisions() {
+			decisionVersions[d.GetDecisionId()] = d.GetVersion()
+		}
+		err = importer.ImportDmnResourceDefinition(ctx, req.GetKey(), req.GetVersion(), req.GetData(), decisionVersions)
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown definition type %s", req.GetType())
+	}
+	if errors.Is(err, storage.ErrUniqueConstraint) {
+		// the partition already holds another definition at that version: the
+		// coordinator reports the diverged history instead of failing the restore
+		return nil, status.Errorf(codes.AlreadyExists, "%s", err)
 	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%s", err)
@@ -257,11 +267,16 @@ func (s *Server) GetDefinitionResource(ctx context.Context, req *proto.GetDefini
 	if partitionNode == nil {
 		return nil, status.Errorf(codes.NotFound, "partition %d is not hosted on this node", req.GetPartitionId())
 	}
-	data, resourceName, err := partitionNode.DB.GetDefinitionResource(ctx, req.GetKey(), req.GetType())
+	resource, err := partitionNode.DB.GetDefinitionResource(ctx, req.GetKey(), req.GetType())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%s", err)
 	}
-	return &proto.GetDefinitionResourceResponse{Data: data, ResourceName: &resourceName}, nil
+	return &proto.GetDefinitionResourceResponse{
+		Data:         resource.Data,
+		ResourceName: new(resource.ResourceName),
+		Version:      new(resource.Version),
+		Decisions:    resource.Decisions,
+	}, nil
 }
 
 // PartitionDataStats returns row counts for a locally-hosted partition.
@@ -409,10 +424,14 @@ func (s *Server) applyRestoreChange(ctx context.Context, change *protoc.RestoreO
 // restoreErrorCode maps a coordinator error onto a gRPC status code: refused
 // before ownership (in progress, bad bundle, non-empty cluster) is a failed
 // precondition, a phase failure is internal, a cancelled request is Canceled.
+// An upload that outlived the ingest deadline is DeadlineExceeded, matching
+// the REST mapping, so clients can tell it from a corrupt bundle.
 func restoreErrorCode(err error) codes.Code {
 	switch {
 	case errors.Is(err, zenerr.ErrResourceLimit):
 		return codes.ResourceExhausted
+	case errors.Is(err, backup.ErrInvalidBundle) && backup.IsDeadlineExceeded(err):
+		return codes.DeadlineExceeded
 	case errors.Is(err, zenerr.ErrNotLeader), errors.Is(err, backup.ErrRestoreInProgress), errors.Is(err, backup.ErrInvalidBundle), errors.Is(err, backup.ErrClusterNotEmpty):
 		return codes.FailedPrecondition
 	case backup.IsCanceled(err):

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ func TestRestoreErrorStatus(t *testing.T) {
 		{"not the raft leader", errors.Join(errors.New("apply failed"), zenerr.ErrNotLeader), http.StatusServiceUnavailable, restoreCodeNotLeader},
 		{"another restore in progress", backup.ErrRestoreInProgress, http.StatusConflict, restoreCodeRefused},
 		{"invalid bundle", errors.Join(errors.New("truncated"), backup.ErrInvalidBundle), http.StatusConflict, restoreCodeRefused},
+		{"upload timed out", fmt.Errorf("%w: bundle upload did not finish within 1s: %w", backup.ErrInvalidBundle, context.DeadlineExceeded), http.StatusGatewayTimeout, restoreCodeRefused},
 		{"non-empty cluster", &backup.PhaseError{Phase: state.RestorePhaseValidating, Err: backup.ErrClusterNotEmpty}, http.StatusConflict, restoreCodeRefused},
 		{"phase deadline", &backup.PhaseError{Phase: state.RestorePhaseLoading, Err: context.DeadlineExceeded}, http.StatusGatewayTimeout, restoreCodeFailed},
 		{"phase failure", &backup.PhaseError{Phase: state.RestorePhaseReconciling, Err: errors.New("boom")}, http.StatusInternalServerError, restoreCodeFailed},

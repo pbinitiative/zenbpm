@@ -116,8 +116,9 @@ func (mem *Storage) GetLatestDecisionDefinitionById(_ context.Context, decisionI
 			res = append(res, dec)
 		}
 	}
+	// newest version first, like the SQL "ORDER BY version DESC" lookups
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
-		return int(a.Version - b.Version)
+		return int(b.Version - a.Version)
 	})
 
 	if len(res) > 0 {
@@ -147,8 +148,9 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(_ context.Conte
 			res = append(res, dec)
 		}
 	}
+	// newest version first, like the SQL "ORDER BY version DESC" lookups
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
-		return int(a.Version - b.Version)
+		return int(b.Version - a.Version)
 	})
 
 	if len(res) > 0 {
@@ -166,8 +168,9 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(_ 
 			res = append(res, dec)
 		}
 	}
+	// newest version first, like the SQL "ORDER BY version DESC" lookups
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
-		return int(a.Version - b.Version)
+		return int(b.Version - a.Version)
 	})
 
 	if len(res) > 0 {
@@ -241,8 +244,9 @@ func (mem *Storage) FindLatestDmnResourceDefinitionById(_ context.Context, dmnRe
 		}
 		res = append(res, def)
 	}
+	// newest version first, like the SQL "ORDER BY version DESC" lookup
 	slices.SortFunc(res, func(a, b dmnruntime.DmnResourceDefinition) int {
-		return int(a.Version - b.Version)
+		return int(b.Version - a.Version)
 	})
 
 	if len(res) > 0 {

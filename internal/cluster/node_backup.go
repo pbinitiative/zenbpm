@@ -85,11 +85,16 @@ func (node *ZenNode) RestoreOperation() (state.RestoreOperation, bool) {
 // regardless of its owner and lifts the cluster gate. It is the operator's
 // escape hatch after a coordinator crash or a restore that cannot be retried;
 // partially restored data is left as it is. Must run on the cluster raft leader.
+// The transition is bounded by the configured state-apply timeout like every
+// other restore transition: the HTTP server imposes no request deadline, and
+// an abort that hangs on a stalled raft apply would defeat its purpose.
 func (node *ZenNode) AbortClusterRestore(ctx context.Context, operationID string, reason string) (state.RestoreOperation, error) {
 	if reason == "" {
 		reason = "aborted by operator"
 	}
-	return node.applyRestoreChange(ctx, &protoc.RestoreOperationChange{
+	applyCtx, cancel := context.WithTimeout(ctx, backup.RestoreTimeoutsFromConfig(node.controller.Config.Restore).WithDefaults().StateApply)
+	defer cancel()
+	return node.applyRestoreChange(applyCtx, &protoc.RestoreOperationChange{
 		Action:          protoc.RestoreOperationChange_RESTORE_ACTION_ABORT.Enum(),
 		OperationId:     new(operationID),
 		Error:           new(reason),

@@ -207,6 +207,96 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 	return engine.saveDmnResourceDefinition(ctx, dmnResourceDefinition, decisionDefinitions)
 }
 
+// ImportDmnResourceDefinition stores a DMN resource under the key and version
+// it already has elsewhere (another partition of the same cluster), together
+// with its decision definitions at the versions given per decision id. It is
+// the cluster restore reconciliation path and differs from
+// SaveDmnResourceDefinition on purpose: versions are copied, not assigned, so
+// a historical resource never becomes the latest one. A decision missing
+// from decisionVersions gets the next version, as a deployment would assign.
+// A resource already stored under key is left alone.
+//
+// A different resource (or decision) of the same id that already holds the
+// version means the version histories diverged; the import is refused with
+// storage.ErrUniqueConstraint and nothing is written.
+func (engine *ZenDmnEngine) ImportDmnResourceDefinition(
+	ctx context.Context,
+	definition *dmn.TDefinitions,
+	xmlData []byte,
+	key int64,
+	version int64,
+	decisionVersions map[string]int64,
+) (*runtime.DmnResourceDefinition, []runtime.DecisionDefinition, error) {
+	if version < 1 {
+		return nil, nil, fmt.Errorf("failed to import dmn resource definition %d: version must be positive, got %d", key, version)
+	}
+	resource := runtime.DmnResourceDefinition{
+		Version:           version,
+		Id:                definition.Id,
+		Key:               key,
+		Definitions:       *definition,
+		DmnData:           xmlData,
+		DmnChecksum:       md5.Sum(xmlData),
+		DmnDefinitionName: definition.Name,
+	}
+	if err := engine.Validate(ctx, &resource); err != nil {
+		return nil, nil, err
+	}
+	existing, err := engine.persistence.FindDmnResourceDefinitionsById(ctx, resource.Id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load dmn resource definitions by id %s: %w", resource.Id, err)
+	}
+	for i := range existing {
+		if existing[i].Key == key {
+			return &existing[i], nil, nil
+		}
+		if existing[i].Version == version {
+			return nil, nil, fmt.Errorf("dmn resource definition %d cannot be imported as version %d of %q: definition %d already holds that version: %w",
+				key, version, resource.Id, existing[i].Key, storage.ErrUniqueConstraint)
+		}
+	}
+
+	// every conflict is detected before anything is written
+	decisions := make([]runtime.DecisionDefinition, 0, len(definition.Decisions))
+	for _, decision := range definition.Decisions {
+		others, err := engine.persistence.GetDecisionDefinitionsById(ctx, decision.Id)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to load decision definitions by id %s: %w", decision.Id, err)
+		}
+		decisionVersion, given := decisionVersions[decision.Id]
+		if !given {
+			decisionVersion = 1
+			for i := range others {
+				decisionVersion = max(decisionVersion, others[i].Version+1)
+			}
+		}
+		for i := range others {
+			if others[i].Version == decisionVersion {
+				return nil, nil, fmt.Errorf("decision definition %q of dmn resource definition %d cannot be imported as version %d: decision definition %d already holds that version: %w",
+					decision.Id, key, decisionVersion, others[i].Key, storage.ErrUniqueConstraint)
+			}
+		}
+		decisions = append(decisions, runtime.DecisionDefinition{
+			Key:                      engine.generateKey(),
+			Version:                  decisionVersion,
+			Id:                       decision.Id,
+			VersionTag:               decision.VersionTag.Value,
+			DmnResourceDefinitionId:  resource.Id,
+			DmnResourceDefinitionKey: resource.Key,
+		})
+	}
+
+	if err := engine.persistence.SaveDmnResourceDefinition(ctx, resource); err != nil {
+		return nil, nil, fmt.Errorf("failed to save imported dmn resource definition %d: %w", key, err)
+	}
+	for _, decision := range decisions {
+		if err := engine.persistence.SaveDecisionDefinition(ctx, decision); err != nil {
+			return nil, nil, fmt.Errorf("failed to save decision definition %q of imported dmn resource definition %d: %w", decision.Id, key, err)
+		}
+	}
+	return &resource, decisions, nil
+}
+
 func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 	ctx context.Context,
 	dmnResourceDefinition runtime.DmnResourceDefinition,

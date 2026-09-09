@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -116,6 +117,8 @@ func TestRestoreErrorCode(t *testing.T) {
 	assert.Equal(t, codes.FailedPrecondition, restoreErrorCode(backup.ErrRestoreInProgress))
 	assert.Equal(t, codes.FailedPrecondition, restoreErrorCode(errors.Join(errors.New("apply"), zenerr.ErrNotLeader)))
 	assert.Equal(t, codes.FailedPrecondition, restoreErrorCode(errors.Join(errors.New("x"), backup.ErrInvalidBundle)))
+	assert.Equal(t, codes.DeadlineExceeded, restoreErrorCode(fmt.Errorf("%w: upload did not finish: %w", backup.ErrInvalidBundle, context.DeadlineExceeded)),
+		"an upload that outlived the ingest deadline is a timeout, not a corrupt bundle")
 	assert.Equal(t, codes.FailedPrecondition, restoreErrorCode(&backup.PhaseError{Err: backup.ErrClusterNotEmpty}))
 	assert.Equal(t, codes.Canceled, restoreErrorCode(&backup.PhaseError{Err: context.Canceled}))
 	assert.Equal(t, codes.DeadlineExceeded, restoreErrorCode(context.DeadlineExceeded))

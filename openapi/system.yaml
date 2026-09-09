@@ -652,7 +652,12 @@ components:
                   format: int64
         definitionsSynced:
           type: array
-          description: Definitions imported into partitions that were missing them.
+          description: |
+            Definitions the reconciliation found missing on some partitions.
+            A copy keeps the key and version it has on its source partition.
+            A partition that already holds another definition at that version
+            refuses the copy (its version history diverged before the backup);
+            the restore leaves it unchanged and lists it under `conflicts`.
           items:
             type: object
             required: [key, type, toPartitions]
@@ -668,6 +673,17 @@ components:
                 items:
                   type: integer
                   format: int64
+              conflicts:
+                type: array
+                items:
+                  type: object
+                  required: [partition, reason]
+                  properties:
+                    partition:
+                      type: integer
+                      format: int64
+                    reason:
+                      type: string
 
     RestoreError:
       type: object

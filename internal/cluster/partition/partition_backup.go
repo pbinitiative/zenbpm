@@ -37,26 +37,63 @@ func (rq *DB) ListDefinitionRefs(ctx context.Context) ([]*zenproto.DefinitionRef
 	return out, nil
 }
 
-// GetDefinitionResource returns the raw resource for re-deploying a definition
-// to a partition that misses it.
-func (rq *DB) GetDefinitionResource(ctx context.Context, key int64, defType zenproto.DefinitionType) ([]byte, string, error) {
+// DefinitionResource is a definition as stored on this partition, complete
+// with the version metadata an import into another partition preserves.
+type DefinitionResource struct {
+	Data         []byte
+	ResourceName string
+	Version      int32
+	// Decisions holds, for a DMN resource, the versions of its decision
+	// definitions; empty for process definitions.
+	Decisions []*zenproto.DecisionDefinitionRef
+}
+
+// GetDefinitionResource returns the raw resource (and its versions) for
+// importing a definition into a partition that misses it.
+func (rq *DB) GetDefinitionResource(ctx context.Context, key int64, defType zenproto.DefinitionType) (DefinitionResource, error) {
 	switch defType {
 	case zenproto.DefinitionType_DEFINITION_TYPE_PROCESS:
-		row := rq.QueryRowContext(ctx, "SELECT bpmn_data, bpmn_process_id FROM process_definition WHERE key = ?", key)
+		row := rq.QueryRowContext(ctx, "SELECT bpmn_data, bpmn_process_id, version FROM process_definition WHERE key = ?", key)
 		var data, processID string
-		if err := row.Scan(&data, &processID); err != nil {
-			return nil, "", fmt.Errorf("failed to load process definition %d: %w", key, err)
+		var version int64
+		if err := row.Scan(&data, &processID, &version); err != nil {
+			return DefinitionResource{}, fmt.Errorf("failed to load process definition %d: %w", key, err)
 		}
-		return []byte(data), processID + ".bpmn", nil
+		return DefinitionResource{Data: []byte(data), ResourceName: processID + ".bpmn", Version: int32(version)}, nil // #nosec G115 -- definition versions are small counters
 	case zenproto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
-		row := rq.QueryRowContext(ctx, "SELECT dmn_data FROM dmn_resource_definition WHERE key = ?", key)
+		row := rq.QueryRowContext(ctx, "SELECT dmn_data, version FROM dmn_resource_definition WHERE key = ?", key)
 		var data string
-		if err := row.Scan(&data); err != nil {
-			return nil, "", fmt.Errorf("failed to load dmn resource definition %d: %w", key, err)
+		var version int64
+		if err := row.Scan(&data, &version); err != nil {
+			return DefinitionResource{}, fmt.Errorf("failed to load dmn resource definition %d: %w", key, err)
 		}
-		return []byte(data), "", nil
+		decisions, err := rq.decisionDefinitionVersions(ctx, key)
+		if err != nil {
+			return DefinitionResource{}, err
+		}
+		return DefinitionResource{Data: []byte(data), Version: int32(version), Decisions: decisions}, nil // #nosec G115 -- definition versions are small counters
 	}
-	return nil, "", fmt.Errorf("unknown definition type %v", defType)
+	return DefinitionResource{}, fmt.Errorf("unknown definition type %v", defType)
+}
+
+func (rq *DB) decisionDefinitionVersions(ctx context.Context, resourceKey int64) (decisions []*zenproto.DecisionDefinitionRef, err error) {
+	rows, err := rq.QueryContext(ctx, "SELECT decision_id, version FROM decision_definition WHERE dmn_resource_definition_key = ? ORDER BY decision_id", resourceKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load decision definitions of dmn resource definition %d: %w", resourceKey, err)
+	}
+	defer zenerr.CloseJoin(rows, &err, "decision definition rows")
+	for rows.Next() {
+		var id string
+		var version int64
+		if err := rows.Scan(&id, &version); err != nil {
+			return nil, fmt.Errorf("failed to load decision definitions of dmn resource definition %d: %w", resourceKey, err)
+		}
+		decisions = append(decisions, &zenproto.DecisionDefinitionRef{DecisionId: new(id), Version: new(int32(version))}) // #nosec G115 -- definition versions are small counters
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to load decision definitions of dmn resource definition %d: %w", resourceKey, err)
+	}
+	return decisions, nil
 }
 
 // SchemaVersion returns the filename of the newest migration applied to this

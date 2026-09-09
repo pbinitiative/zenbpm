@@ -156,35 +156,40 @@ func (zpn *ZenPartitionNode) NewDefinitionImporter() *DefinitionImporter {
 	return &DefinitionImporter{engine: &engine}
 }
 
-// ImportProcessDefinition stores a process definition under the given key. It
-// is idempotent: a definition with identical content that already exists is
-// left alone. With registerSubscriptions the definition-level subscriptions
-// (timer/message start events, instantiating receive tasks) are created on
-// this partition; the caller decides that based on the deployment ownership
-// rule so that only one partition ever owns them.
-func (i *DefinitionImporter) ImportProcessDefinition(ctx context.Context, key int64, data []byte, registerSubscriptions bool) error {
-	definition, err := i.engine.LoadFromBytes(ctx, data, key)
-	if err != nil {
+// ImportProcessDefinition stores a process definition under the key and
+// version it has on the partition it was copied from. It is idempotent: a
+// definition already stored under the key is left alone. With
+// registerSubscriptions the definition-level subscriptions (timer/message
+// start events, instantiating receive tasks) are created on this partition;
+// the caller decides that based on the deployment ownership rule so that only
+// one partition ever owns them, and the engine creates them only when the
+// imported definition is the latest version of its process.
+//
+// A partition that already holds a different definition at the same version
+// cannot take the copy without changing which definition is the latest; the
+// import is refused with storage.ErrUniqueConstraint and nothing is written.
+func (i *DefinitionImporter) ImportProcessDefinition(ctx context.Context, key int64, version int32, data []byte, registerSubscriptions bool) error {
+	if _, err := i.engine.ImportProcessDefinition(ctx, data, key, version, registerSubscriptions); err != nil {
 		return fmt.Errorf("failed to import process definition %d: %w", key, err)
-	}
-	if !registerSubscriptions {
-		return nil
-	}
-	if err := i.engine.RegisterProcessDefinitionSubscriptions(ctx, definition.Key); err != nil {
-		return fmt.Errorf("failed to register subscriptions of imported process definition %d: %w", definition.Key, err)
 	}
 	return nil
 }
 
 // ImportDmnResourceDefinition stores a DMN resource definition and its
-// decision definitions under the given key.
-func (i *DefinitionImporter) ImportDmnResourceDefinition(ctx context.Context, key int64, data []byte) error {
+// decision definitions under the key and versions they have on the partition
+// they were copied from. Like ImportProcessDefinition it is idempotent and
+// refuses a version another definition already holds.
+func (i *DefinitionImporter) ImportDmnResourceDefinition(ctx context.Context, key int64, version int32, data []byte, decisionVersions map[string]int32) error {
 	dmnEngine := i.engine.GetDmnEngine()
 	definition, err := dmnEngine.ParseDmnFromBytes("", data)
 	if err != nil {
 		return fmt.Errorf("failed to parse dmn resource definition %d: %w", key, err)
 	}
-	if _, _, err := dmnEngine.SaveDmnResourceDefinition(ctx, definition, data, key); err != nil {
+	versions := make(map[string]int64, len(decisionVersions))
+	for id, v := range decisionVersions {
+		versions[id] = int64(v)
+	}
+	if _, _, err := dmnEngine.ImportDmnResourceDefinition(ctx, definition, data, key, int64(version), versions); err != nil {
 		return fmt.Errorf("failed to import dmn resource definition %d: %w", key, err)
 	}
 	return nil

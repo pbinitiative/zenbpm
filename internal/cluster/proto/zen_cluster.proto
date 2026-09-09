@@ -886,6 +886,16 @@ message GetDefinitionResourceResponse {
   ErrorResult error = 1;
   bytes data = 2;
   string resource_name = 3;
+  // version is the definition's version number on the partition it was read
+  // from; an import preserves it so the copy never outranks a newer version.
+  int32 version = 4;
+  // decisions lists the versions of the decision definitions a DMN resource
+  // carries on the source partition (empty for process definitions).
+  repeated DecisionDefinitionRef decisions = 5;
+}
+message DecisionDefinitionRef {
+  string decision_id = 1;
+  int32 version = 2;
 }
 
 message PartitionRestoreStatusRequest {
@@ -915,8 +925,14 @@ message ImportDefinitionRequest {
   // register_process_definition_subscriptions creates the definition-level
   // subscriptions (timer/message start events, instantiating receive tasks)
   // on this partition. The coordinator sets it only for the partition that
-  // owns the subscriptions under normal deployment rules.
+  // owns the subscriptions under normal deployment rules. They are created
+  // only when the imported definition is the latest version of its process.
   bool register_process_definition_subscriptions = 8;
+  // version is stored as is: the import copies a definition another partition
+  // already holds, it does not deploy a new one.
+  int32 version = 9;
+  // decisions carries the decision definition versions of a DMN resource.
+  repeated DecisionDefinitionRef decisions = 10;
 }
 message ImportDefinitionResponse { ErrorResult error = 1; }
 

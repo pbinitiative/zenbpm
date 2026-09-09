@@ -75,13 +75,17 @@ func (s *Server) handleClusterRestore(w http.ResponseWriter, r *http.Request) {
 
 // restoreErrorStatus maps a coordinator error onto an HTTP status and error
 // code: refusals before ownership are conflicts, a phase failure is an
-// internal error, a phase deadline is a gateway timeout.
+// internal error, a phase deadline is a gateway timeout. An upload that
+// outlived the ingest deadline is a refusal too (nothing was recorded), but
+// it is reported as a timeout so clients can tell it from a corrupt bundle.
 func restoreErrorStatus(err error) (int, string) {
 	switch {
 	case errors.Is(err, zenerr.ErrNotLeader):
 		return http.StatusServiceUnavailable, restoreCodeNotLeader
 	case errors.Is(err, zenerr.ErrResourceLimit):
 		return http.StatusRequestEntityTooLarge, restoreCodeRefused
+	case errors.Is(err, backup.ErrInvalidBundle) && backup.IsDeadlineExceeded(err):
+		return http.StatusGatewayTimeout, restoreCodeRefused
 	case errors.Is(err, backup.ErrRestoreInProgress), errors.Is(err, backup.ErrInvalidBundle), errors.Is(err, backup.ErrClusterNotEmpty):
 		return http.StatusConflict, restoreCodeRefused
 	case backup.IsDeadlineExceeded(err):

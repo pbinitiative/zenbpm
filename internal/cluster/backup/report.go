@@ -14,10 +14,22 @@ type PointerConflict struct {
 	LoserKeys      []int64 `json:"loserKeys"`
 }
 
+// DefinitionSyncEntry reports one definition the reconciliation found missing
+// on some partitions: where it was copied to, and where it could not be.
 type DefinitionSyncEntry struct {
 	Key          int64    `json:"key"`
 	Type         string   `json:"type"` // "process" | "dmn"
 	ToPartitions []uint32 `json:"toPartitions"`
+	// Conflicts lists the partitions that refused the copy because they
+	// already hold another definition at the same version. Their version
+	// histories diverged before the backup; the restore leaves them as they
+	// are rather than changing which definition is the latest.
+	Conflicts []DefinitionSyncConflict `json:"conflicts,omitempty"`
+}
+
+type DefinitionSyncConflict struct {
+	Partition uint32 `json:"partition"`
+	Reason    string `json:"reason"`
 }
 
 // RestoreReport is returned to the operator after a cluster restore. The

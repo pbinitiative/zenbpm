@@ -273,7 +273,11 @@ func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force
 		return nil, ingestTimeoutError(deps.Timeouts.Ingest, err)
 	}
 
-	run := &restoreRun{deps: deps, bundle: bundle, force: force, report: report}
+	run := &restoreRun{deps: deps, bundle: bundle, force: force, report: report,
+		// lazy on purpose: the snapshot has to be taken once the cluster is
+		// fenced, not during ingest
+		clusterState: sync.OnceValue(deps.ClusterState),
+	}
 	return run.execute(ctx)
 }
 
@@ -283,6 +287,11 @@ type restoreRun struct {
 	bundle *Bundle
 	force  bool
 	report *RestoreReport
+	// clusterState is one snapshot of the replicated state, taken on first
+	// use during reconciliation: the cluster is quiesced and fenced by then,
+	// so every definition is routed against the same partition map without
+	// deep-copying the state per definition.
+	clusterState func() state.Cluster
 
 	// identity is the fencing token of this run. It is written once by
 	// acquire, before the heartbeat starts, and never changes afterwards, so
@@ -817,7 +826,9 @@ func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error 
 		for _, ref := range missing[part] {
 			entry, ok := synced[ref.GetKey()]
 			if !ok {
-				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: definitionTypeName(ref.GetType())}
+				// toPartitions is an array in the report even when every
+				// copy was refused
+				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: definitionTypeName(ref.GetType()), ToPartitions: []uint32{}}
 				synced[ref.GetKey()] = entry
 			}
 			conflict, err := run.importDefinition(ctx, perPartition, ref, part)
@@ -889,7 +900,7 @@ func (run *restoreRun) importDefinition(ctx context.Context, perPartition map[ui
 		if err != nil {
 			return "", fmt.Errorf("failed to read process id of definition %d: %w", ref.GetKey(), err)
 		}
-		req.RegisterProcessDefinitionSubscriptions = new(run.deps.ClusterState().DefinitionSubscriptionPartition(processID) == part)
+		req.RegisterProcessDefinitionSubscriptions = new(run.clusterState().DefinitionSubscriptionPartition(processID) == part)
 	}
 	resp, err := target.ImportDefinition(ctx, req)
 	if status.Code(err) == codes.AlreadyExists {

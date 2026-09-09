@@ -25,8 +25,14 @@ type RestoreLimits struct {
 	ManifestBytes int64
 	// PartitionImageBytes caps one stored (gzipped) partition image.
 	PartitionImageBytes int64
-	// PartitionDatabaseBytes caps one decompressed partition database.
+	// PartitionDatabaseBytes caps one decompressed partition database. The
+	// database is decompressed to disk and copied in bounded batches, so the
+	// cap bounds disk usage, not memory.
 	PartitionDatabaseBytes int64
+	// PartitionRowBytes caps one row of a partition image (see
+	// CopyOptions.MaxRowBytes): the largest row decides the largest batch the
+	// copy ships and the memory it needs.
+	PartitionRowBytes int64
 }
 
 // DefaultRestoreLimits returns the limits used when a field is zero.
@@ -35,6 +41,7 @@ func DefaultRestoreLimits() RestoreLimits {
 		ManifestBytes:          1 << 20,
 		PartitionImageBytes:    8 << 30,
 		PartitionDatabaseBytes: 16 << 30,
+		PartitionRowBytes:      defaultCopyMaxRowBytes,
 	}
 }
 
@@ -44,7 +51,25 @@ func RestoreLimitsFromConfig(c config.Restore) RestoreLimits {
 		ManifestBytes:          c.MaxManifestBytes,
 		PartitionImageBytes:    c.MaxPartitionImageBytes,
 		PartitionDatabaseBytes: c.MaxPartitionDatabaseBytes,
+		PartitionRowBytes:      c.MaxPartitionRowBytes,
 	}
+}
+
+// NewSpoolDir creates a fresh directory for the spool files of one backup or
+// restore under root, creating root first when needed. An empty root falls
+// back to the operating system's temporary directory, which may be memory
+// backed; nodes pass the configured restore spool directory.
+func NewSpoolDir(root, pattern string) (string, error) {
+	if root != "" {
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			return "", fmt.Errorf("failed to create spool root %s: %w", root, err)
+		}
+	}
+	dir, err := os.MkdirTemp(root, pattern)
+	if err != nil {
+		return "", fmt.Errorf("failed to create spool dir: %w", err)
+	}
+	return dir, nil
 }
 
 func (l RestoreLimits) withDefaults() RestoreLimits {
@@ -59,6 +84,7 @@ func (l RestoreLimits) withDefaults() RestoreLimits {
 		ManifestBytes:          pick(l.ManifestBytes, def.ManifestBytes),
 		PartitionImageBytes:    pick(l.PartitionImageBytes, def.PartitionImageBytes),
 		PartitionDatabaseBytes: pick(l.PartitionDatabaseBytes, def.PartitionDatabaseBytes),
+		PartitionRowBytes:      pick(l.PartitionRowBytes, def.PartitionRowBytes),
 	}
 }
 
@@ -384,11 +410,11 @@ func verifySQLiteGzip(ctx context.Context, path string, maxDatabaseBytes int64) 
 		return fmt.Errorf("not gzip data: %w", err)
 	}
 	defer zenerr.CloseJoin(zr, &err, "gzip reader")
-	head := make([]byte, 16)
+	head := make([]byte, len(sqliteHeader))
 	if _, err := io.ReadFull(zr, head); err != nil {
 		return fmt.Errorf("failed to read database header: %w", err)
 	}
-	if string(head) != "SQLite format 3\x00" {
+	if string(head) != sqliteHeader {
 		return fmt.Errorf("content is not a valid SQLite database")
 	}
 	// Drain to let gzip verify its CRC over the whole stream. Output is

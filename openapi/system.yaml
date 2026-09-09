@@ -670,6 +670,7 @@ components:
                 enum: [process, dmn]
               toPartitions:
                 type: array
+                description: Partitions the definition was copied to; empty when every partition refused the copy.
                 items:
                   type: integer
                   format: int64

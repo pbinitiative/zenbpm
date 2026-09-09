@@ -1254,6 +1254,24 @@ func (b *StorageBatch) SaveProcessDefinition(ctx context.Context, definition bpm
 	return nil
 }
 
+var _ storage.DmnResourceDefinitionStorageWriter = &StorageBatch{}
+
+func (b *StorageBatch) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveDmnResourceDefinition(ctx, definition)
+	})
+	return nil
+}
+
+var _ storage.DecisionDefinitionStorageWriter = &StorageBatch{}
+
+func (b *StorageBatch) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveDecisionDefinition(ctx, decision)
+	})
+	return nil
+}
+
 var _ storage.ProcessInstanceStorageWriter = &StorageBatch{}
 
 func (b *StorageBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {

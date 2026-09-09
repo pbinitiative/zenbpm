@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -69,11 +70,12 @@ func StreamPartitionBackup(ctx context.Context, src BackupSource, schemaVersion 
 }
 
 // ReceivePartitionRestore spools the incoming gzipped stream, verifies its
-// digest against meta, gunzips and validates the SQLite image, then loads it
-// through load. The stored image and the decompressed database are capped by
-// limits; the caller wraps the actual store load (for example to hold the
-// partition's restore fence while it runs).
-func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), limits RestoreLimits, load func(*rqcmd.LoadRequest) error) (err error) {
+// digest against meta, decompresses it into a second spool file, checks that
+// the result is a SQLite database and hands its path to load. Nothing of the
+// image is held in memory: the stored image and the decompressed database are
+// capped by limits as disk usage. The caller copies the database into the
+// partition (see CopyDatabase) under the partition's restore fence.
+func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), limits RestoreLimits, load func(ctx context.Context, databasePath string) error) (err error) {
 	limits = limits.withDefaults()
 	spool, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-recv-p%d-*", meta.GetPartitionId()))
 	if err != nil {
@@ -133,20 +135,41 @@ recvLoop:
 	if err != nil {
 		return fmt.Errorf("restore payload is not gzip: %w", err)
 	}
-	// the store needs the whole database in memory for a single load command;
-	// the configured limit bounds that allocation
-	raw, err := io.ReadAll(io.LimitReader(zr, limits.PartitionDatabaseBytes+1))
-	if err != nil {
-		return fmt.Errorf("failed to decompress restore payload: %w", err)
-	}
-	if int64(len(raw)) > limits.PartitionDatabaseBytes {
-		return fmt.Errorf("%w: decompressed database exceeds %d bytes", zenerr.ErrResourceLimit, limits.PartitionDatabaseBytes)
-	}
-	if len(raw) < 16 || string(raw[:16]) != "SQLite format 3\x00" {
+	head := make([]byte, len(sqliteHeader))
+	if _, err := io.ReadFull(zr, head); err != nil || string(head) != sqliteHeader {
 		return fmt.Errorf("restore payload is not a valid SQLite database")
 	}
-	if err := load(&rqcmd.LoadRequest{Data: raw}); err != nil {
+	// The database is decompressed to disk, never into memory: the copy into
+	// the partition reads it row by row, so the restorable size is bounded by
+	// the configured limit and disk space, not by RAM.
+	database, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-db-p%d-*", meta.GetPartitionId()))
+	if err != nil {
+		return fmt.Errorf("failed to create restore database spool: %w", err)
+	}
+	defer func() {
+		if removeErr := os.Remove(database.Name()); removeErr != nil {
+			log.Warn("failed to remove restore database spool file %s: %v", database.Name(), removeErr)
+		}
+	}()
+	if _, err := database.Write(head); err != nil {
+		_ = database.Close()
+		return fmt.Errorf("failed to write restore database spool: %w", err)
+	}
+	_, err = copyAtMost(database, &contextReader{ctx: ctx, r: zr}, limits.PartitionDatabaseBytes-int64(len(head)), "decompressed database")
+	if closeErr := database.Close(); closeErr != nil && err == nil {
+		err = fmt.Errorf("failed to close restore database spool: %w", closeErr)
+	}
+	if err != nil {
+		if errors.Is(err, zenerr.ErrResourceLimit) || ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("failed to decompress restore payload: %w", err)
+	}
+	if err := load(ctx, database.Name()); err != nil {
 		return fmt.Errorf("failed to load database into partition %d: %w", meta.GetPartitionId(), err)
 	}
 	return nil
 }
+
+// sqliteHeader is the magic string every SQLite database file starts with.
+const sqliteHeader = "SQLite format 3\x00"

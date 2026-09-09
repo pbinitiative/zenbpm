@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -257,4 +259,51 @@ func TestDefinitionImporterKeepsHistoricalVersionsHistorical(t *testing.T) {
 	err = importer.ImportProcessDefinition(fencedCtx, 4803, 2, timerStart, true)
 	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "version 2 is already held by another definition")
 	assert.Equal(t, int64(2), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
+}
+
+func TestExecuteUnderFenceRunsBatchesOnlyForTheOwner(t *testing.T) {
+	partition, _, _, _, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, partition.Stop()) }()
+	ctx := t.Context()
+	db := partition.DB
+	token := RestoreToken{OperationID: "op-1", Epoch: 1}
+	insert := []*rqproto.Statement{{Sql: "INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name) VALUES (1, 1, 'fenced', '<x/>', X'01', 'fenced')"}}
+
+	// no fence, then a fence of another owner: the batch is refused
+	require.ErrorIs(t, db.ExecuteUnderFence(ctx, token, insert), ErrPartitionFenced)
+	db.EnterRestoreFence(RestoreToken{OperationID: "op-2", Epoch: 2})
+	require.ErrorIs(t, db.ExecuteUnderFence(ctx, token, insert), ErrPartitionFenced)
+	assert.Equal(t, int64(0), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
+
+	// the owner's batch runs as one transaction
+	db.EnterRestoreFence(token)
+	require.NoError(t, db.ExecuteUnderFence(ctx, token, insert))
+	assert.Equal(t, int64(1), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
+
+	// a failing statement rolls the whole batch back and is reported
+	err := db.ExecuteUnderFence(ctx, token, []*rqproto.Statement{
+		{Sql: "INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name) VALUES (2, 1, 'second', '<x/>', X'02', 'second')"},
+		{Sql: "INSERT INTO no_such_table(x) VALUES (1)"},
+	})
+	require.ErrorContains(t, err, "no such table")
+	assert.Equal(t, int64(1), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"), "a failed batch leaves nothing behind")
+}
+
+func TestSchemaObjectsListsTablesAndViews(t *testing.T) {
+	partition, _, _, _, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, partition.Stop()) }()
+	ctx := t.Context()
+	db := partition.DB
+	_, err := db.ExecContext(ctx, "CREATE VIEW definition_keys AS SELECT key FROM process_definition")
+	require.NoError(t, err)
+
+	tables, views, err := db.SchemaObjects(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, tables, "migration")
+	assert.Contains(t, tables, "process_definition")
+	assert.Contains(t, tables, "process_instance")
+	for _, name := range tables {
+		assert.False(t, strings.HasPrefix(name, "sqlite_") && name != "sqlite_sequence", "internal table %s must not be listed", name)
+	}
+	assert.Equal(t, []string{"definition_keys"}, views)
 }

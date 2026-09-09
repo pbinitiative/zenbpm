@@ -1,6 +1,8 @@
 package dmn
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -54,6 +56,42 @@ func TestImportDmnResourceDefinitionPreservesKeyAndVersions(t *testing.T) {
 	assert.Len(t, all, 3)
 }
 
+// TestImportDmnResourceDefinitionWritesResourceAndDecisionsAtomically covers
+// a store that fails the write: neither the resource nor a decision may be
+// left behind, otherwise a retry would find the resource present and skip
+// the decisions for good.
+func TestImportDmnResourceDefinitionWritesResourceAndDecisionsAtomically(t *testing.T) {
+	store := inmemory.NewStorage()
+	dmnEngine.persistence = &failingFlushStorage{Storage: store}
+	ctx := t.Context()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	require.NoError(t, err)
+
+	_, _, err = dmnEngine.ImportDmnResourceDefinition(ctx, definition, xmldata, 100, 1, map[string]int64{"example_canAutoLiquidateRule": 1})
+	require.ErrorContains(t, err, "write refused")
+
+	all, err := store.FindDmnResourceDefinitionsById(ctx, "example_canAutoLiquidate")
+	require.NoError(t, err)
+	assert.Empty(t, all, "a failed import leaves no resource behind")
+	decisions, err := store.GetDecisionDefinitionsById(ctx, "example_canAutoLiquidateRule")
+	require.NoError(t, err)
+	assert.Empty(t, decisions, "a failed import leaves no decision behind")
+
+	// the same import succeeds once the store accepts writes again, and both
+	// the resource and its decision arrive in one flush
+	dmnEngine.persistence = &countingFlushStorage{Storage: store}
+	_, imported, err := dmnEngine.ImportDmnResourceDefinition(ctx, definition, xmldata, 100, 1, map[string]int64{"example_canAutoLiquidateRule": 1})
+	require.NoError(t, err)
+	assert.Len(t, imported, 1)
+	assert.Equal(t, 1, dmnEngine.persistence.(*countingFlushStorage).flushes, "resource and decisions are written as one batch")
+	all, err = store.FindDmnResourceDefinitionsById(ctx, "example_canAutoLiquidate")
+	require.NoError(t, err)
+	assert.Len(t, all, 1)
+	decisions, err = store.GetDecisionDefinitionsById(ctx, "example_canAutoLiquidateRule")
+	require.NoError(t, err)
+	assert.Len(t, decisions, 1)
+}
+
 func TestImportDmnResourceDefinitionRefusesDivergedVersionHistories(t *testing.T) {
 	store := inmemory.NewStorage()
 	dmnEngine.persistence = store
@@ -76,4 +114,42 @@ func TestImportDmnResourceDefinitionRefusesDivergedVersionHistories(t *testing.T
 	decisions, err := store.GetDecisionDefinitionsById(ctx, "example_canAutoLiquidateRule")
 	require.NoError(t, err)
 	assert.Len(t, decisions, 1)
+}
+
+// failingFlushStorage refuses every batch write, like a partition whose raft
+// apply failed.
+type failingFlushStorage struct {
+	*inmemory.Storage
+}
+
+func (s *failingFlushStorage) NewBatch() storage.Batch {
+	return &failingFlushBatch{Batch: s.Storage.NewBatch()}
+}
+
+type failingFlushBatch struct {
+	storage.Batch
+}
+
+func (b *failingFlushBatch) Flush(context.Context) error {
+	return errors.New("write refused")
+}
+
+// countingFlushStorage counts the batches flushed into the store.
+type countingFlushStorage struct {
+	*inmemory.Storage
+	flushes int
+}
+
+func (s *countingFlushStorage) NewBatch() storage.Batch {
+	return &countingFlushBatch{Batch: s.Storage.NewBatch(), store: s}
+}
+
+type countingFlushBatch struct {
+	storage.Batch
+	store *countingFlushStorage
+}
+
+func (b *countingFlushBatch) Flush(ctx context.Context) error {
+	b.store.flushes++
+	return b.Batch.Flush(ctx)
 }

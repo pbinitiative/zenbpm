@@ -912,64 +912,76 @@ func repairBrokenMigrationFixture(t *testing.T, dir string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("SELECT 1;"), 0o600))
 }
 
-// TestConcurrentNotificationsNeverLiftAnActiveRestoreFence reproduces two
-// cluster state change notifications running at the same time, the older one
-// having read a state without a restore and the newer one a state that gates
-// the cluster. Whatever the interleaving, the partition must end up fenced:
-// maintenance transitions are serialized and re-read the state, so the stale
-// notification cannot undo the fence the newer one installed.
-func TestConcurrentNotificationsNeverLiftAnActiveRestoreFence(t *testing.T) {
-	for round := range 20 {
-		gated := state.Cluster{
-			Config:     state.ClusterConfig{DesiredPartitions: 1},
-			Partitions: map[uint32]state.Partition{},
-			Nodes:      map[string]state.Node{},
-			Restore:    state.RestoreOperation{ID: "op-9", Epoch: 9, Status: state.RestoreStatusActive, Phase: state.RestorePhaseLoading},
-		}
-		ungated := *gated.DeepCopy()
-		ungated.Restore = state.RestoreOperation{}
-		tStore := &sequencedControllerTestStore{
-			ControllerTestStore: &ControllerTestStore{id: "test-node-1", addr: "127.0.0.1:0", clusterState: gated},
-			first:               ungated,
-		}
-		ctrl, err := NewController(nil, config.Cluster{NodeId: tStore.id})
-		require.NoError(t, err)
-		ctrl.store = tStore
-		db, err := partition.NewDB(nil, 1, hclog.NewNullLogger(), config.Persistence{}, nil, tStore.ClusterState)
-		require.NoError(t, err)
-		t.Cleanup(db.Close)
-		ctrl.partitions[1] = &partition.ZenPartitionNode{PartitionId: 1, DB: db}
-
-		var wg sync.WaitGroup
-		for range 2 {
-			wg.Go(func() {
-				ctrl.syncRestoreMaintenance()
-			})
-		}
-		wg.Wait()
-
-		fence, fenced := db.RestoreFence()
-		require.True(t, fenced, "round %d: the stale notification lifted the fence of an active restore", round)
-		assert.Equal(t, partition.RestoreToken{OperationID: "op-9", Epoch: 9}, fence)
-		ctrl.partitionsMu.RLock()
-		quiesced := ctrl.quiesced[1]
-		ctrl.partitionsMu.RUnlock()
-		assert.Equal(t, fence, quiesced, "the partition is recorded as quiesced for the active restore")
+// TestRestoreMaintenanceFollowsTheStateReadUnderTheLock covers the ordering
+// syncRestoreMaintenance relies on when notifications are dispatched
+// concurrently: the cluster state is read only after maintenanceMu is taken,
+// so every transition acts on a state at least as new as the previous one
+// and the partitions always match the newest state observed. The store hands
+// out a strictly newer state on every read; the fence has to follow the
+// sequence ungated, gated, ungated exactly, whichever notification triggered
+// each sync.
+func TestRestoreMaintenanceFollowsTheStateReadUnderTheLock(t *testing.T) {
+	gated := state.Cluster{
+		Config:     state.ClusterConfig{DesiredPartitions: 1},
+		Partitions: map[uint32]state.Partition{},
+		Nodes:      map[string]state.Node{},
+		Restore:    state.RestoreOperation{ID: "op-9", Epoch: 9, Status: state.RestoreStatusActive, Phase: state.RestorePhaseLoading},
 	}
+	ungated := *gated.DeepCopy()
+	ungated.Restore = state.RestoreOperation{}
+	tStore := &sequencedControllerTestStore{
+		ControllerTestStore: &ControllerTestStore{id: "test-node-1", addr: "127.0.0.1:0", clusterState: ungated},
+		states:              []state.Cluster{ungated, gated, ungated},
+	}
+	ctrl, err := NewController(nil, config.Cluster{NodeId: tStore.id})
+	require.NoError(t, err)
+	ctrl.store = tStore
+	db, err := partition.NewDB(nil, 1, hclog.NewNullLogger(), config.Persistence{}, nil, tStore.ClusterState)
+	require.NoError(t, err)
+	t.Cleanup(db.Close)
+	ctrl.partitions[1] = &partition.ZenPartitionNode{PartitionId: 1, DB: db}
+	quiescedFor := func() (partition.RestoreToken, bool) {
+		ctrl.partitionsMu.RLock()
+		defer ctrl.partitionsMu.RUnlock()
+		token, ok := ctrl.quiesced[1]
+		return token, ok
+	}
+
+	ctrl.syncRestoreMaintenance()
+	_, fenced := db.RestoreFence()
+	assert.False(t, fenced, "no restore owns the cluster: the partition serves writes")
+	_, quiesced := quiescedFor()
+	assert.False(t, quiesced)
+
+	ctrl.syncRestoreMaintenance()
+	fence, fenced := db.RestoreFence()
+	require.True(t, fenced, "the restore that took the cluster fences the partition")
+	assert.Equal(t, partition.RestoreToken{OperationID: "op-9", Epoch: 9}, fence)
+	quiescedToken, quiesced := quiescedFor()
+	require.True(t, quiesced, "the partition is recorded as quiesced for the active restore")
+	assert.Equal(t, fence, quiescedToken)
+
+	ctrl.syncRestoreMaintenance()
+	_, fenced = db.RestoreFence()
+	assert.False(t, fenced, "the restore released the cluster: the fence is lifted")
+	_, quiesced = quiescedFor()
+	assert.False(t, quiesced)
+	assert.Equal(t, int32(3), tStore.calls.Load(), "every sync reads the state exactly once, under the maintenance lock")
 }
 
-// sequencedControllerTestStore hands out an older cluster state to the first
-// ClusterState call and the current one afterwards, which is what two
-// notifications dispatched in quick succession observe.
+// sequencedControllerTestStore hands out the next of its states on every
+// ClusterState call, the last one from then on: a store whose replicated
+// state moves forward between two reads.
 type sequencedControllerTestStore struct {
 	*ControllerTestStore
-	first state.Cluster
-	calls atomic.Int32
+	states []state.Cluster
+	calls  atomic.Int32
 }
 
 func (s *sequencedControllerTestStore) ClusterState() state.Cluster {
-	if s.calls.Add(1) == 1 {
-		return *s.first.DeepCopy()
+	n := int(s.calls.Add(1)) - 1
+	if n >= len(s.states) {
+		n = len(s.states) - 1
 	}
-	return s.ControllerTestStore.ClusterState()
+	return *s.states[n].DeepCopy()
 }

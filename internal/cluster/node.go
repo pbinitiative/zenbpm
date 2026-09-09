@@ -2,7 +2,7 @@ package cluster
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -133,7 +133,8 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
 	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.client,
 		server.WithRestoreTimeouts(backup.RestoreTimeoutsFromConfig(conf.Cluster.Restore)),
-		server.WithRestoreLimits(backup.RestoreLimitsFromConfig(conf.Cluster.Restore)))
+		server.WithRestoreLimits(backup.RestoreLimitsFromConfig(conf.Cluster.Restore)),
+		server.WithRestoreSpoolDir(conf.Cluster.Restore.SpoolDir))
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}
@@ -450,7 +451,7 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 		return 0, fmt.Errorf("failed to find latest DMN resource definition by id %s: %w", definition.Id, err)
 	}
 
-	newChecksum := md5.Sum(data)
+	newChecksum := md5.Sum(data) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 	sameContent, err := xmlutil.SameContent(
 		latest.DmnChecksum,
 		newChecksum[:],
@@ -582,7 +583,7 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 		return 0, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
 	}
 
-	newDefinitionMD5Sum := md5.Sum(newDefinitionData)
+	newDefinitionMD5Sum := md5.Sum(newDefinitionData) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 	sameContent, err := xmlutil.SameContent(
 		latestDefinition.BpmnChecksum,
 		newDefinitionMD5Sum[:],

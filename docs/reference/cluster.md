@@ -243,7 +243,7 @@ On success the response is a JSON object:
 | `partitions` | Per-partition load duration in milliseconds. |
 | `pointersRebuilt` | Total number of message-subscription pointer rows written during reconciliation. |
 | `pointerConflicts` | Pairs of duplicate active subscriptions sharing the same `(name, correlationKey)` caused by snapshot skew. The `winnerKey` subscription retained its pointer; `loserKeys` subscriptions did not. Each loser represents a potentially waiting process instance — review and cancel it if it should no longer proceed. |
-| `definitionsSynced` | Process or DMN definitions that were missing from one or more partitions and were imported there during reconciliation. |
+| `definitionsSynced` | Process or DMN definitions that were missing from one or more partitions and were imported there during reconciliation. `toPartitions` lists where the copy landed and is empty when every partition refused it; `conflicts` lists the partitions that refused it because they already hold another definition at that version. |
 
 ### Failure mid-restore
 
@@ -257,16 +257,28 @@ If the node running the restore crashes, the operation stays `ACTIVE` until its 
 |---------|-----|---------|---------|
 | `cluster.restore.leaseDuration` | `CLUSTER_RESTORE_LEASE_DURATION` | `30s` | How long the coordinator's ownership stays valid without a progress update. |
 | `cluster.restore.barrierTimeout` | `CLUSTER_RESTORE_BARRIER_TIMEOUT` | `1m` | Wait for every partition leader to stop its engine and fence writes. |
-| `cluster.restore.partitionLoadTimeout` | `CLUSTER_RESTORE_PARTITION_LOAD_TIMEOUT` | `30m` | Streaming and loading one partition image. |
+| `cluster.restore.partitionLoadTimeout` | `CLUSTER_RESTORE_PARTITION_LOAD_TIMEOUT` | `30m` | Streaming one partition image to its leader and copying it into the partition. The copy ships the image row by row through the partition's raft log, so raise this for partitions holding many gigabytes. |
 | `cluster.restore.reconcileTimeout` | `CLUSTER_RESTORE_RECONCILE_TIMEOUT` | `10m` | Definition sync and pointer rebuild. |
 | `cluster.restore.readinessTimeout` | `CLUSTER_RESTORE_READINESS_TIMEOUT` | `2m` | Wait for the partition engines to come back after the gate is lifted. |
 | `cluster.restore.stateApplyTimeout` | `CLUSTER_RESTORE_STATE_APPLY_TIMEOUT` | `10s` | One restore state transition through raft. When it passes, the transition's outcome is unknown (raft cannot withdraw an enqueued command); the coordinator fails the phase and the fencing token protects the partitions. |
 | `cluster.restore.ingestTimeout` | `CLUSTER_RESTORE_INGEST_TIMEOUT` | `1h` | Receiving and validating the uploaded bundle before ownership is taken; also the request body read deadline. |
 | `cluster.restore.maxManifestBytes` | `CLUSTER_RESTORE_MAX_MANIFEST_BYTES` | `1048576` | Size cap of `manifest.json`. |
 | `cluster.restore.maxPartitionImageBytes` | `CLUSTER_RESTORE_MAX_PARTITION_IMAGE_BYTES` | `8589934592` (8 GiB) | Size cap of one stored (gzipped) partition image, in the bundle and on the receiving partition leader. |
-| `cluster.restore.maxPartitionDatabaseBytes` | `CLUSTER_RESTORE_MAX_PARTITION_DATABASE_BYTES` | `17179869184` (16 GiB) | Size cap of one decompressed partition database. The partition leader holds the whole database in memory while loading it as a single raft entry, so size the limit (and the node) accordingly. |
+| `cluster.restore.maxPartitionDatabaseBytes` | `CLUSTER_RESTORE_MAX_PARTITION_DATABASE_BYTES` | `17179869184` (16 GiB) | Size cap of one decompressed partition database. The partition leader decompresses the image into the spool directory and copies it into the partition in bounded batches, so the limit bounds disk usage on the leader, not memory. |
+| `cluster.restore.maxPartitionRowBytes` | `CLUSTER_RESTORE_MAX_PARTITION_ROW_BYTES` | `33554432` (32 MiB) | Size cap of one row of a partition image (the byte lengths of its values added up). The copy ships rows as batches of at most 4 MiB of SQL; a row larger than that travels in a batch of its own, so the largest row, not the image, decides the largest batch, raft entry and the memory the copy needs (roughly twice the row, blobs are spelled in hex). The partition leader checks the image before touching its partition; an image over the limit fails the restore in `LOADING` (code `RESTORE_FAILED`, partitions loaded earlier keep the restored data), so raise the limit on the leaders or abort. |
+| `cluster.restore.spoolDir` | `CLUSTER_RESTORE_SPOOL_DIR` | `<cluster.raft.dir>/spool` | Directory backups and restores spool partition images in. Must be disk backed and must not be a memory-backed filesystem (tmpfs): the size limits above bound what is written there, and on a memory-backed volume that becomes memory usage. |
 
-A bundle or image over a limit is refused with `413 Request Entity Too Large` (code `RESTORE_REFUSED`) before anything is modified.
+A bundle or image over the manifest, image or database limit is refused with `413 Request Entity Too Large` (code `RESTORE_REFUSED`) before anything is modified. The row limit and the image's schema are checked by each partition leader, before it touches its partition: an image whose tables reference themselves or each other in a foreign-key cycle cannot be copied as separate transactions parents first and fails the restore in `LOADING` like an oversized row does. The ZenBPM schema has no such tables.
+
+#### Disk space
+
+A restore needs free disk space on every partition leader, in the spool directory and in the data directory, for:
+
+- the compressed partition image received from the coordinator (at most `maxPartitionImageBytes`),
+- the decompressed database it is copied from (at most `maxPartitionDatabaseBytes`),
+- the partition database being rebuilt, and the raft log holding every batch until the next snapshot: together up to about twice the decompressed size.
+
+The node running the restore additionally spools every partition image of the bundle while validating it. The size limits bound each of these individually, not their sum, so size the volumes for the largest partition and keep the spool directory off tmpfs.
 
 ### Upgrading from the `Restoring` flag
 

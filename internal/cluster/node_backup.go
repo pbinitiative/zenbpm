@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"time"
@@ -16,9 +15,9 @@ import (
 // ClusterBackup streams a whole-cluster backup bundle (plain tar) into w.
 // Callable on any node; partition data is pulled from each partition leader.
 func (node *ZenNode) ClusterBackup(ctx context.Context, w io.Writer) (*backup.Manifest, error) {
-	spoolDir, err := os.MkdirTemp("", "zenbpm-backup-*")
+	spoolDir, err := backup.NewSpoolDir(node.controller.Config.Restore.SpoolDir, "zenbpm-backup-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create backup spool dir: %w", err)
+		return nil, err
 	}
 	defer node.removeSpoolDir(spoolDir)
 	return backup.RunClusterBackup(ctx, node.store.ClusterState(), node.client, spoolDir, w)
@@ -30,9 +29,9 @@ func (node *ZenNode) ClusterBackup(ctx context.Context, w io.Writer) (*backup.Ma
 // On a failure after the restore took ownership the returned report carries
 // the operation id and the phase that failed.
 func (node *ZenNode) ClusterRestore(ctx context.Context, r io.Reader, force bool) (*backup.RestoreReport, error) {
-	spoolDir, err := os.MkdirTemp("", "zenbpm-restore-*")
+	spoolDir, err := backup.NewSpoolDir(node.controller.Config.Restore.SpoolDir, "zenbpm-restore-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create restore spool dir: %w", err)
+		return nil, err
 	}
 	defer node.removeSpoolDir(spoolDir)
 	migDir := node.controller.Config.Persistence.Migration.Dir

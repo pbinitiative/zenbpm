@@ -2,7 +2,7 @@ package dmn
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -178,7 +178,7 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 	xmlData []byte,
 	key int64,
 ) (*runtime.DmnResourceDefinition, []runtime.DecisionDefinition, error) {
-	md5sum := md5.Sum(xmlData)
+	md5sum := md5.Sum(xmlData) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 	dmnResourceDefinition := runtime.DmnResourceDefinition{
 		Version:           1,
 		Id:                definition.Id,
@@ -218,7 +218,10 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 //
 // A different resource (or decision) of the same id that already holds the
 // version means the version histories diverged; the import is refused with
-// storage.ErrUniqueConstraint and nothing is written.
+// storage.ErrUniqueConstraint and nothing is written. The resource and its
+// decision definitions are written as one batch, so a failure never leaves
+// a resource behind without its decisions: a retry finds either everything
+// or nothing under key.
 func (engine *ZenDmnEngine) ImportDmnResourceDefinition(
 	ctx context.Context,
 	definition *dmn.TDefinitions,
@@ -236,7 +239,7 @@ func (engine *ZenDmnEngine) ImportDmnResourceDefinition(
 		Key:               key,
 		Definitions:       *definition,
 		DmnData:           xmlData,
-		DmnChecksum:       md5.Sum(xmlData),
+		DmnChecksum:       md5.Sum(xmlData), // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 		DmnDefinitionName: definition.Name,
 	}
 	if err := engine.Validate(ctx, &resource); err != nil {
@@ -286,13 +289,17 @@ func (engine *ZenDmnEngine) ImportDmnResourceDefinition(
 		})
 	}
 
-	if err := engine.persistence.SaveDmnResourceDefinition(ctx, resource); err != nil {
+	batch := engine.persistence.NewBatch()
+	if err := batch.SaveDmnResourceDefinition(ctx, resource); err != nil {
 		return nil, nil, fmt.Errorf("failed to save imported dmn resource definition %d: %w", key, err)
 	}
 	for _, decision := range decisions {
-		if err := engine.persistence.SaveDecisionDefinition(ctx, decision); err != nil {
+		if err := batch.SaveDecisionDefinition(ctx, decision); err != nil {
 			return nil, nil, fmt.Errorf("failed to save decision definition %q of imported dmn resource definition %d: %w", decision.Id, key, err)
 		}
+	}
+	if err := batch.Flush(ctx); err != nil {
+		return nil, nil, fmt.Errorf("failed to save imported dmn resource definition %d with its decision definitions: %w", key, err)
 	}
 	return &resource, decisions, nil
 }

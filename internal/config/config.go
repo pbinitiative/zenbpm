@@ -66,7 +66,8 @@ type Restore struct {
 	// BarrierTimeout bounds the wait for every partition leader to stop its
 	// engine and fence writes before any partition data is overwritten.
 	BarrierTimeout time.Duration `yaml:"barrierTimeout" json:"barrierTimeout" env:"CLUSTER_RESTORE_BARRIER_TIMEOUT" env-default:"1m"`
-	// PartitionLoadTimeout bounds streaming and loading one partition image.
+	// PartitionLoadTimeout bounds streaming one partition image to its leader
+	// and copying it into the partition through the raft log.
 	PartitionLoadTimeout time.Duration `yaml:"partitionLoadTimeout" json:"partitionLoadTimeout" env:"CLUSTER_RESTORE_PARTITION_LOAD_TIMEOUT" env-default:"30m"`
 	// ReconcileTimeout bounds definition sync and pointer rebuild.
 	ReconcileTimeout time.Duration `yaml:"reconcileTimeout" json:"reconcileTimeout" env:"CLUSTER_RESTORE_RECONCILE_TIMEOUT" env-default:"10m"`
@@ -83,10 +84,25 @@ type Restore struct {
 	// MaxPartitionImageBytes caps one stored (gzipped) partition image, both in
 	// the uploaded bundle and on the partition leader receiving it.
 	MaxPartitionImageBytes int64 `yaml:"maxPartitionImageBytes" json:"maxPartitionImageBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_IMAGE_BYTES" env-default:"8589934592"`
-	// MaxPartitionDatabaseBytes caps one decompressed partition database. A
-	// partition leader holds the whole database in memory while loading it, so
-	// this bounds that allocation.
+	// MaxPartitionDatabaseBytes caps one decompressed partition database. The
+	// partition leader decompresses the image to disk (see SpoolDir) and
+	// copies it into the partition in bounded batches, so this bounds disk
+	// usage, not memory.
 	MaxPartitionDatabaseBytes int64 `yaml:"maxPartitionDatabaseBytes" json:"maxPartitionDatabaseBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_DATABASE_BYTES" env-default:"17179869184"`
+	// MaxPartitionRowBytes caps one row of a partition image, the sum of the
+	// byte lengths of its values. The copy into the partition ships rows as
+	// bounded statement batches; a row larger than a batch is shipped alone,
+	// so the largest row decides the largest batch, raft entry and the memory
+	// the copy needs. Checked on the image before the partition is touched.
+	MaxPartitionRowBytes int64 `yaml:"maxPartitionRowBytes" json:"maxPartitionRowBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_ROW_BYTES" env-default:"33554432"`
+	// SpoolDir is where backups and restores spool partition images: the
+	// compressed images of a bundle and, on a partition leader receiving a
+	// restore, the decompressed database. It must be disk backed and hold the
+	// compressed image plus the decompressed database of the largest
+	// partition; a memory-backed location (tmpfs) turns the disk limits above
+	// into memory usage. Defaults to the "spool" directory under the node's
+	// data directory (cluster.raft.dir).
+	SpoolDir string `yaml:"spoolDir" json:"spoolDir" env:"CLUSTER_RESTORE_SPOOL_DIR"`
 }
 
 // Engine configures the behaviour of the BPMN engines running on the node partitions.
@@ -295,6 +311,11 @@ func (c *Config) validate() error {
 	err = CheckFilePaths(&c.Cluster.Raft)
 	if err != nil {
 		return err
+	}
+	if c.Cluster.Restore.SpoolDir == "" {
+		c.Cluster.Restore.SpoolDir = filepath.Join(dataPath, "spool")
+	} else if c.Cluster.Restore.SpoolDir, err = filepath.Abs(c.Cluster.Restore.SpoolDir); err != nil {
+		return fmt.Errorf("failed to determine absolute restore spool path: %s", err.Error())
 	}
 
 	if c.Cluster.Adv == "" {

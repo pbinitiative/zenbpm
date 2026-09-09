@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/rqlite/rqlite/v10/command/proto"
 )
 
 // ErrPartitionFenced is returned for a write that reaches a partition fenced
@@ -95,9 +96,9 @@ func (rq *DB) checkWriteAllowedLocked(ctx context.Context) error {
 	return nil
 }
 
-// LoadUnderFence runs a destructive load while holding the fence: it is
-// refused unless the partition is fenced for token at the moment the load
-// starts, and a fence change (takeover, abort, release) waits until the load
+// LoadUnderFence runs a destructive load step while holding the fence: it is
+// refused unless the partition is fenced for token at the moment the step
+// starts, and a fence change (takeover, abort, release) waits until the step
 // has finished. That orders the destructive step against ownership changes
 // on this partition instead of trusting an admission check made earlier.
 func (rq *DB) LoadUnderFence(token RestoreToken, load func() error) error {
@@ -111,6 +112,56 @@ func (rq *DB) LoadUnderFence(token RestoreToken, load func() error) error {
 		return fmt.Errorf("%w: load carries restore token %s but the partition fence is %s", ErrPartitionFenced, token.String(), current)
 	}
 	return load()
+}
+
+// ExecuteUnderFence runs one batch of statements as a single transaction
+// through the partition's raft log while holding the fence (see
+// LoadUnderFence). A restore copies a database image as many such batches, so
+// a fence change is ordered between two batches instead of after the whole
+// copy: a superseded owner is refused from its next batch on. A statement
+// that fails rolls the batch back and is reported as an error.
+func (rq *DB) ExecuteUnderFence(ctx context.Context, token RestoreToken, statements []*proto.Statement) error {
+	return rq.LoadUnderFence(token, func() error {
+		results, err := rq.executeStatementsUnfenced(ctx, statements)
+		if err != nil {
+			return err
+		}
+		for i, result := range results {
+			if msg := result.GetError(); msg != "" {
+				return fmt.Errorf("statement %d failed: %s", i, msg)
+			}
+		}
+		return nil
+	})
+}
+
+// SchemaObjects lists the tables and views of the partition database in
+// creation order, read from this node's copy. SQLite's internal tables are
+// left out except sqlite_sequence, which a restore has to empty because it
+// cannot be dropped.
+func (rq *DB) SchemaObjects(ctx context.Context) (tables, views []string, err error) {
+	rows, err := rq.queryDatabase(ctx, `SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND (name NOT LIKE 'sqlite\_%' ESCAPE '\' OR name = 'sqlite_sequence') ORDER BY rowid`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list schema objects: %w", err)
+	}
+	if len(rows) != 1 {
+		return nil, nil, fmt.Errorf("failed to list schema objects: expected one result set, got %d", len(rows))
+	}
+	for _, row := range rows[0].Values {
+		if len(row.GetParameters()) != 2 {
+			return nil, nil, fmt.Errorf("failed to list schema objects: malformed row %v", row)
+		}
+		name := row.GetParameters()[1].GetS()
+		switch typ := row.GetParameters()[0].GetS(); typ {
+		case "table":
+			tables = append(tables, name)
+		case "view":
+			views = append(views, name)
+		default:
+			return nil, nil, fmt.Errorf("failed to list schema objects: unexpected type %q for %s", typ, name)
+		}
+	}
+	return tables, views, nil
 }
 
 // MaintenanceStatus describes how far a locally hosted partition has entered

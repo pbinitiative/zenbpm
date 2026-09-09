@@ -3,6 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -282,8 +283,11 @@ func TestRunClusterRestoreReportsDivergedDefinitionVersions(t *testing.T) {
 	assert.Equal(t, state.RestorePhaseDone, report.Phase)
 	assert.Empty(t, fc.partitions[2].imported, "the partition keeps its own version history")
 	assert.Equal(t, []DefinitionSyncEntry{
-		{Key: 100, Type: "process", Conflicts: []DefinitionSyncConflict{{Partition: 2, Reason: "definition 101 already holds version 1"}}},
+		{Key: 100, Type: "process", ToPartitions: []uint32{}, Conflicts: []DefinitionSyncConflict{{Partition: 2, Reason: "definition 101 already holds version 1"}}},
 	}, report.DefinitionsSynced)
+	encoded, err := json.Marshal(report.DefinitionsSynced)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"toPartitions":[]`, "a conflict-only entry reports an empty array, not null")
 }
 
 func TestRunClusterRestoreClientDisconnectCancelsAndRecordsFailure(t *testing.T) {

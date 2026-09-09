@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -15,21 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type fakeBackupSource struct {
-	payload []byte
-	err     error
-	gotReq  *rqcmd.BackupRequest
-}
-
-func (f *fakeBackupSource) Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) error {
-	f.gotReq = br
-	if f.err != nil {
-		return f.err
-	}
-	_, err := dst.Write(f.payload)
-	return err
-}
 
 func TestStreamPartitionBackup(t *testing.T) {
 	payload := bytes.Repeat([]byte("zen"), 700_000) // > 1 chunk (1 MiB)
@@ -72,44 +59,6 @@ func TestStreamPartitionBackupSourceError(t *testing.T) {
 	assert.ErrorContains(t, err, "boom")
 }
 
-type fakeLoadTarget struct {
-	loaded []byte
-	err    error
-}
-
-func (f *fakeLoadTarget) load(lr *rqcmd.LoadRequest) error {
-	return f.Load(context.Background(), lr)
-}
-
-func (f *fakeLoadTarget) Load(ctx context.Context, lr *rqcmd.LoadRequest) error {
-	f.loaded = lr.Data
-	return f.err
-}
-
-func chunkFeed(meta *proto.RestoreMeta, data []byte, chunk int) func() (*proto.RestoreChunk, error) {
-	sent, metaSent, eofSent := 0, false, false
-	return func() (*proto.RestoreChunk, error) {
-		if !metaSent {
-			metaSent = true
-			return &proto.RestoreChunk{Payload: &proto.RestoreChunk_Meta{Meta: meta}}, nil
-		}
-		if sent < len(data) {
-			end := sent + chunk
-			if end > len(data) {
-				end = len(data)
-			}
-			c := &proto.RestoreChunk{Payload: &proto.RestoreChunk_Data{Data: data[sent:end]}}
-			sent = end
-			return c, nil
-		}
-		if !eofSent {
-			eofSent = true
-			return &proto.RestoreChunk{Eof: new(true)}, nil
-		}
-		return nil, io.EOF
-	}
-}
-
 func TestReceivePartitionRestore(t *testing.T) {
 	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte("d"), 5000)...)
 	gz := gzipBytes(t, raw)
@@ -117,9 +66,36 @@ func TestReceivePartitionRestore(t *testing.T) {
 	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(len(gz)))}
 
 	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
+	spoolDir := t.TempDir()
+	err := ReceivePartitionRestore(context.Background(), spoolDir, meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
 	assert.NoError(t, err)
-	assert.Equal(t, raw, dst.loaded)
+	assert.Equal(t, raw, dst.loaded, "the load hook sees the decompressed database on disk")
+	assert.Equal(t, spoolDir, filepath.Dir(dst.path), "the decompressed database is spooled in the given directory, never in the OS temp dir")
+	_, statErr := os.Stat(dst.path)
+	assert.True(t, os.IsNotExist(statErr), "the decompressed spool is removed after the load")
+	entries, err := os.ReadDir(spoolDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "no spool file is left behind")
+}
+
+func TestNewSpoolDirCreatesTheRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "data", "spool")
+	dir, err := NewSpoolDir(root, "zenbpm-restore-*")
+	require.NoError(t, err)
+	assert.Equal(t, root, filepath.Dir(dir), "the spool dir is created under the configured root")
+	assert.DirExists(t, dir)
+	info, err := os.Stat(root)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+	again, err := NewSpoolDir(root, "zenbpm-restore-*")
+	require.NoError(t, err)
+	assert.NotEqual(t, dir, again, "every operation gets a spool dir of its own")
+
+	fallback, err := NewSpoolDir("", "zenbpm-restore-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(fallback) })
+	assert.Equal(t, os.TempDir(), filepath.Dir(fallback), "an empty root falls back to the OS temp dir")
 }
 
 func TestReceivePartitionRestoreBadDigest(t *testing.T) {
@@ -171,4 +147,62 @@ func TestReceivePartitionRestoreStopsOnCancelledContext(t *testing.T) {
 		return nil, nil
 	}, RestoreLimits{}, dst.load)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+type fakeBackupSource struct {
+	payload []byte
+	err     error
+	gotReq  *rqcmd.BackupRequest
+}
+
+func (f *fakeBackupSource) Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) error {
+	f.gotReq = br
+	if f.err != nil {
+		return f.err
+	}
+	_, err := dst.Write(f.payload)
+	return err
+}
+
+// fakeLoadTarget records the decompressed database handed to the load hook.
+// It reads the file while the hook runs: the spool must be complete by then
+// and is removed afterwards.
+type fakeLoadTarget struct {
+	loaded []byte
+	path   string
+	err    error
+}
+
+func (f *fakeLoadTarget) load(ctx context.Context, databasePath string) error {
+	data, err := os.ReadFile(databasePath)
+	if err != nil {
+		return err
+	}
+	f.loaded = data
+	f.path = databasePath
+	return f.err
+}
+
+func chunkFeed(meta *proto.RestoreMeta, data []byte, chunk int) func() (*proto.RestoreChunk, error) {
+	sent, metaSent, eofSent := 0, false, false
+	return func() (*proto.RestoreChunk, error) {
+		if !metaSent {
+			metaSent = true
+			return &proto.RestoreChunk{Payload: &proto.RestoreChunk_Meta{Meta: meta}}, nil
+		}
+		if sent < len(data) {
+			end := sent + chunk
+			if end > len(data) {
+				end = len(data)
+			}
+			c := &proto.RestoreChunk{Payload: &proto.RestoreChunk_Data{Data: data[sent:end]}}
+			sent = end
+			return c, nil
+		}
+		if !eofSent {
+			eofSent = true
+			return &proto.RestoreChunk{Eof: new(true)}, nil
+		}
+		return nil, io.EOF
+	}
 }

@@ -55,10 +55,32 @@ func (s *Server) fencedLeader(ctx context.Context, partitionID uint32, token par
 	return partitionNode, nil
 }
 
-// PartitionRestore loads a partition database image shipped by the restore
-// coordinator, then re-runs schema migrations (the image may be older than
-// this binary). The stream must carry the token of the restore operation that
-// owns the cluster and the partition must already be fenced for it.
+// fencedRestoreTarget copies a restore image into a locally led partition.
+// Every batch runs under the partition's restore fence and is refused once
+// the restore operation no longer owns the cluster, so a coordinator that lost
+// the restore is stopped between two batches at the latest.
+type fencedRestoreTarget struct {
+	server *Server
+	node   *partition.ZenPartitionNode
+	token  partition.RestoreToken
+}
+
+func (t *fencedRestoreTarget) SchemaObjects(ctx context.Context) (tables, views []string, err error) {
+	return t.node.DB.SchemaObjects(ctx)
+}
+
+func (t *fencedRestoreTarget) Execute(ctx context.Context, statements []*rqcmd.Statement) error {
+	if !t.server.store.ClusterState().Restore.Owns(t.token.OperationID, t.token.Epoch) {
+		return fmt.Errorf("restore operation %s no longer owns the cluster", t.token)
+	}
+	return t.node.DB.ExecuteUnderFence(ctx, t.token, statements)
+}
+
+// PartitionRestore copies a partition database image shipped by the restore
+// coordinator into the partition, then re-runs schema migrations (the image
+// may be older than this binary). The stream must carry the token of the
+// restore operation that owns the cluster and the partition must already be
+// fenced for it.
 func (s *Server) PartitionRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.PartitionRestoreResponse]) error {
 	ctx := stream.Context()
 	first, err := stream.Recv()
@@ -78,23 +100,25 @@ func (s *Server) PartitionRestore(stream grpc.ClientStreamingServer[proto.Restor
 		return err
 	}
 	ctx = partition.WithRestoreToken(ctx, token)
-	spoolDir, err := os.MkdirTemp("", "zenbpm-restore-*")
+	spoolDir, err := backup.NewSpoolDir(s.restoreSpoolDir, "zenbpm-restore-*")
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create spool dir: %s", err)
+		return status.Errorf(codes.Internal, "%s", err)
 	}
 	defer removeSpoolDir(spoolDir)
 
-	load := func(lr *rqcmd.LoadRequest) error {
-		// The load runs under the partition fence: a takeover, abort or fence
-		// release on this partition waits for it, and a fence that changed since
-		// admission refuses it. Ownership is re-verified right before the
-		// destructive step as well.
-		return partitionNode.DB.LoadUnderFence(token, func() error {
-			if !s.store.ClusterState().Restore.Owns(token.OperationID, token.Epoch) {
-				return fmt.Errorf("restore operation %s no longer owns the cluster", token)
-			}
-			return partitionNode.DB.Store.Load(ctx, lr)
-		})
+	load := func(ctx context.Context, databasePath string) error {
+		// The image is copied as bounded statement batches through the
+		// partition's raft log; a whole partition database never has to fit
+		// into memory or into a single raft entry, the largest row of the
+		// image (capped by the row limit) decides the largest batch. Every
+		// batch runs under the partition fence and re-verifies ownership, so a
+		// takeover, abort or fence release stops the copy between two batches.
+		report, err := backup.CopyDatabase(ctx, databasePath, &fencedRestoreTarget{server: s, node: partitionNode, token: token}, backup.CopyOptions{MaxRowBytes: s.restoreLimits.PartitionRowBytes})
+		if err != nil {
+			return err
+		}
+		log.Info("partition %d restored from image: %d tables, %d rows, %d batches, largest batch %d bytes", meta.GetPartitionId(), report.Tables, report.Rows, report.Batches, report.MaxBatchBytes)
+		return nil
 	}
 	if err := backup.ReceivePartitionRestore(ctx, spoolDir, meta, stream.Recv, s.restoreLimits, load); err != nil {
 		if errors.Is(err, partition.ErrPartitionFenced) {
@@ -102,6 +126,9 @@ func (s *Server) PartitionRestore(stream grpc.ClientStreamingServer[proto.Restor
 		}
 		if errors.Is(err, zenerr.ErrResourceLimit) {
 			return status.Errorf(codes.ResourceExhausted, "partition restore refused: %s", err)
+		}
+		if errors.Is(err, backup.ErrInvalidBundle) {
+			return status.Errorf(codes.InvalidArgument, "partition restore refused: %s", err)
 		}
 		return status.Errorf(codes.Internal, "partition restore failed: %s", err)
 	}
@@ -182,9 +209,9 @@ func (w *clusterBackupChunkWriter) Write(p []byte) (int, error) {
 
 // ClusterBackup streams the whole-cluster backup bundle (tar) to a gRPC client.
 func (s *Server) ClusterBackup(req *proto.ClusterBackupRequest, stream grpc.ServerStreamingServer[proto.BackupChunk]) error {
-	spoolDir, err := os.MkdirTemp("", "zenbpm-backup-*")
+	spoolDir, err := backup.NewSpoolDir(s.restoreSpoolDir, "zenbpm-backup-*")
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create spool dir: %s", err)
+		return status.Errorf(codes.Internal, "%s", err)
 	}
 	defer removeSpoolDir(spoolDir)
 	w := &clusterBackupChunkWriter{send: stream.Send}
@@ -371,9 +398,9 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 		return status.Errorf(codes.InvalidArgument, "first restore chunk must carry meta")
 	}
 
-	spoolDir, err := os.MkdirTemp("", "zenbpm-restore-*")
+	spoolDir, err := backup.NewSpoolDir(s.restoreSpoolDir, "zenbpm-restore-*")
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create spool dir: %s", err)
+		return status.Errorf(codes.Internal, "%s", err)
 	}
 	defer removeSpoolDir(spoolDir)
 	binSchema, err := backup.BinarySchemaVersion(sql.DefaultMigrationsDir)

@@ -2,7 +2,7 @@ package bpmn
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -105,7 +105,7 @@ func parseProcessDefinition(xmlData []byte, key int64) (runtime.ProcessDefinitio
 		Key:             key,
 		Definitions:     definitions,
 		BpmnData:        string(xmlData),
-		BpmnChecksum:    md5.Sum(xmlData),
+		BpmnChecksum:    md5.Sum(xmlData), // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 		VersionTag:      versionTag,
 	}, nil
 }

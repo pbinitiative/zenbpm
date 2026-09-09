@@ -3151,6 +3151,18 @@ func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnrunt
 	return SaveProcessDefinitionWith(ctx, b.queries, definition)
 }
 
+var _ storage.DmnResourceDefinitionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	return SaveDmnResourceDefinitionWith(ctx, b.queries, definition)
+}
+
+var _ storage.DecisionDefinitionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	return SaveDecisionDefinitionWith(ctx, b.queries, decision)
+}
+
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {

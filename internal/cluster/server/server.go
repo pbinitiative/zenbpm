@@ -60,6 +60,9 @@ type Server struct {
 	restoreTimeouts backup.RestoreTimeouts
 	// restoreLimits bounds restore inputs received by this node
 	restoreLimits backup.RestoreLimits
+	// restoreSpoolDir is where backups and restores spool partition images;
+	// empty selects the operating system's temporary directory
+	restoreSpoolDir string
 }
 
 type CpuProfile struct {
@@ -100,6 +103,14 @@ func WithRestoreTimeouts(timeouts backup.RestoreTimeouts) ServerOption {
 func WithRestoreLimits(limits backup.RestoreLimits) ServerOption {
 	return func(s *Server) {
 		s.restoreLimits = limits
+	}
+}
+
+// WithRestoreSpoolDir sets the disk-backed directory backups and restores
+// spool partition images in.
+func WithRestoreSpoolDir(dir string) ServerOption {
+	return func(s *Server) {
+		s.restoreSpoolDir = dir
 	}
 }
 

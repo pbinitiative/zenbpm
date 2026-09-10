@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -91,6 +92,9 @@ type Config struct {
 	NodeHearbeatShutdownTimeout time.Duration
 
 	BootstrapExpect int
+
+	// DesiredPartitions is the partition count the cluster forms on bootstrap.
+	DesiredPartitions uint32
 }
 
 // DefaultConfig provides default store configuration based on cluster configuration.
@@ -104,6 +108,10 @@ func DefaultConfig(c config.Cluster) Config {
 		NodeId:                      c.NodeId,
 		NodeHearbeatShutdownTimeout: 2 * time.Second,
 		BootstrapExpect:             c.Raft.BootstrapExpect,
+		DesiredPartitions:           c.DesiredPartitions,
+	}
+	if conf.DesiredPartitions == 0 {
+		conf.DesiredPartitions = 1
 	}
 	if c.Raft.Dir == "" {
 		conf.RaftDir = "zenbpm_raft"
@@ -134,7 +142,7 @@ func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *
 		bootstrapped:    false,
 		state: state.Cluster{
 			Config: state.ClusterConfig{
-				DesiredPartitions: 1, // TODO: hardcoded partition number for now
+				DesiredPartitions: max(c.DesiredPartitions, 1),
 			},
 			Partitions: map[uint32]state.Partition{},
 			Nodes:      map[string]state.Node{},
@@ -190,24 +198,62 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 	return nil
 }
 
-// WriteMaintenanceChange replicates a cluster maintenance flag change
-// (e.g. restore-in-progress) through the raft log.
-func (s *Store) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
+// WriteRestoreChange applies a restore operation transition through the raft
+// log and returns the resulting operation. A transition the FSM refused (for
+// example an acquire while another coordinator owns the restore, or an update
+// from a fenced-out owner) is reported as a *state.RestoreRejectedError; the
+// returned operation then describes the current owner.
+//
+// The wait for the committed result is bounded by ctx. Raft cannot withdraw a
+// command once it is enqueued, so when ctx ends first the outcome is unknown:
+// the error wraps zenerr.ErrApplyUncertain and the command may still commit
+// later. Callers must re-read the state (or rely on the fencing token) rather
+// than assume the transition failed.
+func (s *Store) WriteRestoreChange(ctx context.Context, change *proto.RestoreOperationChange) (state.RestoreOperation, error) {
+	if err := ctx.Err(); err != nil {
+		return state.RestoreOperation{}, err
+	}
 	command := &proto.Command{
 		Type: proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE.Enum(),
 		Request: &proto.Command_ClusterMaintenanceChange{
-			ClusterMaintenanceChange: change,
+			ClusterMaintenanceChange: &proto.ClusterMaintenanceChange{Restore: change},
 		},
 	}
 	b, err := pb.Marshal(command)
 	if err != nil {
-		return fmt.Errorf("failed to marshal ClusterMaintenanceChange message before applying to log: %w", err)
+		return state.RestoreOperation{}, fmt.Errorf("failed to marshal RestoreOperationChange message before applying to log: %w", err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
-	if err := f.Error(); err != nil {
-		return fmt.Errorf("failed to apply ClusterMaintenanceChange message to raft log: %w", err)
+	// raft resolves every future (commit, leadership loss or shutdown), so the
+	// waiter always terminates; it only outlives ctx when the outcome is
+	// still unknown.
+	done := make(chan error, 1)
+	safego.Go("restore-change-apply-wait", s.logger, func() {
+		done <- f.Error()
+	})
+	select {
+	case err := <-done:
+		if err != nil {
+			if errors.Is(err, raft.ErrNotLeader) {
+				// callers route restore requests by this sentinel: only the cluster raft leader can commit them
+				return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w (%w)", zenerr.ErrNotLeader, err)
+			}
+			if errors.Is(err, raft.ErrLeadershipLost) {
+				return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w (%w)", zenerr.ErrApplyUncertain, err)
+			}
+			return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w", err)
+		}
+	case <-ctx.Done():
+		return state.RestoreOperation{}, fmt.Errorf("%w: RestoreOperationChange not confirmed before %w", zenerr.ErrApplyUncertain, ctx.Err())
 	}
-	return nil
+	result, ok := f.Response().(RestoreApplyResult)
+	if !ok {
+		return state.RestoreOperation{}, fmt.Errorf("unexpected FSM response %T for RestoreOperationChange", f.Response())
+	}
+	if result.Rejected != nil {
+		return result.Operation, result.Rejected
+	}
+	return result.Operation, nil
 }
 
 func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
@@ -496,19 +542,14 @@ func (s *Store) selfLeaderChange(leader bool) error {
 
 // PartitionLeaderWithID is used to return the current leader address and ID of the partition leader.
 // It may return empty strings if there is no current leader or the leader is unknown.
+// A node that the partition still records as its leader but that is shut down
+// or no longer holds the leader role (its heartbeat failed, or it left the
+// partition) is not returned: routing to it would only fail.
 func (s *Store) PartitionLeaderWithID(partition uint32) (string, string) {
 	if !s.open.Load() {
 		return "", ""
 	}
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
-	partitionInfo, ok := s.state.Partitions[partition]
-	if !ok {
-		return "", ""
-	}
-	partitionLeader, ok := s.state.Nodes[partitionInfo.LeaderId]
-	if !ok {
-		return "", ""
-	}
-	return partitionLeader.Addr, partitionInfo.LeaderId
+	return s.state.ActivePartitionLeader(partition)
 }

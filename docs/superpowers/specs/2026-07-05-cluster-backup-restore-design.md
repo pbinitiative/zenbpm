@@ -14,6 +14,7 @@ relies on, verified against the code:
   SQLite copy, leader-enforced) and `store.Load(ctx, lr)` (loads a full SQLite image
   through the raft log as a single gzip-compressed entry, replicated to followers).
   These are the same code paths behind rqlite's `GET /db/backup` and `POST /db/load`.
+  (Amended 2026-09-09: `store.Load` is no longer used by restore — see decision 4.)
 - Per-partition auto-backup/auto-restore to S3-compatible storage is already wired
   (`AutoBackupFile` / `AutoRestoreFile`, `internal/cluster/partition/partition.go`).
   It remains untouched as an optional extra.
@@ -63,11 +64,26 @@ relies on, verified against the code:
    copy dies with the node; unneeded for SQLite-sized partition files).
 3. **Restore targets a live cluster only with `force=true`**; without it, restore
    is refused unless the cluster is empty (no deployed definitions, no instances).
-4. **Restore loads partitions sequentially** to bound coordinator memory
-   (`store.Load` holds one full partition image as a single raft entry — same
-   constraint rqlite accepts for `/db/load`). Escape hatch for very large
-   partitions, documented but not built now: `SetRestorePath` (place file locally,
-   restart partition), already wired for auto-restore.
+4. **Restore loads partitions sequentially** to bound coordinator memory.
+   (Amended 2026-09-09.) The original design handed each image to `store.Load`,
+   which holds the whole decompressed database in memory as a single raft entry
+   and copies it several more times while marshalling, replicating and applying
+   it: a 1 GiB compressed bundle exhausted 32 GiB of RAM. `SetRestorePath` reads
+   the file into memory and goes through the same load, so it was never an escape
+   hatch. Restore now decompresses the image to disk on the partition leader and
+   copies it into the partition as bounded statement batches through the raft log
+   (`backup.CopyDatabase`): reset the target schema, recreate the image's tables
+   from their DDL, copy rows parents-first with every value spelled as a SQL
+   literal by SQLite itself, then recreate indexes, views and triggers. A batch
+   holds at most 4 MiB of SQL unless a single row renders larger (a row travels
+   in a batch of its own then), and rows are capped by `maxPartitionRowBytes`
+   (32 MiB, checked before the partition is touched): the largest row, not the
+   image, bounds the memory per batch. The decompressed image lives in the
+   configured spool directory (default under the node's data directory, never
+   the OS temp dir, which may be tmpfs); the size of a restorable partition is
+   bounded by disk space and `maxPartitionDatabaseBytes`. Tables that reference
+   themselves or form a foreign-key cycle cannot be copied as separate
+   transactions and are refused up front; ZenBPM's schema has none.
 5. The proto's `LoadChunkRequest` is legacy — v10 exposes no chunked-load store
    method. Do not design against it.
 
@@ -147,7 +163,8 @@ relies on, verified against the code:
    manager, timers, and engine processing pause. Reuses the same gating mechanism
    as the schema-gated `INITIALIZED` state.
 4. Per partition, sequentially: send the image to the partition leader, which
-   calls `store.Load()`; raft replicates the load to followers.
+   decompresses it to disk and copies it into the partition as bounded
+   statement batches; raft replicates every batch to followers.
 5. Re-run schema migrations on every partition (the loaded file may carry an
    older schema than the running binary).
 6. Run reconciliation (below).

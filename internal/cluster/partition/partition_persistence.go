@@ -65,6 +65,10 @@ type DB struct {
 	execDuration metric.Float64Histogram
 	// queryDuration measures the duration of rqlite read queries, in ms
 	queryDuration metric.Float64Histogram
+	// fenceMu guards fence, the restore token every write must carry while the
+	// partition is fenced for a cluster restore (see partition_restore.go)
+	fenceMu sync.RWMutex
+	fence   *RestoreToken
 }
 
 const (
@@ -198,6 +202,12 @@ func (rq *DB) scheduleDataCleanup(ctx context.Context) {
 			t.Stop()
 		}
 
+		if _, fenced := rq.RestoreFence(); fenced {
+			// a cluster restore owns the partition: its writes would be refused
+			// anyway, so skip the cycle instead of logging fence errors
+			t.Reset(dataCleanupDefaultInterval)
+			continue
+		}
 		cleaningTriggered, err := rq.dataCleanup(ctx, time.Now())
 		if err != nil {
 			if ctx.Err() != nil {
@@ -268,7 +278,19 @@ func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, hist
 	return false, nil
 }
 
+// ExecuteStatements runs a write batch against the partition store. The
+// restore fence is held (read) for the complete write, so entering or leaving
+// the fence waits for writes that were already admitted.
 func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
+	rq.fenceMu.RLock()
+	defer rq.fenceMu.RUnlock()
+	if err := rq.checkWriteAllowedLocked(ctx); err != nil {
+		return nil, err
+	}
+	return rq.executeStatementsUnfenced(ctx, statements)
+}
+
+func (rq *DB) executeStatementsUnfenced(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
 	if len(statements) == 0 {
 		return []*proto.ExecuteQueryResponse{{
 			Result: &proto.ExecuteQueryResponse_E{
@@ -2023,6 +2045,14 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 }
 
 func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.MessageSubscriptionPointer) error {
+	if _, restoring := RestoreTokenFromContext(ctx); restoring {
+		// Restore reconciliation writes subscriptions into a fenced partition;
+		// the routing pointer would go through the ordinary (unfenced)
+		// cross-partition RPC and be refused. The coordinator wipes and rebuilds
+		// every pointer table from the authoritative subscription rows after
+		// definition sync, so no pointer is written here.
+		return nil
+	}
 	zenState := rq.zenState()
 	ptrPartitionId := zenState.GetPartitionIdForMessageSubscriptionPointer(pointer.Name, pointer.CorrelationKey)
 	upsertPointer := func() error {
@@ -3119,6 +3149,18 @@ var _ storage.ProcessDefinitionStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	return SaveProcessDefinitionWith(ctx, b.queries, definition)
+}
+
+var _ storage.DmnResourceDefinitionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	return SaveDmnResourceDefinitionWith(ctx, b.queries, definition)
+}
+
+var _ storage.DecisionDefinitionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	return SaveDecisionDefinitionWith(ctx, b.queries, decision)
 }
 
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}

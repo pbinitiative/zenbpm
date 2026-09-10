@@ -9,6 +9,7 @@ import (
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -273,6 +274,14 @@ func (b *EngineBatch) AddPostFlushAction(ctx context.Context, f func()) {
 
 func (b *EngineBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	return markTechnicalFailure(b.b.SaveProcessDefinition(ctx, definition))
+}
+
+func (b *EngineBatch) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	return markTechnicalFailure(b.b.SaveDmnResourceDefinition(ctx, definition))
+}
+
+func (b *EngineBatch) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	return markTechnicalFailure(b.b.SaveDecisionDefinition(ctx, decision))
 }
 
 func (b *EngineBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {

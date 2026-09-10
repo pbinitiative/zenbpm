@@ -5,12 +5,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
 	"os"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -66,26 +69,35 @@ func StreamPartitionBackup(ctx context.Context, src BackupSource, schemaVersion 
 	})
 }
 
-// LoadTarget is the subset of *rqlite/store.Store used for restores.
-type LoadTarget interface {
-	Load(ctx context.Context, lr *rqcmd.LoadRequest) error
-}
-
 // ReceivePartitionRestore spools the incoming gzipped stream, verifies its
-// digest against meta, gunzips and validates the SQLite image, then loads it
-// through the partition's raft log.
-func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), dst LoadTarget) error {
+// digest against meta, decompresses it into a second spool file, checks that
+// the result is a SQLite database and hands its path to load. Nothing of the
+// image is held in memory: the stored image and the decompressed database are
+// capped by limits as disk usage. The caller copies the database into the
+// partition (see CopyDatabase) under the partition's restore fence.
+func ReceivePartitionRestore(ctx context.Context, spoolDir string, meta *proto.RestoreMeta, recv func() (*proto.RestoreChunk, error), limits RestoreLimits, load func(ctx context.Context, databasePath string) error) (err error) {
+	limits = limits.withDefaults()
 	spool, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-recv-p%d-*", meta.GetPartitionId()))
 	if err != nil {
 		return fmt.Errorf("failed to create restore spool: %w", err)
 	}
-	defer os.Remove(spool.Name())
-	defer spool.Close()
+	defer func() {
+		// runs after the close below; a leftover spool file must not fail a
+		// restore that already loaded
+		if removeErr := os.Remove(spool.Name()); removeErr != nil {
+			log.Warn("failed to remove restore spool file %s: %v", spool.Name(), removeErr)
+		}
+	}()
+	defer zenerr.CloseJoin(spool, &err, "restore spool file")
 
 	h := sha256.New()
 	w := io.MultiWriter(spool, h)
+	var received int64
 recvLoop:
 	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("restore stream cancelled: %w", err)
+		}
 		chunk, err := recv()
 		if err == io.EOF {
 			break
@@ -98,6 +110,10 @@ recvLoop:
 			// tolerated duplicate of the header chunk; ignore
 			_ = p
 		case *proto.RestoreChunk_Data:
+			received += int64(len(p.Data))
+			if received > limits.PartitionImageBytes {
+				return fmt.Errorf("%w: partition image exceeds %d bytes", zenerr.ErrResourceLimit, limits.PartitionImageBytes)
+			}
 			if _, err := w.Write(p.Data); err != nil {
 				return fmt.Errorf("failed to spool restore data: %w", err)
 			}
@@ -119,15 +135,41 @@ recvLoop:
 	if err != nil {
 		return fmt.Errorf("restore payload is not gzip: %w", err)
 	}
-	raw, err := io.ReadAll(zr)
-	if err != nil {
-		return fmt.Errorf("failed to decompress restore payload: %w", err)
-	}
-	if len(raw) < 16 || string(raw[:16]) != "SQLite format 3\x00" {
+	head := make([]byte, len(sqliteHeader))
+	if _, err := io.ReadFull(zr, head); err != nil || string(head) != sqliteHeader {
 		return fmt.Errorf("restore payload is not a valid SQLite database")
 	}
-	if err := dst.Load(ctx, &rqcmd.LoadRequest{Data: raw}); err != nil {
+	// The database is decompressed to disk, never into memory: the copy into
+	// the partition reads it row by row, so the restorable size is bounded by
+	// the configured limit and disk space, not by RAM.
+	database, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-db-p%d-*", meta.GetPartitionId()))
+	if err != nil {
+		return fmt.Errorf("failed to create restore database spool: %w", err)
+	}
+	defer func() {
+		if removeErr := os.Remove(database.Name()); removeErr != nil {
+			log.Warn("failed to remove restore database spool file %s: %v", database.Name(), removeErr)
+		}
+	}()
+	if _, err := database.Write(head); err != nil {
+		_ = database.Close()
+		return fmt.Errorf("failed to write restore database spool: %w", err)
+	}
+	_, err = copyAtMost(database, &contextReader{ctx: ctx, r: zr}, limits.PartitionDatabaseBytes-int64(len(head)), "decompressed database")
+	if closeErr := database.Close(); closeErr != nil && err == nil {
+		err = fmt.Errorf("failed to close restore database spool: %w", closeErr)
+	}
+	if err != nil {
+		if errors.Is(err, zenerr.ErrResourceLimit) || ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("failed to decompress restore payload: %w", err)
+	}
+	if err := load(ctx, database.Name()); err != nil {
 		return fmt.Errorf("failed to load database into partition %d: %w", meta.GetPartitionId(), err)
 	}
 	return nil
 }
+
+// sqliteHeader is the magic string every SQLite database file starts with.
+const sqliteHeader = "SQLite format 3\x00"

@@ -25,8 +25,8 @@ func TestNonOpenStore(t *testing.T) {
 		NodeId: random.String(),
 	}
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 
 	if err := s.Stepdown(false); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
@@ -69,8 +69,8 @@ func TestOpenStoreSingleNode(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -185,8 +185,8 @@ func TestShutdownNodeIsIdempotent(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -253,8 +253,8 @@ func TestShutdownNodeClearsPartitionRoles(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -340,8 +340,8 @@ func TestResumeNodeRestoresPartitionFollowerRole(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -422,8 +422,8 @@ func TestSingleNodeSnapshot(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer func() { require.NoError(t, s.Close(true)) }()
 	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -535,11 +535,11 @@ func (m *mockSnapshotSink) Cancel() error {
 	return nil
 }
 
-// TestWriteMaintenanceChange verifies that WriteMaintenanceChange replicates
-// the Restoring flag through the Raft log and that the FSM applies it to
-// ClusterState. It round-trips true→false to confirm the flag is writable
-// in both directions.
-func TestWriteMaintenanceChange(t *testing.T) {
+// TestWriteRestoreChange verifies that restore operation transitions are
+// replicated through the Raft log, applied atomically by the FSM, and that a
+// refused transition surfaces as *state.RestoreRejectedError while leaving the
+// state untouched.
+func TestWriteRestoreChange(t *testing.T) {
 	c := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: t.TempDir(),
@@ -548,8 +548,8 @@ func TestWriteMaintenanceChange(t *testing.T) {
 	}
 
 	s, ln := newMustTestStore(t, c)
-	defer s.Close(true)
-	defer ln.Close()
+	defer func() { require.NoError(t, ln.Close()) }()
+	defer func() { require.NoError(t, s.Close(true)) }()
 	if err := s.Open(); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
@@ -564,26 +564,74 @@ func TestWriteMaintenanceChange(t *testing.T) {
 		t.Fatalf("failed to wait for leader: %s", err)
 	}
 
-	// Initial state: Restoring must be false.
-	if s.ClusterState().Restoring {
-		t.Fatal("expected Restoring to be false initially")
-	}
+	require.False(t, s.ClusterState().RestoreInProgress(), "no restore expected initially")
 
-	// Set Restoring = true.
-	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: new(true)}); err != nil {
-		t.Fatalf("WriteMaintenanceChange(true) returned error: %s", err)
+	acquire := func(id string, now int64) (state.RestoreOperation, error) {
+		return s.WriteRestoreChange(t.Context(), &proto.RestoreOperationChange{
+			Action:          proto.RestoreOperationChange_RESTORE_ACTION_ACQUIRE.Enum(),
+			OperationId:     new(id),
+			CoordinatorId:   new(s.raftID),
+			TotalPartitions: new(uint32(2)),
+			TimestampMillis: new(now),
+			LeaseMillis:     new(int64(30_000)),
+		})
 	}
+	op, err := acquire("op-1", 1_000)
+	require.NoError(t, err)
+	require.Equal(t, "op-1", op.ID)
+	require.Equal(t, uint64(1), op.Epoch)
+	require.Equal(t, state.RestoreStatusActive, op.Status)
 	testPoll(t, func() bool {
-		return s.ClusterState().Restoring
+		return s.ClusterState().RestoreInProgress()
 	}, 50*time.Millisecond, 5*time.Second)
 
-	// Set Restoring = false.
-	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: new(false)}); err != nil {
-		t.Fatalf("WriteMaintenanceChange(false) returned error: %s", err)
-	}
+	// a second coordinator cannot acquire while the lease is alive
+	_, err = acquire("op-2", 2_000)
+	var rejected *state.RestoreRejectedError
+	require.ErrorAs(t, err, &rejected)
+	require.Equal(t, "op-1", rejected.Current.ID)
+	require.Equal(t, "op-1", s.ClusterState().Restore.ID, "rejected acquire must not change the state")
+
+	// the owner advances the phase; a stale epoch is fenced out
+	_, err = s.WriteRestoreChange(t.Context(), &proto.RestoreOperationChange{
+		Action:          proto.RestoreOperationChange_RESTORE_ACTION_UPDATE.Enum(),
+		OperationId:     new("op-1"),
+		Epoch:           new(uint64(7)),
+		Phase:           proto.RestorePhase_RESTORE_PHASE_LOADING.Enum(),
+		TimestampMillis: new(int64(3_000)),
+	})
+	require.ErrorAs(t, err, &rejected)
+	op, err = s.WriteRestoreChange(t.Context(), &proto.RestoreOperationChange{
+		Action:              proto.RestoreOperationChange_RESTORE_ACTION_UPDATE.Enum(),
+		OperationId:         new("op-1"),
+		Epoch:               new(uint64(1)),
+		Phase:               proto.RestorePhase_RESTORE_PHASE_LOADING.Enum(),
+		CompletedPartitions: new(uint32(1)),
+		TimestampMillis:     new(int64(3_000)),
+		LeaseMillis:         new(int64(30_000)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, state.RestorePhaseLoading, op.Phase)
+	require.Equal(t, uint32(1), op.CompletedPartitions)
+	require.True(t, op.DataModified)
+
+	// completing lifts the gate
+	op, err = s.WriteRestoreChange(t.Context(), &proto.RestoreOperationChange{
+		Action:          proto.RestoreOperationChange_RESTORE_ACTION_COMPLETE.Enum(),
+		OperationId:     new("op-1"),
+		Epoch:           new(uint64(1)),
+		TimestampMillis: new(int64(4_000)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, state.RestoreStatusCompleted, op.Status)
 	testPoll(t, func() bool {
-		return !s.ClusterState().Restoring
+		return !s.ClusterState().RestoreInProgress()
 	}, 50*time.Millisecond, 5*time.Second)
+
+	// a new restore takes the next epoch
+	op, err = acquire("op-2", 5_000)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), op.Epoch)
 }
 
 func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {

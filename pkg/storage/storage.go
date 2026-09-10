@@ -48,6 +48,7 @@ type DecisionStorage interface {
 	DecisionInstanceStorageWriter
 
 	GenerateId() int64
+	NewBatch() Batch
 }
 
 // Batch holds an array of operations that need to be run when Flush is called.
@@ -62,6 +63,8 @@ type Batch interface {
 	FlowNodeCounterWriter
 	IncidentStorageWriter
 	ErrorSubscriptionStorageWriter
+	DmnResourceDefinitionStorageWriter
+	DecisionDefinitionStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error

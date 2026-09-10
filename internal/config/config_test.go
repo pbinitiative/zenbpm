@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,51 @@ func TestClusterPartitionRetryDelayDefault(t *testing.T) {
 	}
 	if c.Cluster.PartitionRetryDelay != 5*time.Second {
 		t.Errorf("expected default PartitionRetryDelay 5s, got %s", c.Cluster.PartitionRetryDelay)
+	}
+}
+
+func TestRestoreLimitsDefaults(t *testing.T) {
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if c.Cluster.Restore.MaxPartitionRowBytes != 32<<20 {
+		t.Errorf("expected default MaxPartitionRowBytes 33554432, got %d", c.Cluster.Restore.MaxPartitionRowBytes)
+	}
+	if c.Cluster.Restore.SpoolDir != "" {
+		t.Errorf("expected SpoolDir to be resolved by validation, got %q", c.Cluster.Restore.SpoolDir)
+	}
+}
+
+func TestRestoreSpoolDirDefaultsUnderTheDataDir(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CLUSTER_RAFT_DIR", dataDir)
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if err := c.validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if want := filepath.Join(dataDir, "spool"); c.Cluster.Restore.SpoolDir != want {
+		t.Errorf("expected SpoolDir %q, got %q", want, c.Cluster.Restore.SpoolDir)
+	}
+}
+
+func TestRestoreSpoolDirFromEnvIsMadeAbsolute(t *testing.T) {
+	t.Setenv("CLUSTER_RAFT_DIR", t.TempDir())
+	t.Setenv("CLUSTER_RESTORE_SPOOL_DIR", "restore-scratch")
+
+	var c Config
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	if err := c.validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if !filepath.IsAbs(c.Cluster.Restore.SpoolDir) || filepath.Base(c.Cluster.Restore.SpoolDir) != "restore-scratch" {
+		t.Errorf("expected an absolute path ending in restore-scratch, got %q", c.Cluster.Restore.SpoolDir)
 	}
 }
 
@@ -227,5 +273,20 @@ func unsetEngineMaxProcessInstanceFlowNodeCountEnv(t *testing.T) {
 	})
 	if err := os.Unsetenv("CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT"); err != nil {
 		t.Fatalf("failed to unset CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT: %v", err)
+	}
+}
+
+func TestClusterDesiredPartitionsValidation(t *testing.T) {
+	for _, desired := range []uint32{0, 1} {
+		if err := (Cluster{DesiredPartitions: desired}).ValidateDesiredPartitions(); err != nil {
+			t.Errorf("desiredPartitions=%d must be accepted, got %v", desired, err)
+		}
+	}
+	err := Cluster{DesiredPartitions: 2}.ValidateDesiredPartitions()
+	if err == nil {
+		t.Fatal("expected validation error: a second partition can never finish bootstrapping")
+	}
+	if !strings.Contains(err.Error(), "desiredPartitions=2") {
+		t.Errorf("error should name the offending value, got %q", err.Error())
 	}
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -83,15 +84,32 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 }
 
 func (f *FSM) Restore(rc io.ReadCloser) error {
-	snapshot := fsmSnapshot{}
+	snapshot := legacyAwareSnapshot{}
 	if err := json.NewDecoder(rc).Decode(&snapshot); err != nil {
 		return err
+	}
+	clusterState := snapshot.ClusterState.Cluster
+	if snapshot.ClusterState.Restoring {
+		// snapshot written by a binary that predates restore operations while a
+		// restore was in progress: keep the cluster gated
+		clusterState.ApplyLegacyRestoringFlag(true, 0)
+		f.store.logger.Warn("migrated legacy restoring flag from snapshot", "restore", clusterState.Restore.ID)
 	}
 
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	f.store.state = snapshot.ClusterState
+	f.store.state = clusterState
 	return nil
+}
+
+// legacyAwareSnapshot decodes snapshots of both shapes: the current one and
+// the one written before restore operations existed, whose cluster state
+// carried a plain "restoring" flag.
+type legacyAwareSnapshot struct {
+	ClusterState struct {
+		state.Cluster
+		Restoring bool `json:"restoring"`
+	} `json:"clusterState"`
 }
 
 type FsmStore interface {
@@ -115,13 +133,90 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 	return nil
 }
 
+// RestoreApplyResult is what the FSM returns (through the raft ApplyFuture)
+// for a restore command: the resulting operation, or the rejection that left
+// the state untouched.
+type RestoreApplyResult struct {
+	Operation state.RestoreOperation
+	Rejected  *state.RestoreRejectedError
+}
+
 func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interface{} {
+	change := cmd.GetRestore()
+	if change == nil {
+		// a "restoring" flag written by a binary that predates restore
+		// operations: migrate it instead of dropping the safety gate
+		//lint:ignore SA1019 the deprecated flag is read on purpose: it only exists to replay raft logs written by earlier binaries
+		legacyRestoring := cmd.GetRestoring()
+		f.store.stateMu.Lock()
+		defer f.store.stateMu.Unlock()
+		newState := *f.store.state.DeepCopy()
+		newState.ApplyLegacyRestoringFlag(legacyRestoring, 0)
+		f.store.state = newState
+		f.store.logger.Warn("migrated legacy cluster restoring flag", "restoring", legacyRestoring, "restore", newState.Restore.ID)
+		return RestoreApplyResult{Operation: newState.Restore}
+	}
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
 	newState := *f.store.state.DeepCopy()
-	newState.Restoring = cmd.GetRestoring()
+	if err := newState.ApplyRestoreChange(restoreChangeFromProto(change)); err != nil {
+		var rejected *state.RestoreRejectedError
+		if !errors.As(err, &rejected) {
+			rejected = &state.RestoreRejectedError{Reason: err.Error(), Current: f.store.state.Restore}
+		}
+		return RestoreApplyResult{Operation: f.store.state.Restore, Rejected: rejected}
+	}
 	f.store.state = newState
-	return nil
+	return RestoreApplyResult{Operation: newState.Restore}
+}
+
+func restoreChangeFromProto(change *proto.RestoreOperationChange) state.RestoreChange {
+	return state.RestoreChange{
+		Action:              restoreActionFromProto(change.GetAction()),
+		OperationID:         change.GetOperationId(),
+		Epoch:               change.GetEpoch(),
+		CoordinatorID:       change.GetCoordinatorId(),
+		Phase:               restorePhaseFromProto(change.GetPhase()),
+		TotalPartitions:     change.GetTotalPartitions(),
+		CompletedPartitions: change.GetCompletedPartitions(),
+		Error:               change.GetError(),
+		Force:               change.GetForce(),
+		NowMillis:           change.GetTimestampMillis(),
+		LeaseMillis:         change.GetLeaseMillis(),
+	}
+}
+
+func restoreActionFromProto(action proto.RestoreOperationChange_Action) state.RestoreAction {
+	switch action {
+	case proto.RestoreOperationChange_RESTORE_ACTION_ACQUIRE:
+		return state.RestoreActionAcquire
+	case proto.RestoreOperationChange_RESTORE_ACTION_UPDATE:
+		return state.RestoreActionUpdate
+	case proto.RestoreOperationChange_RESTORE_ACTION_COMPLETE:
+		return state.RestoreActionComplete
+	case proto.RestoreOperationChange_RESTORE_ACTION_FAIL:
+		return state.RestoreActionFail
+	case proto.RestoreOperationChange_RESTORE_ACTION_ABORT:
+		return state.RestoreActionAbort
+	default:
+		return state.RestoreActionUnknown
+	}
+}
+
+var restorePhaseByProto = map[proto.RestorePhase]state.RestorePhase{
+	proto.RestorePhase_RESTORE_PHASE_PENDING:     state.RestorePhasePending,
+	proto.RestorePhase_RESTORE_PHASE_QUIESCING:   state.RestorePhaseQuiescing,
+	proto.RestorePhase_RESTORE_PHASE_VALIDATING:  state.RestorePhaseValidating,
+	proto.RestorePhase_RESTORE_PHASE_LOADING:     state.RestorePhaseLoading,
+	proto.RestorePhase_RESTORE_PHASE_RECONCILING: state.RestorePhaseReconciling,
+	proto.RestorePhase_RESTORE_PHASE_RESUMING:    state.RestorePhaseResuming,
+	proto.RestorePhase_RESTORE_PHASE_DONE:        state.RestorePhaseDone,
+}
+
+// restorePhaseFromProto maps the wire enum to the state phase; unknown values
+// map to an empty (invalid) phase that the FSM rejects.
+func restorePhaseFromProto(phase proto.RestorePhase) state.RestorePhase {
+	return restorePhaseByProto[phase]
 }
 
 func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) state.Cluster {
@@ -143,10 +238,10 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 		}
 	}
 	// A Shutdown → Started transition means the peer's heartbeat resumed.
-	// shutdownNode cleared its partition roles to UNKNOWN; restore them to
-	// Follower here so read selectors pick the node back up. Skip the partition
-	// where this node is still registered as the leader — PartitionNodeLeaderChange
-	// owns that slot and we don't want to fight it.
+	// shutdownNode cleared its partition roles to UNKNOWN; restore them here so
+	// read selectors and leader routing pick the node back up: Leader where the
+	// partition still records this node as its leader (a newer leader election
+	// replaces both the record and the role in one apply), Follower otherwise.
 	resuming := ok &&
 		node.State == state.NodeStateShutdown &&
 		nodeChangeCommand.GetState() == proto.NodeState_NODE_STATE_STARTED
@@ -174,10 +269,10 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	}
 	if resuming {
 		for partitionId, np := range node.Partitions {
-			if p, ok := currState.Partitions[partitionId]; ok && p.LeaderId == node.Id {
-				continue
-			}
 			np.Role = state.RoleFollower
+			if p, ok := currState.Partitions[partitionId]; ok && p.LeaderId == node.Id {
+				np.Role = state.RoleLeader
+			}
 			node.Partitions[partitionId] = np
 		}
 	}

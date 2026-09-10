@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSchemaReady(t *testing.T) {
 	t.Run("ready after all migrations applied", func(t *testing.T) {
 		partition, _, _, _, _ := prepareTestSetup(t, false)
-		defer partition.Stop()
+		defer func() { require.NoError(t, partition.Stop()) }()
 
 		ready, err := partition.DB.SchemaReady(t.Context())
 		assert.NoError(t, err)
@@ -18,7 +19,7 @@ func TestSchemaReady(t *testing.T) {
 
 	t.Run("not ready while migrations are pending", func(t *testing.T) {
 		partition, _, _, _, _ := prepareTestSetupWithTestMigration(t)
-		defer partition.Stop()
+		defer func() { require.NoError(t, partition.Stop()) }()
 
 		ready, err := partition.DB.SchemaReady(t.Context())
 		assert.NoError(t, err)

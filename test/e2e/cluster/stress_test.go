@@ -199,6 +199,7 @@ func TestChaosMonkey(t *testing.T) {
 				tc.KillNode(t, victim.ID)
 			}
 		}
+		// chaos cadence: deliberately random delays between faults
 		time.Sleep(time.Duration(3+rand.Intn(7)) * time.Second)
 	}
 
@@ -230,15 +231,18 @@ func TestLeaderBounce(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	// Kill the leader every 5 seconds for 20 seconds
+	// Bounce the leader 4 times
 	for i := 0; i < 4; i++ {
 		currentLeader := tc.Leader()
 		if currentLeader != nil {
 			t.Logf("Bouncing leader: %s", currentLeader.ID)
 			tc.KillNode(t, currentLeader.ID)
+			// the bounce has happened once the survivors elected somebody else
+			require.Eventually(t, func() bool {
+				l := tc.Leader()
+				return l != nil && l.ID != currentLeader.ID
+			}, 60*time.Second, 500*time.Millisecond, "a new leader should be elected after bounce %d", i)
 		}
-
-		time.Sleep(5 * time.Second)
 
 		// Restart any killed nodes
 		for _, n := range tc.Nodes {
@@ -340,7 +344,13 @@ func TestGracefulDegradation(t *testing.T) {
 		}
 		tc.StopNode(t, n.ID)
 		removedCount++
-		time.Sleep(2 * time.Second)
+		if running := tc.RunningNodes(); len(running) > len(tc.Nodes)/2 {
+			// quorum intact: the leader records the departure
+			WaitForNodeObservedDown(t, tc, n.ID, 60*time.Second)
+		} else {
+			// quorum lost: the survivors can only notice that the leader is gone
+			WaitForNoClusterLeader(t, running, 60*time.Second)
+		}
 	}
 
 	// With only 2 nodes left (below quorum of 3), writes should fail or the cluster

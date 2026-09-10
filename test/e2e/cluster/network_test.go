@@ -56,12 +56,12 @@ func TestSymmetricPartition(t *testing.T) {
 	groupB := []string{tc.Nodes[2].ID, tc.Nodes[3].ID}
 	tc.PartitionNetwork(t, groupA, groupB)
 
-	// Neither side has quorum (2 of 4), so neither should be able to elect a leader
-	// Wait a bit for the partition to take effect
+	// Neither side has quorum (2 of 4), so neither should be able to elect a
+	// leader. There is no observable condition to wait for here: the harness
+	// proxy's BlockPeer only drops existing connections (its blocked map is
+	// never enforced, see the backlog), so the split is modeled as a delay
+	// rather than asserted as a leaderless state.
 	time.Sleep(5 * time.Second)
-
-	// Eventually the cluster should lose leadership on both sides
-	// (or one side retains if it had the leader and hasn't timed out yet)
 	t.Log("Network partitioned into 2+2 — verifying behavior")
 
 	// Heal and verify recovery
@@ -122,8 +122,8 @@ func TestHealAfterPartition(t *testing.T) {
 	isolatedID := followers[0].ID
 	tc.IsolateNode(t, isolatedID)
 
-	// Let the cluster proceed for a bit
-	time.Sleep(5 * time.Second)
+	// The majority notices the isolation: the leader marks the node down.
+	WaitForNodeObservedDown(t, tc, isolatedID, 60*time.Second)
 
 	// Heal the network
 	tc.HealNetwork(t)
@@ -204,7 +204,10 @@ func TestNoSplitBrain(t *testing.T) {
 	groupB := []string{tc.Nodes[3].ID, tc.Nodes[4].ID}
 	tc.PartitionNetwork(t, groupA, groupB)
 
-	// Wait for partition to stabilize
+	// Let the split settle. This models a delay on purpose: the harness
+	// proxy's BlockPeer only drops existing connections (its blocked map is
+	// never enforced, see the backlog), so the minority side never observably
+	// loses its leader and there is no eventual state to wait for.
 	time.Sleep(10 * time.Second)
 
 	// Count leaders across ALL nodes — there should be at most 1 base cluster leader
@@ -247,7 +250,8 @@ func TestPartitionBetweenBaseAndSubcluster(t *testing.T) {
 	followers := tc.Followers()
 	require.NotEmpty(t, followers)
 	tc.IsolateNode(t, followers[0].ID)
-	time.Sleep(3 * time.Second)
+	// a brief isolation: long enough for the leader to notice it
+	WaitForNodeObservedDown(t, tc, followers[0].ID, 60*time.Second)
 	tc.HealNetwork(t)
 
 	// Base cluster leader should not have changed
@@ -273,7 +277,8 @@ func TestSlowNetwork(t *testing.T) {
 	require.NotEmpty(t, followers)
 	tc.AddLatency(t, followers[0].ID, 500*time.Millisecond)
 
-	// Cluster should still function (slowly but no false failovers)
+	// Cluster should still function (slowly but no false failovers). This
+	// deliberately lets time pass: the assertion is that nothing changes.
 	time.Sleep(5 * time.Second)
 
 	// Leader should still be the same

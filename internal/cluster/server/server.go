@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
+	"github.com/pbinitiative/zenbpm/internal/cluster/backup"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
@@ -34,6 +35,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/validation"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
+	rqstore "github.com/rqlite/rqlite/v10/store"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
@@ -54,6 +56,13 @@ type Server struct {
 	jobManager *jobmanager.JobManager
 	client     *client.ClientManager
 	cpuProfile CpuProfile
+	// restoreTimeouts bounds restores driven through the ClusterRestore RPC
+	restoreTimeouts backup.RestoreTimeouts
+	// restoreLimits bounds restore inputs received by this node
+	restoreLimits backup.RestoreLimits
+	// restoreSpoolDir is where backups and restores spool partition images;
+	// empty selects the operating system's temporary directory
+	restoreSpoolDir string
 }
 
 type CpuProfile struct {
@@ -62,12 +71,13 @@ type CpuProfile struct {
 }
 
 type StoreService interface {
+	NodeID() string
 	Notify(nr *proto.NotifyRequest) error
 	Join(jr *proto.JoinRequest) error
 	WriteNodeChange(change *protoc.NodeChange) error
 	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
-	WriteMaintenanceChange(change *protoc.ClusterMaintenanceChange) error
+	WriteRestoreChange(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
 }
 
 type ControllerService interface {
@@ -75,11 +85,38 @@ type ControllerService interface {
 	Engines(ctx context.Context) map[uint32]*bpmn.Engine
 	PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries
 	GetPartition(ctx context.Context, partitionId uint32) *partition.ZenPartitionNode
+	PartitionMaintenanceStatus(ctx context.Context, partitionId uint32, token partition.RestoreToken) partition.MaintenanceStatus
+}
+
+// ServerOption configures optional server behaviour.
+type ServerOption func(*Server)
+
+// WithRestoreTimeouts bounds the phases of a restore driven through the
+// ClusterRestore RPC.
+func WithRestoreTimeouts(timeouts backup.RestoreTimeouts) ServerOption {
+	return func(s *Server) {
+		s.restoreTimeouts = timeouts
+	}
+}
+
+// WithRestoreLimits bounds the size of restore inputs this node accepts.
+func WithRestoreLimits(limits backup.RestoreLimits) ServerOption {
+	return func(s *Server) {
+		s.restoreLimits = limits
+	}
+}
+
+// WithRestoreSpoolDir sets the disk-backed directory backups and restores
+// spool partition images in.
+func WithRestoreSpoolDir(dir string) ServerOption {
+	return func(s *Server) {
+		s.restoreSpoolDir = dir
+	}
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager, clientMgr *client.ClientManager) *Server {
-	return &Server{
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager, clientMgr *client.ClientManager, opts ...ServerOption) *Server {
+	s := &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
@@ -87,6 +124,10 @@ func New(ln net.Listener, store StoreService, controller ControllerService, jobM
 		jobManager: jobManager,
 		client:     clientMgr,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 var _ proto.ZenServiceServer = &Server{}
@@ -202,36 +243,18 @@ func (s *Server) PartitionNodeLeaderChange(ctx context.Context, req *proto.Parti
 		return nil, ctx.Err()
 	}
 
-	newLeaderId := req.GetId()
-	partitionId := req.GetPartition()
-
-	// If a different node was previously the leader, demote it first.
-	// The FSM only updates the role of the node in the change command,
-	// so without this the old leader's NodePartition.Role stays stale.
-	cs := s.store.ClusterState()
-	if existing, ok := cs.Partitions[partitionId]; ok &&
-		existing.LeaderId != "" &&
-		existing.LeaderId != newLeaderId {
-		err := s.store.WritePartitionChange(&protoc.NodePartitionChange{
-			NodeId:      new(existing.LeaderId),
-			PartitionId: new(partitionId),
-			State:       protoc.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
-			Role:        protoc.Role_ROLE_TYPE_FOLLOWER.Enum(),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to demote old partition leader %s: %w", existing.LeaderId, err)
-		}
-	}
-
-	// Promote the new leader.
+	// A single partition change with the LEADER role is applied atomically by
+	// the FSM: it records the new leader and demotes the previous one in the
+	// same apply, so no reader ever observes a partition without a leader or
+	// with two of them.
 	err := s.store.WritePartitionChange(&protoc.NodePartitionChange{
-		NodeId:      new(newLeaderId),
-		PartitionId: new(partitionId),
+		NodeId:      new(req.GetId()),
+		PartitionId: new(req.GetPartition()),
 		State:       protoc.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
 		Role:        protoc.Role_ROLE_TYPE_LEADER.Enum(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to promote new partition leader %s: %w", newLeaderId, err)
+		return nil, fmt.Errorf("failed to promote new partition leader %s: %w", req.GetId(), err)
 	}
 
 	return &proto.PartitionNodeLeaderChangeResponse{}, nil
@@ -676,7 +699,7 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 	bpmnEngines := s.controller.Engines(ctx)
 
 	if len(bpmnEngines) == 0 {
-		err := zenerr.TechnicalError(fmt.Errorf("no engines available: %w", err))
+		err := zenerr.Unavailable(fmt.Errorf("no engines available on this node"))
 		return &proto.DeployDmnResourceDefinitionResponse{Error: err.ToProtoError()}, nil
 	}
 
@@ -699,7 +722,7 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 				}, nil
 			}
 			return &proto.DeployDmnResourceDefinitionResponse{
-				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
+				Error: deployError(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
 			}, nil
 		}
 	}
@@ -713,7 +736,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
 		if err != nil {
 			return &proto.DeployProcessDefinitionResponse{
-				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
+				Error: deployError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
 			}, nil
 		}
 	}
@@ -721,7 +744,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 		engine := s.GetRandomEngine(ctx)
 		if engine == nil {
 			return &proto.DeployProcessDefinitionResponse{
-				Error: zenerr.TechnicalError(fmt.Errorf("no engine available on this node")).ToProtoError(),
+				Error: zenerr.Unavailable(fmt.Errorf("no engine available on this node")).ToProtoError(),
 			}, nil
 		}
 		err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey())
@@ -732,6 +755,16 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 		}
 	}
 	return &proto.DeployProcessDefinitionResponse{}, nil
+}
+
+// deployError classifies a deploy failure: a partition store that is not open
+// (yet) is a transient condition the caller may retry against the current
+// leader, everything else is a technical error.
+func deployError(err error) *zenerr.ZenError {
+	if errors.Is(err, rqstore.ErrNotOpen) {
+		return zenerr.Unavailable(err)
+	}
+	return zenerr.TechnicalError(err)
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {

@@ -16,6 +16,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -505,9 +506,10 @@ func (c *countingControllerTestStore) IsLeader() bool {
 	return c.ControllerTestStore.IsLeader()
 }
 
-// TestRestoringFlagStopsEngines verifies that when Cluster.Restoring is set,
-// performMemberOperations stops all locally-running partition engines and
-// returns early.
+// TestRestoringFlagStopsEngines verifies that while a restore operation gates
+// the cluster, performMemberOperations stops all locally-running partition
+// engines, fences their databases and returns early — and that both are undone
+// once the operation completes.
 //
 // The test boots a partition exactly like TestEngineStartsOnRegainedPartitionLeadership
 // (same fixture), waits for the engine to be running, then flips Restoring=true
@@ -517,11 +519,8 @@ func (c *countingControllerTestStore) IsLeader() bool {
 // validated by TestEngineStartsOnRegainedPartitionLeadership.
 func TestRestoringFlagStopsEngines(t *testing.T) {
 	mux, ln, err := network.NewNodeMux("")
-	assert.NoError(t, err)
-	go func() {
-		err := mux.Serve()
-		assert.NoError(t, err)
-	}()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
 
 	_, port, err := net.SplitHostPort(ln.Addr().String())
 	assert.NoError(t, err)
@@ -557,7 +556,7 @@ func TestRestoringFlagStopsEngines(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, ctrl.Start(tStore, clientMgr))
-	defer ctrl.Stop()
+	defer func() { require.NoError(t, ctrl.Stop()) }()
 
 	// Seed the cluster state so the controller creates partition 1.
 	tStore.clusterState.Nodes[tStore.id] = state.Node{
@@ -576,16 +575,135 @@ func TestRestoringFlagStopsEngines(t *testing.T) {
 		return pn != nil && pn.Engine != nil
 	}, 100*time.Millisecond, 10*time.Second, "partition engine never started initially")
 
-	// Flip the Restoring flag and fire a cluster state change notification.
-	// performMemberOperations should stop all local engines and return early.
-	tStore.clusterState.Restoring = true
+	// Record an active restore operation and fire a cluster state change
+	// notification. performMemberOperations should stop all local engines,
+	// fence the partition database and return early.
+	restore := state.RestoreOperation{ID: "op-1", Epoch: 1, Status: state.RestoreStatusActive, Phase: state.RestorePhaseQuiescing}
+	tStore.mu.Lock()
+	tStore.clusterState.Restore = restore
+	tStore.mu.Unlock()
 	ctrl.ClusterStateChangeNotification(t.Context())
 
 	// The engine must be nil (stopped) after the notification.
 	testPoll(t, func() bool {
 		pn := ctrl.GetPartition(t.Context(), 1)
 		return pn != nil && pn.Engine == nil
-	}, 100*time.Millisecond, 5*time.Second, "engine was not stopped when Restoring flag was set")
+	}, 100*time.Millisecond, 5*time.Second, "engine was not stopped when the restore operation was recorded")
+	token := partition.RestoreToken{OperationID: "op-1", Epoch: 1}
+	status := ctrl.PartitionMaintenanceStatus(t.Context(), 1, token)
+	assert.True(t, status.Hosted)
+	assert.True(t, status.Fenced, "partition database should be fenced for the restore token")
+	assert.False(t, status.EngineRunning)
+	fence, fenced := ctrl.GetPartition(t.Context(), 1).DB.RestoreFence()
+	assert.True(t, fenced)
+	assert.Equal(t, token, fence)
+
+	// Completing the restore lifts the fence and the regular partition
+	// handling restarts the engine.
+	restore.Status = state.RestoreStatusCompleted
+	restore.Phase = state.RestorePhaseDone
+	tStore.mu.Lock()
+	tStore.clusterState.Restore = restore
+	tStore.mu.Unlock()
+	ctrl.ClusterStateChangeNotification(t.Context())
+	testPoll(t, func() bool {
+		_, fenced := ctrl.GetPartition(t.Context(), 1).DB.RestoreFence()
+		return !fenced
+	}, 100*time.Millisecond, 5*time.Second, "fence was not lifted after the restore completed")
+	// Restarting takes two rounds: the leader re-reports INITIALIZING, and the
+	// notification for that state change starts the engine. The test store
+	// does not dispatch notifications, so fire them from the poll.
+	testPoll(t, func() bool {
+		ctrl.ClusterStateChangeNotification(t.Context())
+		pn := ctrl.GetPartition(t.Context(), 1)
+		return pn != nil && pn.Engine != nil
+	}, 200*time.Millisecond, 10*time.Second, "engine was not restarted after the restore completed")
+}
+
+// TestGatedControllerOpensPartitionsWithoutEngines verifies that a node whose
+// cluster state already gates the cluster (restart mid-restore, or after a
+// failed restore that modified data) still opens its assigned partition
+// store — fenced, without an engine — and reports it INITIALIZED, so a retry
+// can find and drive the partition leader. Once the restore completes the
+// engine starts through the regular path.
+func TestGatedControllerOpensPartitionsWithoutEngines(t *testing.T) {
+	mux, ln, err := network.NewNodeMux("")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	assert.NoError(t, err)
+
+	gated := state.RestoreOperation{ID: "op-7", Epoch: 7, Status: state.RestoreStatusFailed, Phase: state.RestorePhaseLoading, DataModified: true}
+	tStore := &ControllerTestStore{
+		id:   "test-node-1",
+		addr: fmt.Sprintf("127.0.0.1:%s", port),
+		clusterState: state.Cluster{
+			Config:     state.ClusterConfig{DesiredPartitions: 1},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
+			Restore:    gated,
+		},
+		leader: true,
+	}
+	require.True(t, tStore.ClusterState().RestoreInProgress())
+
+	srvLn := network.NewZenBpmClusterListener(mux)
+	srv := server.New(srvLn, tStore, nil, nil, nil)
+	assert.NoError(t, srv.Open())
+
+	clientMgr := client.NewClientManager(tStore)
+	ctrl, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft: config.ClusterRaft{
+			Dir:                    t.TempDir(),
+			JoinAttempts:           2,
+			JoinInterval:           100 * time.Millisecond,
+			JoinAddresses:          []string{tStore.addr},
+			BootstrapExpect:        1,
+			BootstrapExpectTimeout: 1 * time.Second,
+		},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, ctrl.Start(tStore, clientMgr))
+	defer func() { require.NoError(t, ctrl.Stop()) }()
+
+	tStore.setNode(state.Node{
+		Id:         tStore.id,
+		Addr:       tStore.addr,
+		Suffrage:   raft.Voter,
+		State:      state.NodeStateStarted,
+		Role:       state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{},
+	})
+	ctrl.ClusterStateChangeNotification(t.Context())
+
+	token := partition.RestoreToken{OperationID: "op-7", Epoch: 7}
+	testPoll(t, func() bool {
+		ctrl.ClusterStateChangeNotification(t.Context())
+		pn := ctrl.GetPartition(t.Context(), 1)
+		if pn == nil {
+			return false
+		}
+		st := ctrl.PartitionMaintenanceStatus(t.Context(), 1, token)
+		return st.Hosted && st.Leader && st.Fenced && st.Quiesced && st.Initialized && !st.EngineRunning
+	}, 200*time.Millisecond, 15*time.Second, "gated node did not open its partition fenced, leader and INITIALIZED without an engine")
+	assert.Nil(t, ctrl.GetPartition(t.Context(), 1).Engine, "no engine may run while the cluster is gated")
+
+	// the retry completes: the gate lifts and the engine starts
+	gated.Status = state.RestoreStatusCompleted
+	gated.Phase = state.RestorePhaseDone
+	tStore.mu.Lock()
+	tStore.clusterState.Restore = gated
+	tStore.mu.Unlock()
+	testPoll(t, func() bool {
+		ctrl.ClusterStateChangeNotification(t.Context())
+		pn := ctrl.GetPartition(t.Context(), 1)
+		_, fenced := pn.DB.RestoreFence()
+		return !fenced && pn.Engine != nil
+	}, 200*time.Millisecond, 15*time.Second, "engine was not started after the gate lifted")
 }
 
 type ControllerTestStore struct {
@@ -709,8 +827,12 @@ func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
 	c.clusterState = clusterState
 }
 
-func (c *ControllerTestStore) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
-	return nil
+func (c *ControllerTestStore) WriteRestoreChange(ctx context.Context, change *proto.RestoreOperationChange) (state.RestoreOperation, error) {
+	return c.ClusterState().Restore, nil
+}
+
+func (c *ControllerTestStore) NodeID() string {
+	return c.ID()
 }
 
 func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout time.Duration, msgAndArgs ...any) {
@@ -788,4 +910,78 @@ func writeBrokenMigrationFixture(t *testing.T) string {
 func repairBrokenMigrationFixture(t *testing.T, dir string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "9999_broken.up.sql"), []byte("SELECT 1;"), 0o600))
+}
+
+// TestRestoreMaintenanceFollowsTheStateReadUnderTheLock covers the ordering
+// syncRestoreMaintenance relies on when notifications are dispatched
+// concurrently: the cluster state is read only after maintenanceMu is taken,
+// so every transition acts on a state at least as new as the previous one
+// and the partitions always match the newest state observed. The store hands
+// out a strictly newer state on every read; the fence has to follow the
+// sequence ungated, gated, ungated exactly, whichever notification triggered
+// each sync.
+func TestRestoreMaintenanceFollowsTheStateReadUnderTheLock(t *testing.T) {
+	gated := state.Cluster{
+		Config:     state.ClusterConfig{DesiredPartitions: 1},
+		Partitions: map[uint32]state.Partition{},
+		Nodes:      map[string]state.Node{},
+		Restore:    state.RestoreOperation{ID: "op-9", Epoch: 9, Status: state.RestoreStatusActive, Phase: state.RestorePhaseLoading},
+	}
+	ungated := *gated.DeepCopy()
+	ungated.Restore = state.RestoreOperation{}
+	tStore := &sequencedControllerTestStore{
+		ControllerTestStore: &ControllerTestStore{id: "test-node-1", addr: "127.0.0.1:0", clusterState: ungated},
+		states:              []state.Cluster{ungated, gated, ungated},
+	}
+	ctrl, err := NewController(nil, config.Cluster{NodeId: tStore.id})
+	require.NoError(t, err)
+	ctrl.store = tStore
+	db, err := partition.NewDB(nil, 1, hclog.NewNullLogger(), config.Persistence{}, nil, tStore.ClusterState)
+	require.NoError(t, err)
+	t.Cleanup(db.Close)
+	ctrl.partitions[1] = &partition.ZenPartitionNode{PartitionId: 1, DB: db}
+	quiescedFor := func() (partition.RestoreToken, bool) {
+		ctrl.partitionsMu.RLock()
+		defer ctrl.partitionsMu.RUnlock()
+		token, ok := ctrl.quiesced[1]
+		return token, ok
+	}
+
+	ctrl.syncRestoreMaintenance()
+	_, fenced := db.RestoreFence()
+	assert.False(t, fenced, "no restore owns the cluster: the partition serves writes")
+	_, quiesced := quiescedFor()
+	assert.False(t, quiesced)
+
+	ctrl.syncRestoreMaintenance()
+	fence, fenced := db.RestoreFence()
+	require.True(t, fenced, "the restore that took the cluster fences the partition")
+	assert.Equal(t, partition.RestoreToken{OperationID: "op-9", Epoch: 9}, fence)
+	quiescedToken, quiesced := quiescedFor()
+	require.True(t, quiesced, "the partition is recorded as quiesced for the active restore")
+	assert.Equal(t, fence, quiescedToken)
+
+	ctrl.syncRestoreMaintenance()
+	_, fenced = db.RestoreFence()
+	assert.False(t, fenced, "the restore released the cluster: the fence is lifted")
+	_, quiesced = quiescedFor()
+	assert.False(t, quiesced)
+	assert.Equal(t, int32(3), tStore.calls.Load(), "every sync reads the state exactly once, under the maintenance lock")
+}
+
+// sequencedControllerTestStore hands out the next of its states on every
+// ClusterState call, the last one from then on: a store whose replicated
+// state moves forward between two reads.
+type sequencedControllerTestStore struct {
+	*ControllerTestStore
+	states []state.Cluster
+	calls  atomic.Int32
+}
+
+func (s *sequencedControllerTestStore) ClusterState() state.Cluster {
+	n := int(s.calls.Add(1)) - 1
+	if n >= len(s.states) {
+		n = len(s.states) - 1
+	}
+	return *s.states[n].DeepCopy()
 }

@@ -2,33 +2,21 @@ package backup
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-type fakeBackupSource struct {
-	payload []byte
-	err     error
-	gotReq  *rqcmd.BackupRequest
-}
-
-func (f *fakeBackupSource) Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) error {
-	f.gotReq = br
-	if f.err != nil {
-		return f.err
-	}
-	_, err := dst.Write(f.payload)
-	return err
-}
 
 func TestStreamPartitionBackup(t *testing.T) {
 	payload := bytes.Repeat([]byte("zen"), 700_000) // > 1 chunk (1 MiB)
@@ -71,13 +59,127 @@ func TestStreamPartitionBackupSourceError(t *testing.T) {
 	assert.ErrorContains(t, err, "boom")
 }
 
+func TestReceivePartitionRestore(t *testing.T) {
+	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte("d"), 5000)...)
+	gz := gzipBytes(t, raw)
+	sum := sha256.Sum256(gz)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(len(gz)))}
+
+	dst := &fakeLoadTarget{}
+	spoolDir := t.TempDir()
+	err := ReceivePartitionRestore(context.Background(), spoolDir, meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
+	assert.NoError(t, err)
+	assert.Equal(t, raw, dst.loaded, "the load hook sees the decompressed database on disk")
+	assert.Equal(t, spoolDir, filepath.Dir(dst.path), "the decompressed database is spooled in the given directory, never in the OS temp dir")
+	_, statErr := os.Stat(dst.path)
+	assert.True(t, os.IsNotExist(statErr), "the decompressed spool is removed after the load")
+	entries, err := os.ReadDir(spoolDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "no spool file is left behind")
+}
+
+func TestNewSpoolDirCreatesTheRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "data", "spool")
+	dir, err := NewSpoolDir(root, "zenbpm-restore-*")
+	require.NoError(t, err)
+	assert.Equal(t, root, filepath.Dir(dir), "the spool dir is created under the configured root")
+	assert.DirExists(t, dir)
+	info, err := os.Stat(root)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+	again, err := NewSpoolDir(root, "zenbpm-restore-*")
+	require.NoError(t, err)
+	assert.NotEqual(t, dir, again, "every operation gets a spool dir of its own")
+
+	fallback, err := NewSpoolDir("", "zenbpm-restore-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(fallback) })
+	assert.Equal(t, os.TempDir(), filepath.Dir(fallback), "an empty root falls back to the OS temp dir")
+}
+
+func TestReceivePartitionRestoreBadDigest(t *testing.T) {
+	raw := append([]byte("SQLite format 3\x00"), []byte("data")...)
+	gz := gzipBytes(t, raw)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new("deadbeef"), SizeBytes: new(int64(len(gz)))}
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
+	assert.ErrorContains(t, err, "digest mismatch")
+	assert.Nil(t, dst.loaded)
+}
+
+func TestReceivePartitionRestoreNotSQLite(t *testing.T) {
+	gz := gzipBytes(t, []byte("not a database at all"))
+	sum := sha256.Sum256(gz)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(len(gz)))}
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{}, dst.load)
+	assert.ErrorContains(t, err, "not a valid SQLite")
+	assert.Nil(t, dst.loaded)
+}
+
+func TestReceivePartitionRestoreEnforcesLimits(t *testing.T) {
+	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte{0}, 4096)...)
+	gz := gzipBytes(t, raw)
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(shaHex(gz)), SizeBytes: new(int64(len(gz)))}
+
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionImageBytes: int64(len(gz)) - 1}, dst.load)
+	require.ErrorIs(t, err, zenerr.ErrResourceLimit)
+	assert.Nil(t, dst.loaded, "an oversized image is never loaded")
+
+	err = ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionDatabaseBytes: 1024}, dst.load)
+	require.ErrorIs(t, err, zenerr.ErrResourceLimit, "a compressible image must not expand past the database limit")
+	assert.Nil(t, dst.loaded)
+
+	err = ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz, 1024), RestoreLimits{PartitionImageBytes: int64(len(gz)), PartitionDatabaseBytes: int64(len(raw))}, dst.load)
+	require.NoError(t, err)
+	assert.Equal(t, raw, dst.loaded)
+}
+
+func TestReceivePartitionRestoreStopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1))}
+	dst := &fakeLoadTarget{}
+	err := ReceivePartitionRestore(ctx, t.TempDir(), meta, func() (*proto.RestoreChunk, error) {
+		t.Fatal("recv must not be called once the context is done")
+		return nil, nil
+	}, RestoreLimits{}, dst.load)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+type fakeBackupSource struct {
+	payload []byte
+	err     error
+	gotReq  *rqcmd.BackupRequest
+}
+
+func (f *fakeBackupSource) Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) error {
+	f.gotReq = br
+	if f.err != nil {
+		return f.err
+	}
+	_, err := dst.Write(f.payload)
+	return err
+}
+
+// fakeLoadTarget records the decompressed database handed to the load hook.
+// It reads the file while the hook runs: the spool must be complete by then
+// and is removed afterwards.
 type fakeLoadTarget struct {
 	loaded []byte
+	path   string
 	err    error
 }
 
-func (f *fakeLoadTarget) Load(ctx context.Context, lr *rqcmd.LoadRequest) error {
-	f.loaded = lr.Data
+func (f *fakeLoadTarget) load(ctx context.Context, databasePath string) error {
+	data, err := os.ReadFile(databasePath)
+	if err != nil {
+		return err
+	}
+	f.loaded = data
+	f.path = databasePath
 	return f.err
 }
 
@@ -103,45 +205,4 @@ func chunkFeed(meta *proto.RestoreMeta, data []byte, chunk int) func() (*proto.R
 		}
 		return nil, io.EOF
 	}
-}
-
-func TestReceivePartitionRestore(t *testing.T) {
-	raw := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte("d"), 5000)...)
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write(raw)
-	zw.Close()
-	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
-
-	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
-	assert.NoError(t, err)
-	assert.Equal(t, raw, dst.loaded)
-}
-
-func TestReceivePartitionRestoreBadDigest(t *testing.T) {
-	raw := append([]byte("SQLite format 3\x00"), []byte("data")...)
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write(raw)
-	zw.Close()
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new("deadbeef"), SizeBytes: new(int64(gz.Len()))}
-	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
-	assert.ErrorContains(t, err, "digest mismatch")
-	assert.Nil(t, dst.loaded)
-}
-
-func TestReceivePartitionRestoreNotSQLite(t *testing.T) {
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	zw.Write([]byte("not a database at all"))
-	zw.Close()
-	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
-	dst := &fakeLoadTarget{}
-	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
-	assert.ErrorContains(t, err, "not a valid SQLite")
-	assert.Nil(t, dst.loaded)
 }

@@ -2,20 +2,19 @@ package cluster
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"net"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/cluster/backup"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/controller"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
@@ -40,6 +39,8 @@ import (
 	"github.com/rqlite/rqlite/v10/command"
 	"github.com/rqlite/rqlite/v10/tcp"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	gproto "google.golang.org/protobuf/proto"
 )
 
@@ -130,7 +131,10 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.client)
+	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.client,
+		server.WithRestoreTimeouts(backup.RestoreTimeoutsFromConfig(conf.Cluster.Restore)),
+		server.WithRestoreLimits(backup.RestoreLimitsFromConfig(conf.Cluster.Restore)),
+		server.WithRestoreSpoolDir(conf.Cluster.Restore.SpoolDir))
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}
@@ -197,8 +201,8 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 // rejectIfRestoring blocks client-facing mutations while a cluster restore is
 // in progress.
 func (node *ZenNode) rejectIfRestoring() error {
-	if node.store.ClusterState().Restoring {
-		return zenerr.ClusterError(fmt.Errorf("cluster restore in progress; try again later"))
+	if cs := node.store.ClusterState(); cs.RestoreInProgress() {
+		return zenerr.ClusterError(fmt.Errorf("cluster restore %s in progress (%s, phase %s); try again later", cs.Restore.ID, cs.Restore.Status, cs.Restore.Phase))
 	}
 	return nil
 }
@@ -447,7 +451,7 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 		return 0, fmt.Errorf("failed to find latest DMN resource definition by id %s: %w", definition.Id, err)
 	}
 
-	newChecksum := md5.Sum(data)
+	newChecksum := md5.Sum(data) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 	sameContent, err := xmlutil.SameContent(
 		latest.DmnChecksum,
 		newChecksum[:],
@@ -522,12 +526,6 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		return existingDefinitionKey, true, nil
 	}
 
-	hash := fnv.New32a()
-	_, err = hash.Write([]byte(processId))
-	if err != nil {
-		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to hash process definition id: %w", err))
-	}
-
 	clusterState := node.store.ClusterState()
 	partitionIds := sortedPartitionIds(clusterState)
 
@@ -535,11 +533,11 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		return 0, false, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
 	}
 
-	partitionIdx := int(hash.Sum32() % uint32(len(partitionIds)))
 	definitionKey := node.idGen.Generate()
 
-	// use that partitionIdx to create process definition subscriptions always only on that one partitionIdx
-	subscriptionPartitionId := partitionIds[partitionIdx]
+	// definition-level subscriptions live on exactly one partition; engine
+	// recovery and restore reconciliation use the same rule
+	subscriptionPartitionId := clusterState.DefinitionSubscriptionPartition(processId)
 	group, groupCtx := errgroup.WithContext(ctx)
 	for _, partitionId := range partitionIds {
 		registerProcessDefinitionSubscriptions := subscriptionPartitionId == partitionId
@@ -585,7 +583,7 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 		return 0, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
 	}
 
-	newDefinitionMD5Sum := md5.Sum(newDefinitionData)
+	newDefinitionMD5Sum := md5.Sum(newDefinitionData) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
 	sameContent, err := xmlutil.SameContent(
 		latestDefinition.BpmnChecksum,
 		newDefinitionMD5Sum[:],
@@ -603,24 +601,27 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 
 // transientDeployError reports whether a deploy error reflects a transient
 // condition during partition leadership churn — the routed leader's engine has
-// not started yet, or its rqlite store is briefly not open. Such deploys are
-// safe to retry against the current leader.
+// not started yet, or its rqlite store is briefly not open. The target node
+// reports those with zenerr.UnavailableCode; a gRPC transport failure with
+// codes.Unavailable (the leader went away mid-call) is retried the same way.
+// Such deploys are safe to retry against the current leader.
 func transientDeployError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	return strings.Contains(msg, "no engine available") ||
-		strings.Contains(msg, "no engines available") ||
-		strings.Contains(msg, "store not open")
+	if errors.Is(err, errTransientDeploy) || zenerr.IsUnavailable(err) {
+		return true
+	}
+	return status.Code(err) == codes.Unavailable
 }
 
 // errTransientDeploy marks a deploy attempt that should be retried even though
-// its error message is not itself a transient marker — e.g. the partition has no
-// elected leader yet.
+// no partition answered — e.g. the partition has no elected leader yet.
 var errTransientDeploy = errors.New("transient deploy condition")
 
-const (
+// deployRetryFor and deployRetryInterval bound the transient-failure retry
+// loop. They are variables so tests can shorten the window.
+var (
 	deployRetryFor      = 15 * time.Second
 	deployRetryInterval = 250 * time.Millisecond
 )
@@ -631,23 +632,31 @@ const (
 // key is caller-assigned and deploys are idempotent on it, so retries are safe.
 func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) error {
 	deadline := time.Now().Add(deployRetryFor)
-	var lastErr error
+	timer := time.NewTimer(deployRetryInterval)
+	defer timer.Stop()
 	for {
 		err := attempt()
 		if err == nil {
 			return nil
 		}
-		if !errors.Is(err, errTransientDeploy) && !transientDeployError(err) {
+		if !transientDeployError(err) {
 			return err
 		}
-		lastErr = err
-		if ctx.Err() != nil || !time.Now().Before(deadline) {
-			if errors.Is(lastErr, errTransientDeploy) {
+		if ctx.Err() != nil {
+			return zenerr.ClusterError(fmt.Errorf("deploy cancelled while retrying a transient failure: %w", errors.Join(ctx.Err(), err)))
+		}
+		if !time.Now().Before(deadline) {
+			if errors.Is(err, errTransientDeploy) {
 				return zenerr.ClusterError(fmt.Errorf("no partition leader available to deploy to within %s", deployRetryFor))
 			}
-			return lastErr
+			return err
 		}
-		time.Sleep(deployRetryInterval)
+		timer.Reset(deployRetryInterval)
+		select {
+		case <-ctx.Done():
+			return zenerr.ClusterError(fmt.Errorf("deploy cancelled while waiting to retry: %w", errors.Join(ctx.Err(), err)))
+		case <-timer.C:
+		}
 	}
 }
 

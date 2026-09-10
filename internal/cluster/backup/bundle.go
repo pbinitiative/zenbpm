@@ -14,7 +14,92 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/internal/config"
 )
+
+// RestoreLimits bounds the inputs of a restore. Zero values take the defaults.
+type RestoreLimits struct {
+	// ManifestBytes caps the bundle manifest.
+	ManifestBytes int64
+	// PartitionImageBytes caps one stored (gzipped) partition image.
+	PartitionImageBytes int64
+	// PartitionDatabaseBytes caps one decompressed partition database. The
+	// database is decompressed to disk and copied in bounded batches, so the
+	// cap bounds disk usage, not memory.
+	PartitionDatabaseBytes int64
+	// PartitionRowBytes caps one row of a partition image (see
+	// CopyOptions.MaxRowBytes): the largest row decides the largest batch the
+	// copy ships and the memory it needs.
+	PartitionRowBytes int64
+}
+
+// DefaultRestoreLimits returns the limits used when a field is zero.
+func DefaultRestoreLimits() RestoreLimits {
+	return RestoreLimits{
+		ManifestBytes:          1 << 20,
+		PartitionImageBytes:    8 << 30,
+		PartitionDatabaseBytes: 16 << 30,
+		PartitionRowBytes:      defaultCopyMaxRowBytes,
+	}
+}
+
+// RestoreLimitsFromConfig maps the cluster configuration onto RestoreLimits.
+func RestoreLimitsFromConfig(c config.Restore) RestoreLimits {
+	return RestoreLimits{
+		ManifestBytes:          c.MaxManifestBytes,
+		PartitionImageBytes:    c.MaxPartitionImageBytes,
+		PartitionDatabaseBytes: c.MaxPartitionDatabaseBytes,
+		PartitionRowBytes:      c.MaxPartitionRowBytes,
+	}
+}
+
+// NewSpoolDir creates a fresh directory for the spool files of one backup or
+// restore under root, creating root first when needed. An empty root falls
+// back to the operating system's temporary directory, which may be memory
+// backed; nodes pass the configured restore spool directory.
+func NewSpoolDir(root, pattern string) (string, error) {
+	if root != "" {
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			return "", fmt.Errorf("failed to create spool root %s: %w", root, err)
+		}
+	}
+	dir, err := os.MkdirTemp(root, pattern)
+	if err != nil {
+		return "", fmt.Errorf("failed to create spool dir: %w", err)
+	}
+	return dir, nil
+}
+
+func (l RestoreLimits) withDefaults() RestoreLimits {
+	def := DefaultRestoreLimits()
+	pick := func(v, d int64) int64 {
+		if v <= 0 {
+			return d
+		}
+		return v
+	}
+	return RestoreLimits{
+		ManifestBytes:          pick(l.ManifestBytes, def.ManifestBytes),
+		PartitionImageBytes:    pick(l.PartitionImageBytes, def.PartitionImageBytes),
+		PartitionDatabaseBytes: pick(l.PartitionDatabaseBytes, def.PartitionDatabaseBytes),
+		PartitionRowBytes:      pick(l.PartitionRowBytes, def.PartitionRowBytes),
+	}
+}
+
+// copyAtMost copies r into w and fails with ErrResourceLimit once more than
+// limit bytes were read, without buffering the input.
+func copyAtMost(w io.Writer, r io.Reader, limit int64, what string) (int64, error) {
+	n, err := io.Copy(w, io.LimitReader(r, limit+1))
+	if err != nil {
+		return n, err
+	}
+	if n > limit {
+		return n, fmt.Errorf("%w: %s exceeds %d bytes", zenerr.ErrResourceLimit, what, limit)
+	}
+	return n, nil
+}
 
 // FetchResult carries the source-declared digest and schema version returned
 // by a FetchFunc after streaming a partition's backup data.
@@ -139,12 +224,24 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 // spoolPartition streams a partition backup into a temporary file in spoolDir,
 // hashing simultaneously. It verifies the coordinator-computed digest against
 // the source-declared one and returns the file path and metadata on success.
-func spoolPartition(ctx context.Context, spoolDir string, id uint32, fetch FetchFunc) spoolResult {
+func spoolPartition(ctx context.Context, spoolDir string, id uint32, fetch FetchFunc) (out spoolResult) {
 	f, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-backup-p%d-*", id))
 	if err != nil {
 		return spoolResult{err: fmt.Errorf("failed to create spool file: %w", err)}
 	}
-	defer f.Close()
+	defer func() {
+		closeErr := f.Close()
+		if closeErr == nil {
+			return
+		}
+		// the spool file is re-read when the bundle is assembled, so a spool
+		// that did not close cleanly must not be reported as a success
+		if out.err == nil {
+			_ = os.Remove(f.Name()) // best-effort cleanup on the error path
+			out = spoolResult{}
+		}
+		out.err = errors.Join(out.err, fmt.Errorf("failed to close spool file for partition %d: %w", id, closeErr))
+	}()
 	snapshotAt := time.Now().UnixMilli()
 	h := sha256.New()
 	res, err := fetch(ctx, id, io.MultiWriter(f, h))
@@ -175,7 +272,7 @@ func spoolPartition(ctx context.Context, spoolDir string, id uint32, fetch Fetch
 }
 
 // writeSpoolEntry copies the spool file at path into the tar archive as name.
-func writeSpoolEntry(tw *tar.Writer, name, path string, size int64) error {
+func writeSpoolEntry(tw *tar.Writer, name, path string, size int64) (err error) {
 	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: size}); err != nil {
 		return fmt.Errorf("failed to write tar header for %s: %w", name, err)
 	}
@@ -183,7 +280,7 @@ func writeSpoolEntry(tw *tar.Writer, name, path string, size int64) error {
 	if err != nil {
 		return fmt.Errorf("failed to reopen spool %s: %w", filepath.Base(path), err)
 	}
-	defer f.Close()
+	defer zenerr.CloseJoin(f, &err, "spool file "+filepath.Base(path))
 	if _, err := io.Copy(tw, f); err != nil {
 		return fmt.Errorf("failed to copy %s into bundle: %w", name, err)
 	}
@@ -199,11 +296,22 @@ type Bundle struct {
 }
 
 // OpenBundle spools a bundle stream to disk and fully validates it BEFORE any
-// destructive restore step: manifest present, every partition file present
-// with matching sha256 and size, and gunzipped content that looks like SQLite.
-func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
+// destructive restore step: only regular entries with well-formed names, no
+// duplicate partition or manifest entries, no partition id outside
+// 1..expectedPartitions (0 disables that check), manifest present exactly
+// once and free of duplicate members, every partition file present with
+// matching sha256 and size, sizes within limits, and gunzipped content that
+// looks like SQLite. Spool files of a rejected bundle are removed.
+func OpenBundle(ctx context.Context, r io.Reader, spoolDir string, expectedPartitions uint32, limits RestoreLimits) (*Bundle, error) {
+	limits = limits.withDefaults()
 	b := &Bundle{files: map[uint32]string{}}
-	tr := tar.NewReader(r)
+	fail := func(err error) (*Bundle, error) {
+		_ = b.Close()
+		return nil, err
+	}
+	// every read of the upload observes ctx; verification of the spooled
+	// files below does the same, so the whole ingest is bounded by one deadline
+	tr := tar.NewReader(&contextReader{ctx: ctx, r: r})
 	shas := map[uint32]string{}
 	sizes := map[uint32]int64{}
 	manifestSeen := false
@@ -213,102 +321,126 @@ func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
 			break
 		}
 		if err != nil {
-			_ = b.Close()
-			return nil, fmt.Errorf("failed to read bundle (truncated or corrupt tar): %w", err)
+			return fail(fmt.Errorf("failed to read bundle (truncated or corrupt tar): %w", err))
 		}
-		var id uint32
+		if hdr.Typeflag != tar.TypeReg {
+			return fail(fmt.Errorf("unexpected bundle entry %q: not a regular file (type %q)", hdr.Name, hdr.Typeflag))
+		}
 		if hdr.Name == ManifestFileName {
-			if err := json.NewDecoder(tr).Decode(&b.Manifest); err != nil {
-				_ = b.Close()
-				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			if manifestSeen {
+				return fail(fmt.Errorf("bundle contains more than one %s", ManifestFileName))
 			}
+			manifest, err := DecodeManifest(tr, limits.ManifestBytes)
+			if err != nil {
+				return fail(err)
+			}
+			b.Manifest = manifest
 			manifestSeen = true
 			continue
 		}
-		if _, err := fmt.Sscanf(hdr.Name, "partition-%d.db.gz", &id); err != nil {
-			_ = b.Close()
-			return nil, fmt.Errorf("unexpected bundle entry %q", hdr.Name)
+		id, ok := ParsePartitionFileName(hdr.Name)
+		if !ok {
+			return fail(fmt.Errorf("unexpected bundle entry %q", hdr.Name))
+		}
+		if expectedPartitions > 0 && id > expectedPartitions {
+			return fail(fmt.Errorf("bundle entry %q: partition %d is outside the cluster's partitions 1..%d", hdr.Name, id, expectedPartitions))
+		}
+		if _, dup := b.files[id]; dup {
+			return fail(fmt.Errorf("bundle contains partition %d more than once", id))
 		}
 		f, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-p%d-*", id))
 		if err != nil {
-			_ = b.Close()
-			return nil, fmt.Errorf("failed to create restore spool: %w", err)
+			return fail(fmt.Errorf("failed to create restore spool: %w", err))
 		}
+		// register the spool file first so every error path below removes it
+		b.files[id] = f.Name()
 		h := sha256.New()
 		// The stream is an operator-supplied backup of whole partition databases,
-		// spooled to disk (not memory) and size-checked against the manifest below,
-		// so its size is unbounded by design.
-		n, err := io.Copy(io.MultiWriter(f, h), tr) // #nosec G110
+		// spooled to disk (not memory), capped by the configured image limit and
+		// size-checked against the manifest below.
+		n, err := copyAtMost(io.MultiWriter(f, h), tr, limits.PartitionImageBytes, hdr.Name)
 		if closeErr := f.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
 		if err != nil {
-			_ = os.Remove(f.Name()) // best-effort cleanup on the error path
-			_ = b.Close()
-			return nil, fmt.Errorf("failed to spool %s: %w", hdr.Name, err)
+			return fail(fmt.Errorf("failed to spool %s: %w", hdr.Name, err))
 		}
-		b.files[id] = f.Name()
 		shas[id] = hex.EncodeToString(h.Sum(nil))
 		sizes[id] = n
 	}
 	if !manifestSeen {
-		_ = b.Close()
-		return nil, fmt.Errorf("bundle has no %s (incomplete backup?)", ManifestFileName)
+		return fail(fmt.Errorf("bundle has no %s (incomplete backup?)", ManifestFileName))
 	}
 	for id, meta := range b.Manifest.Partitions {
 		if _, ok := b.files[id]; !ok {
-			_ = b.Close()
-			return nil, fmt.Errorf("bundle is missing file for partition %d", id)
+			return fail(fmt.Errorf("bundle is missing file for partition %d", id))
 		}
 		if shas[id] != meta.SHA256 {
-			_ = b.Close()
-			return nil, fmt.Errorf("checksum mismatch for partition %d: manifest %s, bundle %s", id, meta.SHA256, shas[id])
+			return fail(fmt.Errorf("checksum mismatch for partition %d: manifest %s, bundle %s", id, meta.SHA256, shas[id]))
 		}
 		if sizes[id] != meta.SizeBytes {
-			_ = b.Close()
-			return nil, fmt.Errorf("size mismatch for partition %d", id)
+			return fail(fmt.Errorf("size mismatch for partition %d", id))
 		}
-		if err := verifySQLiteGzip(b.files[id]); err != nil {
-			_ = b.Close()
-			return nil, fmt.Errorf("partition %d: %w", id, err)
+		if err := verifySQLiteGzip(ctx, b.files[id], limits.PartitionDatabaseBytes); err != nil {
+			return fail(fmt.Errorf("partition %d: %w", id, err))
 		}
 	}
 	for id := range b.files {
 		if _, ok := b.Manifest.Partitions[id]; !ok {
-			_ = b.Close()
-			return nil, fmt.Errorf("bundle contains partition %d not listed in manifest", id)
+			return fail(fmt.Errorf("bundle contains partition %d not listed in manifest", id))
 		}
 	}
 	return b, nil
 }
 
 // verifySQLiteGzip opens the gzip file at path, checks the SQLite magic header,
-// and drains the stream so gzip verifies its CRC over the whole content.
-func verifySQLiteGzip(path string) error {
+// and drains the stream so gzip verifies its CRC over the whole content. The
+// decompressed size is capped by maxDatabaseBytes so a highly compressible
+// image cannot expand without bound.
+func verifySQLiteGzip(ctx context.Context, path string, maxDatabaseBytes int64) (err error) {
 	f, err := os.Open(path) // #nosec G304 -- path is a spool file this process created via os.CreateTemp
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	zr, err := gzip.NewReader(f)
+	defer zenerr.CloseJoin(f, &err, "spool file "+filepath.Base(path))
+	// decompressing a multi-gigabyte image takes a while; the drain below
+	// stops at the ingest deadline instead of running to the end regardless
+	zr, err := gzip.NewReader(&contextReader{ctx: ctx, r: f})
 	if err != nil {
 		return fmt.Errorf("not gzip data: %w", err)
 	}
-	defer zr.Close()
-	head := make([]byte, 16)
+	defer zenerr.CloseJoin(zr, &err, "gzip reader")
+	head := make([]byte, len(sqliteHeader))
 	if _, err := io.ReadFull(zr, head); err != nil {
 		return fmt.Errorf("failed to read database header: %w", err)
 	}
-	if string(head) != "SQLite format 3\x00" {
+	if string(head) != sqliteHeader {
 		return fmt.Errorf("content is not a valid SQLite database")
 	}
 	// Drain to let gzip verify its CRC over the whole stream. Output is
-	// discarded, so memory use stays constant; the input is a size-checked
-	// partition database spooled on local disk, unbounded by design.
-	if _, err := io.Copy(io.Discard, zr); err != nil { // #nosec G110
+	// discarded, so memory use stays constant, and the decompressed size is
+	// capped.
+	if _, err := copyAtMost(io.Discard, zr, maxDatabaseBytes-int64(len(head)), "decompressed database"); err != nil {
+		if errors.Is(err, zenerr.ErrResourceLimit) || ctx.Err() != nil {
+			return err
+		}
 		return fmt.Errorf("gzip stream corrupt: %w", err)
 	}
 	return nil
+}
+
+// contextReader fails reads once ctx is done, so neither a stalled upload nor
+// a long verification can run past the ingest deadline.
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // PartitionFile returns a ReadCloser over the stored (still-gzipped) bytes for

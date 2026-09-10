@@ -48,6 +48,61 @@ type Cluster struct {
 	Engine      Engine      `yaml:"engine" json:"engine"`
 	// PartitionRetryDelay is the initial retry delay for partition lifecycle operations.
 	PartitionRetryDelay time.Duration `yaml:"partitionRetryDelay" json:"partitionRetryDelay" env:"CLUSTER_PARTITION_RETRY_DELAY" env-default:"5s"`
+	// DesiredPartitions is the number of partitions the cluster forms on
+	// bootstrap. It is read when the cluster state is created; changing it on
+	// an existing cluster has no effect.
+	DesiredPartitions uint32  `yaml:"desiredPartitions" json:"desiredPartitions" env:"CLUSTER_DESIRED_PARTITIONS" env-default:"1"`
+	Restore           Restore `yaml:"restore" json:"restore"`
+}
+
+// Restore bounds the phases of a cluster restore. Every phase fails with a
+// phase-specific error when its deadline passes, so a restore request always
+// reaches a terminal response.
+type Restore struct {
+	// LeaseDuration is how long the restore coordinator's ownership stays valid
+	// without a progress update. After a coordinator crash a new restore can be
+	// started once the lease expired.
+	LeaseDuration time.Duration `yaml:"leaseDuration" json:"leaseDuration" env:"CLUSTER_RESTORE_LEASE_DURATION" env-default:"30s"`
+	// BarrierTimeout bounds the wait for every partition leader to stop its
+	// engine and fence writes before any partition data is overwritten.
+	BarrierTimeout time.Duration `yaml:"barrierTimeout" json:"barrierTimeout" env:"CLUSTER_RESTORE_BARRIER_TIMEOUT" env-default:"1m"`
+	// PartitionLoadTimeout bounds streaming one partition image to its leader
+	// and copying it into the partition through the raft log.
+	PartitionLoadTimeout time.Duration `yaml:"partitionLoadTimeout" json:"partitionLoadTimeout" env:"CLUSTER_RESTORE_PARTITION_LOAD_TIMEOUT" env-default:"30m"`
+	// ReconcileTimeout bounds definition sync and pointer rebuild.
+	ReconcileTimeout time.Duration `yaml:"reconcileTimeout" json:"reconcileTimeout" env:"CLUSTER_RESTORE_RECONCILE_TIMEOUT" env-default:"10m"`
+	// ReadinessTimeout bounds the wait for partition engines to come back after
+	// the restore lifted the gate.
+	ReadinessTimeout time.Duration `yaml:"readinessTimeout" json:"readinessTimeout" env:"CLUSTER_RESTORE_READINESS_TIMEOUT" env-default:"2m"`
+	// StateApplyTimeout bounds a single restore state transition through raft.
+	StateApplyTimeout time.Duration `yaml:"stateApplyTimeout" json:"stateApplyTimeout" env:"CLUSTER_RESTORE_STATE_APPLY_TIMEOUT" env-default:"10s"`
+	// IngestTimeout bounds receiving and validating the uploaded bundle
+	// before the restore takes ownership of the cluster.
+	IngestTimeout time.Duration `yaml:"ingestTimeout" json:"ingestTimeout" env:"CLUSTER_RESTORE_INGEST_TIMEOUT" env-default:"1h"`
+	// MaxManifestBytes caps the bundle manifest.
+	MaxManifestBytes int64 `yaml:"maxManifestBytes" json:"maxManifestBytes" env:"CLUSTER_RESTORE_MAX_MANIFEST_BYTES" env-default:"1048576"`
+	// MaxPartitionImageBytes caps one stored (gzipped) partition image, both in
+	// the uploaded bundle and on the partition leader receiving it.
+	MaxPartitionImageBytes int64 `yaml:"maxPartitionImageBytes" json:"maxPartitionImageBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_IMAGE_BYTES" env-default:"8589934592"`
+	// MaxPartitionDatabaseBytes caps one decompressed partition database. The
+	// partition leader decompresses the image to disk (see SpoolDir) and
+	// copies it into the partition in bounded batches, so this bounds disk
+	// usage, not memory.
+	MaxPartitionDatabaseBytes int64 `yaml:"maxPartitionDatabaseBytes" json:"maxPartitionDatabaseBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_DATABASE_BYTES" env-default:"17179869184"`
+	// MaxPartitionRowBytes caps one row of a partition image, the sum of the
+	// byte lengths of its values. The copy into the partition ships rows as
+	// bounded statement batches; a row larger than a batch is shipped alone,
+	// so the largest row decides the largest batch, raft entry and the memory
+	// the copy needs. Checked on the image before the partition is touched.
+	MaxPartitionRowBytes int64 `yaml:"maxPartitionRowBytes" json:"maxPartitionRowBytes" env:"CLUSTER_RESTORE_MAX_PARTITION_ROW_BYTES" env-default:"33554432"`
+	// SpoolDir is where backups and restores spool partition images: the
+	// compressed images of a bundle and, on a partition leader receiving a
+	// restore, the decompressed database. It must be disk backed and hold the
+	// compressed image plus the decompressed database of the largest
+	// partition; a memory-backed location (tmpfs) turns the disk limits above
+	// into memory usage. Defaults to the "spool" directory under the node's
+	// data directory (cluster.raft.dir).
+	SpoolDir string `yaml:"spoolDir" json:"spoolDir" env:"CLUSTER_RESTORE_SPOOL_DIR"`
 }
 
 // Engine configures the behaviour of the BPMN engines running on the node partitions.
@@ -87,7 +142,21 @@ func (c CDC) ResolveServiceID(advancedServiceID string) (string, error) {
 	return serviceID, nil
 }
 
-// ValidateCDC verifies that an enabled CDC output can be constructed.
+// ValidateDesiredPartitions ValidateCDC verifies that an enabled CDC output can be constructed.
+// ValidateDesiredPartitions rejects a partition count the cluster cannot
+// form. A cluster with more than one partition never finishes bootstrapping:
+// the controller assigns every partition beyond the first to a single node,
+// while that node's partition raft group inherits the cluster-wide
+// bootstrap-expect and waits for members that are never assigned. Until
+// partition membership is implemented (docs/cluster-implementation-plan.md)
+// the option is limited to one partition rather than accepted silently.
+func (c Cluster) ValidateDesiredPartitions() error {
+	if c.DesiredPartitions > 1 {
+		return fmt.Errorf("cluster.desiredPartitions=%d is not supported yet: partitions beyond the first cannot bootstrap because partition membership is not implemented; use 1", c.DesiredPartitions)
+	}
+	return nil
+}
+
 func (c Cluster) ValidateCDC() error {
 	if !c.CDC.Enabled {
 		return nil
@@ -224,6 +293,9 @@ func (c *Config) validate() error {
 	if err := c.Cluster.ValidateCDC(); err != nil {
 		return err
 	}
+	if err := c.Cluster.ValidateDesiredPartitions(); err != nil {
+		return err
+	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv
 	}
@@ -239,6 +311,11 @@ func (c *Config) validate() error {
 	err = CheckFilePaths(&c.Cluster.Raft)
 	if err != nil {
 		return err
+	}
+	if c.Cluster.Restore.SpoolDir == "" {
+		c.Cluster.Restore.SpoolDir = filepath.Join(dataPath, "spool")
+	} else if c.Cluster.Restore.SpoolDir, err = filepath.Abs(c.Cluster.Restore.SpoolDir); err != nil {
+		return fmt.Errorf("failed to determine absolute restore spool path: %s", err.Error())
 	}
 
 	if c.Cluster.Adv == "" {

@@ -136,6 +136,9 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/v1/cluster/backup", s.handleClusterBackup)
 		r.Post("/v1/cluster/restore", s.handleClusterRestore)
+		r.Get("/v1/cluster/restore/operations", s.handleRestoreOperations)
+		r.Get("/v1/cluster/restore/operations/{operationId}", s.handleRestoreOperation)
+		r.Post("/v1/cluster/restore/operations/{operationId}/abort", s.handleAbortRestoreOperation)
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
 		// (raw cluster state, always 200) for existing consumers; readiness

@@ -120,7 +120,8 @@ func TestScaleUpDuringLoad(t *testing.T) {
 	tc.AddNode(t)
 	tc.AddNode(t)
 
-	// Let writes continue for a bit
+	// Let writes continue for a bit: this deliberately models a period of
+	// load overlapping the scale-up rather than waiting for a state.
 	time.Sleep(5 * time.Second)
 	close(stopCh)
 	wg.Wait()
@@ -191,15 +192,15 @@ func TestRapidScaleUpDown(t *testing.T) {
 
 	// Add a node
 	tc.AddNode(t)
-	time.Sleep(2 * time.Second)
+	WaitForNodeCount(t, tc, 4, 60*time.Second)
 
 	// Remove it
 	tc.StopNode(t, tc.Nodes[3].ID)
-	time.Sleep(2 * time.Second)
+	WaitForNodeObservedDown(t, tc, tc.Nodes[3].ID, 60*time.Second)
 
 	// Add another
 	tc.AddNode(t)
-	time.Sleep(2 * time.Second)
+	WaitForNodeCount(t, tc, 5, 60*time.Second)
 
 	// Cluster should converge to stable state
 	WaitForHealthy(t, tc, 150*time.Second)

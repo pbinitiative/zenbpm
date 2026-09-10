@@ -32,7 +32,8 @@ func TestNodeRecoveryFromDisk(t *testing.T) {
 	killedID := followers[0].ID
 	tc.KillNode(t, killedID)
 
-	time.Sleep(3 * time.Second)
+	// The kill is only "real" for the cluster once the leader marked the node down.
+	WaitForNodeObservedDown(t, tc, killedID, 60*time.Second)
 
 	// Restart with same data dir — should rejoin from Raft log
 	tc.RestartNode(t, killedID)
@@ -61,8 +62,8 @@ func TestNodeRecoveryAfterLongOutage(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	// Let some time pass
-	time.Sleep(5 * time.Second)
+	// The deploy landed while the node was observably down.
+	WaitForNodeObservedDown(t, tc, killedID, 60*time.Second)
 
 	// Restart — node should catch up via snapshot + log replay
 	tc.RestartNode(t, killedID)
@@ -227,7 +228,8 @@ func TestConcurrentNodeRecovery(t *testing.T) {
 	tc.KillNode(t, followers[0].ID)
 	tc.KillNode(t, followers[1].ID)
 
-	time.Sleep(3 * time.Second)
+	WaitForNodeObservedDown(t, tc, followers[0].ID, 60*time.Second)
+	WaitForNodeObservedDown(t, tc, followers[1].ID, 60*time.Second)
 
 	// Restart both
 	tc.RestartNode(t, followers[0].ID)

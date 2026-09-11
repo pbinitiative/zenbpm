@@ -335,7 +335,7 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 
 	// Assert: exactly one active process instance was spawned for v2 and none for v1.
 	activeForV2 := 0
-	for _, pi := range store.ProcessInstances {
+	for _, pi := range store.ProcessInstancesSnapshot() {
 		piData := pi.ProcessInstance()
 		if piData.Definition == nil {
 			continue

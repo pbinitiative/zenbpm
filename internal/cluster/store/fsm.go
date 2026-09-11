@@ -58,6 +58,8 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		res = f.applyPartitionChange(partitionChangeCommand)
 	case proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE:
 		res = f.applyMaintenanceChange(command.GetClusterMaintenanceChange())
+	case proto.Command_TYPE_PROCESS_DEFINITION_ALLOCATION:
+		res = f.applyProcessDefinitionAllocation(command.GetProcessDefinitionAllocation(), l.Index)
 	default:
 		panic(fmt.Sprintf("unrecognized command type: %s", command.Type))
 	}
@@ -168,6 +170,61 @@ func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interf
 	}
 	f.store.state = newState
 	return RestoreApplyResult{Operation: newState.Restore}
+}
+
+// ProcessDefinitionAllocationResult is what the FSM returns (through the raft
+// ApplyFuture) for a process definition allocation command. For an
+// allocation it carries the allocation every partition must deploy and
+// whether it already existed, or the rejection that left the state
+// untouched; for a confirmation the confirmed allocation and whether it was
+// still recorded as incomplete.
+type ProcessDefinitionAllocationResult struct {
+	Allocation state.ProcessDefinitionAllocation
+	Existing   bool
+	Rejected   *state.ProcessDefinitionAllocationRejectedError
+}
+
+// applyProcessDefinitionAllocation allocates or confirms through the cluster
+// state; the log index is the sequence a new version's key is derived from,
+// so every replica builds the same key.
+func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) interface{} {
+	f.store.stateMu.Lock()
+	defer f.store.stateMu.Unlock()
+	newState := *f.store.state.DeepCopy()
+	if cmd.GetAction() == proto.ProcessDefinitionAllocation_ACTION_CONFIRM {
+		allocation, confirmed := newState.ConfirmProcessDefinition(cmd.GetProcessId(), cmd.GetKey())
+		f.store.state = newState
+		return ProcessDefinitionAllocationResult{Allocation: allocation, Existing: confirmed}
+	}
+	allocation, existing, err := newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
+	if err != nil {
+		var rejected *state.ProcessDefinitionAllocationRejectedError
+		if !errors.As(err, &rejected) {
+			rejected = &state.ProcessDefinitionAllocationRejectedError{ProcessID: cmd.GetProcessId(), Reason: err.Error()}
+		}
+		return ProcessDefinitionAllocationResult{Rejected: rejected}
+	}
+	f.store.state = newState
+	return ProcessDefinitionAllocationResult{Allocation: allocation, Existing: existing}
+}
+
+func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) state.ProcessDefinitionAllocationRequest {
+	req := state.ProcessDefinitionAllocationRequest{
+		ProcessID:  cmd.GetProcessId(),
+		Checksum:   cmd.GetChecksum(),
+		VersionTag: cmd.GetVersionTag(),
+		Sequence:   logIndex,
+		NowMillis:  cmd.GetTimestampMillis(),
+	}
+	if observed := cmd.GetObservedLatest(); observed != nil {
+		req.ObservedLatest = &state.ProcessDefinitionAllocation{
+			Key:        observed.GetKey(),
+			Version:    observed.GetVersion(),
+			Checksum:   observed.GetChecksum(),
+			VersionTag: observed.GetVersionTag(),
+		}
+	}
+	return req
 }
 
 func restoreChangeFromProto(change *proto.RestoreOperationChange) state.RestoreChange {

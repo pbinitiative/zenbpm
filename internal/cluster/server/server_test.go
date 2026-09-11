@@ -240,6 +240,9 @@ type testStore struct {
 	writeNodeChange       *protoc.NodeChange
 	partitionChangeWrites []*protoc.NodePartitionChange
 	clusterState          state.Cluster
+	// allocate answers WriteProcessDefinitionAllocation; nil accepts every
+	// allocation as version 1 under the proposed key
+	allocate func(*protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error)
 }
 
 var _ StoreService = &testStore{}
@@ -265,6 +268,12 @@ func (s *testStore) ClusterState() state.Cluster {
 }
 func (s *testStore) WriteRestoreChange(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error) {
 	return s.clusterState.Restore, nil
+}
+func (s *testStore) WriteProcessDefinitionAllocation(ctx context.Context, allocation *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+	if s.allocate != nil {
+		return s.allocate(allocation)
+	}
+	return state.ProcessDefinitionAllocation{Key: 1, Version: 1, Checksum: allocation.GetChecksum()}, false, nil
 }
 func (s *testStore) NodeID() string {
 	return "test-node"

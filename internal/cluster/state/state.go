@@ -27,6 +27,14 @@ type Cluster struct {
 	// it gates the cluster (see RestoreOperation.GatesCluster) engines are
 	// stopped and client-facing mutations are rejected.
 	Restore RestoreOperation `json:"restore"`
+	// ProcessDefinitions holds, per BPMN process id, the cluster-wide version
+	// and key allocation every partition deploys (see AllocateProcessDefinition).
+	ProcessDefinitions map[string]ProcessDefinitionVersions `json:"processDefinitions,omitempty"`
+	// ProcessDefinitionKeyClockMillis is the millisecond the last allocated
+	// definition key was built from. It only moves forward, so every
+	// allocation gets a millisecond of its own whatever the writers' clocks
+	// say, which keeps the keys unique.
+	ProcessDefinitionKeyClockMillis int64 `json:"processDefinitionKeyClockMillis,omitempty"`
 }
 
 func (c Cluster) GetNode(nodeId string) (Node, error) {

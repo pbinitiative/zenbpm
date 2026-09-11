@@ -205,12 +205,7 @@ func TestMessageEventSubprocessNonInterruptingNested(t *testing.T) {
 
 	var subProcessJob zenclient.Job
 	t.Run("find and complete msgSubProcessJobType job", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "msgSubProcessJobType")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
-		subProcessJob = jobsPartitionPage.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.JobStateActive, subProcessJob.State)
+		subProcessJob = waitForActiveJobByType(t, "msgSubProcessJobType")
 
 		err = completeJob(t, subProcessJob.Key, map[string]any{})
 		assert.NoError(t, err)
@@ -235,12 +230,7 @@ func TestMessageEventSubprocessNonInterruptingNested(t *testing.T) {
 
 	var eventSubProcessJob zenclient.Job
 	t.Run("find and complete msgEventSubProcessJobType job", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "msgEventSubProcessJobType")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
-		eventSubProcessJob = jobsPartitionPage.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.JobStateActive, eventSubProcessJob.State)
+		eventSubProcessJob = waitForActiveJobByType(t, "msgEventSubProcessJobType")
 
 		err = completeJob(t, eventSubProcessJob.Key, map[string]any{})
 		assert.NoError(t, err)
@@ -329,12 +319,7 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 	})
 
 	t.Run("complete msgEventSubprocessBtype job and verify EventSubprocessA is completed", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "msgEventSubprocessBtype")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
-		eventSubprocessBJob := jobsPartitionPage.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.JobStateActive, eventSubprocessBJob.State)
+		eventSubprocessBJob := waitForActiveJobByType(t, "msgEventSubprocessBtype")
 
 		err = completeJob(t, eventSubprocessBJob.Key, map[string]any{})
 		assert.NoError(t, err)
@@ -349,12 +334,7 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 	})
 
 	t.Run("complete msgEventSubprocessType job and verify process is completed", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "msgEventSubprocessType")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
-		eventSubprocessJob := jobsPartitionPage.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.JobStateActive, eventSubprocessJob.State)
+		eventSubprocessJob := waitForActiveJobByType(t, "msgEventSubprocessType")
 
 		err = completeJob(t, eventSubprocessJob.Key, map[string]any{})
 		assert.NoError(t, err)

@@ -47,6 +47,7 @@ const (
 	ZenService_EvaluateDecision_FullMethodName                       = "/cluster.ZenService/EvaluateDecision"
 	ZenService_DeployDmnResourceDefinition_FullMethodName            = "/cluster.ZenService/DeployDmnResourceDefinition"
 	ZenService_DeployProcessDefinition_FullMethodName                = "/cluster.ZenService/DeployProcessDefinition"
+	ZenService_AllocateProcessDefinition_FullMethodName              = "/cluster.ZenService/AllocateProcessDefinition"
 	ZenService_ActivateJob_FullMethodName                            = "/cluster.ZenService/ActivateJob"
 	ZenService_PublishMessage_FullMethodName                         = "/cluster.ZenService/PublishMessage"
 	ZenService_PublishMessageStartProcessInstance_FullMethodName     = "/cluster.ZenService/PublishMessageStartProcessInstance"
@@ -132,6 +133,9 @@ type ZenServiceClient interface {
 	EvaluateDecision(ctx context.Context, in *EvaluateDecisionRequest, opts ...grpc.CallOption) (*EvaluatedDRDResult, error)
 	DeployDmnResourceDefinition(ctx context.Context, in *DeployDmnResourceDefinitionRequest, opts ...grpc.CallOption) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(ctx context.Context, in *DeployProcessDefinitionRequest, opts ...grpc.CallOption) (*DeployProcessDefinitionResponse, error)
+	// AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
+	// deployment through the main raft log (recipient is the cluster leader).
+	AllocateProcessDefinition(ctx context.Context, in *AllocateProcessDefinitionRequest, opts ...grpc.CallOption) (*AllocateProcessDefinitionResponse, error)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
@@ -465,6 +469,16 @@ func (c *zenServiceClient) DeployProcessDefinition(ctx context.Context, in *Depl
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeployProcessDefinitionResponse)
 	err := c.cc.Invoke(ctx, ZenService_DeployProcessDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) AllocateProcessDefinition(ctx context.Context, in *AllocateProcessDefinitionRequest, opts ...grpc.CallOption) (*AllocateProcessDefinitionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AllocateProcessDefinitionResponse)
+	err := c.cc.Invoke(ctx, ZenService_AllocateProcessDefinition_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -854,6 +868,9 @@ type ZenServiceServer interface {
 	EvaluateDecision(context.Context, *EvaluateDecisionRequest) (*EvaluatedDRDResult, error)
 	DeployDmnResourceDefinition(context.Context, *DeployDmnResourceDefinitionRequest) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error)
+	// AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
+	// deployment through the main raft log (recipient is the cluster leader).
+	AllocateProcessDefinition(context.Context, *AllocateProcessDefinitionRequest) (*AllocateProcessDefinitionResponse, error)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
@@ -979,6 +996,9 @@ func (UnimplementedZenServiceServer) DeployDmnResourceDefinition(context.Context
 }
 func (UnimplementedZenServiceServer) DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeployProcessDefinition not implemented")
+}
+func (UnimplementedZenServiceServer) AllocateProcessDefinition(context.Context, *AllocateProcessDefinitionRequest) (*AllocateProcessDefinitionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AllocateProcessDefinition not implemented")
 }
 func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ActivateJob not implemented")
@@ -1543,6 +1563,24 @@ func _ZenService_DeployProcessDefinition_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).DeployProcessDefinition(ctx, req.(*DeployProcessDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_AllocateProcessDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AllocateProcessDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).AllocateProcessDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_AllocateProcessDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).AllocateProcessDefinition(ctx, req.(*AllocateProcessDefinitionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2203,6 +2241,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeployProcessDefinition",
 			Handler:    _ZenService_DeployProcessDefinition_Handler,
+		},
+		{
+			MethodName: "AllocateProcessDefinition",
+			Handler:    _ZenService_AllocateProcessDefinition_Handler,
 		},
 		{
 			MethodName: "PublishMessage",

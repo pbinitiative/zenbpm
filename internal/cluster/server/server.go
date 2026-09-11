@@ -78,6 +78,7 @@ type StoreService interface {
 	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
 	WriteRestoreChange(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
+	WriteProcessDefinitionAllocation(ctx context.Context, allocation *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error)
 }
 
 type ControllerService interface {
@@ -729,11 +730,55 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 	return &proto.DeployDmnResourceDefinitionResponse{}, nil
 }
 
+// AllocateProcessDefinition decides the cluster-wide (key, version) of a BPMN
+// deployment through the main raft log, or confirms that an allocation
+// reached every partition. Only the cluster leader can commit it; any other
+// node, and a leader whose apply outcome is unknown, answers UNAVAILABLE so
+// the caller re-resolves the leader and retries. A refused allocation (a
+// version tag already in use) is a bad request, nothing was written.
+func (s *Server) AllocateProcessDefinition(ctx context.Context, req *proto.AllocateProcessDefinitionRequest) (*proto.AllocateProcessDefinitionResponse, error) {
+	allocation, existing, err := s.store.WriteProcessDefinitionAllocation(ctx, req.GetAllocation())
+	if err != nil {
+		var rejected *state.ProcessDefinitionAllocationRejectedError
+		var zerr *zenerr.ZenError
+		switch {
+		case errors.As(err, &rejected):
+			zerr = zenerr.BadRequest(err)
+		case errors.Is(err, zenerr.ErrNotLeader), errors.Is(err, zenerr.ErrApplyUncertain):
+			// a follower cannot commit, and a leader that lost leadership mid-apply
+			// does not know whether it did: both are retried against the current
+			// leader, which is safe because the allocation is idempotent
+			zerr = zenerr.Unavailable(fmt.Errorf("process definition allocation is not confirmed by the cluster leader: %w", err))
+		default:
+			zerr = zenerr.ClusterError(fmt.Errorf("failed to allocate process definition: %w", err))
+		}
+		return &proto.AllocateProcessDefinitionResponse{Error: zerr.ToProtoError()}, nil
+	}
+	return &proto.AllocateProcessDefinitionResponse{
+		Key:            new(allocation.Key),
+		Version:        new(allocation.Version),
+		AlreadyExisted: new(existing),
+	}, nil
+}
+
+// DeployProcessDefinition stores a BPMN definition on every partition this
+// node leads. With a version the definition is stored under exactly the
+// (key, version) the cluster allocated; without one (a sender that predates
+// cluster-wide allocation) the partition assigns the version itself.
 func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
+	if req.GetVersion() < 0 {
+		return &proto.DeployProcessDefinitionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("process definition version must not be negative, got %d", req.GetVersion())).ToProtoError(),
+		}, nil
+	}
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
+		if req.GetVersion() > 0 {
+			_, err = engine.DeployProcessDefinition(ctx, req.GetData(), req.GetKey(), req.GetVersion())
+		} else {
+			_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
+		}
 		if err != nil {
 			return &proto.DeployProcessDefinitionResponse{
 				Error: deployError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
@@ -1240,11 +1285,11 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			return nil, err
 		}
 		parentTokensMap := make(map[int64]sql.ExecutionToken, len(parentTokens))
-		for i, _ := range parentTokens {
+		for i := range parentTokens {
 			parentTokensMap[parentTokens[i].Key] = parentTokens[i]
 		}
 
-		for i, _ := range instances {
+		for i := range instances {
 			var businessKey *string
 			if instances[i].BusinessKey.Valid {
 				businessKey = &instances[i].BusinessKey.String
@@ -1320,7 +1365,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 
 	parentInstanceKey := req.GetParentInstanceKey()
 	procInstances := make([]*proto.ProcessInstance, len(instances))
-	for i, _ := range instances {
+	for i := range instances {
 		var businessKey *string
 		if instances[i].BusinessKey.Valid {
 			businessKey = &instances[i].BusinessKey.String

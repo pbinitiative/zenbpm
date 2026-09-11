@@ -210,50 +210,98 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 // later. Callers must re-read the state (or rely on the fencing token) rather
 // than assume the transition failed.
 func (s *Store) WriteRestoreChange(ctx context.Context, change *proto.RestoreOperationChange) (state.RestoreOperation, error) {
-	if err := ctx.Err(); err != nil {
-		return state.RestoreOperation{}, err
-	}
 	command := &proto.Command{
 		Type: proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE.Enum(),
 		Request: &proto.Command_ClusterMaintenanceChange{
 			ClusterMaintenanceChange: &proto.ClusterMaintenanceChange{Restore: change},
 		},
 	}
+	response, err := s.applyCommand(ctx, "RestoreOperationChange", "restore-change-apply-wait", command)
+	if err != nil {
+		return state.RestoreOperation{}, err
+	}
+	result, ok := response.(RestoreApplyResult)
+	if !ok {
+		return state.RestoreOperation{}, fmt.Errorf("unexpected FSM response %T for RestoreOperationChange", response)
+	}
+	if result.Rejected != nil {
+		return result.Operation, result.Rejected
+	}
+	return result.Operation, nil
+}
+
+// WriteProcessDefinitionAllocation decides the cluster-wide (key, version) of
+// a BPMN deployment through the raft log and returns the allocation every
+// partition must deploy; existing reports that an allocation with this
+// content already existed. A refused request (a version tag that is already
+// taken, an invalid request) is reported as a
+// *state.ProcessDefinitionAllocationRejectedError. A confirmation command
+// (ACTION_CONFIRM) returns the confirmed allocation, existing reporting that
+// it was still recorded as incomplete.
+//
+// Only the cluster raft leader can commit the command; on a follower the error
+// wraps zenerr.ErrNotLeader. When ctx ends before the command is confirmed the
+// outcome is unknown (zenerr.ErrApplyUncertain): it may still commit later, and
+// since an allocation is idempotent on (process id, checksum) the caller can
+// simply send it again.
+func (s *Store) WriteProcessDefinitionAllocation(ctx context.Context, allocation *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+	command := &proto.Command{
+		Type: proto.Command_TYPE_PROCESS_DEFINITION_ALLOCATION.Enum(),
+		Request: &proto.Command_ProcessDefinitionAllocation{
+			ProcessDefinitionAllocation: allocation,
+		},
+	}
+	response, err := s.applyCommand(ctx, "ProcessDefinitionAllocation", "process-definition-allocation-apply-wait", command)
+	if err != nil {
+		return state.ProcessDefinitionAllocation{}, false, err
+	}
+	result, ok := response.(ProcessDefinitionAllocationResult)
+	if !ok {
+		return state.ProcessDefinitionAllocation{}, false, fmt.Errorf("unexpected FSM response %T for ProcessDefinitionAllocation", response)
+	}
+	if result.Rejected != nil {
+		return state.ProcessDefinitionAllocation{}, false, result.Rejected
+	}
+	return result.Allocation, result.Existing, nil
+}
+
+// applyCommand writes command to the raft log and returns the FSM response.
+// The wait for the committed result is bounded by ctx. Raft cannot withdraw a
+// command once it is enqueued, so when ctx ends first the outcome is unknown:
+// the error wraps zenerr.ErrApplyUncertain and the command may still commit
+// later. Only the raft leader can commit; elsewhere the error wraps
+// zenerr.ErrNotLeader.
+func (s *Store) applyCommand(ctx context.Context, what string, waiterName string, command *proto.Command) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	b, err := pb.Marshal(command)
 	if err != nil {
-		return state.RestoreOperation{}, fmt.Errorf("failed to marshal RestoreOperationChange message before applying to log: %w", err)
+		return nil, fmt.Errorf("failed to marshal %s message before applying to log: %w", what, err)
 	}
 	f := s.raft.Apply(b, s.cfg.RaftTimeout)
 	// raft resolves every future (commit, leadership loss or shutdown), so the
 	// waiter always terminates; it only outlives ctx when the outcome is
 	// still unknown.
 	done := make(chan error, 1)
-	safego.Go("restore-change-apply-wait", s.logger, func() {
+	safego.Go(waiterName, s.logger, func() {
 		done <- f.Error()
 	})
 	select {
 	case err := <-done:
 		if err != nil {
 			if errors.Is(err, raft.ErrNotLeader) {
-				// callers route restore requests by this sentinel: only the cluster raft leader can commit them
-				return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w (%w)", zenerr.ErrNotLeader, err)
+				return nil, fmt.Errorf("failed to apply %s message to raft log: %w (%w)", what, zenerr.ErrNotLeader, err)
 			}
 			if errors.Is(err, raft.ErrLeadershipLost) {
-				return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w (%w)", zenerr.ErrApplyUncertain, err)
+				return nil, fmt.Errorf("failed to apply %s message to raft log: %w (%w)", what, zenerr.ErrApplyUncertain, err)
 			}
-			return state.RestoreOperation{}, fmt.Errorf("failed to apply RestoreOperationChange message to raft log: %w", err)
+			return nil, fmt.Errorf("failed to apply %s message to raft log: %w", what, err)
 		}
 	case <-ctx.Done():
-		return state.RestoreOperation{}, fmt.Errorf("%w: RestoreOperationChange not confirmed before %w", zenerr.ErrApplyUncertain, ctx.Err())
+		return nil, fmt.Errorf("%w: %s not confirmed before %w", zenerr.ErrApplyUncertain, what, ctx.Err())
 	}
-	result, ok := f.Response().(RestoreApplyResult)
-	if !ok {
-		return state.RestoreOperation{}, fmt.Errorf("unexpected FSM response %T for RestoreOperationChange", f.Response())
-	}
-	if result.Rejected != nil {
-		return result.Operation, result.Rejected
-	}
-	return result.Operation, nil
+	return f.Response(), nil
 }
 
 func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
@@ -288,7 +336,7 @@ func (s *Store) Health() (ok bool, reason string) {
 	case raft.Leader:
 		return true, ""
 	case raft.Follower:
-		if s.raft.Leader() == "" {
+		if leader, _ := s.raft.LeaderWithID(); leader == "" {
 			return false, "no leader known"
 		}
 		return true, ""

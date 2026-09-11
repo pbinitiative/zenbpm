@@ -4,10 +4,11 @@
       1. [Commands](#commands)
          1. [ClusterNodeChange](#clusternodechange)
          2. [ClusterNodePartitionChange](#clusternodepartitionchange)
+         3. [ProcessDefinitionAllocation](#processdefinitionallocation)
       2. [Leader](#leader)
       3. [Followers](#followers)
-   2. [Partition groups](#partition-groups)
-      1. [Leader](#leader)
+   2. [Partition group clusters](#partition-group-clusters)
+      1. [Leader](#leader-1)
       2. [Follower](#follower)
 2. [Zen node](#zen-node)
    1. [Behaviour](#behaviour)
@@ -19,7 +20,7 @@
    4. [Public REST API](#public-rest-api)
    5. [System REST API](#system-rest-api)
 3. [Networking](#networking)
-4. [Authorization & Authentication](#authorization-&-authentication)
+4. [Authorization & Authentication](#authorization--authentication)
 5. [Observability](#observability)
 
 # Zen cluster
@@ -45,6 +46,11 @@ See source: [zencommand.proto](./command/proto/zencommand.proto)
 #### ClusterNodePartitionChange
 - partition state changes
 - partition role changes
+
+#### ProcessDefinitionAllocation
+- decides the definition key and numeric version of a BPMN deployment once for the whole cluster, before the definition fans out to the partitions
+- idempotent on (process id, content checksum): a retried or concurrently repeated deployment gets the allocation that already exists; an allocation stays retrievable by its checksum until the deploying node confirms that every partition holds it, so a retry after a partial failure completes the original version even when another revision was deployed in between; at most 64 unconfirmed allocations are kept per process id
+- every partition stores exactly the allocated (key, version), so concurrent deployments of one process id cannot map the same version to different content on different partitions
 
 ### Leader
 Main cluster leader is one node responsible for the state of whole Zen cluster. It manages:
@@ -111,7 +117,7 @@ Internal communication between nodes.
 
 - NodeCommand - updates from nodes propagated to raft log (recipient is leader)
 
-## Public gRPC 
+## Public gRPC
 Public gRPC endpoint that exposes jobs handling endpoints for better performance compared to REST API.
 
 ## Public REST API

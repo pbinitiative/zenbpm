@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -10,12 +11,14 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/backup"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/controller"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
@@ -27,8 +30,9 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnmodel "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -499,104 +503,237 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 }
 
 // DeployProcessDefinitionToAllPartitions deploys a BPMN process definition.
-// The alreadyExisted return is true when the latest version of the same BPMN
-// process definition has identical content; in that case the existing key is
-// returned and no new deployment is performed, so callers can treat this as
+// The cluster decides the definition key and numeric version once, through
+// the main raft log, before the definition fans out to every partition; the
+// partitions store exactly that allocation. The alreadyExisted return is true
+// when the latest version of the same BPMN process definition has identical
+// content; the existing key is returned then, so callers can treat this as
 // success (idempotent deploy).
 func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
 	if err := node.rejectIfRestoring(); err != nil {
 		return 0, false, err
 	}
+	return node.processDefinitionDeployer().Deploy(ctx, data, resourceName)
+}
 
-	processId, err := getProcessIdFromDefinition(data)
+func (node *ZenNode) processDefinitionDeployer() *processDefinitionDeployer {
+	return &processDefinitionDeployer{
+		observeLatest: node.observeLatestProcessDefinition,
+		allocate:      node.allocateProcessDefinition,
+		partitions:    node.deployPartitions,
+		deploy:        node.deployProcessDefinitionToPartition,
+		confirm:       node.confirmProcessDefinition,
+		logger:        node.logger,
+	}
+}
+
+// processDefinitionDeployer runs one BPMN deployment: it reads the latest
+// definition a partition holds, has the cluster allocate the (key, version)
+// once through the raft log, deploys that allocation to every partition and
+// confirms the allocation once every partition holds it. The steps are
+// injected so the orchestration can be exercised against fake partitions.
+type processDefinitionDeployer struct {
+	// observeLatest returns the latest definition of the process a partition
+	// holds, nil when there is none.
+	observeLatest func(ctx context.Context, processId string) (*observedProcessDefinition, error)
+	// allocate decides the cluster-wide identity of the deployment; existing
+	// reports that the latest allocation already had this content.
+	allocate func(ctx context.Context, req *protoc.ProcessDefinitionAllocation) (key int64, version int32, existing bool, err error)
+	// partitions lists the partitions to deploy to and the one that owns the
+	// definition-level subscriptions of the process.
+	partitions func(processId string) (ids []uint32, subscriptionPartition uint32, err error)
+	// deploy stores the allocated definition on one partition.
+	deploy func(ctx context.Context, partitionId uint32, req *proto.DeployProcessDefinitionRequest) error
+	// confirm records that the allocation reached every partition.
+	confirm func(ctx context.Context, processId string, key int64) error
+	logger  hclog.Logger
+}
+
+// observedProcessDefinition is the latest definition of a process as a
+// partition holds it.
+type observedProcessDefinition struct {
+	key        int64
+	version    int32
+	checksum   []byte
+	versionTag string
+	data       []byte
+}
+
+func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
+	identity, err := bpmn.ParseProcessDefinitionIdentity(data)
 	if err != nil {
 		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: %w", err))
 	}
-	if processId == "" {
-		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: %w", err))
+	if identity.ProcessId == "" {
+		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: process id is empty"))
 	}
 
-	existingDefinitionKey, err := node.GetDefinitionKeyByProcessId(ctx, processId, data)
-
+	observed, err := d.observeLatest(ctx, identity.ProcessId)
 	if err != nil {
-		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
+		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get latest process definition of %s: %w", identity.ProcessId, err))
+	}
+	checksum := identity.Checksum[:]
+	versionTag := identity.VersionTag
+	var observedLatest *protoc.ObservedProcessDefinition
+	if observed != nil {
+		// A partition already holding this content as the latest version means
+		// the deployment is a repeat (or a retry): it is deployed as that
+		// definition, which is idempotent where it exists and completes it
+		// where a previous attempt did not reach. Unlike the checksum
+		// comparison of the allocation, this also recognises a differently
+		// formatted copy of the same model.
+		sameContent, err := xmlutil.SameContent(observed.checksum, checksum, observed.data, data)
+		if err != nil {
+			return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to compare BPMN content for process %s: %w", identity.ProcessId, err))
+		}
+		if sameContent {
+			data, checksum, versionTag = observed.data, observed.checksum, observed.versionTag
+		}
+		observedLatest = &protoc.ObservedProcessDefinition{
+			Key:        &observed.key,
+			Version:    &observed.version,
+			Checksum:   new(hex.EncodeToString(observed.checksum)),
+			VersionTag: &observed.versionTag,
+		}
+	}
+	allocation := &protoc.ProcessDefinitionAllocation{
+		ProcessId:       &identity.ProcessId,
+		Checksum:        new(hex.EncodeToString(checksum)),
+		VersionTag:      &versionTag,
+		ObservedLatest:  observedLatest,
+		TimestampMillis: new(time.Now().UnixMilli()),
 	}
 
-	if existingDefinitionKey != 0 {
-		return existingDefinitionKey, true, nil
+	definitionKey, version, existing, err := d.allocate(ctx, allocation)
+	if err != nil {
+		return 0, false, err
 	}
 
-	clusterState := node.store.ClusterState()
-	partitionIds := sortedPartitionIds(clusterState)
-
-	if len(partitionIds) == 0 {
-		return 0, false, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
+	partitionIds, subscriptionPartitionId, err := d.partitions(identity.ProcessId)
+	if err != nil {
+		return definitionKey, existing, err
 	}
-
-	definitionKey := node.idGen.Generate()
-
-	// definition-level subscriptions live on exactly one partition; engine
-	// recovery and restore reconciliation use the same rule
-	subscriptionPartitionId := clusterState.DefinitionSubscriptionPartition(processId)
 	group, groupCtx := errgroup.WithContext(ctx)
 	for _, partitionId := range partitionIds {
-		registerProcessDefinitionSubscriptions := subscriptionPartitionId == partitionId
-
 		group.Go(func() error {
-			return node.deployProcessDefinitionToPartition(
-				groupCtx,
-				partitionId,
-				definitionKey.Int64(),
-				data,
-				resourceName,
-				registerProcessDefinitionSubscriptions,
-			)
+			return d.deploy(groupCtx, partitionId, &proto.DeployProcessDefinitionRequest{
+				Key:          &definitionKey,
+				Version:      &version,
+				Data:         data,
+				ResourceName: &resourceName,
+				// definition-level subscriptions live on exactly one partition;
+				// engine recovery and restore reconciliation use the same rule
+				RegisterProcessDefinitionSubscriptions: new(subscriptionPartitionId == partitionId),
+			})
 		})
 	}
-
 	if waitErr := group.Wait(); waitErr != nil {
-		return definitionKey.Int64(), false, waitErr
+		return definitionKey, existing, waitErr
 	}
-	return definitionKey.Int64(), false, nil
+	// The deployment is complete whatever happens to the confirmation: an
+	// allocation left unconfirmed only makes a later deployment of the same
+	// content reuse it instead of creating a new version. The confirmation
+	// runs in the background so that neither a caller giving up right after
+	// the fan-out nor a leader that is briefly unreachable holds it up.
+	confirmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deployRetryFor)
+	safego.Go("process-definition-confirm", d.logger, func() {
+		defer cancel()
+		if err := d.confirm(confirmCtx, identity.ProcessId, definitionKey); err != nil {
+			d.logger.Warn("failed to confirm process definition allocation; a repeated deployment of this content will reuse it",
+				"processId", logSafe(identity.ProcessId), "definitionKey", definitionKey, "err", err)
+		}
+	})
+	return definitionKey, existing, nil
 }
 
-func getProcessIdFromDefinition(data []byte) (string, error) {
-	var definitions bpmn20.TDefinitions
-	err := xml.Unmarshal(data, &definitions)
-	if err != nil {
-		return "", fmt.Errorf("failed to unmarshal xml data: %w", err)
-	}
-	return definitions.Process.Id, nil
+// logSafe strips line breaks from a value taken from a request before it is
+// logged, so that it cannot forge log entries.
+func logSafe(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", ""), "\r", "")
 }
 
-func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId string, newDefinitionData []byte) (int64, error) {
+// observeLatestProcessDefinition reads the latest definition of the process
+// from a partition, nil when none is deployed.
+func (node *ZenNode) observeLatestProcessDefinition(ctx context.Context, processId string) (*observedProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
+		return nil, fmt.Errorf("failed to get database for definition lookup: %w", err)
 	}
-
-	latestDefinition, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
+	latest, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
+			return nil, nil
 		}
-		return 0, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
+		return nil, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
 	}
+	return &observedProcessDefinition{
+		key:        latest.Key,
+		version:    int32(latest.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
+		checksum:   latest.BpmnChecksum,
+		versionTag: latest.VersionTag,
+		data:       []byte(latest.BpmnData),
+	}, nil
+}
 
-	newDefinitionMD5Sum := md5.Sum(newDefinitionData) // #nosec G401 -- MD5 is a content fingerprint for change detection, not a security primitive
-	sameContent, err := xmlutil.SameContent(
-		latestDefinition.BpmnChecksum,
-		newDefinitionMD5Sum[:],
-		[]byte(latestDefinition.BpmnData),
-		newDefinitionData,
-	)
+// allocateProcessDefinition has the cluster leader commit the allocation to
+// the main raft log; see applyProcessDefinitionAllocation.
+func (node *ZenNode) allocateProcessDefinition(ctx context.Context, req *protoc.ProcessDefinitionAllocation) (int64, int32, bool, error) {
+	resp, err := node.applyProcessDefinitionAllocation(ctx, req)
 	if err != nil {
-		return 0, fmt.Errorf("failed to compare BPMN content for process %s: %w", processId, err)
+		return 0, 0, false, err
 	}
-	if sameContent {
-		return latestDefinition.Key, nil
+	return resp.GetKey(), resp.GetVersion(), resp.GetAlreadyExisted(), nil
+}
+
+// confirmProcessDefinition has the cluster leader record that the allocation
+// reached every partition.
+func (node *ZenNode) confirmProcessDefinition(ctx context.Context, processId string, key int64) error {
+	_, err := node.applyProcessDefinitionAllocation(ctx, &protoc.ProcessDefinitionAllocation{
+		Action:          protoc.ProcessDefinitionAllocation_ACTION_CONFIRM.Enum(),
+		ProcessId:       &processId,
+		Key:             &key,
+		TimestampMillis: new(time.Now().UnixMilli()),
+	})
+	return err
+}
+
+// applyProcessDefinitionAllocation sends an allocation command to the cluster
+// leader. The leader is resolved for every attempt: while the cluster has no
+// leader, the node that answered lost leadership, or the outcome of the apply
+// is unknown, the command is retried. Sending it again is safe because the
+// FSM applies it idempotently.
+func (node *ZenNode) applyProcessDefinitionAllocation(ctx context.Context, req *protoc.ProcessDefinitionAllocation) (*proto.AllocateProcessDefinitionResponse, error) {
+	var resp *proto.AllocateProcessDefinitionResponse
+	err := node.retryDeploy(ctx, func() error {
+		leader, err := node.client.ClusterLeader()
+		if err != nil {
+			return fmt.Errorf("%w: cluster leader unknown: %w", errTransientDeploy, err)
+		}
+		r, err := leader.AllocateProcessDefinition(ctx, &proto.AllocateProcessDefinitionRequest{Allocation: req})
+		if err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("client call to allocate process definition failed: %w", err))
+		}
+		if r.GetError() != nil {
+			return zenerr.ToZenError(r.GetError(), fmt.Errorf("failed to allocate process definition %s", req.GetProcessId()))
+		}
+		resp = r
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return 0, nil
+	return resp, nil
+}
+
+// deployPartitions lists every partition of the cluster and the one owning
+// the definition-level subscriptions of the process.
+func (node *ZenNode) deployPartitions(processId string) ([]uint32, uint32, error) {
+	clusterState := node.store.ClusterState()
+	partitionIds := sortedPartitionIds(clusterState)
+	if len(partitionIds) == 0 {
+		return nil, 0, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
+	}
+	return partitionIds, clusterState.DefinitionSubscriptionPartition(processId), nil
 }
 
 // transientDeployError reports whether a deploy error reflects a transient
@@ -647,7 +784,7 @@ func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) erro
 		}
 		if !time.Now().Before(deadline) {
 			if errors.Is(err, errTransientDeploy) {
-				return zenerr.ClusterError(fmt.Errorf("no partition leader available to deploy to within %s", deployRetryFor))
+				return zenerr.ClusterError(fmt.Errorf("no leader available to deploy to within %s: %w", deployRetryFor, err))
 			}
 			return err
 		}
@@ -663,46 +800,25 @@ func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) erro
 // deployProcessDefinitionToPartition deploys to the given partition's current
 // leader, retrying transient failures and re-resolving the leader each attempt
 // so the deploy follows leadership changes during cluster churn.
-func (node *ZenNode) deployProcessDefinitionToPartition(
-	ctx context.Context,
-	partitionId uint32,
-	definitionKey int64,
-	data []byte,
-	resourceName string,
-	registerProcessDefinitionSubscriptions bool,
-) error {
+func (node *ZenNode) deployProcessDefinitionToPartition(ctx context.Context, partitionId uint32, req *proto.DeployProcessDefinitionRequest) error {
 	return node.retryDeploy(ctx, func() error {
 		clusterState := node.store.ClusterState()
 		leaderId := clusterState.Partitions[partitionId].LeaderId
 		if leaderId == "" {
-			return errTransientDeploy
+			return fmt.Errorf("%w: partition %d has no leader", errTransientDeploy, partitionId)
 		}
-		return node.deployProcessDefinitionToPartitionOnce(ctx, clusterState, leaderId, definitionKey, data, resourceName, registerProcessDefinitionSubscriptions)
+		return node.deployProcessDefinitionToPartitionOnce(ctx, clusterState, leaderId, req)
 	})
 }
 
-func (node *ZenNode) deployProcessDefinitionToPartitionOnce(
-	ctx context.Context,
-	clusterState state.Cluster,
-	partitionLeaderId string,
-	definitionKey int64,
-	data []byte,
-	resourceName string,
-	registerProcessDefinitionSubscriptions bool,
-) error {
-
+func (node *ZenNode) deployProcessDefinitionToPartitionOnce(ctx context.Context, clusterState state.Cluster, partitionLeaderId string, req *proto.DeployProcessDefinitionRequest) error {
 	partitionLeader := clusterState.Nodes[partitionLeaderId]
 	zenNodeClient, err := node.client.For(partitionLeader.Addr)
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("failed to get client: %w", err))
 	}
 
-	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:                                    new(definitionKey),
-		Data:                                   data,
-		ResourceName:                           &resourceName,
-		RegisterProcessDefinitionSubscriptions: &registerProcessDefinitionSubscriptions,
-	})
+	resp, err := zenNodeClient.DeployProcessDefinition(ctx, req)
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to deploy process definition failed: %w", err))
 	}
@@ -712,7 +828,7 @@ func (node *ZenNode) deployProcessDefinitionToPartitionOnce(
 	}
 
 	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition %s failed", resourceName))
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition %s failed", req.GetResourceName()))
 	}
 
 	return nil

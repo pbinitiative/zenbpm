@@ -827,6 +827,10 @@ func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
 	c.clusterState = clusterState
 }
 
+func (c *ControllerTestStore) WriteProcessDefinitionAllocation(_ context.Context, _ *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+	return state.ProcessDefinitionAllocation{}, false, nil
+}
+
 func (c *ControllerTestStore) WriteRestoreChange(ctx context.Context, change *proto.RestoreOperationChange) (state.RestoreOperation, error) {
 	return c.ClusterState().Restore, nil
 }

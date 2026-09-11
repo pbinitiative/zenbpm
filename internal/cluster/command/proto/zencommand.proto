@@ -10,12 +10,14 @@ message Command {
     TYPE_NODE_CHANGE = 2;
     TYPE_NODE_PARTITION_CHANGE = 3;
     TYPE_CLUSTER_MAINTENANCE_CHANGE = 4;
+    TYPE_PROCESS_DEFINITION_ALLOCATION = 5;
   }
   Type type = 1;
   oneof request {
     NodeChange node_change = 2;
     NodePartitionChange node_partition_change = 3;
     ClusterMaintenanceChange cluster_maintenance_change = 4;
+    ProcessDefinitionAllocation process_definition_allocation = 5;
   }
 }
 
@@ -130,4 +132,46 @@ message RestoreOperationChange {
   // lease_millis is how long the coordinator's ownership stays valid without
   // a further UPDATE (ACQUIRE and UPDATE).
   int64 lease_millis = 11;
+}
+
+// ProcessDefinitionAllocation asks the FSM for the cluster-wide identity of
+// one BPMN deployment: the numeric version and the definition key that every
+// partition must store for the given process. The FSM applies it
+// deterministically (see state.Cluster.AllocateProcessDefinition): a request
+// whose checksum matches the latest allocation of the process, or an
+// allocation whose deployment was never confirmed, returns that allocation
+// unchanged, so retries and concurrent identical deployments converge on one
+// definition; anything else becomes the next version under a key the FSM
+// derives from the command. ACTION_CONFIRM marks an allocation as deployed to
+// every partition once the fan-out succeeded.
+message ProcessDefinitionAllocation {
+  enum Action {
+    ACTION_UNKNOWN = 0;
+    ACTION_ALLOCATE = 1;
+    ACTION_CONFIRM = 2;
+  }
+  // action defaults to ACTION_ALLOCATE.
+  Action action = 1;
+  string process_id = 2;
+  // checksum is the hex MD5 of the raw BPMN bytes (ACTION_ALLOCATE).
+  string checksum = 3;
+  string version_tag = 4;
+  // observed_latest is the latest definition of the process the requesting
+  // node read from a partition. It lets the FSM catch up with definitions
+  // deployed before allocations were replicated; the FSM never moves backwards.
+  ObservedProcessDefinition observed_latest = 5;
+  // timestamp_millis is the writer's clock; the FSM never reads the wall
+  // clock so that every replica applies the command identically. The key of
+  // a new version is derived from it and the raft log index of the command.
+  int64 timestamp_millis = 6;
+  // key identifies the allocation ACTION_CONFIRM refers to.
+  int64 key = 7;
+}
+
+// ObservedProcessDefinition is a definition as it exists on a partition.
+message ObservedProcessDefinition {
+  int64 key = 1;
+  int32 version = 2;
+  string checksum = 3;
+  string version_tag = 4;
 }

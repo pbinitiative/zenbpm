@@ -1550,22 +1550,28 @@ type GetChildProcessInstancesParamsState string
 
 // GetProcessInstanceErrorSubscriptionsParams defines parameters for GetProcessInstanceErrorSubscriptions.
 type GetProcessInstanceErrorSubscriptionsParams struct {
-	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
-	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// State Filter by state (omit to list subscriptions in every state)
 	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
 }
 
 // GetProcessInstanceMessageSubscriptionsParams defines parameters for GetProcessInstanceMessageSubscriptions.
 type GetProcessInstanceMessageSubscriptionsParams struct {
-	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
-	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// State Filter by state (omit to list subscriptions in every state)
 	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
 }
 
 // GetProcessInstanceTimerSubscriptionsParams defines parameters for GetProcessInstanceTimerSubscriptions.
 type GetProcessInstanceTimerSubscriptionsParams struct {
-	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
-	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// State Filter by state (omit to list subscriptions in every state)
 	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
 }
 

@@ -213,3 +213,27 @@ func waitForExactlyOneActiveJobAmong(t testing.TB, processInstanceKey int64, ele
 
 	return activeElementIds[0]
 }
+
+// waitForActiveJobByType polls the jobs API until at least one Active job with the given job type
+// exists and returns the first one. Jobs spawned by asynchronous engine work (e.g. an event subprocess
+// started from a timer or message trigger) become visible only after a post-flush goroutine runs, so a
+// single read right after the trigger is observed may race with job creation.
+func waitForActiveJobByType(t testing.TB, jobType string) zenclient.Job {
+	t.Helper()
+	var job zenclient.Job
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		page, err := readWaitingJobs(t, jobType)
+		if !assert.NoError(collect, err) {
+			return
+		}
+		if !assert.NotEmpty(collect, page.Partitions, "no partitions returned for job type %q", jobType) {
+			return
+		}
+		if !assert.NotEmpty(collect, page.Partitions[0].Items, "no active jobs of type %q yet", jobType) {
+			return
+		}
+		job = page.Partitions[0].Items[0]
+	}, 20*time.Second, 100*time.Millisecond, "expected an Active job of type %q", jobType)
+	assert.Equal(t, zenclient.JobStateActive, job.State)
+	return job
+}

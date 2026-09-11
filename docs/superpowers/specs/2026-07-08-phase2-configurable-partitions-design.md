@@ -21,7 +21,7 @@ Make `DesiredPartitions` changeable at runtime through Raft consensus instead of
 | D2 | Convergence / stall safety | Leader-gated periodic reconcile ticker; one partition created per pass (prior-art: K8s resync, TiKV PD, MongoDB balancer) |
 | D3 | RPC routing on follower | Forward to leader via existing `ClusterLeader()` client |
 | D4 | Validation | Increase-only, `1 ≤ n ≤ 122` (mux single-byte partition-id limit) |
-| D5 | Replication scope in Phase 2 | Full replication: every partition gets **all** started nodes as members (RF = cluster size); RF<N placement stays Phase 4 |
+| D5 | Replication scope in Phase 2 | Full replication: every partition gets **all** started nodes as members (RF = cluster size); `RF < N` placement stays Phase 4 |
 | D6 | Pointer staleness on scale-up | Keep `hash % N` addressing; rebuild pointers after formation using existing `RebuildMessageSubscriptionPointers` machinery, tracked by a replicated `RoutingPartitions` marker. No broadcast lookup. |
 | D7 | App-config scope exception | `DesiredPartitions` field added to `internal/config/config.go` (user-approved exception to cluster-scope boundary) |
 | D8 | Operator-facing API | REST admin endpoint in `openapi/system.yaml` following the backup/restore precedent; cluster gRPC `ConfigurationUpdate` remains the internal transport (user-approved scope exception for `internal/rest/` + `openapi/system.yaml`) |

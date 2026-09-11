@@ -6,7 +6,7 @@ description: The core concepts behind ZenBPM - processes, instances, tokens, tas
 
 # BPM Concepts
 
-This page explains the ideas behind ZenBPM. You don't need to read it before the [Getting Started tutorial](/tutorials/getting-started/first-bpmn-process) - but whenever a term there feels unclear, this is the place to look it up.
+This page explains the ideas behind ZenBPM. You don't need to read it before the [Getting Started tutorial](../getting-started/first-bpmn-process.mdx) - but whenever a term there feels unclear, this is the place to look it up.
 
 If you already know Camunda, Zeebe, or another BPMN engine, skip to [How ZenBPM maps to other engines](#terminology-mapping).
 
@@ -109,7 +109,7 @@ This decoupling is intentional. Workers can be written in any language, scaled i
 
 Putting it all together, working with ZenBPM follows one loop: **model** the diagram, **deploy** it to the engine, **start instances** with their variables, let workers and people **execute** the work, and **observe** state and history - then improve the diagram and go around again.
 
-The [Getting Started tutorial](/tutorials/getting-started/first-bpmn-process) walks this exact loop once, end to end.
+The [Getting Started tutorial](../getting-started/first-bpmn-process.mdx) walks this exact loop once, end to end.
 
 ## How ZenBPM maps to other engines {#terminology-mapping}
 
@@ -130,6 +130,6 @@ ZenBPM follows the Zeebe-style architecture: an external-worker model over gRPC,
 
 ## Where to go next
 
-- Run the loop yourself: [Getting Started tutorial](/tutorials/getting-started/first-bpmn-process)
+- Run the loop yourself: [Getting Started tutorial](../getting-started/first-bpmn-process.mdx)
 - See working processes and workers: [zenbpm-examples](https://github.com/pbinitiative/zenbpm-examples)
-- Engine internals: [Architecture](/category/architecture)
+- Engine internals: [Architecture](./architecture/architecture-overview.md)

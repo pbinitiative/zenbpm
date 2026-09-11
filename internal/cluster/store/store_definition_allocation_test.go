@@ -138,6 +138,14 @@ func TestWriteProcessDefinitionAllocationReportsRejectionWithoutChangingState(t 
 	var rejected *state.ProcessDefinitionAllocationRejectedError
 	require.ErrorAs(t, err, &rejected)
 	assert.Equal(t, int32(1), s.ClusterState().ProcessDefinitions["order"].Latest.Version)
+
+	// an action this binary does not know is refused instead of being
+	// applied as an allocation
+	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+		Action: proto.ProcessDefinitionAllocation_Action(99).Enum(), ProcessId: new("order"), Checksum: new("c"),
+	})
+	require.ErrorAs(t, err, &rejected)
+	assert.Equal(t, int32(1), s.ClusterState().ProcessDefinitions["order"].Latest.Version)
 }
 
 func TestWriteProcessDefinitionAllocationRequiresLeader(t *testing.T) {

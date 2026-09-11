@@ -94,6 +94,11 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 	}
 	versions := c.ProcessDefinitions[req.ProcessID]
 	if observed := req.ObservedLatest; observed != nil && observed.Version > versions.Latest.Version {
+		if observed.Key == 0 || observed.Checksum == "" {
+			return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "observed latest definition must have a key and a checksum"}
+		}
+		// the partition is authoritative for what it holds: its tag wins over
+		// a tag recorded for an allocation that may never have been deployed
 		versions.Latest = *observed
 		versions.recordVersionTag(observed.VersionTag, observed.Version)
 	}
@@ -121,12 +126,32 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 		AllocatedAtMillis: req.NowMillis,
 	}
 	versions.recordVersionTag(req.VersionTag, versions.Latest.Version)
-	if versions.Incomplete == nil {
-		versions.Incomplete = map[string]ProcessDefinitionAllocation{}
-	}
-	versions.Incomplete[req.Checksum] = versions.Latest
+	versions.recordIncomplete(versions.Latest)
 	c.setProcessDefinitionVersions(req.ProcessID, versions)
 	return versions.Latest, false, nil
+}
+
+// maxIncompleteProcessDefinitionAllocations bounds the unconfirmed
+// allocations kept per process id, so that deployments which keep failing
+// cannot grow the replicated state without limit. Beyond it the oldest
+// allocation is forgotten: a retry of it then gets a new version, which is
+// still consistent across partitions, only no longer the original one.
+const maxIncompleteProcessDefinitionAllocations = 64
+
+func (v *ProcessDefinitionVersions) recordIncomplete(allocation ProcessDefinitionAllocation) {
+	if v.Incomplete == nil {
+		v.Incomplete = map[string]ProcessDefinitionAllocation{}
+	}
+	v.Incomplete[allocation.Checksum] = allocation
+	for len(v.Incomplete) > maxIncompleteProcessDefinitionAllocations {
+		oldest := ""
+		for checksum, incomplete := range v.Incomplete {
+			if oldest == "" || incomplete.Version < v.Incomplete[oldest].Version {
+				oldest = checksum
+			}
+		}
+		delete(v.Incomplete, oldest)
+	}
 }
 
 // ConfirmProcessDefinition records that the allocation with the given key

@@ -328,7 +328,7 @@ func (s *StoreSvc) WriteRestoreChange(ctx context.Context, change *proto.Restore
 	return state.RestoreOperation{}, nil
 }
 
-func (s *StoreSvc) WriteProcessDefinitionAllocation(ctx context.Context, allocation *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+func (s *StoreSvc) WriteProcessDefinitionAllocation(_ context.Context, _ *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
 	return state.ProcessDefinitionAllocation{}, false, nil
 }
 

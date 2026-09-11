@@ -11,6 +11,7 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -29,6 +30,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -631,14 +633,23 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 	// The deployment is complete whatever happens to the confirmation: an
 	// allocation left unconfirmed only makes a later deployment of the same
 	// content reuse it instead of creating a new version. The confirmation
-	// outlives a caller that gives up right after the fan-out.
+	// runs in the background so that neither a caller giving up right after
+	// the fan-out nor a leader that is briefly unreachable holds it up.
 	confirmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deployRetryFor)
-	defer cancel()
-	if err := d.confirm(confirmCtx, identity.ProcessId, definitionKey); err != nil {
-		d.logger.Warn("failed to confirm process definition allocation; a repeated deployment of this content will reuse it",
-			"processId", identity.ProcessId, "definitionKey", definitionKey, "err", err)
-	}
+	safego.Go("process-definition-confirm", d.logger, func() {
+		defer cancel()
+		if err := d.confirm(confirmCtx, identity.ProcessId, definitionKey); err != nil {
+			d.logger.Warn("failed to confirm process definition allocation; a repeated deployment of this content will reuse it",
+				"processId", logSafe(identity.ProcessId), "definitionKey", definitionKey, "err", err)
+		}
+	})
 	return definitionKey, existing, nil
+}
+
+// logSafe strips line breaks from a value taken from a request before it is
+// logged, so that it cannot forge log entries.
+func logSafe(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", ""), "\r", "")
 }
 
 // observeLatestProcessDefinition reads the latest definition of the process

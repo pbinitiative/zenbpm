@@ -766,6 +766,11 @@ func (s *Server) AllocateProcessDefinition(ctx context.Context, req *proto.Alloc
 // (key, version) the cluster allocated; without one (a sender that predates
 // cluster-wide allocation) the partition assigns the version itself.
 func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
+	if req.GetVersion() < 0 {
+		return &proto.DeployProcessDefinitionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("process definition version must not be negative, got %d", req.GetVersion())).ToProtoError(),
+		}, nil
+	}
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {

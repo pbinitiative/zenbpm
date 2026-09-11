@@ -827,7 +827,7 @@ func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
 	c.clusterState = clusterState
 }
 
-func (c *ControllerTestStore) WriteProcessDefinitionAllocation(ctx context.Context, allocation *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+func (c *ControllerTestStore) WriteProcessDefinitionAllocation(_ context.Context, _ *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
 	return state.ProcessDefinitionAllocation{}, false, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -120,10 +121,14 @@ func assertNodesAgreeOnProcessDefinitionVersions(t *testing.T, nodes []*TestNode
 	var reference map[int]definitionRef
 	for _, node := range nodes {
 		var mapping map[int]definitionRef
+		var lastErr error
+		// the condition runs on another goroutine, where a require would end
+		// the goroutine instead of the test: errors are asserted afterwards
 		require.Eventually(t, func() bool {
-			mapping = processDefinitionVersionsOnNode(t, node, processID)
-			return len(mapping) == versions
+			mapping, lastErr = processDefinitionVersionsOnNode(node, processID)
+			return lastErr != nil || len(mapping) == versions
 		}, 10*time.Second, 200*time.Millisecond, "node %s lists %d versions", node.ID, versions)
+		require.NoError(t, lastErr, "node %s", node.ID)
 		for v := 1; v <= versions; v++ {
 			assert.Contains(t, mapping, v, "node %s", node.ID)
 		}
@@ -139,22 +144,28 @@ func assertNodesAgreeOnProcessDefinitionVersions(t *testing.T, nodes []*TestNode
 // processDefinitionVersionsOnNode lists the (version → key, checksum)
 // mapping of a process as the node reports it, the checksum being taken over
 // the BPMN bytes the node serves for the definition.
-func processDefinitionVersionsOnNode(t *testing.T, node *TestNode, processID string) map[int]definitionRef {
-	t.Helper()
+func processDefinitionVersionsOnNode(node *TestNode, processID string) (map[int]definitionRef, error) {
 	resp, err := node.RestClient.GetProcessDefinitionsWithResponse(context.Background(), &zenclient.GetProcessDefinitionsParams{
 		BpmnProcessId: &processID,
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200, string(resp.Body))
+	if err != nil {
+		return nil, err
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("listing definitions of %s on node %s failed with %d: %s", processID, node.ID, resp.StatusCode(), string(resp.Body))
+	}
 	mapping := map[int]definitionRef{}
 	for _, item := range resp.JSON200.Items {
 		detail, err := node.RestClient.GetProcessDefinitionWithResponse(context.Background(), item.Key)
-		require.NoError(t, err)
-		require.NotNil(t, detail.JSON200, string(detail.Body))
-		require.NotNil(t, detail.JSON200.BpmnData)
+		if err != nil {
+			return nil, err
+		}
+		if detail.JSON200 == nil || detail.JSON200.BpmnData == nil {
+			return nil, fmt.Errorf("reading definition %d on node %s failed with %d: %s", item.Key, node.ID, detail.StatusCode(), string(detail.Body))
+		}
 		mapping[item.Version] = definitionRef{key: item.Key, checksum: md5.Sum([]byte(*detail.JSON200.BpmnData))}
 	}
-	return mapping
+	return mapping, nil
 }
 
 // clusterTestBPMN reads a fixture from pkg/bpmn/test-cases and turns it into a

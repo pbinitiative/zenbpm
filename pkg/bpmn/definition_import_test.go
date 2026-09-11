@@ -69,6 +69,28 @@ func TestImportProcessDefinitionRefusesDivergedVersionHistories(t *testing.T) {
 	require.Error(t, err, "a version has to be positive")
 }
 
+func TestImportProcessDefinitionRetryRegistersMissingSubscriptions(t *testing.T) {
+	// the definition landed but its subscriptions did not (the first import
+	// failed after the save): the retried import completes the registration
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	defer engine.Stop()
+	ctx := t.Context()
+
+	_, err := engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, false)
+	require.NoError(t, err)
+	require.Empty(t, timersOf(t, store, 100))
+
+	again, err := engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, true)
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), again.Key)
+	assert.Len(t, timersOf(t, store, 100), 1)
+
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, true)
+	require.NoError(t, err)
+	assert.Len(t, timersOf(t, store, 100), 1, "a further retry registers nothing twice")
+}
+
 func TestImportProcessDefinitionDoesNotRegisterSubscriptionsWhenNotAsked(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))

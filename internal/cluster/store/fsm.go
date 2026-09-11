@@ -191,10 +191,17 @@ func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAlloc
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
 	newState := *f.store.state.DeepCopy()
-	if cmd.GetAction() == proto.ProcessDefinitionAllocation_ACTION_CONFIRM {
+	switch cmd.GetAction() {
+	case proto.ProcessDefinitionAllocation_ACTION_CONFIRM:
 		allocation, confirmed := newState.ConfirmProcessDefinition(cmd.GetProcessId(), cmd.GetKey())
 		f.store.state = newState
 		return ProcessDefinitionAllocationResult{Allocation: allocation, Existing: confirmed}
+	case proto.ProcessDefinitionAllocation_ACTION_UNKNOWN, proto.ProcessDefinitionAllocation_ACTION_ALLOCATE:
+	default:
+		// a command written by a newer binary: refuse it rather than guess
+		return ProcessDefinitionAllocationResult{Rejected: &state.ProcessDefinitionAllocationRejectedError{
+			ProcessID: cmd.GetProcessId(), Reason: fmt.Sprintf("unsupported allocation action %d", cmd.GetAction()),
+		}}
 	}
 	allocation, existing, err := newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
 	if err != nil {

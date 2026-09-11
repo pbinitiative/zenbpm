@@ -127,12 +127,18 @@ func (engine *Engine) storeProcessDefinitionVersion(ctx context.Context, definit
 			return nil, fmt.Errorf("process definition with id %q and version tag %q already exists: %w", definition.BpmnProcessId, definition.VersionTag, storage.ErrUniqueConstraint)
 		}
 	}
+	// the retirement of the previous subscriptions and the save go in one
+	// batch, so neither can land without the other
+	batch := engine.persistence.NewBatch()
 	if previousLatest := latestProcessDefinition(existing); previousLatest != nil && previousLatest.Version < definition.Version {
-		if err := engine.deleteProcessDefinitionSubscriptions(ctx, previousLatest); err != nil {
+		if err := queueProcessDefinitionSubscriptionsRetirement(ctx, batch, previousLatest); err != nil {
 			return nil, err
 		}
 	}
-	if err := engine.persistence.SaveProcessDefinition(ctx, definition); err != nil {
+	if err := batch.SaveProcessDefinition(ctx, definition); err != nil {
+		return nil, fmt.Errorf("failed to save process definition: %w", err)
+	}
+	if err := batch.Flush(ctx); err != nil {
 		return nil, fmt.Errorf("failed to save process definition: %w", err)
 	}
 	if exportEvent {
@@ -227,11 +233,13 @@ func extractProcessVersionTag(xmlData []byte) (string, error) {
 	return definitions.Process.ExtensionElements.VersionTag.Value, nil
 }
 
-func (engine *Engine) deleteProcessDefinitionSubscriptions(ctx context.Context, latest *runtime.ProcessDefinition) error {
-	if err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key}); err != nil {
+// queueProcessDefinitionSubscriptionsRetirement queues the removal of the
+// definition-level subscriptions of the definition on the batch.
+func queueProcessDefinitionSubscriptionsRetirement(ctx context.Context, batch storage.Batch, definition *runtime.ProcessDefinition) error {
+	if err := batch.DeleteProcessDefinitionsTimers(ctx, []int64{definition.Key}); err != nil {
 		return fmt.Errorf("failed to delete process definitions timers: %w", err)
 	}
-	if err := engine.persistence.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{latest.Key}); err != nil {
+	if err := batch.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{definition.Key}); err != nil {
 		return fmt.Errorf("failed to delete process definitions message subscriptions: %w", err)
 	}
 	return nil

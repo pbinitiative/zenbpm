@@ -1,3 +1,5 @@
+// Package state holds the replicated state of the main cluster: its nodes,
+// partitions, restore operation and process definition allocations.
 package state
 
 import (

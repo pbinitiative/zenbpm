@@ -269,7 +269,7 @@ func (s *testStore) ClusterState() state.Cluster {
 func (s *testStore) WriteRestoreChange(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error) {
 	return s.clusterState.Restore, nil
 }
-func (s *testStore) WriteProcessDefinitionAllocation(ctx context.Context, allocation *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
+func (s *testStore) WriteProcessDefinitionAllocation(_ context.Context, allocation *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
 	if s.allocate != nil {
 		return s.allocate(allocation)
 	}

@@ -49,7 +49,7 @@ See source: [zencommand.proto](./command/proto/zencommand.proto)
 
 #### ProcessDefinitionAllocation
 - decides the definition key and numeric version of a BPMN deployment once for the whole cluster, before the definition fans out to the partitions
-- idempotent on (process id, content checksum): a retried or concurrently repeated deployment gets the allocation that already exists; an allocation stays retrievable by its checksum until the deploying node confirms that every partition holds it, so a retry after a partial failure completes the original version even when another revision was deployed in between
+- idempotent on (process id, content checksum): a retried or concurrently repeated deployment gets the allocation that already exists; an allocation stays retrievable by its checksum until the deploying node confirms that every partition holds it, so a retry after a partial failure completes the original version even when another revision was deployed in between; at most 64 unconfirmed allocations are kept per process id
 - every partition stores exactly the allocated (key, version), so concurrent deployments of one process id cannot map the same version to different content on different partitions
 
 ### Leader
@@ -117,7 +117,7 @@ Internal communication between nodes.
 
 - NodeCommand - updates from nodes propagated to raft log (recipient is leader)
 
-## Public gRPC 
+## Public gRPC
 Public gRPC endpoint that exposes jobs handling endpoints for better performance compared to REST API.
 
 ## Public REST API

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -85,7 +86,7 @@ func TestConcurrentDeploymentsAgreeOnVersionsAcrossPartitions(t *testing.T) {
 	assert.Equal(t, definitionRef{key: outcomes[1].key, checksum: md5.Sum(revisionB)}, mappings[1][mappings[1].versionOf(outcomes[1].key)])
 
 	// the allocation is what the partitions stored
-	latest := fc.cluster.ProcessDefinitions["concurrent-process"].Latest
+	latest := fc.clusterState().ProcessDefinitions["concurrent-process"].Latest
 	assert.Equal(t, int32(2), latest.Version)
 	assert.Equal(t, latest.Key, mappings[1][2].key)
 }
@@ -120,7 +121,7 @@ func TestRetriedDeploymentReusesAllocation(t *testing.T) {
 	mappings := fc.definitionMappings(t, "retried-process")
 	assert.Equal(t, mappings[1], mappings[2])
 	assert.Len(t, mappings[1], 1)
-	assert.Equal(t, int32(1), fc.cluster.ProcessDefinitions["retried-process"].Latest.Version, "no second version was allocated")
+	assert.Equal(t, int32(1), fc.clusterState().ProcessDefinitions["retried-process"].Latest.Version, "no second version was allocated")
 
 	// a repeated deployment of content every partition already holds keeps
 	// answering with the same definition
@@ -128,7 +129,7 @@ func TestRetriedDeploymentReusesAllocation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, key, sameKey)
 	assert.True(t, alreadyExisted)
-	assert.Equal(t, int32(1), fc.cluster.ProcessDefinitions["retried-process"].Latest.Version)
+	assert.Equal(t, int32(1), fc.clusterState().ProcessDefinitions["retried-process"].Latest.Version)
 	assert.Equal(t, mappings, fc.definitionMappings(t, "retried-process"))
 }
 
@@ -164,8 +165,10 @@ func TestRetryAfterAnotherRevisionCompletesTheOriginalAllocation(t *testing.T) {
 			assert.Equal(t, mappings[1], mappings[2], "partition 2 caught up with revision A")
 			assert.Equal(t, definitionRef{key: keyA, checksum: md5.Sum(revisionA)}, mappings[2][1])
 			assert.Equal(t, definitionRef{key: keyB, checksum: md5.Sum(revisionB)}, mappings[2][2])
-			assert.Equal(t, keyB, fc.cluster.ProcessDefinitions["interleaved-process"].Latest.Key, "revision B stays the latest version")
-			assert.Empty(t, fc.cluster.ProcessDefinitions["interleaved-process"].Incomplete, "every allocation is confirmed")
+			assert.Equal(t, keyB, fc.clusterState().ProcessDefinitions["interleaved-process"].Latest.Key, "revision B stays the latest version")
+			assert.Eventually(t, func() bool {
+				return len(fc.clusterState().ProcessDefinitions["interleaved-process"].Incomplete) == 0
+			}, 5*time.Second, 10*time.Millisecond, "every allocation is confirmed in the background")
 		})
 	}
 }
@@ -270,6 +273,14 @@ func (fc *fakeDeployCluster) deployer() *processDefinitionDeployer {
 		confirm:       fc.confirm,
 		logger:        hclog.NewNullLogger(),
 	}
+}
+
+// clusterState reads the replicated state under the lock the detached
+// confirmation writes it with.
+func (fc *fakeDeployCluster) clusterState() state.Cluster {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return *fc.cluster.DeepCopy()
 }
 
 func (fc *fakeDeployCluster) confirm(_ context.Context, processId string, key int64) error {

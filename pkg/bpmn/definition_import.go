@@ -41,6 +41,14 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 	}
 	for i := range existing {
 		if existing[i].Key == key {
+			// a previous import may have stored the definition and failed before
+			// its subscriptions were registered; registration is idempotent and
+			// leaves a definition that is not the latest version alone
+			if registerSubscriptions {
+				if err := engine.registerProcessDefinitionSubscriptionsLocked(ctx, key); err != nil {
+					return nil, err
+				}
+			}
 			return &existing[i], nil
 		}
 	}

@@ -71,3 +71,15 @@ func TestAllocateProcessDefinitionMapsFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestDeployProcessDefinitionRejectsNegativeVersions(t *testing.T) {
+	// a negative version must not fall back to partition-local versioning
+	// the way a missing (zero) version from an older sender does
+	srv := &Server{}
+	resp, err := srv.DeployProcessDefinition(context.Background(), &proto.DeployProcessDefinitionRequest{
+		Key: new(int64(7)), Version: new(int32(-1)), Data: []byte("<definitions/>"),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetError())
+	assert.Equal(t, uint32(zenerr.BadRequestCode), resp.GetError().GetCode())
+}

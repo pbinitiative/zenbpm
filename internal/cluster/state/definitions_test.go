@@ -196,6 +196,45 @@ func TestAllocateProcessDefinitionCatchesUpWithObservedPartitionState(t *testing
 	assert.Equal(t, int32(5), later.Version)
 }
 
+func TestAllocateProcessDefinitionRejectsIncompleteObservations(t *testing.T) {
+	for _, observed := range []*ProcessDefinitionAllocation{
+		{Key: 0, Version: 2, Checksum: "ccc"},
+		{Key: 7, Version: 2, Checksum: ""},
+	} {
+		var c Cluster
+		_, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
+			ProcessID: "order", Checksum: "ddd", Sequence: 100, ObservedLatest: observed,
+		})
+		var rejected *ProcessDefinitionAllocationRejectedError
+		require.ErrorAs(t, err, &rejected)
+		assert.Empty(t, c.ProcessDefinitions, "nothing is recorded from an observation without identity")
+	}
+}
+
+func TestAllocateProcessDefinitionBoundsIncompleteAllocations(t *testing.T) {
+	var c Cluster
+	var first ProcessDefinitionAllocation
+	for i := range maxIncompleteProcessDefinitionAllocations + 1 {
+		allocation, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
+			ProcessID: "order", Checksum: fmt.Sprintf("failing-%d", i), Sequence: uint64(i), // #nosec G115 -- a loop counter
+		})
+		require.NoError(t, err)
+		if i == 0 {
+			first = allocation
+		}
+	}
+	incomplete := c.ProcessDefinitions["order"].Incomplete
+	assert.Len(t, incomplete, maxIncompleteProcessDefinitionAllocations)
+	assert.NotContains(t, incomplete, first.Checksum, "the oldest unconfirmed allocation is forgotten")
+	assert.Contains(t, incomplete, "failing-1")
+
+	// a retry of the forgotten allocation is a new deployment
+	retried, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: first.Checksum, Sequence: 1000})
+	require.NoError(t, err)
+	assert.False(t, existing)
+	assert.NotEqual(t, first.Key, retried.Key)
+}
+
 func TestAllocateProcessDefinitionIsDeterministic(t *testing.T) {
 	requests := []ProcessDefinitionAllocationRequest{
 		{ProcessID: "order", Checksum: "aaa", Sequence: 100, NowMillis: 1},

@@ -39,7 +39,6 @@ func Init(release string, defaultEnvironment string) error {
 		Environment:      valueOrDefault("SENTRY_ENVIRONMENT", defaultEnvironment),
 		AttachStacktrace: true,
 		EnableTracing:    false,
-		DisableLogs:      true,
 		Tags: map[string]string{
 			"service": "zenbpm",
 		},

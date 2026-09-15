@@ -644,7 +644,7 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 					id := string(signal.PeerID)
 					dur := time.Since(signal.LastContact)
 
-					isReadOnly, found := servers.IsReadOnly(id)
+					isReadOnly, found := servers.IsReadReplica(id)
 					if !found {
 						zpn.logger.Error(fmt.Sprintf("partition node %s (failing heartbeat) is not present in configuration", id))
 						break

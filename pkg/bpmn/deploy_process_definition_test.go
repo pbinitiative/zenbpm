@@ -1,12 +1,15 @@
 package bpmn
 
 import (
+	"context"
 	"crypto/md5"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
@@ -179,6 +182,43 @@ func TestParseProcessDefinitionIdentity(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestDeploymentExportsOutsideTheDefinitionLock verifies that an exporter
+// may call back into the engine from the deployment event: the event is
+// reported once the engine released the mutex serialising deployments, so a
+// re-entrant call cannot deadlock.
+func TestDeploymentExportsOutsideTheDefinitionLock(t *testing.T) {
+	for name, deploy := range map[string]func(engine *Engine, xml []byte) (*runtime.ProcessDefinition, error){
+		"LoadFromBytes": func(engine *Engine, xml []byte) (*runtime.ProcessDefinition, error) {
+			return engine.LoadFromBytes(t.Context(), xml, 100)
+		},
+		"DeployProcessDefinition": func(engine *Engine, xml []byte) (*runtime.ProcessDefinition, error) {
+			return engine.DeployProcessDefinition(t.Context(), xml, 100, 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := inmemory.NewStorage()
+			engine := NewEngine(EngineWithStorage(store))
+			defer engine.Stop()
+			reentrant := &reentrantExporter{engine: &engine, registered: make(chan error, 1)}
+			engine.AddEventExporter(reentrant)
+
+			deployed := make(chan error, 1)
+			go func() {
+				_, err := deploy(&engine, timerStartXML("reentrant-process", "PT1H"))
+				deployed <- err
+			}()
+			select {
+			case err := <-deployed:
+				require.NoError(t, err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("the deployment did not return: the exporter deadlocked on the definition mutex")
+			}
+			require.NoError(t, <-reentrant.registered)
+			assert.Len(t, timersOf(t, store, 100), 1, "the exporter registered the subscriptions of the definition")
+		})
+	}
+}
+
 // processEventRecorder collects the deployment events an engine exports.
 type processEventRecorder struct {
 	events []exporter.ProcessEvent
@@ -191,4 +231,20 @@ func (r *processEventRecorder) NewProcessEvent(event *exporter.ProcessEvent) {
 func (r *processEventRecorder) EndProcessEvent(*exporter.ProcessInstanceEvent)         {}
 func (r *processEventRecorder) NewProcessInstanceEvent(*exporter.ProcessInstanceEvent) {}
 func (r *processEventRecorder) NewElementEvent(*exporter.ProcessInstanceEvent, *exporter.ElementInfo) {
+}
+
+// reentrantExporter registers the subscriptions of every deployed definition
+// from the exporter callback, calling back into the engine that reports it.
+type reentrantExporter struct {
+	engine     *Engine
+	registered chan error
+}
+
+func (r *reentrantExporter) NewProcessEvent(event *exporter.ProcessEvent) {
+	r.registered <- r.engine.RegisterProcessDefinitionSubscriptions(context.Background(), event.ProcessKey)
+}
+
+func (r *reentrantExporter) EndProcessEvent(*exporter.ProcessInstanceEvent)         {}
+func (r *reentrantExporter) NewProcessInstanceEvent(*exporter.ProcessInstanceEvent) {}
+func (r *reentrantExporter) NewElementEvent(*exporter.ProcessInstanceEvent, *exporter.ElementInfo) {
 }

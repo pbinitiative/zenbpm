@@ -26,7 +26,8 @@ import (
 // that every node reports the same (version → key, checksum) mapping and
 // that no deployment failed. It then deploys a third revision concurrently
 // through two nodes, which must share one definition, and retries it, which
-// must be answered with the existing key.
+// must be answered with the existing key. Finally the first revision is
+// deployed again, which must become a new, latest version.
 //
 // The cluster has three nodes but one partition: a cluster with more
 // partitions does not form yet (partition membership is not implemented), so
@@ -66,6 +67,16 @@ func TestConcurrentDeploymentsFromDifferentNodesAgreeOnVersions(t *testing.T) {
 	require.Equal(t, http.StatusOK, retry.StatusCode(), string(retry.Body))
 	assert.Equal(t, keys[0], retry.JSON200.ProcessDefinitionKey)
 	assertNodesAgreeOnProcessDefinitionVersions(t, nodes, processID, 3)
+
+	// an older revision deployed again becomes the latest version again
+	// (deploying A, then B, then A leaves A active), with a new key
+	redeployed, err := nodes[2].RestClient.CreateProcessDefinitionWithBodyWithResponse(
+		context.Background(), "application/octet-stream", bytes.NewReader(revisionA))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, redeployed.StatusCode(), string(redeployed.Body))
+	assert.NotContains(t, keys, redeployed.JSON201.ProcessDefinitionKey)
+	mapping = assertNodesAgreeOnProcessDefinitionVersions(t, nodes, processID, 4)
+	assert.Equal(t, definitionRef{key: redeployed.JSON201.ProcessDefinitionKey, checksum: md5.Sum(revisionA)}, mapping[4])
 }
 
 type concurrentDeployment struct {

@@ -761,6 +761,34 @@ func (s *Server) AllocateProcessDefinition(ctx context.Context, req *proto.Alloc
 	}, nil
 }
 
+// GetProcessDefinitionVersions lists the versions of a process (of every
+// process without a process id) a partition this node leads holds. A
+// partition this node does not lead answers UNAVAILABLE so that the caller
+// re-resolves the leader: only the leader's database is known to include
+// every deployment the partition acknowledged.
+func (s *Server) GetProcessDefinitionVersions(ctx context.Context, req *proto.GetProcessDefinitionVersionsRequest) (*proto.GetProcessDefinitionVersionsResponse, error) {
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil || !partitionNode.IsLeader(ctx) {
+		return nil, status.Errorf(codes.Unavailable, "partition %d is not led by this node", req.GetPartitionId())
+	}
+	versions, err := partitionNode.DB.ListProcessDefinitionVersions(ctx, req.GetProcessId(), req.GetIncludeLatestData())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list process definition versions of partition %d: %s", req.GetPartitionId(), err)
+	}
+	resp := &proto.GetProcessDefinitionVersionsResponse{Versions: make([]*proto.ProcessDefinitionVersion, 0, len(versions))}
+	for _, version := range versions {
+		resp.Versions = append(resp.Versions, &proto.ProcessDefinitionVersion{
+			ProcessId:  new(version.ProcessID),
+			Key:        new(version.Key),
+			Version:    new(version.Version),
+			Checksum:   version.Checksum,
+			VersionTag: new(version.VersionTag),
+			Data:       version.Data,
+		})
+	}
+	return resp, nil
+}
+
 // DeployProcessDefinition stores a BPMN definition on every partition this
 // node leads. With a version the definition is stored under exactly the
 // (key, version) the cluster allocated; without one (a sender that predates

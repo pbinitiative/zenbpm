@@ -53,7 +53,7 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 		}
 	}
 	previousLatest := latestProcessDefinition(existing)
-	if _, err := engine.storeProcessDefinitionVersion(ctx, definition, existing, false); err != nil {
+	if _, err := engine.storeProcessDefinitionVersion(ctx, definition, existing); err != nil {
 		return nil, fmt.Errorf("failed to import process definition %d: %w", key, err)
 	}
 	latest := previousLatest == nil || previousLatest.Version < version

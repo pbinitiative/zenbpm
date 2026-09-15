@@ -41,7 +41,7 @@ func TestAllocateProcessDefinitionAssignsConsecutiveVersions(t *testing.T) {
 	assert.NotEqual(t, second.Key, other.Key)
 
 	assert.Equal(t, second, c.ProcessDefinitions["order"].Latest)
-	assert.Equal(t, map[string]int32{"v2": 2}, c.ProcessDefinitions["order"].VersionTags)
+	assert.Equal(t, map[string]ProcessDefinitionAllocation{"v2": second}, c.ProcessDefinitions["order"].VersionTags)
 }
 
 func TestAllocateProcessDefinitionReusesLatestForIdenticalContent(t *testing.T) {
@@ -56,59 +56,49 @@ func TestAllocateProcessDefinitionReusesLatestForIdenticalContent(t *testing.T) 
 	assert.True(t, existing)
 	assert.Equal(t, first, again)
 
-	confirmed, wasIncomplete := c.ConfirmProcessDefinition("order", first.Key)
-	assert.True(t, wasIncomplete)
-	assert.Equal(t, first, confirmed)
 	_, _, err = c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "bbb", Sequence: 200})
 	require.NoError(t, err)
 
-	// older content whose deployment completed is deduplicated against the
-	// latest version only: it is deployed again as a new version
+	// older content is deduplicated against the latest version only: deployed
+	// after another revision it becomes a new version, the latest one again
 	redeployed, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", Sequence: 300})
 	require.NoError(t, err)
 	assert.False(t, existing)
 	assert.Equal(t, int32(3), redeployed.Version)
 	assert.NotEqual(t, first.Key, redeployed.Key)
+	assert.Equal(t, redeployed, c.ProcessDefinitions["order"].Latest)
 }
 
-func TestAllocateProcessDefinitionReturnsUnconfirmedAllocationAfterAnotherRevision(t *testing.T) {
-	for _, tag := range []string{"", "stable"} {
-		t.Run("tag="+tag, func(t *testing.T) {
-			var c Cluster
-			// revision A is allocated but its deployment does not reach every
-			// partition, so it is never confirmed
-			first, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", VersionTag: tag, Sequence: 100})
-			require.NoError(t, err)
-			second, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "bbb", Sequence: 200})
-			require.NoError(t, err)
-			require.Equal(t, int32(2), second.Version)
+// TestAllocateProcessDefinitionRepeatsTaggedContentUnderItsTag verifies that
+// a tagged deployment whose content is already allocated under that tag is
+// answered with that allocation whatever was allocated in between (a retry
+// after a partial failure), while different content under the tag is
+// rejected.
+func TestAllocateProcessDefinitionRepeatsTaggedContentUnderItsTag(t *testing.T) {
+	var c Cluster
+	first, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", VersionTag: "stable", Sequence: 100})
+	require.NoError(t, err)
+	second, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "bbb", Sequence: 200})
+	require.NoError(t, err)
+	require.Equal(t, int32(2), second.Version)
 
-			// the retry of A gets its allocation back instead of a new version
-			// (or, with a tag, a rejection for reusing its own tag)
-			retried, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", VersionTag: tag, Sequence: 300})
-			require.NoError(t, err)
-			assert.True(t, existing)
-			assert.Equal(t, first, retried)
-			assert.Equal(t, second, c.ProcessDefinitions["order"].Latest, "a retry never moves the latest version backwards")
+	retried, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", VersionTag: "stable", Sequence: 300})
+	require.NoError(t, err, "the retry must not be rejected for its own version tag")
+	assert.True(t, existing)
+	assert.Equal(t, first, retried)
+	assert.Equal(t, second, c.ProcessDefinitions["order"].Latest, "a retry never moves the latest version backwards")
 
-			// once confirmed, the same content is a new deployment again
-			_, wasIncomplete := c.ConfirmProcessDefinition("order", first.Key)
-			assert.True(t, wasIncomplete)
-			_, wasIncomplete = c.ConfirmProcessDefinition("order", first.Key)
-			assert.False(t, wasIncomplete, "confirming twice changes nothing")
-			_, wasIncomplete = c.ConfirmProcessDefinition("invoice", first.Key)
-			assert.False(t, wasIncomplete, "an unknown process changes nothing")
-			redeployed, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", VersionTag: tag, Sequence: 400})
-			if tag != "" {
-				var rejected *ProcessDefinitionAllocationRejectedError
-				require.ErrorAs(t, err, &rejected, "the tag of the confirmed version stays taken")
-				return
-			}
-			require.NoError(t, err)
-			assert.False(t, existing)
-			assert.Equal(t, int32(3), redeployed.Version)
-		})
-	}
+	_, _, err = c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "ccc", VersionTag: "stable", Sequence: 400})
+	var rejected *ProcessDefinitionAllocationRejectedError
+	require.ErrorAs(t, err, &rejected, "the tag is taken by other content")
+	assert.Equal(t, second, c.ProcessDefinitions["order"].Latest, "nothing is allocated on a rejection")
+
+	// the same content without its tag is a new deployment
+	untagged, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "aaa", Sequence: 500})
+	require.NoError(t, err)
+	assert.False(t, existing)
+	assert.Equal(t, int32(3), untagged.Version)
+	assert.Empty(t, untagged.VersionTag)
 }
 
 func TestAllocateProcessDefinitionKeysAreUniqueWhateverTheWritersClocksSay(t *testing.T) {
@@ -161,49 +151,69 @@ func TestAllocateProcessDefinitionRejectsInvalidRequests(t *testing.T) {
 func TestAllocateProcessDefinitionCatchesUpWithObservedPartitionState(t *testing.T) {
 	// definitions deployed before allocations were replicated exist on the
 	// partitions only; the first allocation after the upgrade continues
-	// their version sequence instead of restarting at 1
+	// their version sequence instead of restarting at 1 and reserves every
+	// tag the partitions hold
 	var c Cluster
-	observed := &ProcessDefinitionAllocation{Key: 7, Version: 3, Checksum: "ccc", VersionTag: "legacy"}
+	observed := []ProcessDefinitionAllocation{
+		{Key: 7, Version: 3, Checksum: "ccc", VersionTag: "legacy"},
+		{Key: 5, Version: 1, Checksum: "aaa", VersionTag: "first"},
+	}
 
 	next, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
-		ProcessID: "order", Checksum: "ddd", Sequence: 100, ObservedLatest: observed,
+		ProcessID: "order", Checksum: "ddd", Sequence: 100, Observed: observed,
 	})
 	require.NoError(t, err)
 	assert.False(t, existing)
 	assert.Equal(t, int32(4), next.Version)
-	assert.Equal(t, map[string]int32{"legacy": 3}, c.ProcessDefinitions["order"].VersionTags, "the observed tag is protected too")
+	assert.Equal(t, map[string]ProcessDefinitionAllocation{"legacy": observed[0], "first": observed[1]}, c.ProcessDefinitions["order"].VersionTags, "the observed tags are protected too")
+	_, _, err = c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
+		ProcessID: "order", Checksum: "eee", VersionTag: "first", Sequence: 150,
+	})
+	var rejected *ProcessDefinitionAllocationRejectedError
+	require.ErrorAs(t, err, &rejected, "a tag an older version holds on the partitions is taken")
 
 	// an observed definition with the same content as the request is
 	// returned as the existing one without allocating
 	var fresh Cluster
 	same, existing, err := fresh.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
-		ProcessID: "order", Checksum: "ccc", Sequence: 100, ObservedLatest: observed,
+		ProcessID: "order", Checksum: "ccc", Sequence: 100, Observed: observed,
 	})
 	require.NoError(t, err)
 	assert.True(t, existing)
-	assert.Equal(t, *observed, same)
-	assert.Equal(t, *observed, fresh.ProcessDefinitions["order"].Latest, "the observed definition is recorded as the latest")
+	assert.Equal(t, observed[0], same)
+	assert.Equal(t, observed[0], fresh.ProcessDefinitions["order"].Latest, "the observed definition is recorded as the latest")
+
+	// the order of the observations does not matter to the result
+	var shuffled Cluster
+	_, _, err = shuffled.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
+		ProcessID: "order", Checksum: "ccc", Sequence: 100, Observed: []ProcessDefinitionAllocation{observed[1], observed[0]},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fresh, shuffled)
 
 	// the replicated state is authoritative once it is ahead: a partition
-	// lagging behind (a fan-out still in flight, a restore from an older
-	// backup) never moves the sequence backwards
-	behind := &ProcessDefinitionAllocation{Key: 1, Version: 1, Checksum: "aaa"}
+	// lagging behind (a fan-out still in flight) never moves the sequence
+	// backwards, but a tag it holds on an older version replaces the tag
+	// recorded for an allocation that may never have reached it
+	behind := []ProcessDefinitionAllocation{{Key: 1, Version: 1, Checksum: "aaa", VersionTag: "legacy"}}
 	later, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
-		ProcessID: "order", Checksum: "eee", Sequence: 200, ObservedLatest: behind,
+		ProcessID: "order", Checksum: "fff", Sequence: 200, Observed: behind,
 	})
 	require.NoError(t, err)
 	assert.False(t, existing)
 	assert.Equal(t, int32(5), later.Version)
+	assert.Equal(t, behind[0], c.ProcessDefinitions["order"].VersionTags["legacy"], "the partitions are authoritative for the tags they hold")
 }
 
 func TestAllocateProcessDefinitionRejectsIncompleteObservations(t *testing.T) {
-	for _, observed := range []*ProcessDefinitionAllocation{
+	for _, observed := range []ProcessDefinitionAllocation{
 		{Key: 0, Version: 2, Checksum: "ccc"},
 		{Key: 7, Version: 2, Checksum: ""},
+		{Key: 7, Version: 0, Checksum: "ccc"},
 	} {
 		var c Cluster
 		_, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
-			ProcessID: "order", Checksum: "ddd", Sequence: 100, ObservedLatest: observed,
+			ProcessID: "order", Checksum: "ddd", Sequence: 100, Observed: []ProcessDefinitionAllocation{observed},
 		})
 		var rejected *ProcessDefinitionAllocationRejectedError
 		require.ErrorAs(t, err, &rejected)
@@ -211,28 +221,55 @@ func TestAllocateProcessDefinitionRejectsIncompleteObservations(t *testing.T) {
 	}
 }
 
-func TestAllocateProcessDefinitionBoundsIncompleteAllocations(t *testing.T) {
+// TestResetProcessDefinitionsRebuildsTheRegistryFromThePartitions verifies
+// that a reset (a cluster restore) replaces every recorded allocation with
+// the definitions the partitions hold, and that allocations continue from
+// them.
+func TestResetProcessDefinitionsRebuildsTheRegistryFromThePartitions(t *testing.T) {
 	var c Cluster
-	var first ProcessDefinitionAllocation
-	for i := range maxIncompleteProcessDefinitionAllocations + 1 {
-		allocation, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
-			ProcessID: "order", Checksum: fmt.Sprintf("failing-%d", i), Sequence: uint64(i), // #nosec G115 -- a loop counter
-		})
+	for _, req := range []ProcessDefinitionAllocationRequest{
+		{ProcessID: "order", Checksum: "aaa", VersionTag: "stable", Sequence: 100},
+		{ProcessID: "order", Checksum: "bbb", Sequence: 200},
+		{ProcessID: "invoice", Checksum: "ccc", Sequence: 300},
+	} {
+		_, _, err := c.AllocateProcessDefinition(req)
 		require.NoError(t, err)
-		if i == 0 {
-			first = allocation
-		}
 	}
-	incomplete := c.ProcessDefinitions["order"].Incomplete
-	assert.Len(t, incomplete, maxIncompleteProcessDefinitionAllocations)
-	assert.NotContains(t, incomplete, first.Checksum, "the oldest unconfirmed allocation is forgotten")
-	assert.Contains(t, incomplete, "failing-1")
 
-	// a retry of the forgotten allocation is a new deployment
-	retried, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: first.Checksum, Sequence: 1000})
-	require.NoError(t, err)
+	restored := []ObservedProcessDefinition{
+		{ProcessID: "order", Key: 12, Version: 2, Checksum: "yyy"},
+		{ProcessID: "payment", Key: 21, Version: 1, Checksum: "zzz"},
+		{ProcessID: "order", Key: 11, Version: 1, Checksum: "xxx", VersionTag: "v1"},
+	}
+	require.NoError(t, c.ResetProcessDefinitions(restored))
+	order := ProcessDefinitionAllocation{Key: 11, Version: 1, Checksum: "xxx", VersionTag: "v1"}
+	assert.Equal(t, map[string]ProcessDefinitionVersions{
+		"order":   {Latest: ProcessDefinitionAllocation{Key: 12, Version: 2, Checksum: "yyy"}, VersionTags: map[string]ProcessDefinitionAllocation{"v1": order}},
+		"payment": {Latest: ProcessDefinitionAllocation{Key: 21, Version: 1, Checksum: "zzz"}},
+	}, c.ProcessDefinitions, "a process the partitions do not hold is forgotten")
+
+	// the order of the definitions does not matter to the result
+	var reversed Cluster
+	require.NoError(t, reversed.ResetProcessDefinitions([]ObservedProcessDefinition{restored[2], restored[1], restored[0]}))
+	assert.Equal(t, c.ProcessDefinitions, reversed.ProcessDefinitions)
+
+	// allocations continue from the restored definitions
+	next, existing, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "www", VersionTag: "stable", Sequence: 400})
+	require.NoError(t, err, "the tag of an allocation the partitions do not hold is free again")
 	assert.False(t, existing)
-	assert.NotEqual(t, first.Key, retried.Key)
+	assert.Equal(t, int32(3), next.Version)
+	_, _, err = c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{ProcessID: "order", Checksum: "vvv", VersionTag: "v1", Sequence: 500})
+	var rejected *ProcessDefinitionAllocationRejectedError
+	require.ErrorAs(t, err, &rejected, "a tag the partitions hold is taken")
+
+	// a definition without identity is rejected and nothing changes
+	before := *c.DeepCopy()
+	err = c.ResetProcessDefinitions([]ObservedProcessDefinition{{ProcessID: "order", Key: 0, Version: 1, Checksum: "xxx"}})
+	require.ErrorAs(t, err, &rejected)
+	assert.Equal(t, before, c)
+
+	require.NoError(t, c.ResetProcessDefinitions(nil))
+	assert.Empty(t, c.ProcessDefinitions, "partitions holding nothing empty the registry")
 }
 
 func TestAllocateProcessDefinitionIsDeterministic(t *testing.T) {
@@ -245,11 +282,8 @@ func TestAllocateProcessDefinitionIsDeterministic(t *testing.T) {
 	}
 	apply := func() Cluster {
 		var c Cluster
-		for i, req := range requests {
-			allocation, _, _ := c.AllocateProcessDefinition(req)
-			if i%2 == 0 {
-				c.ConfirmProcessDefinition(req.ProcessID, allocation.Key)
-			}
+		for _, req := range requests {
+			_, _, _ = c.AllocateProcessDefinition(req)
 		}
 		return c
 	}
@@ -268,8 +302,7 @@ func TestClusterDeepCopyIsolatesProcessDefinitions(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(1), c.ProcessDefinitions["order"].Latest.Version)
-	assert.Equal(t, map[string]int32{"t": 1}, c.ProcessDefinitions["order"].VersionTags)
-	assert.Len(t, c.ProcessDefinitions["order"].Incomplete, 1)
+	assert.Equal(t, map[string]ProcessDefinitionAllocation{"t": c.ProcessDefinitions["order"].Latest}, c.ProcessDefinitions["order"].VersionTags)
 	assert.Equal(t, int32(2), clone.ProcessDefinitions["order"].Latest.Version)
-	assert.Len(t, clone.ProcessDefinitions["order"].Incomplete, 2)
+	assert.Len(t, clone.ProcessDefinitions["order"].VersionTags, 2)
 }

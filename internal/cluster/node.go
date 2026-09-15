@@ -11,7 +11,6 @@ import (
 	"net"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -30,7 +29,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -518,24 +516,24 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 
 func (node *ZenNode) processDefinitionDeployer() *processDefinitionDeployer {
 	return &processDefinitionDeployer{
-		observeLatest: node.observeLatestProcessDefinition,
-		allocate:      node.allocateProcessDefinition,
-		partitions:    node.deployPartitions,
-		deploy:        node.deployProcessDefinitionToPartition,
-		confirm:       node.confirmProcessDefinition,
-		logger:        node.logger,
+		observe:    node.observeProcessDefinition,
+		allocate:   node.allocateProcessDefinition,
+		partitions: node.deployPartitions,
+		deploy:     node.deployProcessDefinitionToPartition,
+		logger:     node.logger,
 	}
 }
 
-// processDefinitionDeployer runs one BPMN deployment: it reads the latest
-// definition a partition holds, has the cluster allocate the (key, version)
-// once through the raft log, deploys that allocation to every partition and
-// confirms the allocation once every partition holds it. The steps are
-// injected so the orchestration can be exercised against fake partitions.
+// processDefinitionDeployer runs one BPMN deployment: it reads what the
+// partitions hold of the process, has the cluster allocate the (key, version)
+// once through the raft log and deploys that allocation to every partition.
+// The steps are injected so the orchestration can be exercised against fake
+// partitions.
 type processDefinitionDeployer struct {
-	// observeLatest returns the latest definition of the process a partition
-	// holds, nil when there is none.
-	observeLatest func(ctx context.Context, processId string) (*observedProcessDefinition, error)
+	// observe returns what the partitions hold of the process: its latest
+	// version, carrying the BPMN bytes, and every version carrying a version
+	// tag; empty when they hold none.
+	observe func(ctx context.Context, processId string) ([]observedProcessDefinition, error)
 	// allocate decides the cluster-wide identity of the deployment; existing
 	// reports that the latest allocation already had this content.
 	allocate func(ctx context.Context, req *protoc.ProcessDefinitionAllocation) (key int64, version int32, existing bool, err error)
@@ -544,19 +542,32 @@ type processDefinitionDeployer struct {
 	partitions func(processId string) (ids []uint32, subscriptionPartition uint32, err error)
 	// deploy stores the allocated definition on one partition.
 	deploy func(ctx context.Context, partitionId uint32, req *proto.DeployProcessDefinitionRequest) error
-	// confirm records that the allocation reached every partition.
-	confirm func(ctx context.Context, processId string, key int64) error
-	logger  hclog.Logger
+	logger hclog.Logger
 }
 
-// observedProcessDefinition is the latest definition of a process as a
-// partition holds it.
+// observedProcessDefinition is a definition of a process as a partition holds
+// it; data is only carried by the latest version.
 type observedProcessDefinition struct {
 	key        int64
 	version    int32
 	checksum   []byte
 	versionTag string
 	data       []byte
+}
+
+// latestObservedProcessDefinition returns the newest observed definition, nil
+// when there is none. Two partitions holding different definitions at the
+// same version (a history that diverged before allocations were replicated)
+// are told apart by key, like the allocation does.
+func latestObservedProcessDefinition(observed []observedProcessDefinition) *observedProcessDefinition {
+	var latest *observedProcessDefinition
+	for i := range observed {
+		candidate := &observed[i]
+		if latest == nil || candidate.version > latest.version || (candidate.version == latest.version && candidate.key > latest.key) {
+			latest = candidate
+		}
+	}
+	return latest
 }
 
 func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
@@ -568,40 +579,41 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: process id is empty"))
 	}
 
-	observed, err := d.observeLatest(ctx, identity.ProcessId)
+	observed, err := d.observe(ctx, identity.ProcessId)
 	if err != nil {
-		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get latest process definition of %s: %w", identity.ProcessId, err))
+		return 0, false, err
 	}
 	checksum := identity.Checksum[:]
 	versionTag := identity.VersionTag
-	var observedLatest *protoc.ObservedProcessDefinition
-	if observed != nil {
+	if latest := latestObservedProcessDefinition(observed); latest != nil {
 		// A partition already holding this content as the latest version means
 		// the deployment is a repeat (or a retry): it is deployed as that
 		// definition, which is idempotent where it exists and completes it
 		// where a previous attempt did not reach. Unlike the checksum
 		// comparison of the allocation, this also recognises a differently
 		// formatted copy of the same model.
-		sameContent, err := xmlutil.SameContent(observed.checksum, checksum, observed.data, data)
+		sameContent, err := xmlutil.SameContent(latest.checksum, checksum, latest.data, data)
 		if err != nil {
 			return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to compare BPMN content for process %s: %w", identity.ProcessId, err))
 		}
 		if sameContent {
-			data, checksum, versionTag = observed.data, observed.checksum, observed.versionTag
-		}
-		observedLatest = &protoc.ObservedProcessDefinition{
-			Key:        &observed.key,
-			Version:    &observed.version,
-			Checksum:   new(hex.EncodeToString(observed.checksum)),
-			VersionTag: &observed.versionTag,
+			data, checksum, versionTag = latest.data, latest.checksum, latest.versionTag
 		}
 	}
 	allocation := &protoc.ProcessDefinitionAllocation{
 		ProcessId:       &identity.ProcessId,
 		Checksum:        new(hex.EncodeToString(checksum)),
 		VersionTag:      &versionTag,
-		ObservedLatest:  observedLatest,
+		Observed:        make([]*protoc.ObservedProcessDefinition, 0, len(observed)),
 		TimestampMillis: new(time.Now().UnixMilli()),
+	}
+	for _, definition := range observed {
+		allocation.Observed = append(allocation.Observed, &protoc.ObservedProcessDefinition{
+			Key:        new(definition.key),
+			Version:    new(definition.version),
+			Checksum:   new(hex.EncodeToString(definition.checksum)),
+			VersionTag: new(definition.versionTag),
+		})
 	}
 
 	definitionKey, version, existing, err := d.allocate(ctx, allocation)
@@ -630,49 +642,104 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 	if waitErr := group.Wait(); waitErr != nil {
 		return definitionKey, existing, waitErr
 	}
-	// The deployment is complete whatever happens to the confirmation: an
-	// allocation left unconfirmed only makes a later deployment of the same
-	// content reuse it instead of creating a new version. The confirmation
-	// runs in the background so that neither a caller giving up right after
-	// the fan-out nor a leader that is briefly unreachable holds it up.
-	confirmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deployRetryFor)
-	safego.Go("process-definition-confirm", d.logger, func() {
-		defer cancel()
-		if err := d.confirm(confirmCtx, identity.ProcessId, definitionKey); err != nil {
-			d.logger.Warn("failed to confirm process definition allocation; a repeated deployment of this content will reuse it",
-				"processId", logSafe(identity.ProcessId), "definitionKey", definitionKey, "err", err)
-		}
-	})
 	return definitionKey, existing, nil
 }
 
-// logSafe strips line breaks from a value taken from a request before it is
-// logged, so that it cannot forge log entries.
-func logSafe(value string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", ""), "\r", "")
+// observeProcessDefinition reads what the partitions hold of the process: on
+// every partition leader its latest version, with the BPMN bytes, and every
+// version carrying a version tag, merged across the partitions. The leaders
+// are read rather than a local replica so that the observation includes every
+// deployment a partition acknowledged: a replica behind its leader would
+// report an older version, and the allocation would move behind the
+// partition. A partition without a reachable leader fails the observation,
+// as it would fail the deployment.
+func (node *ZenNode) observeProcessDefinition(ctx context.Context, processId string) ([]observedProcessDefinition, error) {
+	partitionIds, _, err := node.deployPartitions(processId)
+	if err != nil {
+		return nil, err
+	}
+	perPartition := make([][]observedProcessDefinition, len(partitionIds))
+	group, groupCtx := errgroup.WithContext(ctx)
+	for i, partitionId := range partitionIds {
+		group.Go(func() error {
+			observed, err := node.observeProcessDefinitionOnPartition(groupCtx, partitionId, processId)
+			perPartition[i] = observed
+			return err
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return mergeObservedProcessDefinitions(perPartition), nil
 }
 
-// observeLatestProcessDefinition reads the latest definition of the process
-// from a partition, nil when none is deployed.
-func (node *ZenNode) observeLatestProcessDefinition(ctx context.Context, processId string) (*observedProcessDefinition, error) {
-	db, err := node.GetReadOnlyDB(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database for definition lookup: %w", err)
-	}
-	latest, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+// observeProcessDefinitionOnPartition reads the process on the current leader
+// of the partition, following leadership changes like a deployment does.
+func (node *ZenNode) observeProcessDefinitionOnPartition(ctx context.Context, partitionId uint32, processId string) ([]observedProcessDefinition, error) {
+	var observed []observedProcessDefinition
+	err := node.retryDeploy(ctx, func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return fmt.Errorf("%w: partition %d has no leader", errTransientDeploy, partitionId)
 		}
-		return nil, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
+		client, err := node.client.For(clusterState.Nodes[leaderId].Addr)
+		if err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("failed to get client: %w", err))
+		}
+		resp, err := client.GetProcessDefinitionVersions(ctx, &proto.GetProcessDefinitionVersionsRequest{
+			PartitionId:       new(partitionId),
+			ProcessId:         new(processId),
+			IncludeLatestData: new(true),
+		})
+		if err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("client call to read process definition %s on partition %d failed: %w", processId, partitionId, err))
+		}
+		observed = observed[:0]
+		var latestVersion int32
+		for _, version := range resp.GetVersions() {
+			latestVersion = max(latestVersion, version.GetVersion())
+		}
+		for _, version := range resp.GetVersions() {
+			if version.GetVersion() != latestVersion && version.GetVersionTag() == "" {
+				// only the latest version and the tagged ones decide an allocation
+				continue
+			}
+			observed = append(observed, observedProcessDefinition{
+				key:        version.GetKey(),
+				version:    version.GetVersion(),
+				checksum:   version.GetChecksum(),
+				versionTag: version.GetVersionTag(),
+				data:       version.GetData(),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return &observedProcessDefinition{
-		key:        latest.Key,
-		version:    int32(latest.Version), // #nosec G115 -- definition versions are bounded well below MaxInt32
-		checksum:   latest.BpmnChecksum,
-		versionTag: latest.VersionTag,
-		data:       []byte(latest.BpmnData),
-	}, nil
+	return observed, nil
+}
+
+// mergeObservedProcessDefinitions unites the observations of every partition
+// by definition key, keeping the BPMN bytes wherever a partition reported
+// them.
+func mergeObservedProcessDefinitions(perPartition [][]observedProcessDefinition) []observedProcessDefinition {
+	var merged []observedProcessDefinition
+	byKey := map[int64]int{}
+	for _, observed := range perPartition {
+		for _, definition := range observed {
+			if i, seen := byKey[definition.key]; seen {
+				if merged[i].data == nil {
+					merged[i].data = definition.data
+				}
+				continue
+			}
+			byKey[definition.key] = len(merged)
+			merged = append(merged, definition)
+		}
+	}
+	return merged
 }
 
 // allocateProcessDefinition has the cluster leader commit the allocation to
@@ -683,18 +750,6 @@ func (node *ZenNode) allocateProcessDefinition(ctx context.Context, req *protoc.
 		return 0, 0, false, err
 	}
 	return resp.GetKey(), resp.GetVersion(), resp.GetAlreadyExisted(), nil
-}
-
-// confirmProcessDefinition has the cluster leader record that the allocation
-// reached every partition.
-func (node *ZenNode) confirmProcessDefinition(ctx context.Context, processId string, key int64) error {
-	_, err := node.applyProcessDefinitionAllocation(ctx, &protoc.ProcessDefinitionAllocation{
-		Action:          protoc.ProcessDefinitionAllocation_ACTION_CONFIRM.Enum(),
-		ProcessId:       &processId,
-		Key:             &key,
-		TimestampMillis: new(time.Now().UnixMilli()),
-	})
-	return err
 }
 
 // applyProcessDefinitionAllocation sends an allocation command to the cluster

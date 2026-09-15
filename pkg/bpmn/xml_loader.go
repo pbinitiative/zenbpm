@@ -3,7 +3,6 @@ package bpmn
 import (
 	"context"
 	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
-	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -40,12 +39,26 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 	if err != nil {
 		return nil, err
 	}
-	definitions := processInfo.Definitions
+	stored, existing, err := engine.loadLocked(ctx, processInfo, xmlData)
+	if err != nil {
+		return nil, err
+	}
+	if !existing {
+		engine.exportNewProcessEvent(*stored)
+	}
+	return stored, nil
+}
+
+// loadLocked stores the parsed definition as the next version of its process
+// unless the latest version already has the same content, which is returned
+// with existing=true. It holds definitionMu for the read-check-save.
+func (engine *Engine) loadLocked(ctx context.Context, processInfo runtime.ProcessDefinition, xmlData []byte) (*runtime.ProcessDefinition, bool, error) {
 	engine.definitionMu.Lock()
 	defer engine.definitionMu.Unlock()
-	processes, err := engine.persistence.FindProcessDefinitionsById(ctx, definitions.Process.Id)
+	processId := processInfo.Definitions.Process.Id
+	processes, err := engine.persistence.FindProcessDefinitionsById(ctx, processId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load processes by id %s: %w", definitions.Process.Id, err)
+		return nil, false, fmt.Errorf("failed to load processes by id %s: %w", processId, err)
 	}
 	if latest := latestProcessDefinition(processes); latest != nil {
 		sameContent, err := xmlutil.SameContent(
@@ -55,18 +68,18 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 			xmlData,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compare BPMN content for process %s: %w", definitions.Process.Id, err)
+			return nil, false, fmt.Errorf("failed to compare BPMN content for process %s: %w", processId, err)
 		}
 		if sameContent {
-			return latest, nil
+			return latest, true, nil
 		}
 		processInfo.Version = latest.Version + 1
 	}
-	stored, err := engine.storeProcessDefinitionVersion(ctx, processInfo, processes, true)
+	stored, err := engine.storeProcessDefinitionVersion(ctx, processInfo, processes)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return stored, nil
+	return stored, false, nil
 }
 
 // DeployProcessDefinition stores xmlData under the key and version the
@@ -95,18 +108,36 @@ func (engine *Engine) DeployProcessDefinition(ctx context.Context, xmlData []byt
 		return nil, fmt.Errorf("failed to deploy process definition %d: %w", key, err)
 	}
 	processInfo.Version = version
+	stored, existing, err := engine.deployLocked(ctx, processInfo)
+	if err != nil {
+		return nil, err
+	}
+	if !existing {
+		engine.exportNewProcessEvent(*stored)
+	}
+	return stored, nil
+}
+
+// deployLocked stores the definition under the key and version it carries,
+// or returns the definition already stored under its key with existing=true.
+// It holds definitionMu for the read-check-save.
+func (engine *Engine) deployLocked(ctx context.Context, processInfo runtime.ProcessDefinition) (*runtime.ProcessDefinition, bool, error) {
 	engine.definitionMu.Lock()
 	defer engine.definitionMu.Unlock()
 	processes, err := engine.persistence.FindProcessDefinitionsById(ctx, processInfo.BpmnProcessId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load processes by id %s: %w", processInfo.BpmnProcessId, err)
+		return nil, false, fmt.Errorf("failed to load processes by id %s: %w", processInfo.BpmnProcessId, err)
 	}
 	for i := range processes {
-		if processes[i].Key == key {
-			return &processes[i], nil
+		if processes[i].Key == processInfo.Key {
+			return &processes[i], true, nil
 		}
 	}
-	return engine.storeProcessDefinitionVersion(ctx, processInfo, processes, true)
+	stored, err := engine.storeProcessDefinitionVersion(ctx, processInfo, processes)
+	if err != nil {
+		return nil, false, err
+	}
+	return stored, false, nil
 }
 
 // storeProcessDefinitionVersion saves definition under the key and version it
@@ -114,9 +145,13 @@ func (engine *Engine) DeployProcessDefinition(ctx context.Context, xmlData []byt
 // definition holding the same version or version tag is refused with
 // storage.ErrUniqueConstraint before anything is written. When the definition
 // becomes the newest version of its process the definition-level
-// subscriptions of the previously newest one are retired first. With
-// exportEvent the deployment is reported to the exporters.
-func (engine *Engine) storeProcessDefinitionVersion(ctx context.Context, definition runtime.ProcessDefinition, existing []runtime.ProcessDefinition, exportEvent bool) (*runtime.ProcessDefinition, error) {
+// subscriptions of the previously newest one are retired first.
+//
+// The callers hold definitionMu. Reporting the deployment to the exporters is
+// left to them, once the mutex is released: an exporter runs arbitrary code,
+// which may call back into the engine (RegisterProcessDefinitionSubscriptions
+// takes the same mutex).
+func (engine *Engine) storeProcessDefinitionVersion(ctx context.Context, definition runtime.ProcessDefinition, existing []runtime.ProcessDefinition) (*runtime.ProcessDefinition, error) {
 	for i := range existing {
 		other := &existing[i]
 		if other.Version == definition.Version {
@@ -140,9 +175,6 @@ func (engine *Engine) storeProcessDefinitionVersion(ctx context.Context, definit
 	}
 	if err := batch.Flush(ctx); err != nil {
 		return nil, fmt.Errorf("failed to save process definition: %w", err)
-	}
-	if exportEvent {
-		engine.exportNewProcessEvent(definition, []byte(definition.BpmnData), hex.EncodeToString(definition.BpmnChecksum[:]))
 	}
 	return &definition, nil
 }

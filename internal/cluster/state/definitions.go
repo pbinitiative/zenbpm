@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 )
@@ -28,19 +29,15 @@ func (a ProcessDefinitionAllocation) Exists() bool {
 // ProcessDefinitionVersions is the replicated allocation state of one BPMN
 // process id. A deployment is deduplicated against the latest version of its
 // process (re-deploying older content creates a new version), so the history
-// of confirmed allocations is not needed to allocate; only the latest one is
-// kept. Allocations whose deployment was never confirmed stay until they are,
-// so that a retry finds them whatever was allocated in between. Version tags
-// are kept because they stay unique across the whole history.
+// of allocations is not needed to allocate; only the latest one is kept.
+// Version tags are kept for the whole history because they stay unique
+// across it.
 // +k8s:deepcopy-gen=true
 type ProcessDefinitionVersions struct {
 	Latest ProcessDefinitionAllocation `json:"latest"`
 	// VersionTags maps every version tag ever allocated for the process to
-	// the version that carries it.
-	VersionTags map[string]int32 `json:"versionTags,omitempty"`
-	// Incomplete holds, by checksum, the allocations not yet confirmed to
-	// have reached every partition.
-	Incomplete map[string]ProcessDefinitionAllocation `json:"incomplete,omitempty"`
+	// the allocation that carries it.
+	VersionTags map[string]ProcessDefinitionAllocation `json:"versionTags,omitempty"`
 }
 
 // ProcessDefinitionAllocationRequest is the FSM-level form of a process
@@ -52,12 +49,22 @@ type ProcessDefinitionAllocationRequest struct {
 	// Sequence is the raft log index of the command; it is folded into the
 	// key of a new version.
 	Sequence uint64
-	// ObservedLatest is the latest definition of the process the requesting
-	// node found on a partition, nil when the partition has none. It seeds
-	// the allocation state with definitions deployed before allocations were
-	// replicated; the FSM never moves behind it.
-	ObservedLatest *ProcessDefinitionAllocation
-	NowMillis      int64
+	// Observed is what the partitions hold of the process: its latest
+	// version and every version carrying a version tag, empty when they hold
+	// none. It seeds the allocation state with definitions deployed before
+	// allocations were replicated; the FSM never moves behind it.
+	Observed  []ProcessDefinitionAllocation
+	NowMillis int64
+}
+
+// ObservedProcessDefinition is a definition of a process as a partition holds
+// it, used to rebuild the allocation state from the partitions.
+type ObservedProcessDefinition struct {
+	ProcessID  string
+	Key        int64
+	Version    int32
+	Checksum   string
+	VersionTag string
 }
 
 // ProcessDefinitionAllocationRejectedError is returned when an allocation is
@@ -75,16 +82,18 @@ func (e *ProcessDefinitionAllocationRejectedError) Error() string {
 // deterministic: every replica applying the same request to the same state
 // ends up with the same allocation.
 //
-// The request's observed latest definition first raises the recorded latest
-// when it is newer (a partition that already holds versions the state does
-// not know of). Then a checksum equal to the latest allocation, or to an
-// allocation whose deployment was never confirmed, returns that allocation
-// with existing=true and changes nothing, so retries and concurrent identical
-// deployments share one definition. Otherwise the next version is allocated
-// under a key derived from the allocation clock and the sequence, unless the
-// version tag is already taken by another version of the process, which is
-// rejected with a *ProcessDefinitionAllocationRejectedError. A new allocation
-// counts as incomplete until ConfirmProcessDefinition is applied for it.
+// The request's observed definitions first catch the recorded state up with
+// the partitions: an observed version newer than the recorded latest becomes
+// the latest, and every observed version tag is reserved for the version the
+// partitions hold it on (the partitions are authoritative for what they
+// hold). Then a checksum equal to the latest allocation returns that
+// allocation with existing=true and changes nothing, so retries and
+// concurrent identical deployments share one definition. Otherwise the next
+// version is allocated under a key derived from the allocation clock and the
+// sequence, unless the version tag is already taken: by a version of the
+// same content, which is returned with existing=true so that a failed
+// tagged deployment can be retried, or by a version of different content,
+// which is rejected with a *ProcessDefinitionAllocationRejectedError.
 func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationRequest) (allocation ProcessDefinitionAllocation, existing bool, err error) {
 	if req.ProcessID == "" {
 		return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "process id must not be empty"}
@@ -93,29 +102,28 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 		return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "checksum must not be empty"}
 	}
 	versions := c.ProcessDefinitions[req.ProcessID]
-	if observed := req.ObservedLatest; observed != nil && observed.Version > versions.Latest.Version {
-		if observed.Key == 0 || observed.Checksum == "" {
-			return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "observed latest definition must have a key and a checksum"}
+	for _, observed := range req.Observed {
+		if observed.Key == 0 || observed.Checksum == "" || observed.Version <= 0 {
+			return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "observed definitions must have a key, a version and a checksum"}
 		}
-		// the partition is authoritative for what it holds: its tag wins over
-		// a tag recorded for an allocation that may never have been deployed
-		versions.Latest = *observed
-		versions.recordVersionTag(observed.VersionTag, observed.Version)
 	}
+	versions.catchUp(req.Observed)
 	if versions.Latest.Exists() && versions.Latest.Checksum == req.Checksum {
 		c.setProcessDefinitionVersions(req.ProcessID, versions)
 		return versions.Latest, true, nil
 	}
-	if incomplete, ok := versions.Incomplete[req.Checksum]; ok {
-		c.setProcessDefinitionVersions(req.ProcessID, versions)
-		return incomplete, true, nil
-	}
 	if req.VersionTag != "" {
 		if taken, ok := versions.VersionTags[req.VersionTag]; ok {
-			return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{
-				ProcessID: req.ProcessID,
-				Reason:    fmt.Sprintf("version tag %q is already used by version %d", req.VersionTag, taken),
+			if taken.Checksum != req.Checksum {
+				return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{
+					ProcessID: req.ProcessID,
+					Reason:    fmt.Sprintf("version tag %q is already used by version %d", req.VersionTag, taken.Version),
+				}
 			}
+			// the same content under its own tag: the deployment of that
+			// version is repeated (a retry after a partial failure)
+			c.setProcessDefinitionVersions(req.ProcessID, versions)
+			return taken, true, nil
 		}
 	}
 	versions.Latest = ProcessDefinitionAllocation{
@@ -125,57 +133,59 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 		VersionTag:        req.VersionTag,
 		AllocatedAtMillis: req.NowMillis,
 	}
-	versions.recordVersionTag(req.VersionTag, versions.Latest.Version)
-	versions.recordIncomplete(versions.Latest)
+	versions.recordVersionTag(versions.Latest)
 	c.setProcessDefinitionVersions(req.ProcessID, versions)
 	return versions.Latest, false, nil
 }
 
-// maxIncompleteProcessDefinitionAllocations bounds the unconfirmed
-// allocations kept per process id, so that deployments which keep failing
-// cannot grow the replicated state without limit. Beyond it the oldest
-// allocation is forgotten: a retry of it then gets a new version, which is
-// still consistent across partitions, only no longer the original one.
-const maxIncompleteProcessDefinitionAllocations = 64
-
-func (v *ProcessDefinitionVersions) recordIncomplete(allocation ProcessDefinitionAllocation) {
-	if v.Incomplete == nil {
-		v.Incomplete = map[string]ProcessDefinitionAllocation{}
-	}
-	v.Incomplete[allocation.Checksum] = allocation
-	for len(v.Incomplete) > maxIncompleteProcessDefinitionAllocations {
-		oldest := ""
-		for checksum, incomplete := range v.Incomplete {
-			if oldest == "" || incomplete.Version < v.Incomplete[oldest].Version {
-				oldest = checksum
-			}
+// ResetProcessDefinitions replaces the allocation state of every process with
+// what the partitions hold: the latest version of each process and the
+// versions carrying a version tag. Processes absent from the definitions are
+// forgotten. It is applied after a cluster restore, when the partitions
+// changed underneath the recorded allocations. It is deterministic whatever
+// the order of the definitions. A definition without a process id, key,
+// version or checksum is rejected and nothing changes.
+func (c *Cluster) ResetProcessDefinitions(definitions []ObservedProcessDefinition) error {
+	for _, definition := range definitions {
+		if definition.ProcessID == "" || definition.Key == 0 || definition.Version <= 0 || definition.Checksum == "" {
+			return &ProcessDefinitionAllocationRejectedError{ProcessID: definition.ProcessID, Reason: "a definition of the reset must have a process id, a key, a version and a checksum"}
 		}
-		delete(v.Incomplete, oldest)
 	}
+	byProcess := map[string][]ProcessDefinitionAllocation{}
+	for _, definition := range definitions {
+		byProcess[definition.ProcessID] = append(byProcess[definition.ProcessID], ProcessDefinitionAllocation{
+			Key: definition.Key, Version: definition.Version, Checksum: definition.Checksum, VersionTag: definition.VersionTag,
+		})
+	}
+	c.ProcessDefinitions = nil
+	for processID, observed := range byProcess {
+		var versions ProcessDefinitionVersions
+		versions.catchUp(observed)
+		c.setProcessDefinitionVersions(processID, versions)
+	}
+	return nil
 }
 
-// ConfirmProcessDefinition records that the allocation with the given key
-// reached every partition: a later deployment of the same content is then a
-// new deployment, deduplicated against the latest version only. It returns
-// the confirmed allocation and whether it was still recorded as incomplete;
-// confirming an unknown or already confirmed allocation changes nothing.
-func (c *Cluster) ConfirmProcessDefinition(processID string, key int64) (ProcessDefinitionAllocation, bool) {
-	versions, ok := c.ProcessDefinitions[processID]
-	if !ok {
-		return ProcessDefinitionAllocation{}, false
-	}
-	for checksum, allocation := range versions.Incomplete {
-		if allocation.Key != key {
-			continue
+// catchUp raises the recorded state to the observed definitions: the newest
+// observed version becomes the latest when it is newer than the recorded
+// one, and every observed version tag is reserved for the version the
+// partitions hold it on, replacing a tag recorded for an allocation that may
+// never have been deployed. The observations are visited in a fixed order so
+// that every replica ends up with the same state.
+func (v *ProcessDefinitionVersions) catchUp(observed []ProcessDefinitionAllocation) {
+	ordered := slices.Clone(observed)
+	slices.SortFunc(ordered, func(a, b ProcessDefinitionAllocation) int {
+		if a.Version != b.Version {
+			return int(a.Version - b.Version)
 		}
-		delete(versions.Incomplete, checksum)
-		if len(versions.Incomplete) == 0 {
-			versions.Incomplete = nil
+		return int(a.Key - b.Key)
+	})
+	for _, definition := range ordered {
+		if definition.Version > v.Latest.Version {
+			v.Latest = definition
 		}
-		c.setProcessDefinitionVersions(processID, versions)
-		return allocation, true
+		v.recordVersionTag(definition)
 	}
-	return ProcessDefinitionAllocation{}, false
 }
 
 // nextProcessDefinitionKey builds the key of a new definition version. The
@@ -195,12 +205,12 @@ func (c *Cluster) setProcessDefinitionVersions(processID string, versions Proces
 	c.ProcessDefinitions[processID] = versions
 }
 
-func (v *ProcessDefinitionVersions) recordVersionTag(tag string, version int32) {
-	if tag == "" {
+func (v *ProcessDefinitionVersions) recordVersionTag(allocation ProcessDefinitionAllocation) {
+	if allocation.VersionTag == "" {
 		return
 	}
 	if v.VersionTags == nil {
-		v.VersionTags = map[string]int32{}
+		v.VersionTags = map[string]ProcessDefinitionAllocation{}
 	}
-	v.VersionTags[tag] = version
+	v.VersionTags[allocation.VersionTag] = allocation
 }

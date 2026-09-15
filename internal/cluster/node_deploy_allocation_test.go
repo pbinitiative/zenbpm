@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/go-hclog"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -133,18 +132,19 @@ func TestRetriedDeploymentReusesAllocation(t *testing.T) {
 	assert.Equal(t, mappings, fc.definitionMappings(t, "retried-process"))
 }
 
-// TestRetryAfterAnotherRevisionCompletesTheOriginalAllocation verifies that a
-// deployment which failed on one partition is completed by a retry with its
-// original key and version even though another revision was deployed in the
-// meantime, so every partition ends up with the same version history.
-func TestRetryAfterAnotherRevisionCompletesTheOriginalAllocation(t *testing.T) {
-	for _, tag := range []string{"", "stable"} {
-		t.Run("tag="+tag, func(t *testing.T) {
+// TestRedeployingOlderContentAfterAnotherRevisionMakesItTheLatestVersion
+// verifies that deploying A, then B, then A again ends with A as the latest
+// version on every partition, whether or not the first deployment of A
+// reached every partition: an older revision is deduplicated against the
+// latest version only.
+func TestRedeployingOlderContentAfterAnotherRevisionMakesItTheLatestVersion(t *testing.T) {
+	for _, firstDeploymentFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("firstDeploymentFails=%t", firstDeploymentFails), func(t *testing.T) {
 			fc := newFakeDeployCluster(t, 2)
-			revisionA := deployTestBPMNWithTag("interleaved-process", "revision A", tag)
+			revisionA := deployTestBPMN("interleaved-process", "revision A")
 			revisionB := deployTestBPMN("interleaved-process", "revision B")
 
-			failOnce := true
+			failOnce := firstDeploymentFails
 			fc.beforeDeploy = func(partitionId uint32, req *proto.DeployProcessDefinitionRequest) {
 				if partitionId == 2 && failOnce && string(req.GetData()) == string(revisionA) {
 					failOnce = false
@@ -152,25 +152,71 @@ func TestRetryAfterAnotherRevisionCompletesTheOriginalAllocation(t *testing.T) {
 				}
 			}
 			keyA, _, err := fc.deployer().Deploy(context.Background(), revisionA, "process.bpmn")
-			require.Error(t, err)
+			if firstDeploymentFails {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 			keyB, _, err := fc.deployer().Deploy(context.Background(), revisionB, "process.bpmn")
 			require.NoError(t, err)
 
-			retriedKey, alreadyExisted, err := fc.deployer().Deploy(context.Background(), revisionA, "process.bpmn")
-			require.NoError(t, err, "the retry must neither fail nor be rejected for its own version tag")
-			assert.Equal(t, keyA, retriedKey)
-			assert.True(t, alreadyExisted)
+			keyA2, alreadyExisted, err := fc.deployer().Deploy(context.Background(), revisionA, "process.bpmn")
+			require.NoError(t, err)
+			assert.False(t, alreadyExisted, "revision A is deployed again as a new version")
+			assert.NotEqual(t, keyA, keyA2)
 
 			mappings := fc.definitionMappings(t, "interleaved-process")
-			assert.Equal(t, mappings[1], mappings[2], "partition 2 caught up with revision A")
-			assert.Equal(t, definitionRef{key: keyA, checksum: md5.Sum(revisionA)}, mappings[2][1])
-			assert.Equal(t, definitionRef{key: keyB, checksum: md5.Sum(revisionB)}, mappings[2][2])
-			assert.Equal(t, keyB, fc.clusterState().ProcessDefinitions["interleaved-process"].Latest.Key, "revision B stays the latest version")
-			assert.Eventually(t, func() bool {
-				return len(fc.clusterState().ProcessDefinitions["interleaved-process"].Incomplete) == 0
-			}, 5*time.Second, 10*time.Millisecond, "every allocation is confirmed in the background")
+			for partitionId, mapping := range mappings {
+				assert.Equal(t, definitionRef{key: keyB, checksum: md5.Sum(revisionB)}, mapping[2], "partition %d", partitionId)
+				assert.Equal(t, definitionRef{key: keyA2, checksum: md5.Sum(revisionA)}, mapping[3], "partition %d", partitionId)
+			}
+			assert.Equal(t, keyA2, fc.clusterState().ProcessDefinitions["interleaved-process"].Latest.Key, "revision A is the latest version again")
+			if !firstDeploymentFails {
+				assert.Equal(t, mappings[1], mappings[2])
+			}
 		})
 	}
+}
+
+// TestTaggedRetryAfterAnotherRevisionCompletesTheOriginalAllocation verifies
+// that a tagged deployment which failed on one partition is completed by a
+// retry with its original key and version even though another revision was
+// deployed in the meantime: the tag pins the content to that version, so the
+// retry is neither rejected for reusing its own tag nor allocated again.
+func TestTaggedRetryAfterAnotherRevisionCompletesTheOriginalAllocation(t *testing.T) {
+	fc := newFakeDeployCluster(t, 2)
+	revisionA := deployTestBPMNWithTag("tagged-process", "revision A", "stable")
+	revisionB := deployTestBPMN("tagged-process", "revision B")
+
+	failOnce := true
+	fc.beforeDeploy = func(partitionId uint32, req *proto.DeployProcessDefinitionRequest) {
+		if partitionId == 2 && failOnce && string(req.GetData()) == string(revisionA) {
+			failOnce = false
+			panic(zenerr.TechnicalError(errors.New("partition 2 went away")))
+		}
+	}
+	keyA, _, err := fc.deployer().Deploy(context.Background(), revisionA, "process.bpmn")
+	require.Error(t, err)
+	keyB, _, err := fc.deployer().Deploy(context.Background(), revisionB, "process.bpmn")
+	require.NoError(t, err)
+
+	retriedKey, alreadyExisted, err := fc.deployer().Deploy(context.Background(), revisionA, "process.bpmn")
+	require.NoError(t, err, "the retry must neither fail nor be rejected for its own version tag")
+	assert.Equal(t, keyA, retriedKey)
+	assert.True(t, alreadyExisted)
+
+	mappings := fc.definitionMappings(t, "tagged-process")
+	assert.Equal(t, mappings[1], mappings[2], "partition 2 caught up with revision A")
+	assert.Equal(t, definitionRef{key: keyA, checksum: md5.Sum(revisionA)}, mappings[2][1])
+	assert.Equal(t, definitionRef{key: keyB, checksum: md5.Sum(revisionB)}, mappings[2][2])
+	assert.Equal(t, keyB, fc.clusterState().ProcessDefinitions["tagged-process"].Latest.Key, "revision B stays the latest version")
+
+	// other content under the tag is refused before anything is allocated
+	_, _, err = fc.deployer().Deploy(context.Background(), deployTestBPMNWithTag("tagged-process", "revision C", "stable"), "process.bpmn")
+	var zerr *zenerr.ZenError
+	require.ErrorAs(t, err, &zerr)
+	assert.Equal(t, zenerr.BadRequestCode, zerr.Code)
+	assert.Equal(t, mappings, fc.definitionMappings(t, "tagged-process"))
 }
 
 // TestConcurrentIdenticalDeploymentsShareOneDefinition verifies that two
@@ -222,6 +268,63 @@ func TestDeploymentContinuesVersionsDeployedBeforeAllocation(t *testing.T) {
 	assert.Equal(t, key, mappings[1][2].key, "the new revision became version 2")
 }
 
+// TestDeploymentObservesEveryPartitionDeployedBeforeAllocation covers the
+// upgrade path of a cluster whose partitions disagree on a process: before
+// allocations were replicated, concurrent deployments could map one version
+// to different definitions on different partitions. The allocation continues
+// from the newest version any partition holds, so the next version is free on
+// every partition, and every version tag any partition holds is reserved, so
+// no deployment is allocated a tag a partition would refuse.
+func TestDeploymentObservesEveryPartitionDeployedBeforeAllocation(t *testing.T) {
+	fc := newFakeDeployCluster(t, 2)
+	ctx := context.Background()
+	legacyA := deployTestBPMNWithTag("diverged-process", "revision A", "legacy")
+	legacyB := deployTestBPMN("diverged-process", "revision B")
+	// partition 1 holds A as version 1 and B as version 2, partition 2 holds
+	// B as version 1
+	_, err := fc.engines[1].LoadFromBytes(ctx, legacyA, 71)
+	require.NoError(t, err)
+	_, err = fc.engines[1].LoadFromBytes(ctx, legacyB, 72)
+	require.NoError(t, err)
+	_, err = fc.engines[2].LoadFromBytes(ctx, legacyB, 73)
+	require.NoError(t, err)
+
+	// a tag only partition 1 holds is taken
+	_, _, err = fc.deployer().Deploy(ctx, deployTestBPMNWithTag("diverged-process", "revision C", "legacy"), "process.bpmn")
+	var zerr *zenerr.ZenError
+	require.ErrorAs(t, err, &zerr)
+	assert.Equal(t, zenerr.BadRequestCode, zerr.Code)
+
+	key, alreadyExisted, err := fc.deployer().Deploy(ctx, deployTestBPMN("diverged-process", "revision C"), "process.bpmn")
+	require.NoError(t, err)
+	assert.False(t, alreadyExisted)
+	mappings := fc.definitionMappings(t, "diverged-process")
+	assert.Equal(t, definitionRef{key: key, checksum: md5.Sum(deployTestBPMN("diverged-process", "revision C"))}, mappings[1][3], "the new revision continues after the newest version any partition holds")
+	assert.Equal(t, mappings[1][3], mappings[2][3])
+	assert.Equal(t, int32(3), fc.clusterState().ProcessDefinitions["diverged-process"].Latest.Version)
+}
+
+func TestMergeObservedProcessDefinitionsUnitesPartitionsByKey(t *testing.T) {
+	merged := mergeObservedProcessDefinitions([][]observedProcessDefinition{
+		{{key: 2, version: 2, checksum: []byte("b"), data: []byte("B")}},
+		{{key: 2, version: 2, checksum: []byte("b")}, {key: 1, version: 1, checksum: []byte("a"), versionTag: "t", data: []byte("A")}},
+		nil,
+	})
+	assert.ElementsMatch(t, []observedProcessDefinition{
+		{key: 2, version: 2, checksum: []byte("b"), data: []byte("B")},
+		{key: 1, version: 1, checksum: []byte("a"), versionTag: "t", data: []byte("A")},
+	}, merged)
+	latest := latestObservedProcessDefinition(merged)
+	require.NotNil(t, latest)
+	assert.Equal(t, int64(2), latest.key)
+	assert.Nil(t, latestObservedProcessDefinition(nil))
+	// partitions holding different definitions at the same version are told
+	// apart by key, like the allocation does
+	sameVersion := latestObservedProcessDefinition([]observedProcessDefinition{{key: 3, version: 1}, {key: 9, version: 1}})
+	require.NotNil(t, sameVersion)
+	assert.Equal(t, int64(9), sameVersion.key)
+}
+
 func TestDeployRejectsResourcesWithoutProcessId(t *testing.T) {
 	fc := newFakeDeployCluster(t, 1)
 	_, _, err := fc.deployer().Deploy(context.Background(), []byte("<definitions/>"), "process.bpmn")
@@ -266,54 +369,56 @@ func newFakeDeployCluster(t *testing.T, partitions int) *fakeDeployCluster {
 
 func (fc *fakeDeployCluster) deployer() *processDefinitionDeployer {
 	return &processDefinitionDeployer{
-		observeLatest: fc.observeLatest,
-		allocate:      fc.allocate,
-		partitions:    fc.partitions,
-		deploy:        fc.deploy,
-		confirm:       fc.confirm,
-		logger:        hclog.NewNullLogger(),
+		observe:    fc.observe,
+		allocate:   fc.allocate,
+		partitions: fc.partitions,
+		deploy:     fc.deploy,
+		logger:     hclog.NewNullLogger(),
 	}
 }
 
-// clusterState reads the replicated state under the lock the detached
-// confirmation writes it with.
+// clusterState reads the replicated state under the lock concurrent allocations write it with.
 func (fc *fakeDeployCluster) clusterState() state.Cluster {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
 	return *fc.cluster.DeepCopy()
 }
 
-func (fc *fakeDeployCluster) confirm(_ context.Context, processId string, key int64) error {
-	fc.mu.Lock()
-	defer fc.mu.Unlock()
-	next := *fc.cluster.DeepCopy()
-	next.ConfirmProcessDefinition(processId, key)
-	fc.cluster = next
-	return nil
-}
-
-// observeLatest reads partition 1, as a node reads one partition.
-func (fc *fakeDeployCluster) observeLatest(ctx context.Context, processId string) (*observedProcessDefinition, error) {
-	definitions, err := fc.stores[1].FindProcessDefinitionsById(ctx, processId)
-	if err != nil {
-		return nil, err
-	}
-	var latest *runtime.ProcessDefinition
-	for i := range definitions {
-		if latest == nil || latest.Version < definitions[i].Version {
-			latest = &definitions[i]
+// observe reads every partition, as a node reads every partition leader:
+// the latest version with its bytes and the tagged versions, merged by key.
+func (fc *fakeDeployCluster) observe(ctx context.Context, processId string) ([]observedProcessDefinition, error) {
+	var perPartition [][]observedProcessDefinition
+	for _, store := range fc.stores {
+		definitions, err := store.FindProcessDefinitionsById(ctx, processId)
+		if err != nil {
+			return nil, err
 		}
+		var latest *runtime.ProcessDefinition
+		for i := range definitions {
+			if latest == nil || latest.Version < definitions[i].Version {
+				latest = &definitions[i]
+			}
+		}
+		var observed []observedProcessDefinition
+		for i := range definitions {
+			definition := &definitions[i]
+			if definition != latest && definition.VersionTag == "" {
+				continue
+			}
+			entry := observedProcessDefinition{
+				key:        definition.Key,
+				version:    definition.Version,
+				checksum:   definition.BpmnChecksum[:],
+				versionTag: definition.VersionTag,
+			}
+			if definition == latest {
+				entry.data = []byte(definition.BpmnData)
+			}
+			observed = append(observed, entry)
+		}
+		perPartition = append(perPartition, observed)
 	}
-	if latest == nil {
-		return nil, nil
-	}
-	return &observedProcessDefinition{
-		key:        latest.Key,
-		version:    latest.Version,
-		checksum:   latest.BpmnChecksum[:],
-		versionTag: latest.VersionTag,
-		data:       []byte(latest.BpmnData),
-	}, nil
+	return mergeObservedProcessDefinitions(perPartition), nil
 }
 
 // allocate applies the command the way the FSM does: on a copy of the state
@@ -331,10 +436,10 @@ func (fc *fakeDeployCluster) allocate(_ context.Context, req *protoc.ProcessDefi
 		Sequence:   uint64(fc.allocations), // #nosec G115 -- a test counter
 		NowMillis:  req.GetTimestampMillis(),
 	}
-	if observed := req.GetObservedLatest(); observed != nil {
-		request.ObservedLatest = &state.ProcessDefinitionAllocation{
+	for _, observed := range req.GetObserved() {
+		request.Observed = append(request.Observed, state.ProcessDefinitionAllocation{
 			Key: observed.GetKey(), Version: observed.GetVersion(), Checksum: observed.GetChecksum(), VersionTag: observed.GetVersionTag(),
-		}
+		})
 	}
 	allocation, existing, err := next.AllocateProcessDefinition(request)
 	if err != nil {

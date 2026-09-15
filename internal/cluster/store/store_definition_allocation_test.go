@@ -76,35 +76,17 @@ func TestWriteProcessDefinitionAllocationSerializesConcurrentDeployments(t *test
 	assert.True(t, existing)
 	assert.Equal(t, latest, again)
 
-	// an allocation whose deployment was never confirmed is returned to a
-	// retry even after another revision was allocated; a confirmed one is not
-	unconfirmed, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("unconfirmed"),
-	})
-	require.NoError(t, err)
+	// a reset (a cluster restore) rebuilds the registry from the definitions
+	// the partitions hold
 	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("after-unconfirmed"),
+		Action: proto.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
+		Definitions: []*proto.ObservedProcessDefinition{
+			{ProcessId: new("order"), Key: new(int64(77)), Version: new(int32(3)), Checksum: new("restored"), VersionTag: new("stable")},
+		},
 	})
 	require.NoError(t, err)
-	retried, existing, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("unconfirmed"),
-	})
-	require.NoError(t, err)
-	assert.True(t, existing)
-	assert.Equal(t, unconfirmed, retried)
-	confirmed, wasIncomplete, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		Action: proto.ProcessDefinitionAllocation_ACTION_CONFIRM.Enum(), ProcessId: new("order"), Key: new(unconfirmed.Key),
-	})
-	require.NoError(t, err)
-	assert.True(t, wasIncomplete)
-	assert.Equal(t, unconfirmed, confirmed)
-	redeployed, existing, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("unconfirmed"),
-	})
-	require.NoError(t, err)
-	assert.False(t, existing)
-	assert.Greater(t, redeployed.Version, unconfirmed.Version)
 	latest = s.ClusterState().ProcessDefinitions["order"].Latest
+	assert.Equal(t, state.ProcessDefinitionAllocation{Key: 77, Version: 3, Checksum: "restored", VersionTag: "stable"}, latest)
 
 	// the allocation is part of the replicated state: a snapshot carries it
 	fsm := NewFSM(s)

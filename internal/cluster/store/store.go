@@ -234,10 +234,10 @@ func (s *Store) WriteRestoreChange(ctx context.Context, change *proto.RestoreOpe
 // a BPMN deployment through the raft log and returns the allocation every
 // partition must deploy; existing reports that an allocation with this
 // content already existed. A refused request (a version tag that is already
-// taken, an invalid request) is reported as a
-// *state.ProcessDefinitionAllocationRejectedError. A confirmation command
-// (ACTION_CONFIRM) returns the confirmed allocation, existing reporting that
-// it was still recorded as incomplete.
+// taken by other content, an invalid request) is reported as a
+// *state.ProcessDefinitionAllocationRejectedError. A reset command
+// (ACTION_RESET) rebuilds the allocation registry from the definitions it
+// carries and returns no allocation.
 //
 // Only the cluster raft leader can commit the command; on a follower the error
 // wraps zenerr.ErrNotLeader. When ctx ends before the command is confirmed the

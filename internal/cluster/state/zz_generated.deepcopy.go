@@ -121,13 +121,6 @@ func (in *ProcessDefinitionVersions) DeepCopyInto(out *ProcessDefinitionVersions
 	out.Latest = in.Latest
 	if in.VersionTags != nil {
 		in, out := &in.VersionTags, &out.VersionTags
-		*out = make(map[string]int32, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
-	}
-	if in.Incomplete != nil {
-		in, out := &in.Incomplete, &out.Incomplete
 		*out = make(map[string]ProcessDefinitionAllocation, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val

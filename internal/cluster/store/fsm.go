@@ -175,35 +175,33 @@ func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interf
 // ProcessDefinitionAllocationResult is what the FSM returns (through the raft
 // ApplyFuture) for a process definition allocation command. For an
 // allocation it carries the allocation every partition must deploy and
-// whether it already existed, or the rejection that left the state
-// untouched; for a confirmation the confirmed allocation and whether it was
-// still recorded as incomplete.
+// whether it already existed, or the rejection that left the state untouched; a reset carries no allocation.
 type ProcessDefinitionAllocationResult struct {
 	Allocation state.ProcessDefinitionAllocation
 	Existing   bool
 	Rejected   *state.ProcessDefinitionAllocationRejectedError
 }
 
-// applyProcessDefinitionAllocation allocates or confirms through the cluster
+// applyProcessDefinitionAllocation allocates or resets through the cluster
 // state; the log index is the sequence a new version's key is derived from,
 // so every replica builds the same key.
 func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) interface{} {
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
 	newState := *f.store.state.DeepCopy()
+	var err error
+	result := ProcessDefinitionAllocationResult{}
 	switch cmd.GetAction() {
-	case proto.ProcessDefinitionAllocation_ACTION_CONFIRM:
-		allocation, confirmed := newState.ConfirmProcessDefinition(cmd.GetProcessId(), cmd.GetKey())
-		f.store.state = newState
-		return ProcessDefinitionAllocationResult{Allocation: allocation, Existing: confirmed}
 	case proto.ProcessDefinitionAllocation_ACTION_UNKNOWN, proto.ProcessDefinitionAllocation_ACTION_ALLOCATE:
+		result.Allocation, result.Existing, err = newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
+	case proto.ProcessDefinitionAllocation_ACTION_RESET:
+		err = newState.ResetProcessDefinitions(observedProcessDefinitionsFromProto(cmd.GetDefinitions()))
 	default:
 		// a command written by a newer binary: refuse it rather than guess
-		return ProcessDefinitionAllocationResult{Rejected: &state.ProcessDefinitionAllocationRejectedError{
+		err = &state.ProcessDefinitionAllocationRejectedError{
 			ProcessID: cmd.GetProcessId(), Reason: fmt.Sprintf("unsupported allocation action %d", cmd.GetAction()),
-		}}
+		}
 	}
-	allocation, existing, err := newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
 	if err != nil {
 		var rejected *state.ProcessDefinitionAllocationRejectedError
 		if !errors.As(err, &rejected) {
@@ -212,7 +210,7 @@ func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAlloc
 		return ProcessDefinitionAllocationResult{Rejected: rejected}
 	}
 	f.store.state = newState
-	return ProcessDefinitionAllocationResult{Allocation: allocation, Existing: existing}
+	return result
 }
 
 func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) state.ProcessDefinitionAllocationRequest {
@@ -223,15 +221,29 @@ func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation
 		Sequence:   logIndex,
 		NowMillis:  cmd.GetTimestampMillis(),
 	}
-	if observed := cmd.GetObservedLatest(); observed != nil {
-		req.ObservedLatest = &state.ProcessDefinitionAllocation{
+	for _, observed := range cmd.GetObserved() {
+		req.Observed = append(req.Observed, state.ProcessDefinitionAllocation{
 			Key:        observed.GetKey(),
 			Version:    observed.GetVersion(),
 			Checksum:   observed.GetChecksum(),
 			VersionTag: observed.GetVersionTag(),
-		}
+		})
 	}
 	return req
+}
+
+func observedProcessDefinitionsFromProto(definitions []*proto.ObservedProcessDefinition) []state.ObservedProcessDefinition {
+	observed := make([]state.ObservedProcessDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		observed = append(observed, state.ObservedProcessDefinition{
+			ProcessID:  definition.GetProcessId(),
+			Key:        definition.GetKey(),
+			Version:    definition.GetVersion(),
+			Checksum:   definition.GetChecksum(),
+			VersionTag: definition.GetVersionTag(),
+		})
+	}
+	return observed
 }
 
 func restoreChangeFromProto(change *proto.RestoreOperationChange) state.RestoreChange {

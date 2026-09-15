@@ -46,4 +46,7 @@ type RestoreReport struct {
 	PointersRebuilt   int                      `json:"pointersRebuilt"`
 	PointerConflicts  []PointerConflict        `json:"pointerConflicts"`
 	DefinitionsSynced []DefinitionSyncEntry    `json:"definitionsSynced"`
+	// ProcessDefinitionsRegistered is how many process definitions the
+	// cluster-wide allocation registry was rebuilt from after the restore.
+	ProcessDefinitionsRegistered int `json:"processDefinitionsRegistered"`
 }

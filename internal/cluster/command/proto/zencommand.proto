@@ -138,17 +138,22 @@ message RestoreOperationChange {
 // one BPMN deployment: the numeric version and the definition key that every
 // partition must store for the given process. The FSM applies it
 // deterministically (see state.Cluster.AllocateProcessDefinition): a request
-// whose checksum matches the latest allocation of the process, or an
-// allocation whose deployment was never confirmed, returns that allocation
-// unchanged, so retries and concurrent identical deployments converge on one
-// definition; anything else becomes the next version under a key the FSM
-// derives from the command. ACTION_CONFIRM marks an allocation as deployed to
-// every partition once the fan-out succeeded.
+// whose checksum matches the latest allocation of the process returns that
+// allocation unchanged, so retries and concurrent identical deployments
+// converge on one definition; anything else becomes the next version under a
+// key the FSM derives from the command, unless its version tag is already
+// held by a version of different content. ACTION_RESET replaces the whole
+// allocation registry with the definitions the partitions hold (a cluster
+// restore).
 message ProcessDefinitionAllocation {
   enum Action {
     ACTION_UNKNOWN = 0;
     ACTION_ALLOCATE = 1;
-    ACTION_CONFIRM = 2;
+    ACTION_RESET = 3;
+    // ACTION_CONFIRM = 2 marked an allocation as deployed to every partition
+    // in an earlier revision of the command; the registry no longer tracks
+    // unconfirmed allocations.
+    reserved 2;
   }
   // action defaults to ACTION_ALLOCATE.
   Action action = 1;
@@ -156,22 +161,34 @@ message ProcessDefinitionAllocation {
   // checksum is the hex MD5 of the raw BPMN bytes (ACTION_ALLOCATE).
   string checksum = 3;
   string version_tag = 4;
-  // observed_latest is the latest definition of the process the requesting
-  // node read from a partition. It lets the FSM catch up with definitions
-  // deployed before allocations were replicated; the FSM never moves backwards.
-  ObservedProcessDefinition observed_latest = 5;
   // timestamp_millis is the writer's clock; the FSM never reads the wall
   // clock so that every replica applies the command identically. The key of
   // a new version is derived from it and the raft log index of the command.
   int64 timestamp_millis = 6;
-  // key identifies the allocation ACTION_CONFIRM refers to.
-  int64 key = 7;
+  // observed (ACTION_ALLOCATE) is what the partition leaders hold of the
+  // process before the deployment: its latest version and every version
+  // carrying a version tag, read from the partition leaders so that the
+  // observation is not behind the partitions. The FSM catches up with it:
+  // definitions deployed before allocations were replicated raise the latest
+  // version, and their tags become reserved. The FSM never moves backwards.
+  repeated ObservedProcessDefinition observed = 8;
+  // definitions (ACTION_RESET) are the process definitions the partitions
+  // hold, each with its process_id; the registry is rebuilt from them and
+  // every process absent from the list is forgotten.
+  repeated ObservedProcessDefinition definitions = 9;
+  // observed_latest (5) and key (7) belonged to the earlier revision of the
+  // command.
+  reserved 5, 7;
 }
 
 // ObservedProcessDefinition is a definition as it exists on a partition.
 message ObservedProcessDefinition {
   int64 key = 1;
   int32 version = 2;
+  // checksum is the hex MD5 of the raw BPMN bytes.
   string checksum = 3;
   string version_tag = 4;
+  // process_id is set where the definition is not implied by the command
+  // (ACTION_RESET).
+  string process_id = 5;
 }

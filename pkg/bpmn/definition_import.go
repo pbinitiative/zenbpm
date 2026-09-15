@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 // ImportProcessDefinition stores a process definition under the key and
@@ -12,7 +13,9 @@ import (
 // It is the cluster restore reconciliation path and differs from
 // LoadFromBytes on purpose: the version is copied instead of assigned, so a
 // historical definition never becomes the latest one, and no deployment
-// event is exported. A definition already stored under key is left alone.
+// event is exported. The definition already stored under key is left alone;
+// a different definition (another version or content) stored under key is
+// refused with storage.ErrUniqueConstraint.
 //
 // A different definition of the same process that already holds the version
 // (or the version tag) means the version histories diverged; the import is
@@ -41,9 +44,15 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 	}
 	for i := range existing {
 		if existing[i].Key == key {
-			// a previous import may have stored the definition and failed before
-			// its subscriptions were registered; registration is idempotent and
-			// leaves a definition that is not the latest version alone
+			// the partition already holds the key: the same definition (a
+			// previous import may have stored it and failed before its
+			// subscriptions were registered; registration is idempotent and
+			// leaves a definition that is not the latest version alone), or
+			// another one, which must not be mistaken for it
+			if existing[i].Version != version || existing[i].BpmnChecksum != definition.BpmnChecksum {
+				return nil, fmt.Errorf("process definition %d cannot be imported as version %d of %q: the partition already holds version %d of different content under that key: %w",
+					key, version, definition.BpmnProcessId, existing[i].Version, storage.ErrUniqueConstraint)
+			}
 			if registerSubscriptions {
 				if err := engine.registerProcessDefinitionSubscriptionsLocked(ctx, key); err != nil {
 					return nil, err

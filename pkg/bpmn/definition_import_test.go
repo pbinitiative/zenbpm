@@ -67,6 +67,19 @@ func TestImportProcessDefinitionRefusesDivergedVersionHistories(t *testing.T) {
 
 	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT2H"), 102, 0, false)
 	require.Error(t, err, "a version has to be positive")
+
+	// the key is taken by another definition: other content, or the same
+	// content at another version, must not be reported as imported
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT2H"), 100, 1, false)
+	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "key 100 holds different content")
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT1H"), 100, 2, false)
+	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "key 100 holds version 1")
+	stored, err := store.FindProcessDefinitionByKey(ctx, 100)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), stored.Version, "the stored definition is untouched")
+	all, err = store.FindProcessDefinitionsById(ctx, "diverged-process")
+	require.NoError(t, err)
+	assert.Len(t, all, 1)
 }
 
 func TestImportProcessDefinitionRetryRegistersMissingSubscriptions(t *testing.T) {

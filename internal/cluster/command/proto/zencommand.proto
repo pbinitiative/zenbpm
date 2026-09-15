@@ -150,10 +150,11 @@ message ProcessDefinitionAllocation {
     ACTION_UNKNOWN = 0;
     ACTION_ALLOCATE = 1;
     ACTION_RESET = 3;
-    // ACTION_CONFIRM = 2 marked an allocation as deployed to every partition
-    // in an earlier revision of the command; the registry no longer tracks
-    // unconfirmed allocations.
-    reserved 2;
+    // ACTION_CONFIRM marked an allocation as deployed to every partition in
+    // an earlier revision of the command. The registry no longer tracks
+    // unconfirmed allocations, so an entry replayed from a raft log written
+    // by that revision changes nothing.
+    ACTION_CONFIRM = 2 [deprecated = true];
   }
   // action defaults to ACTION_ALLOCATE.
   Action action = 1;
@@ -176,9 +177,13 @@ message ProcessDefinitionAllocation {
   // hold, each with its process_id; the registry is rebuilt from them and
   // every process absent from the list is forgotten.
   repeated ObservedProcessDefinition definitions = 9;
-  // observed_latest (5) and key (7) belonged to the earlier revision of the
-  // command.
-  reserved 5, 7;
+  // observed_latest is the latest definition of the process the requesting
+  // node read from one partition, as an earlier revision of the command sent
+  // it. It is read only to replay raft log entries written by that revision;
+  // the FSM treats it as one more observed definition.
+  ObservedProcessDefinition observed_latest = 5 [deprecated = true];
+  // key (7) identified the allocation an ACTION_CONFIRM entry referred to.
+  reserved 7;
 }
 
 // ObservedProcessDefinition is a definition as it exists on a partition.

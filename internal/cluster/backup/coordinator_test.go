@@ -760,7 +760,7 @@ func (c *fakeClient) ImportDefinition(ctx context.Context, req *proto.ImportDefi
 
 // GetProcessDefinitionVersions lists the process definitions the partition
 // holds, as the leader of a partition reports them.
-func (c *fakeClient) GetProcessDefinitionVersions(ctx context.Context, req *proto.GetProcessDefinitionVersionsRequest, _ ...grpc.CallOption) (*proto.GetProcessDefinitionVersionsResponse, error) {
+func (c *fakeClient) GetProcessDefinitionVersions(_ context.Context, req *proto.GetProcessDefinitionVersionsRequest, _ ...grpc.CallOption) (*proto.GetProcessDefinitionVersionsResponse, error) {
 	c.fc.mu.Lock()
 	defer c.fc.mu.Unlock()
 	resp := &proto.GetProcessDefinitionVersionsResponse{}

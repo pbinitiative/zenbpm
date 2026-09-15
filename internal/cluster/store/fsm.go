@@ -196,6 +196,10 @@ func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAlloc
 		result.Allocation, result.Existing, err = newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
 	case proto.ProcessDefinitionAllocation_ACTION_RESET:
 		err = newState.ResetProcessDefinitions(observedProcessDefinitionsFromProto(cmd.GetDefinitions()))
+	//lint:ignore SA1019 the deprecated action is handled on purpose: it only exists to replay raft logs written by earlier binaries
+	case proto.ProcessDefinitionAllocation_ACTION_CONFIRM:
+		// the registry no longer tracks unconfirmed allocations: nothing to do
+		return result
 	default:
 		// a command written by a newer binary: refuse it rather than guess
 		err = &state.ProcessDefinitionAllocationRejectedError{
@@ -221,7 +225,13 @@ func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation
 		Sequence:   logIndex,
 		NowMillis:  cmd.GetTimestampMillis(),
 	}
-	for _, observed := range cmd.GetObserved() {
+	observed := cmd.GetObserved()
+	//lint:ignore SA1019 the deprecated field is read on purpose: it only exists to replay raft logs written by earlier binaries
+	if legacy := cmd.GetObservedLatest(); legacy != nil {
+		// an earlier revision of the command carried one observed definition
+		observed = append(observed, legacy)
+	}
+	for _, observed := range observed {
 		req.Observed = append(req.Observed, state.ProcessDefinitionAllocation{
 			Key:        observed.GetKey(),
 			Version:    observed.GetVersion(),

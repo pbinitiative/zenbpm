@@ -105,6 +105,34 @@ func TestWriteProcessDefinitionAllocationSerializesConcurrentDeployments(t *test
 	assert.Equal(t, latest, s.ClusterState().ProcessDefinitions["order"].Latest)
 }
 
+// TestWriteProcessDefinitionAllocationReplaysCommandsOfEarlierRevisions
+// verifies that raft log entries written by an earlier revision of the
+// command are applied the way that revision applied them: the single
+// observed definition they carry is caught up with, and a confirmation
+// changes nothing.
+func TestWriteProcessDefinitionAllocationReplaysCommandsOfEarlierRevisions(t *testing.T) {
+	s := newBootstrappedTestStore(t)
+	ctx := context.Background()
+
+	legacy := &proto.ObservedProcessDefinition{Key: new(int64(7)), Version: new(int32(3)), Checksum: new("ccc"), VersionTag: new("legacy")}
+	allocation, existing, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+		ProcessId: new("order"), Checksum: new("ddd"), ObservedLatest: legacy, TimestampMillis: new(time.Now().UnixMilli()),
+	})
+	require.NoError(t, err)
+	assert.False(t, existing)
+	assert.Equal(t, int32(4), allocation.Version, "the allocation continues after the observed definition")
+	assert.Equal(t, int32(3), s.ClusterState().ProcessDefinitions["order"].VersionTags["legacy"].Version)
+
+	before := s.ClusterState()
+	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+		//lint:ignore SA1019 the deprecated action is written on purpose: the test replays a command of an earlier revision
+		Action:    proto.ProcessDefinitionAllocation_ACTION_CONFIRM.Enum(),
+		ProcessId: new("order"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, before.ProcessDefinitions, s.ClusterState().ProcessDefinitions, "a confirmation changes nothing")
+}
+
 func TestWriteProcessDefinitionAllocationReportsRejectionWithoutChangingState(t *testing.T) {
 	s := newBootstrappedTestStore(t)
 	ctx := context.Background()

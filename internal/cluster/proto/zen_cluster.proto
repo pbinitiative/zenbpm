@@ -67,6 +67,14 @@ service ZenService {
   rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
   rpc DeployDmnResourceDefinition(DeployDmnResourceDefinitionRequest) returns (DeployDmnResourceDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
+  // AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
+  // deployment through the main raft log (recipient is the cluster leader).
+  rpc AllocateProcessDefinition(AllocateProcessDefinitionRequest) returns (AllocateProcessDefinitionResponse);
+  // GetProcessDefinitionVersions lists the versions of a BPMN process (of
+  // every process when no process id is given) a partition holds, read on the
+  // partition leader so that the answer includes every deployment the
+  // partition acknowledged (recipient is the partition leader).
+  rpc GetProcessDefinitionVersions(GetProcessDefinitionVersionsRequest) returns (GetProcessDefinitionVersionsResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   // PublishMessage requests a message publish on the engine running on a leader node of partition
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
@@ -340,10 +348,55 @@ message DeployProcessDefinitionRequest {
   bytes data = 2;
   string resource_name = 3;
   bool registerProcessDefinitionSubscriptions = 4;
+  // version is the cluster-wide version allocated for this deployment (see
+  // AllocateProcessDefinition). The partition stores the definition under
+  // exactly this (key, version) instead of assigning its own; a partition that
+  // already holds the key answers idempotently. Zero means the sender predates
+  // cluster-wide allocation and the partition falls back to local versioning.
+  int32 version = 5;
 }
 
 message DeployProcessDefinitionResponse {
   ErrorResult error = 1;
+}
+
+message AllocateProcessDefinitionRequest {
+  zencommand.ProcessDefinitionAllocation allocation = 1;
+}
+
+message AllocateProcessDefinitionResponse {
+  ErrorResult error = 1;
+  int64 key = 2;
+  int32 version = 3;
+  // already_existed is true when the latest allocation of the process already
+  // had this content, i.e. nothing new was allocated.
+  bool already_existed = 4;
+}
+
+message GetProcessDefinitionVersionsRequest {
+  uint32 partition_id = 1;
+  // process_id restricts the answer to one process; empty lists every process.
+  string process_id = 2;
+  // include_latest_data asks for the BPMN bytes of the latest version of each
+  // process.
+  bool include_latest_data = 3;
+}
+
+// ProcessDefinitionVersion identifies one stored version of a BPMN process.
+message ProcessDefinitionVersion {
+  string process_id = 1;
+  int64 key = 2;
+  int32 version = 3;
+  // checksum is the MD5 of the raw BPMN bytes.
+  bytes checksum = 4;
+  string version_tag = 5;
+  // data carries the BPMN bytes of the latest version when they were asked for.
+  bytes data = 6;
+}
+
+message GetProcessDefinitionVersionsResponse {
+  ErrorResult error = 1;
+  repeated ProcessDefinitionVersion versions = 2;
 }
 
 message CompleteJobRequest {

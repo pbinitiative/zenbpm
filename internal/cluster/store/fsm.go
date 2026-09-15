@@ -58,6 +58,8 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		res = f.applyPartitionChange(partitionChangeCommand)
 	case proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE:
 		res = f.applyMaintenanceChange(command.GetClusterMaintenanceChange())
+	case proto.Command_TYPE_PROCESS_DEFINITION_ALLOCATION:
+		res = f.applyProcessDefinitionAllocation(command.GetProcessDefinitionAllocation(), l.Index)
 	default:
 		panic(fmt.Sprintf("unrecognized command type: %s", command.Type))
 	}
@@ -168,6 +170,90 @@ func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interf
 	}
 	f.store.state = newState
 	return RestoreApplyResult{Operation: newState.Restore}
+}
+
+// ProcessDefinitionAllocationResult is what the FSM returns (through the raft
+// ApplyFuture) for a process definition allocation command. For an
+// allocation it carries the allocation every partition must deploy and
+// whether it already existed, or the rejection that left the state untouched; a reset carries no allocation.
+type ProcessDefinitionAllocationResult struct {
+	Allocation state.ProcessDefinitionAllocation
+	Existing   bool
+	Rejected   *state.ProcessDefinitionAllocationRejectedError
+}
+
+// applyProcessDefinitionAllocation allocates or resets through the cluster
+// state; the log index is the sequence a new version's key is derived from,
+// so every replica builds the same key.
+func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) interface{} {
+	f.store.stateMu.Lock()
+	defer f.store.stateMu.Unlock()
+	newState := *f.store.state.DeepCopy()
+	var err error
+	result := ProcessDefinitionAllocationResult{}
+	switch cmd.GetAction() {
+	case proto.ProcessDefinitionAllocation_ACTION_UNKNOWN, proto.ProcessDefinitionAllocation_ACTION_ALLOCATE:
+		result.Allocation, result.Existing, err = newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
+	case proto.ProcessDefinitionAllocation_ACTION_RESET:
+		err = newState.ResetProcessDefinitions(observedProcessDefinitionsFromProto(cmd.GetDefinitions()))
+	//lint:ignore SA1019 the deprecated action is handled on purpose: it only exists to replay raft logs written by earlier binaries
+	case proto.ProcessDefinitionAllocation_ACTION_CONFIRM:
+		// the registry no longer tracks unconfirmed allocations: nothing to do
+		return result
+	default:
+		// a command written by a newer binary: refuse it rather than guess
+		err = &state.ProcessDefinitionAllocationRejectedError{
+			ProcessID: cmd.GetProcessId(), Reason: fmt.Sprintf("unsupported allocation action %d", cmd.GetAction()),
+		}
+	}
+	if err != nil {
+		var rejected *state.ProcessDefinitionAllocationRejectedError
+		if !errors.As(err, &rejected) {
+			rejected = &state.ProcessDefinitionAllocationRejectedError{ProcessID: cmd.GetProcessId(), Reason: err.Error()}
+		}
+		return ProcessDefinitionAllocationResult{Rejected: rejected}
+	}
+	f.store.state = newState
+	return result
+}
+
+func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) state.ProcessDefinitionAllocationRequest {
+	req := state.ProcessDefinitionAllocationRequest{
+		ProcessID:  cmd.GetProcessId(),
+		Checksum:   cmd.GetChecksum(),
+		VersionTag: cmd.GetVersionTag(),
+		Sequence:   logIndex,
+		NowMillis:  cmd.GetTimestampMillis(),
+	}
+	observed := cmd.GetObserved()
+	//lint:ignore SA1019 the deprecated field is read on purpose: it only exists to replay raft logs written by earlier binaries
+	if legacy := cmd.GetObservedLatest(); legacy != nil {
+		// an earlier revision of the command carried one observed definition
+		observed = append(observed, legacy)
+	}
+	for _, observed := range observed {
+		req.Observed = append(req.Observed, state.ProcessDefinitionAllocation{
+			Key:        observed.GetKey(),
+			Version:    observed.GetVersion(),
+			Checksum:   observed.GetChecksum(),
+			VersionTag: observed.GetVersionTag(),
+		})
+	}
+	return req
+}
+
+func observedProcessDefinitionsFromProto(definitions []*proto.ObservedProcessDefinition) []state.ObservedProcessDefinition {
+	observed := make([]state.ObservedProcessDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		observed = append(observed, state.ObservedProcessDefinition{
+			ProcessID:  definition.GetProcessId(),
+			Key:        definition.GetKey(),
+			Version:    definition.GetVersion(),
+			Checksum:   definition.GetChecksum(),
+			VersionTag: definition.GetVersionTag(),
+		})
+	}
+	return observed
 }
 
 func restoreChangeFromProto(change *proto.RestoreOperationChange) state.RestoreChange {

@@ -67,6 +67,41 @@ func TestImportProcessDefinitionRefusesDivergedVersionHistories(t *testing.T) {
 
 	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT2H"), 102, 0, false)
 	require.Error(t, err, "a version has to be positive")
+
+	// the key is taken by another definition: other content, or the same
+	// content at another version, must not be reported as imported
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT2H"), 100, 1, false)
+	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "key 100 holds different content")
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("diverged-process", "PT1H"), 100, 2, false)
+	require.ErrorIs(t, err, storage.ErrUniqueConstraint, "key 100 holds version 1")
+	stored, err := store.FindProcessDefinitionByKey(ctx, 100)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), stored.Version, "the stored definition is untouched")
+	all, err = store.FindProcessDefinitionsById(ctx, "diverged-process")
+	require.NoError(t, err)
+	assert.Len(t, all, 1)
+}
+
+func TestImportProcessDefinitionRetryRegistersMissingSubscriptions(t *testing.T) {
+	// the definition landed but its subscriptions did not (the first import
+	// failed after the save): the retried import completes the registration
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	defer engine.Stop()
+	ctx := t.Context()
+
+	_, err := engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, false)
+	require.NoError(t, err)
+	require.Empty(t, timersOf(t, store, 100))
+
+	again, err := engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, true)
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), again.Key)
+	assert.Len(t, timersOf(t, store, 100), 1)
+
+	_, err = engine.ImportProcessDefinition(ctx, timerStartXML("retried-import", "PT1H"), 100, 1, true)
+	require.NoError(t, err)
+	assert.Len(t, timersOf(t, store, 100), 1, "a further retry registers nothing twice")
 }
 
 func TestImportProcessDefinitionDoesNotRegisterSubscriptionsWhenNotAsked(t *testing.T) {

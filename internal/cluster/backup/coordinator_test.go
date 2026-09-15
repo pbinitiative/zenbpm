@@ -3,6 +3,8 @@ package backup
 import (
 	"bytes"
 	"context"
+	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint, not a security primitive
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -259,6 +261,60 @@ func TestRunClusterRestoreReconcilesDefinitionSkew(t *testing.T) {
 	}, report.DefinitionsSynced)
 }
 
+// TestRunClusterRestoreRebuildsProcessDefinitionRegistry verifies that the
+// cluster-wide allocation registry, which lives in the main raft state the
+// restore does not replace, is rebuilt from the process definitions the
+// partitions hold once they are loaded and synced: allocations recorded
+// before the restore are forgotten, and every version and version tag the
+// partitions hold is recorded.
+func TestRunClusterRestoreRebuildsProcessDefinitionRegistry(t *testing.T) {
+	fc := newFakeCluster(t, 2)
+	revisionA := []byte(`<?xml version="1.0"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="restored-process" name="A" isExecutable="true"/></bpmn:definitions>`)
+	revisionB := []byte(`<?xml version="1.0"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="restored-process" name="B" isExecutable="true"/></bpmn:definitions>`)
+	dmn := []byte(`<?xml version="1.0"?><definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="restored-dmn" name="d"/>`)
+	// what the cluster allocated before the restore: a newer version of the
+	// restored process and a process the backup does not hold at all
+	fc.cs.ProcessDefinitions = map[string]state.ProcessDefinitionVersions{
+		"restored-process": {
+			Latest:      state.ProcessDefinitionAllocation{Key: 900, Version: 9, Checksum: "stale"},
+			VersionTags: map[string]state.ProcessDefinitionAllocation{"old": {Key: 800, Version: 8, Checksum: "older", VersionTag: "old"}},
+		},
+		"gone-process": {Latest: state.ProcessDefinitionAllocation{Key: 700, Version: 1, Checksum: "gone"}},
+	}
+	// partition 1 holds both revisions, partition 2 only the second: the sync
+	// copies the first one over before the registry is rebuilt
+	fc.partitions[1].definitionRefs = []*proto.DefinitionRef{
+		{Key: new(int64(100)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+		{Key: new(int64(101)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+		{Key: new(int64(200)), Type: proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE.Enum()},
+	}
+	fc.partitions[1].resources = map[int64][]byte{100: revisionA, 101: revisionB, 200: dmn}
+	fc.partitions[1].versions = map[int64]int32{100: 1, 101: 2, 200: 1}
+	fc.partitions[1].tags = map[int64]string{100: "stable"}
+	fc.partitions[2].definitionRefs = []*proto.DefinitionRef{
+		{Key: new(int64(101)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+	}
+	fc.partitions[2].resources = map[int64][]byte{101: revisionB}
+	fc.partitions[2].versions = map[int64]int32{101: 2}
+
+	report, err := RunClusterRestore(context.Background(), fc.deps(), bytes.NewReader(fc.bundle(t)), true)
+	require.NoError(t, err)
+	assert.Equal(t, state.RestorePhaseDone, report.Phase)
+	assert.Equal(t, 2, report.ProcessDefinitionsRegistered)
+
+	checksumA, checksumB := md5.Sum(revisionA), md5.Sum(revisionB) // #nosec G401 -- content fingerprints
+	first := state.ProcessDefinitionAllocation{Key: 100, Version: 1, Checksum: hex.EncodeToString(checksumA[:]), VersionTag: "stable"}
+	assert.Equal(t, map[string]state.ProcessDefinitionVersions{
+		"restored-process": {
+			Latest:      state.ProcessDefinitionAllocation{Key: 101, Version: 2, Checksum: hex.EncodeToString(checksumB[:])},
+			VersionTags: map[string]state.ProcessDefinitionAllocation{"stable": first},
+		},
+	}, fc.ClusterState().ProcessDefinitions, "the registry holds exactly what the partitions hold")
+	require.Len(t, fc.registryResets, 1)
+	assert.Len(t, fc.registryResets[0], 2, "every definition is reported once however many partitions hold it")
+	assert.Equal(t, state.RestorePhaseReconciling, fc.registryResetPhase, "the reset happens while the restore still gates the cluster")
+}
+
 // TestRunClusterRestoreReportsDivergedDefinitionVersions covers a partition
 // that already holds another definition at the version a missing one has on
 // its source: the copy is refused by the partition, the restore still
@@ -370,7 +426,8 @@ type fakePartition struct {
 
 	definitionRefs      []*proto.DefinitionRef
 	resources           map[int64][]byte
-	versions            map[int64]int32 // definition versions, 1 when absent
+	versions            map[int64]int32  // definition versions, 1 when absent
+	tags                map[int64]string // process definition version tags, none when absent
 	decisions           map[int64][]*proto.DecisionDefinitionRef
 	refuseImport        map[int64]string // import of these keys is refused as a version conflict
 	imported            []*proto.ImportDefinitionRequest
@@ -395,6 +452,10 @@ type fakeCluster struct {
 	applied    []string
 	nextID     int
 	applyHook  func(change *protoc.RestoreOperationChange)
+	// registryResets are the process definition registry resets applied, in
+	// order, and registryResetPhase the restore phase the last one ran in
+	registryResets     [][]*protoc.ObservedProcessDefinition
+	registryResetPhase state.RestorePhase
 }
 
 func newFakeCluster(t *testing.T, partitions int) *fakeCluster {
@@ -431,13 +492,14 @@ func sortUint32(ids []uint32) {
 
 func (fc *fakeCluster) deps() RestoreDeps {
 	return RestoreDeps{
-		Clients:             fc,
-		ClusterState:        fc.ClusterState,
-		ApplyRestoreChange:  fc.ApplyRestoreChange,
-		CoordinatorID:       "node-a",
-		BinarySchemaVersion: testSchemaVersion,
-		SpoolDir:            fc.t.TempDir(),
-		Timeouts:            RestoreTimeouts{Barrier: 5 * time.Second, PartitionLoad: 5 * time.Second, Reconcile: 5 * time.Second, Readiness: 5 * time.Second, StateApply: time.Second, Lease: 5 * time.Second},
+		Clients:                 fc,
+		ClusterState:            fc.ClusterState,
+		ApplyRestoreChange:      fc.ApplyRestoreChange,
+		ResetProcessDefinitions: fc.ResetProcessDefinitions,
+		CoordinatorID:           "node-a",
+		BinarySchemaVersion:     testSchemaVersion,
+		SpoolDir:                fc.t.TempDir(),
+		Timeouts:                RestoreTimeouts{Barrier: 5 * time.Second, PartitionLoad: 5 * time.Second, Reconcile: 5 * time.Second, Readiness: 5 * time.Second, StateApply: time.Second, Lease: 5 * time.Second},
 		NewOperationID: func() string {
 			fc.mu.Lock()
 			defer fc.mu.Unlock()
@@ -541,6 +603,31 @@ func restoreChangeFromProto(change *protoc.RestoreOperationChange) state.Restore
 		NowMillis:           change.GetTimestampMillis(),
 		LeaseMillis:         change.GetLeaseMillis(),
 	}
+}
+
+// ResetProcessDefinitions applies the reset to the cluster state the way the
+// FSM does.
+func (fc *fakeCluster) ResetProcessDefinitions(ctx context.Context, definitions []*protoc.ObservedProcessDefinition) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	observed := make([]state.ObservedProcessDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		observed = append(observed, state.ObservedProcessDefinition{
+			ProcessID: definition.GetProcessId(), Key: definition.GetKey(), Version: definition.GetVersion(),
+			Checksum: definition.GetChecksum(), VersionTag: definition.GetVersionTag(),
+		})
+	}
+	newState := *fc.cs.DeepCopy()
+	if err := newState.ResetProcessDefinitions(observed); err != nil {
+		return err
+	}
+	fc.cs = newState
+	fc.registryResets = append(fc.registryResets, definitions)
+	fc.registryResetPhase = fc.cs.Restore.Phase
+	return nil
 }
 
 func (fc *fakeCluster) PartitionLeader(partition uint32) (proto.ZenServiceClient, error) {
@@ -660,7 +747,45 @@ func (c *fakeClient) ImportDefinition(ctx context.Context, req *proto.ImportDefi
 	c.p.imported = append(c.p.imported, req)
 	c.p.importedWhileFenced = c.p.quiesced
 	c.p.definitionRefs = append(c.p.definitionRefs, &proto.DefinitionRef{Key: new(req.GetKey()), Type: req.GetType().Enum()})
+	if c.p.resources == nil {
+		c.p.resources = map[int64][]byte{}
+	}
+	c.p.resources[req.GetKey()] = req.GetData()
+	if c.p.versions == nil {
+		c.p.versions = map[int64]int32{}
+	}
+	c.p.versions[req.GetKey()] = req.GetVersion()
 	return &proto.ImportDefinitionResponse{}, nil
+}
+
+// GetProcessDefinitionVersions lists the process definitions the partition
+// holds, as the leader of a partition reports them.
+func (c *fakeClient) GetProcessDefinitionVersions(_ context.Context, req *proto.GetProcessDefinitionVersionsRequest, _ ...grpc.CallOption) (*proto.GetProcessDefinitionVersionsResponse, error) {
+	c.fc.mu.Lock()
+	defer c.fc.mu.Unlock()
+	resp := &proto.GetProcessDefinitionVersionsResponse{}
+	for _, ref := range c.p.definitionRefs {
+		if ref.GetType() != proto.DefinitionType_DEFINITION_TYPE_PROCESS {
+			continue
+		}
+		data := c.p.resources[ref.GetKey()]
+		processID, err := processIDFromDefinition(data)
+		if err != nil {
+			return nil, err
+		}
+		if req.GetProcessId() != "" && req.GetProcessId() != processID {
+			continue
+		}
+		version := int32(1)
+		if v, ok := c.p.versions[ref.GetKey()]; ok {
+			version = v
+		}
+		checksum := md5.Sum(data) // #nosec G401 -- a content fingerprint
+		resp.Versions = append(resp.Versions, &proto.ProcessDefinitionVersion{
+			ProcessId: new(processID), Key: new(ref.GetKey()), Version: new(version), Checksum: checksum[:], VersionTag: new(c.p.tags[ref.GetKey()]),
+		})
+	}
+	return resp, nil
 }
 
 func (c *fakeClient) ListActiveMessageSubscriptions(ctx context.Context, req *proto.ListActiveMessageSubscriptionsRequest, _ ...grpc.CallOption) (*proto.ListActiveMessageSubscriptionsResponse, error) {

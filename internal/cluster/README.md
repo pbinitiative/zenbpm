@@ -4,10 +4,11 @@
       1. [Commands](#commands)
          1. [ClusterNodeChange](#clusternodechange)
          2. [ClusterNodePartitionChange](#clusternodepartitionchange)
+         3. [ProcessDefinitionAllocation](#processdefinitionallocation)
       2. [Leader](#leader)
       3. [Followers](#followers)
-   2. [Partition groups](#partition-groups)
-      1. [Leader](#leader)
+   2. [Partition group clusters](#partition-group-clusters)
+      1. [Leader](#leader-1)
       2. [Follower](#follower)
 2. [Zen node](#zen-node)
    1. [Behaviour](#behaviour)
@@ -19,7 +20,7 @@
    4. [Public REST API](#public-rest-api)
    5. [System REST API](#system-rest-api)
 3. [Networking](#networking)
-4. [Authorization & Authentication](#authorization-&-authentication)
+4. [Authorization & Authentication](#authorization--authentication)
 5. [Observability](#observability)
 
 # Zen cluster
@@ -45,6 +46,14 @@ See source: [zencommand.proto](./command/proto/zencommand.proto)
 #### ClusterNodePartitionChange
 - partition state changes
 - partition role changes
+
+#### ProcessDefinitionAllocation
+- decides the definition key and numeric version of a BPMN deployment once for the whole cluster, before the definition fans out to the partitions
+- idempotent on (process id, content checksum) against the latest version of the process: a retried or concurrently repeated deployment gets the allocation that already exists, while older content deployed again becomes a new version (deploying A, then B, then A again leaves A as the latest version); a version tag pins content to one version, so a tagged deployment of the content already allocated under that tag is answered with that allocation (a retry after a partial failure completes it), and other content under a taken tag is rejected
+- the deploying node first reads what every partition leader holds of the process (the latest version and every tagged version) and sends it along, so the allocation continues the version sequence of definitions deployed before allocations were replicated and never falls behind a partition; partition leaders are read rather than a local replica, which may lag behind
+- every partition stores exactly the allocated (key, version), so concurrent deployments of one process id cannot map the same version to different content on different partitions
+- a cluster restore replaces the partitions but not the main raft state, so its reconciliation resets the allocation registry (`ACTION_RESET`) from the process definitions the restored partitions hold
+- the command is new to the main raft log: a node running a binary without it stops when it applies the command (the FSM refuses unknown commands rather than diverge), so every member must run a binary that knows it before a process definition is deployed; deploying during a rolling upgrade from an older binary is not supported
 
 ### Leader
 Main cluster leader is one node responsible for the state of whole Zen cluster. It manages:
@@ -111,7 +120,7 @@ Internal communication between nodes.
 
 - NodeCommand - updates from nodes propagated to raft log (recipient is leader)
 
-## Public gRPC 
+## Public gRPC
 Public gRPC endpoint that exposes jobs handling endpoints for better performance compared to REST API.
 
 ## Public REST API

@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"cmp"
 	"context"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -187,6 +189,10 @@ type RestoreDeps struct {
 	// and returns the resulting operation. A refused transition is reported as
 	// a *state.RestoreRejectedError.
 	ApplyRestoreChange func(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
+	// ResetProcessDefinitions replaces the cluster's process definition
+	// allocation registry with the definitions the restored partitions hold
+	// (see ResetProcessDefinitions).
+	ResetProcessDefinitions func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition) error
 	// CoordinatorID is the id of the node driving the restore.
 	CoordinatorID       string
 	BinarySchemaVersion string
@@ -756,6 +762,9 @@ func (run *restoreRun) reconcile(ctx context.Context, ids []uint32) error {
 	if err := run.syncDefinitions(ctx, ids); err != nil {
 		return err
 	}
+	if err := run.resetProcessDefinitions(ctx, ids); err != nil {
+		return err
+	}
 	cs := run.deps.ClusterState()
 	opID, epoch := run.token()
 
@@ -849,6 +858,69 @@ func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error 
 		return run.report.DefinitionsSynced[i].Key < run.report.DefinitionsSynced[j].Key
 	})
 	return nil
+}
+
+// resetProcessDefinitions rebuilds the cluster-wide process definition
+// allocation registry (the (process id → version, key) allocations the main
+// raft state hands to deployments) from the process definitions the
+// partitions hold now that they are loaded and synced. The registry lives in
+// the main raft state, which a restore does not replace, so without the
+// reset later deployments would allocate versions and version tags against
+// the definitions the cluster held before the restore instead of the ones it
+// holds after it.
+func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32) error {
+	if run.deps.ResetProcessDefinitions == nil {
+		return fmt.Errorf("restore cannot reset the process definition registry: no ResetProcessDefinitions dependency")
+	}
+	byKey := map[int64]*protoc.ObservedProcessDefinition{}
+	for _, id := range ids {
+		leader, err := run.deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return fmt.Errorf("definition registry scan: failed to get leader for partition %d: %w", id, err)
+		}
+		resp, err := leader.GetProcessDefinitionVersions(ctx, &proto.GetProcessDefinitionVersionsRequest{PartitionId: new(id)})
+		if err != nil {
+			return fmt.Errorf("definition registry scan on partition %d failed: %w", id, err)
+		}
+		for _, version := range resp.GetVersions() {
+			if _, seen := byKey[version.GetKey()]; seen {
+				continue
+			}
+			byKey[version.GetKey()] = &protoc.ObservedProcessDefinition{
+				ProcessId:  new(version.GetProcessId()),
+				Key:        new(version.GetKey()),
+				Version:    new(version.GetVersion()),
+				Checksum:   new(hex.EncodeToString(version.GetChecksum())),
+				VersionTag: new(version.GetVersionTag()),
+			}
+		}
+	}
+	definitions := make([]*protoc.ObservedProcessDefinition, 0, len(byKey))
+	for _, definition := range byKey {
+		definitions = append(definitions, definition)
+	}
+	slices.SortFunc(definitions, func(a, b *protoc.ObservedProcessDefinition) int {
+		return cmp.Compare(a.GetKey(), b.GetKey())
+	})
+	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
+	defer cancel()
+	if err := run.deps.ResetProcessDefinitions(applyCtx, definitions); err != nil {
+		return fmt.Errorf("failed to reset the process definition registry: %w", err)
+	}
+	run.report.ProcessDefinitionsRegistered = len(definitions)
+	return nil
+}
+
+// ResetProcessDefinitions commits an ACTION_RESET allocation command carrying
+// the definitions through write, the cluster store's
+// WriteProcessDefinitionAllocation.
+func ResetProcessDefinitions(ctx context.Context, write func(context.Context, *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error), definitions []*protoc.ObservedProcessDefinition) error {
+	_, _, err := write(ctx, &protoc.ProcessDefinitionAllocation{
+		Action:          protoc.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
+		Definitions:     definitions,
+		TimestampMillis: new(time.Now().UnixMilli()),
+	})
+	return err
 }
 
 // scanDefinitions lists the definition refs every partition holds.

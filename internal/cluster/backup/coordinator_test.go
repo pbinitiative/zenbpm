@@ -607,7 +607,7 @@ func restoreChangeFromProto(change *protoc.RestoreOperationChange) state.Restore
 
 // ResetProcessDefinitions applies the reset to the cluster state the way the
 // FSM does.
-func (fc *fakeCluster) ResetProcessDefinitions(ctx context.Context, definitions []*protoc.ObservedProcessDefinition) error {
+func (fc *fakeCluster) ResetProcessDefinitions(ctx context.Context, definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -621,7 +621,7 @@ func (fc *fakeCluster) ResetProcessDefinitions(ctx context.Context, definitions 
 		})
 	}
 	newState := *fc.cs.DeepCopy()
-	if err := newState.ResetProcessDefinitions(observed); err != nil {
+	if err := newState.ResetProcessDefinitions(observed, restoreID, restoreEpoch); err != nil {
 		return err
 	}
 	fc.cs = newState

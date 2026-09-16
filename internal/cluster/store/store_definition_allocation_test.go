@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -69,24 +70,50 @@ func TestWriteProcessDefinitionAllocationSerializesConcurrentDeployments(t *test
 	// retrying the latest deployment (or deploying it concurrently twice)
 	// reuses the allocation instead of taking a new version
 	again, existing, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"),
-		Checksum:  new(latest.Checksum),
+		ProcessId:       new("order"),
+		Checksum:        new(latest.Checksum),
+		TimestampMillis: new(time.Now().UnixMilli()),
 	})
 	require.NoError(t, err)
 	assert.True(t, existing)
 	assert.Equal(t, latest, again)
 
-	// a reset (a cluster restore) rebuilds the registry from the definitions
-	// the partitions hold
-	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		Action: proto.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
-		Definitions: []*proto.ObservedProcessDefinition{
-			{ProcessId: new("order"), Key: new(int64(77)), Version: new(int32(3)), Checksum: new("restored"), VersionTag: new("stable")},
-		},
-	})
-	require.NoError(t, err)
+	// a reset (a cluster restore reconciling the partitions it replaced)
+	// rebuilds the registry from the definitions the partitions hold; only
+	// the restore operation owning the cluster may apply it
+	reset := func(restoreID string, epoch uint64) error {
+		_, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+			Action: proto.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
+			Definitions: []*proto.ObservedProcessDefinition{
+				{ProcessId: new("order"), Key: new(int64(77)), Version: new(int32(3)), Checksum: new("restored"), VersionTag: new("stable")},
+			},
+			RestoreOperationId: new(restoreID), RestoreEpoch: new(epoch),
+		})
+		return err
+	}
+	var restoreRejected *state.RestoreRejectedError
+	require.ErrorAs(t, reset("restore-1", 1), &restoreRejected, "no restore owns the cluster")
+	s.stateMu.Lock()
+	s.state.Restore = state.RestoreOperation{ID: "restore-1", Epoch: 2, Status: state.RestoreStatusActive, Phase: state.RestorePhaseReconciling}
+	s.stateMu.Unlock()
+	require.ErrorAs(t, reset("restore-1", 1), &restoreRejected, "a superseded coordinator")
+	assert.Equal(t, latest, s.ClusterState().ProcessDefinitions["order"].Latest, "a refused reset changes nothing")
+	require.NoError(t, reset("restore-1", 2))
 	latest = s.ClusterState().ProcessDefinitions["order"].Latest
 	assert.Equal(t, state.ProcessDefinitionAllocation{Key: 77, Version: 3, Checksum: "restored", VersionTag: "stable"}, latest)
+	// while the restore gates the cluster nothing is allocated; afterwards a
+	// deployment names the restore generation it observed the partitions under
+	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{ProcessId: new("order"), Checksum: new("gated"), RestoreOperationId: new("restore-1"), RestoreEpoch: new(uint64(2))})
+	require.ErrorAs(t, err, &restoreRejected)
+	s.stateMu.Lock()
+	s.state.Restore.Status, s.state.Restore.Phase = state.RestoreStatusCompleted, state.RestorePhaseDone
+	s.stateMu.Unlock()
+	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{ProcessId: new("order"), Checksum: new("stale")})
+	require.ErrorAs(t, err, &restoreRejected, "observed before the restore")
+	afterRestore, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{ProcessId: new("order"), Checksum: new("fresh"), RestoreOperationId: new("restore-1"), RestoreEpoch: new(uint64(2)), TimestampMillis: new(time.Now().UnixMilli())})
+	require.NoError(t, err)
+	assert.Equal(t, int32(4), afterRestore.Version)
+	latest = s.ClusterState().ProcessDefinitions["order"].Latest
 
 	// the allocation is part of the replicated state: a snapshot carries it
 	fsm := NewFSM(s)
@@ -95,42 +122,107 @@ func TestWriteProcessDefinitionAllocationSerializesConcurrentDeployments(t *test
 	snapFile, err := os.Create(filepath.Join(t.TempDir(), "snapshot"))
 	require.NoError(t, err)
 	require.NoError(t, snapshot.Persist(&mockSnapshotSink{snapFile}))
-	s.stateMu.Lock()
-	s.state = state.Cluster{}
-	s.stateMu.Unlock()
+	restoredStore := &Store{logger: s.logger}
+	restoredFSM := NewFSM(restoredStore)
 	restoreFrom, err := os.Open(snapFile.Name())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, restoreFrom.Close()) }()
-	require.NoError(t, fsm.Restore(restoreFrom))
-	assert.Equal(t, latest, s.ClusterState().ProcessDefinitions["order"].Latest)
+	require.NoError(t, restoredFSM.Restore(restoreFrom))
+	assert.Equal(t, latest, restoredStore.ClusterState().ProcessDefinitions["order"].Latest)
 }
 
-// TestWriteProcessDefinitionAllocationReplaysCommandsOfEarlierRevisions
-// verifies that raft log entries written by an earlier revision of the
-// command are applied the way that revision applied them: the single
-// observed definition they carry is caught up with, and a confirmation
-// changes nothing.
-func TestWriteProcessDefinitionAllocationReplaysCommandsOfEarlierRevisions(t *testing.T) {
+// TestWriteProcessDefinitionAllocationRequiresMembersProtocolVersion verifies
+// that the leader refuses to commit the allocation command while a member of
+// the raft configuration has not announced a protocol version that includes
+// it, so that a member running an older binary is never sent a command it
+// would stop on, and commits it once every member announced.
+func TestWriteProcessDefinitionAllocationRequiresMembersProtocolVersion(t *testing.T) {
 	s := newBootstrappedTestStore(t)
 	ctx := context.Background()
+	allocate := func() error {
+		_, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+			ProcessId: new("order"), Checksum: new("aaa"), TimestampMillis: new(time.Now().UnixMilli()),
+		})
+		return err
+	}
+	// a non-voter joins the configuration (it applies the log like a voter;
+	// unreachable, so that it never announces on its own) and has announced
+	// nothing yet
+	require.NoError(t, s.raft.AddNonvoter("peer-1", "127.0.0.1:1", 0, 5*time.Second).Error())
+	err := allocate()
+	var member *state.MemberProtocolVersionError
+	require.ErrorAs(t, err, &member)
+	assert.Equal(t, "peer-1", member.Member)
+	assert.True(t, member.Unannounced())
+	assert.Equal(t, state.ProtocolVersionProcessDefinitionAllocation, member.Required)
+	assert.Empty(t, s.ClusterState().ProcessDefinitions, "nothing was committed")
 
-	legacy := &proto.ObservedProcessDefinition{Key: new(int64(7)), Version: new(int32(3)), Checksum: new("ccc"), VersionTag: new("legacy")}
-	allocation, existing, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("ddd"), ObservedLatest: legacy, TimestampMillis: new(time.Now().UnixMilli()),
+	// the peer announces its version: the command is committed again
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new("peer-1"), ProtocolVersion: new(state.CurrentProtocolVersion)}))
+	require.NoError(t, allocate())
+
+	// a member that announced an older version than a future command needs
+	err = s.requireMemberProtocolVersion(state.CurrentProtocolVersion + 1)
+	require.ErrorAs(t, err, &member)
+	assert.False(t, member.Unannounced())
+	assert.Equal(t, state.CurrentProtocolVersion, member.Reported)
+
+	// After activation, losing a member's announcement cannot remove commands
+	// already in the log. A shutdown must not disable deployment availability.
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new("peer-1"), State: proto.NodeState_NODE_STATE_SHUTDOWN.Enum()}))
+	require.Zero(t, s.ClusterState().Nodes["peer-1"].ProtocolVersion)
+	require.NoError(t, allocate(), "the required protocol is already in the log")
+
+	// a member that left is not waited for
+	require.NoError(t, s.raft.RemoveServer("peer-1", 0, 5*time.Second).Error())
+	require.NoError(t, allocate())
+}
+
+// TestJoinRequiresTheProtocolVersionTheLogHolds verifies that once the log
+// holds a command, a binary that does not know it can no longer join: it
+// would stop when the log delivers the command. A joining binary announces
+// its protocol version in the join request; binaries that predate the
+// announcement send none.
+func TestJoinRequiresTheProtocolVersionTheLogHolds(t *testing.T) {
+	s := newBootstrappedTestStore(t)
+	ctx := context.Background()
+	assert.Zero(t, s.ClusterState().MinProtocolVersion, "a log without the command requires nothing")
+
+	_, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
+		ProcessId: new("order"), Checksum: new("aaa"), TimestampMillis: new(time.Now().UnixMilli()),
 	})
 	require.NoError(t, err)
-	assert.False(t, existing)
-	assert.Equal(t, int32(4), allocation.Version, "the allocation continues after the observed definition")
-	assert.Equal(t, int32(3), s.ClusterState().ProcessDefinitions["order"].VersionTags["legacy"].Version)
+	assert.Equal(t, state.ProtocolVersionProcessDefinitionAllocation, s.ClusterState().MinProtocolVersion, "the command raised the requirement")
 
-	before := s.ClusterState()
-	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		//lint:ignore SA1019 the deprecated action is written on purpose: the test replays a command of an earlier revision
-		Action:    proto.ProcessDefinitionAllocation_ACTION_CONFIRM.Enum(),
-		ProcessId: new("order"),
-	})
+	err = s.Join(&zproto.JoinRequest{Id: new("old-peer"), Address: new("127.0.0.1:1"), Voter: new(false)})
+	var member *state.MemberProtocolVersionError
+	require.ErrorAs(t, err, &member)
+	assert.Equal(t, "old-peer", member.Member)
+	assert.True(t, member.Unannounced())
+	err = s.Join(&zproto.JoinRequest{Id: new("new-peer"), Address: new("127.0.0.1:2"), Voter: new(false), ProtocolVersion: new(state.CurrentProtocolVersion)})
 	require.NoError(t, err)
-	assert.Equal(t, before.ProcessDefinitions, s.ClusterState().ProcessDefinitions, "a confirmation changes nothing")
+	future := s.raft.GetConfiguration()
+	require.NoError(t, future.Error())
+	ids := []string{}
+	for _, server := range future.Configuration().Servers {
+		ids = append(ids, string(server.ID))
+	}
+	assert.ElementsMatch(t, []string{s.raftID, "new-peer"}, ids)
+
+	// the requirement is part of the replicated state: a snapshot carries it
+	fsm := NewFSM(s)
+	snapshot, err2 := fsm.Snapshot()
+	require.NoError(t, err2)
+	snapFile, err2 := os.Create(filepath.Join(t.TempDir(), "snapshot"))
+	require.NoError(t, err2)
+	require.NoError(t, snapshot.Persist(&mockSnapshotSink{snapFile}))
+	restoredStore := &Store{logger: s.logger}
+	restoredFSM := NewFSM(restoredStore)
+	restoreFrom, err2 := os.Open(snapFile.Name())
+	require.NoError(t, err2)
+	defer func() { require.NoError(t, restoreFrom.Close()) }()
+	require.NoError(t, restoredFSM.Restore(restoreFrom))
+	assert.Equal(t, state.ProtocolVersionProcessDefinitionAllocation, restoredStore.ClusterState().MinProtocolVersion)
 }
 
 func TestWriteProcessDefinitionAllocationReportsRejectionWithoutChangingState(t *testing.T) {
@@ -138,12 +230,12 @@ func TestWriteProcessDefinitionAllocationReportsRejectionWithoutChangingState(t 
 	ctx := context.Background()
 
 	_, _, err := s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("a"), VersionTag: new("stable"),
+		ProcessId: new("order"), Checksum: new("a"), VersionTag: new("stable"), TimestampMillis: new(time.Now().UnixMilli()),
 	})
 	require.NoError(t, err)
 
 	_, _, err = s.WriteProcessDefinitionAllocation(ctx, &proto.ProcessDefinitionAllocation{
-		ProcessId: new("order"), Checksum: new("b"), VersionTag: new("stable"),
+		ProcessId: new("order"), Checksum: new("b"), VersionTag: new("stable"), TimestampMillis: new(time.Now().UnixMilli()),
 	})
 	var rejected *state.ProcessDefinitionAllocationRejectedError
 	require.ErrorAs(t, err, &rejected)
@@ -182,5 +274,10 @@ func newBootstrappedTestStore(t *testing.T) *Store {
 	require.NoError(t, s.Bootstrap(&state.Node{Id: s.raftID, Addr: s.Addr(), Partitions: map[uint32]state.NodePartition{}}))
 	_, err := s.WaitForLeader(10 * time.Second)
 	require.NoError(t, err)
+	// the leader announces its protocol version when it takes leadership;
+	// commands of that version are refused until the announcement is applied
+	testPoll(t, func() bool {
+		return s.ClusterState().Nodes[s.raftID].ProtocolVersion == state.CurrentProtocolVersion
+	}, 50*time.Millisecond, 10*time.Second)
 	return s
 }

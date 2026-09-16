@@ -66,6 +66,10 @@ type Store struct {
 
 	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
+	// membershipMu serialises the admission of a member (Join) with the
+	// commit of commands that every member must be able to apply
+	// (WriteProcessDefinitionAllocation).
+	membershipMu sync.Mutex
 
 	// startedAt is the time this store was successfully opened. It backs the
 	// node_uptime_seconds gauge and is only written by Open before the store is
@@ -243,7 +247,11 @@ func (s *Store) WriteRestoreChange(ctx context.Context, change *proto.RestoreOpe
 // wraps zenerr.ErrNotLeader. When ctx ends before the command is confirmed the
 // outcome is unknown (zenerr.ErrApplyUncertain): it may still commit later, and
 // since an allocation is idempotent on (process id, checksum) the caller can
-// simply send it again.
+// simply send it again. While a cluster member has not announced a protocol
+// version that includes the command (it is still starting, or runs an older
+// binary that would stop on the command) nothing is committed and the error
+// is a *state.MemberProtocolVersionError; a command fenced off by a cluster
+// restore is reported as a *state.RestoreRejectedError.
 func (s *Store) WriteProcessDefinitionAllocation(ctx context.Context, allocation *proto.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error) {
 	command := &proto.Command{
 		Type: proto.Command_TYPE_PROCESS_DEFINITION_ALLOCATION.Enum(),
@@ -251,7 +259,23 @@ func (s *Store) WriteProcessDefinitionAllocation(ctx context.Context, allocation
 			ProcessDefinitionAllocation: allocation,
 		},
 	}
-	response, err := s.applyCommand(ctx, "ProcessDefinitionAllocation", "process-definition-allocation-apply-wait", command)
+	// The members are checked and the command enqueued under the membership
+	// lock, so a join cannot slip in between and admit a member the check did
+	// not see (see Join). Raft appends commands in the order they were
+	// enqueued, so the barrier of a join admitted afterwards sees this
+	// command applied; the wait for the commit itself needs no lock.
+	future, err := func() (raft.ApplyFuture, error) {
+		s.membershipMu.Lock()
+		defer s.membershipMu.Unlock()
+		if err := s.requireMemberProtocolVersion(state.ProtocolVersionProcessDefinitionAllocation); err != nil {
+			return nil, err
+		}
+		return s.enqueueCommand(ctx, "ProcessDefinitionAllocation", command)
+	}()
+	if err != nil {
+		return state.ProcessDefinitionAllocation{}, false, err
+	}
+	response, err := s.awaitCommand(ctx, "ProcessDefinitionAllocation", "process-definition-allocation-apply-wait", future)
 	if err != nil {
 		return state.ProcessDefinitionAllocation{}, false, err
 	}
@@ -259,19 +283,56 @@ func (s *Store) WriteProcessDefinitionAllocation(ctx context.Context, allocation
 	if !ok {
 		return state.ProcessDefinitionAllocation{}, false, fmt.Errorf("unexpected FSM response %T for ProcessDefinitionAllocation", response)
 	}
+	if result.RestoreRejected != nil {
+		return state.ProcessDefinitionAllocation{}, false, result.RestoreRejected
+	}
 	if result.Rejected != nil {
 		return state.ProcessDefinitionAllocation{}, false, result.Rejected
 	}
 	return result.Allocation, result.Existing, nil
 }
 
-// applyCommand writes command to the raft log and returns the FSM response.
-// The wait for the committed result is bounded by ctx. Raft cannot withdraw a
-// command once it is enqueued, so when ctx ends first the outcome is unknown:
-// the error wraps zenerr.ErrApplyUncertain and the command may still commit
-// later. Only the raft leader can commit; elsewhere the error wraps
-// zenerr.ErrNotLeader.
+// requireMemberProtocolVersion refuses, with a *state.MemberProtocolVersionError,
+// to commit a command of the given protocol version while a server of the
+// raft configuration (every one of them applies the log, voter or not) has
+// not announced a protocol version that includes it. Only the leader checks:
+// a follower cannot commit anyway and reports zenerr.ErrNotLeader through
+// the apply instead.
+func (s *Store) requireMemberProtocolVersion(required int32) error {
+	if !s.IsLeader() {
+		return nil
+	}
+	cs := s.ClusterState()
+	if cs.MinProtocolVersion >= required {
+		// The log already requires this version, and Join rejects binaries
+		// below it. A member restarting cannot make existing entries optional.
+		return nil
+	}
+	f := s.raft.GetConfiguration()
+	if err := f.Error(); err != nil {
+		return fmt.Errorf("failed to get raft configuration to check the members' protocol versions: %w", err)
+	}
+	servers := f.Configuration().Servers
+	members := make([]string, 0, len(servers))
+	for _, server := range servers {
+		members = append(members, string(server.ID))
+	}
+	return cs.RequireProtocolVersion(members, required)
+}
+
+// applyCommand writes command to the raft log and returns the FSM response:
+// enqueueCommand followed by awaitCommand.
 func (s *Store) applyCommand(ctx context.Context, what string, waiterName string, command *proto.Command) (interface{}, error) {
+	f, err := s.enqueueCommand(ctx, what, command)
+	if err != nil {
+		return nil, err
+	}
+	return s.awaitCommand(ctx, what, waiterName, f)
+}
+
+// enqueueCommand hands command to raft. Raft appends the commands of a leader
+// in the order they were enqueued.
+func (s *Store) enqueueCommand(ctx context.Context, what string, command *proto.Command) (raft.ApplyFuture, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -279,7 +340,15 @@ func (s *Store) applyCommand(ctx context.Context, what string, waiterName string
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal %s message before applying to log: %w", what, err)
 	}
-	f := s.raft.Apply(b, s.cfg.RaftTimeout)
+	return s.raft.Apply(b, s.cfg.RaftTimeout), nil
+}
+
+// awaitCommand waits for an enqueued command and returns the FSM response.
+// The wait is bounded by ctx. Raft cannot withdraw a command once it is
+// enqueued, so when ctx ends first the outcome is unknown: the error wraps
+// zenerr.ErrApplyUncertain and the command may still commit later. Only the
+// raft leader can commit; elsewhere the error wraps zenerr.ErrNotLeader.
+func (s *Store) awaitCommand(ctx context.Context, what string, waiterName string, f raft.ApplyFuture) (interface{}, error) {
 	// raft resolves every future (commit, leadership loss or shutdown), so the
 	// waiter always terminates; it only outlives ctx when the outcome is
 	// still unknown.
@@ -576,11 +645,12 @@ func (s *Store) selfLeaderChange(leader bool) error {
 
 	s.logger.Info("this node is now leader")
 	err := s.WriteNodeChange(&proto.NodeChange{
-		NodeId:   new(s.raftID),
-		Addr:     new(s.Addr()),
-		State:    proto.NodeState_NODE_STATE_STARTED.Enum(),
-		Role:     proto.Role_ROLE_TYPE_LEADER.Enum(),
-		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),
+		NodeId:          new(s.raftID),
+		Addr:            new(s.Addr()),
+		State:           proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:            proto.Role_ROLE_TYPE_LEADER.Enum(),
+		Suffrage:        proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),
+		ProtocolVersion: new(state.CurrentProtocolVersion),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to send NodeChange - leadership change message: %w", err)

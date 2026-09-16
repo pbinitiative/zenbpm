@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -53,8 +54,14 @@ type ProcessDefinitionAllocationRequest struct {
 	// version and every version carrying a version tag, empty when they hold
 	// none. It seeds the allocation state with definitions deployed before
 	// allocations were replicated; the FSM never moves behind it.
-	Observed  []ProcessDefinitionAllocation
-	NowMillis int64
+	Observed []ProcessDefinitionAllocation
+	// RestoreID and RestoreEpoch identify the restore operation the cluster
+	// state recorded when the partitions were observed (empty and zero when
+	// the cluster was never restored). An observation that predates a
+	// restore is refused: the restored partitions no longer hold what it saw.
+	RestoreID    string
+	RestoreEpoch uint64
+	NowMillis    int64
 }
 
 // ObservedProcessDefinition is a definition of a process as a partition holds
@@ -101,6 +108,15 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 	if req.Checksum == "" {
 		return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "checksum must not be empty"}
 	}
+	if c.Restore.GatesCluster() {
+		return ProcessDefinitionAllocation{}, false, &RestoreRejectedError{Reason: "process definitions cannot be allocated while a restore gates the cluster", Current: c.Restore}
+	}
+	if c.Restore.ID != req.RestoreID || c.Restore.Epoch != req.RestoreEpoch {
+		return ProcessDefinitionAllocation{}, false, &RestoreRejectedError{Reason: "the deployment observed the partitions before a restore replaced them; deploy again", Current: c.Restore}
+	}
+	if req.NowMillis <= 0 {
+		return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{ProcessID: req.ProcessID, Reason: "timestamp must be positive"}
+	}
 	versions := c.ProcessDefinitions[req.ProcessID]
 	for _, observed := range req.Observed {
 		if observed.Key == 0 || observed.Checksum == "" || observed.Version <= 0 {
@@ -117,7 +133,7 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 			if taken.Checksum != req.Checksum {
 				return ProcessDefinitionAllocation{}, false, &ProcessDefinitionAllocationRejectedError{
 					ProcessID: req.ProcessID,
-					Reason:    fmt.Sprintf("version tag %q is already used by version %d", req.VersionTag, taken.Version),
+					Reason:    fmt.Sprintf("version tag %q is already used by version %d; even a failed deployment reserves its tag: retry the original content or use a new tag", req.VersionTag, taken.Version),
 				}
 			}
 			// the same content under its own tag: the deployment of that
@@ -141,11 +157,20 @@ func (c *Cluster) AllocateProcessDefinition(req ProcessDefinitionAllocationReque
 // ResetProcessDefinitions replaces the allocation state of every process with
 // what the partitions hold: the latest version of each process and the
 // versions carrying a version tag. Processes absent from the definitions are
-// forgotten. It is applied after a cluster restore, when the partitions
-// changed underneath the recorded allocations. It is deterministic whatever
-// the order of the definitions. A definition without a process id, key,
-// version or checksum is rejected and nothing changes.
-func (c *Cluster) ResetProcessDefinitions(definitions []ObservedProcessDefinition) error {
+// forgotten. It is applied by a cluster restore while it reconciles the
+// partitions it replaced, and only by the restore operation that owns the
+// cluster: restoreID and restoreEpoch are its fencing token, and a reset by
+// a superseded coordinator, or outside the reconciliation phase, is refused
+// with a *RestoreRejectedError. It is deterministic whatever the order of
+// the definitions. A definition without a process id, key, version or
+// checksum is rejected and nothing changes.
+func (c *Cluster) ResetProcessDefinitions(definitions []ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
+	if !c.Restore.Owns(restoreID, restoreEpoch) {
+		return &RestoreRejectedError{Reason: "the process definition registry can only be reset by the restore operation that owns the cluster", Current: c.Restore}
+	}
+	if c.Restore.Phase != RestorePhaseReconciling {
+		return &RestoreRejectedError{Reason: "the process definition registry can only be reset while the restore reconciles the partitions", Current: c.Restore}
+	}
 	for _, definition := range definitions {
 		if definition.ProcessID == "" || definition.Key == 0 || definition.Version <= 0 || definition.Checksum == "" {
 			return &ProcessDefinitionAllocationRejectedError{ProcessID: definition.ProcessID, Reason: "a definition of the reset must have a process id, a key, a version and a checksum"}
@@ -166,25 +191,46 @@ func (c *Cluster) ResetProcessDefinitions(definitions []ObservedProcessDefinitio
 	return nil
 }
 
-// catchUp raises the recorded state to the observed definitions: the newest
-// observed version becomes the latest when it is newer than the recorded
-// one, and every observed version tag is reserved for the version the
-// partitions hold it on, replacing a tag recorded for an allocation that may
-// never have been deployed. The observations are visited in a fixed order so
-// that every replica ends up with the same state.
+// catchUp raises the recorded state to the observed definitions, which come
+// from every partition of the cluster: the newest observed version becomes
+// the latest when it is newer than the recorded one, and every observed
+// version tag is reserved for the version the partitions hold it on,
+// replacing a tag recorded for an allocation that may never have been
+// deployed. A recorded latest version that no partition holds, while a
+// partition holds another definition at that very version, was never
+// deployed anywhere and could never be (the partitions refuse a second
+// definition at a version): it is replaced by the observed one, so that an
+// allocation made from a wrong observation does not block the process for
+// good. The observations are visited in a fixed order so that every replica
+// ends up with the same state.
 func (v *ProcessDefinitionVersions) catchUp(observed []ProcessDefinitionAllocation) {
 	ordered := slices.Clone(observed)
 	slices.SortFunc(ordered, func(a, b ProcessDefinitionAllocation) int {
-		if a.Version != b.Version {
-			return int(a.Version - b.Version)
+		if c := cmp.Compare(a.Version, b.Version); c != 0 {
+			return c
 		}
-		return int(a.Key - b.Key)
+		return cmp.Compare(b.Key, a.Key) // highest key first, like the deployer
 	})
+	recordedLatestHeld := !v.Latest.Exists()
 	for _, definition := range ordered {
+		if definition.Version == v.Latest.Version && definition.Key == v.Latest.Key {
+			recordedLatestHeld = true
+		}
+		v.recordVersionTag(definition)
+	}
+	for _, definition := range ordered {
+		if definition.Version == v.Latest.Version && !recordedLatestHeld {
+			// the recorded allocation exists nowhere: its tag reservation goes
+			// with it, or it would keep answering the content it was made for
+			if v.Latest.VersionTag != "" && v.VersionTags[v.Latest.VersionTag] == v.Latest {
+				delete(v.VersionTags, v.Latest.VersionTag)
+			}
+			v.Latest = definition
+			recordedLatestHeld = true
+		}
 		if definition.Version > v.Latest.Version {
 			v.Latest = definition
 		}
-		v.recordVersionTag(definition)
 	}
 }
 

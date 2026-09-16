@@ -190,9 +190,9 @@ type RestoreDeps struct {
 	// a *state.RestoreRejectedError.
 	ApplyRestoreChange func(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
 	// ResetProcessDefinitions replaces the cluster's process definition
-	// allocation registry with the definitions the restored partitions hold
-	// (see ResetProcessDefinitions).
-	ResetProcessDefinitions func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition) error
+	// allocation registry with the definitions the restored partitions hold,
+	// under the fencing token of the restore operation (see ResetProcessDefinitions).
+	ResetProcessDefinitions func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error
 	// CoordinatorID is the id of the node driving the restore.
 	CoordinatorID       string
 	BinarySchemaVersion string
@@ -904,7 +904,8 @@ func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32
 	})
 	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
 	defer cancel()
-	if err := run.deps.ResetProcessDefinitions(applyCtx, definitions); err != nil {
+	opID, epoch := run.token()
+	if err := run.deps.ResetProcessDefinitions(applyCtx, definitions, opID, epoch); err != nil {
 		return fmt.Errorf("failed to reset the process definition registry: %w", err)
 	}
 	run.report.ProcessDefinitionsRegistered = len(definitions)
@@ -912,13 +913,15 @@ func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32
 }
 
 // ResetProcessDefinitions commits an ACTION_RESET allocation command carrying
-// the definitions through write, the cluster store's
-// WriteProcessDefinitionAllocation.
-func ResetProcessDefinitions(ctx context.Context, write func(context.Context, *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error), definitions []*protoc.ObservedProcessDefinition) error {
+// the definitions, fenced by the restore operation's token, through write,
+// the cluster store's WriteProcessDefinitionAllocation.
+func ResetProcessDefinitions(ctx context.Context, write func(context.Context, *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error), definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
 	_, _, err := write(ctx, &protoc.ProcessDefinitionAllocation{
-		Action:          protoc.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
-		Definitions:     definitions,
-		TimestampMillis: new(time.Now().UnixMilli()),
+		Action:             protoc.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
+		Definitions:        definitions,
+		RestoreOperationId: new(restoreID),
+		RestoreEpoch:       new(restoreEpoch),
+		TimestampMillis:    new(time.Now().UnixMilli()),
 	})
 	return err
 }

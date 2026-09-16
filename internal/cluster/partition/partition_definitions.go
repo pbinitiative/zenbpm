@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 )
 
 // ProcessDefinitionVersion is one stored version of a BPMN process.
@@ -19,58 +19,56 @@ type ProcessDefinitionVersion struct {
 	Data []byte
 }
 
-// ListProcessDefinitionVersions lists the versions of the process (of every
-// process when processID is empty) this partition holds, ordered by process
-// id and version. With latestData the BPMN bytes of the latest version of
-// every listed process are included.
-func (rq *DB) ListProcessDefinitionVersions(ctx context.Context, processID string, latestData bool) ([]ProcessDefinitionVersion, error) {
-	versions, err := rq.listProcessDefinitionVersions(ctx, processID)
+// ProcessDefinitionVersionsQuery selects what ListProcessDefinitionVersions answers.
+type ProcessDefinitionVersionsQuery struct {
+	// ProcessID restricts the answer to one process; empty lists every process.
+	ProcessID string
+	// LatestData includes the BPMN bytes of the latest version of every listed process.
+	LatestData bool
+	// LatestAndTaggedOnly restricts the answer to the latest version of every
+	// process and the versions carrying a version tag.
+	LatestAndTaggedOnly bool
+}
+
+// ListProcessDefinitionVersions lists the versions of process definitions
+// this partition holds, ordered by process id and version. The read is
+// linearizable: it is answered by the partition leader only and includes
+// every deployment the partition acknowledged before it, in one consistent
+// statement. On a node that does not lead the partition the error wraps
+// store.ErrNotLeader.
+func (rq *DB) ListProcessDefinitionVersions(ctx context.Context, q ProcessDefinitionVersionsQuery) ([]ProcessDefinitionVersion, error) {
+	params := sql.ListProcessDefinitionVersionsParams{
+		LatestData:          sqlFlag(q.LatestData),
+		LatestAndTaggedOnly: sqlFlag(q.LatestAndTaggedOnly),
+	}
+	if q.ProcessID != "" {
+		params.BpmnProcessID = q.ProcessID
+	}
+	rows, err := rq.LinearizableQueries.ListProcessDefinitionVersions(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list process definition versions: %w", err)
 	}
-	if !latestData {
-		return versions, nil
-	}
-	latest := map[string]int{}
-	for i, version := range versions {
-		if index, ok := latest[version.ProcessID]; !ok || versions[index].Version < version.Version {
-			latest[version.ProcessID] = i
+	versions := make([]ProcessDefinitionVersion, 0, len(rows))
+	for _, row := range rows {
+		version := ProcessDefinitionVersion{
+			ProcessID:  row.BpmnProcessID,
+			Key:        row.Key,
+			Version:    int32(row.Version), // #nosec G115 -- definition versions are small counters
+			Checksum:   row.BpmnChecksum,
+			VersionTag: row.VersionTag,
 		}
-	}
-	for _, index := range latest {
-		row := rq.QueryRowContext(ctx, "SELECT bpmn_data FROM process_definition WHERE key = ?", versions[index].Key)
-		var data string
-		if err := row.Scan(&data); err != nil {
-			return nil, fmt.Errorf("failed to load process definition %d: %w", versions[index].Key, err)
+		if row.BpmnData != "" {
+			version.Data = []byte(row.BpmnData)
 		}
-		versions[index].Data = []byte(data)
+		versions = append(versions, version)
 	}
 	return versions, nil
 }
 
-func (rq *DB) listProcessDefinitionVersions(ctx context.Context, processID string) (versions []ProcessDefinitionVersion, err error) {
-	query := "SELECT key, version, bpmn_process_id, bpmn_checksum, version_tag FROM process_definition"
-	var args []interface{}
-	if processID != "" {
-		query += " WHERE bpmn_process_id = ?"
-		args = append(args, processID)
+// sqlFlag is a boolean as the generated queries take it: the statement parameters carry numbers, not booleans.
+func sqlFlag(b bool) int64 {
+	if b {
+		return 1
 	}
-	rows, err := rq.QueryContext(ctx, query+" ORDER BY bpmn_process_id, version", args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list process definition versions: %w", err)
-	}
-	defer zenerr.CloseJoin(rows, &err, "process definition rows")
-	for rows.Next() {
-		var version ProcessDefinitionVersion
-		var number int64
-		if err := rows.Scan(&version.Key, &number, &version.ProcessID, &version.Checksum, &version.VersionTag); err != nil {
-			return nil, fmt.Errorf("failed to list process definition versions: %w", err)
-		}
-		version.Version = int32(number) // #nosec G115 -- definition versions are small counters
-		versions = append(versions, version)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to list process definition versions: %w", err)
-	}
-	return versions, nil
+	return 0
 }

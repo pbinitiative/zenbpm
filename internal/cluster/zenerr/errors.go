@@ -130,6 +130,12 @@ func IsUnavailable(err error) bool {
 	return errors.As(err, &zerr) && zerr.Code == UnavailableCode
 }
 
+// IsConflict reports whether err (or any error it wraps) carries ConflictCode.
+func IsConflict(err error) bool {
+	var zerr *ZenError
+	return errors.As(err, &zerr) && zerr.Code == ConflictCode
+}
+
 func Join(new error, original *ZenError) *ZenError {
 	return &ZenError{original.Code, errors.Join(new, original.err)}
 }

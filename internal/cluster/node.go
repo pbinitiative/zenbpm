@@ -516,11 +516,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 
 func (node *ZenNode) processDefinitionDeployer() *processDefinitionDeployer {
 	return &processDefinitionDeployer{
-		observe:    node.observeProcessDefinition,
-		allocate:   node.allocateProcessDefinition,
-		partitions: node.deployPartitions,
-		deploy:     node.deployProcessDefinitionToPartition,
-		logger:     node.logger,
+		observe:  node.observeProcessDefinition,
+		allocate: node.allocateProcessDefinition,
+		deploy:   node.deployProcessDefinitionToPartition,
 	}
 }
 
@@ -532,17 +530,28 @@ func (node *ZenNode) processDefinitionDeployer() *processDefinitionDeployer {
 type processDefinitionDeployer struct {
 	// observe returns what the partitions hold of the process: its latest
 	// version, carrying the BPMN bytes, and every version carrying a version
-	// tag; empty when they hold none.
-	observe func(ctx context.Context, processId string) ([]observedProcessDefinition, error)
+	// tag; none when they hold none. It also reports the restore operation
+	// the cluster state recorded at the time, which fences the allocation
+	// against a restore replacing the partitions after the observation.
+	observe func(ctx context.Context, processId string) (processObservation, error)
 	// allocate decides the cluster-wide identity of the deployment; existing
 	// reports that the latest allocation already had this content.
 	allocate func(ctx context.Context, req *protoc.ProcessDefinitionAllocation) (key int64, version int32, existing bool, err error)
-	// partitions lists the partitions to deploy to and the one that owns the
-	// definition-level subscriptions of the process.
-	partitions func(processId string) (ids []uint32, subscriptionPartition uint32, err error)
 	// deploy stores the allocated definition on one partition.
 	deploy func(ctx context.Context, partitionId uint32, req *proto.DeployProcessDefinitionRequest) error
-	logger hclog.Logger
+}
+
+// processObservation is what the partitions hold of a process, together with
+// the restore generation of the cluster it was read from.
+type processObservation struct {
+	definitions           []observedProcessDefinition
+	partitionIDs          []uint32
+	subscriptionPartition uint32
+	// restoreID and restoreEpoch identify the restore operation the cluster
+	// state recorded when the partitions were read; empty and zero for a
+	// cluster that was never restored.
+	restoreID    string
+	restoreEpoch uint64
 }
 
 // observedProcessDefinition is a definition of a process as a partition holds
@@ -578,11 +587,30 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 	if identity.ProcessId == "" {
 		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: process id is empty"))
 	}
+	key, existing, err := d.deployOnce(ctx, identity, data, resourceName)
+	if err == nil || !zenerr.IsConflict(err) {
+		return key, existing, err
+	}
+	// A cluster restore replaced the partitions between the observation and
+	// the fan-out, and the partitions refused the allocation made from it.
+	// The request is still valid: observe and allocate again against the
+	// restored partitions.
+	key, existing, err = d.deployOnce(ctx, identity, data, resourceName)
+	if err != nil && zenerr.IsConflict(err) {
+		return 0, false, zenerr.ClusterError(fmt.Errorf("the partitions were replaced by a cluster restore while process %s was being deployed; deploy again: %w", identity.ProcessId, err))
+	}
+	return key, existing, err
+}
 
-	observed, err := d.observe(ctx, identity.ProcessId)
+// deployOnce runs one observation, allocation and fan-out. A fan-out refused
+// by a partition because a restore replaced the partitions since the
+// observation is reported as a zenerr.ConflictCode error.
+func (d *processDefinitionDeployer) deployOnce(ctx context.Context, identity bpmn.ProcessDefinitionIdentity, data []byte, resourceName string) (int64, bool, error) {
+	observation, err := d.observe(ctx, identity.ProcessId)
 	if err != nil {
 		return 0, false, err
 	}
+	observed := observation.definitions
 	checksum := identity.Checksum[:]
 	versionTag := identity.VersionTag
 	if latest := latestObservedProcessDefinition(observed); latest != nil {
@@ -601,11 +629,13 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 		}
 	}
 	allocation := &protoc.ProcessDefinitionAllocation{
-		ProcessId:       &identity.ProcessId,
-		Checksum:        new(hex.EncodeToString(checksum)),
-		VersionTag:      &versionTag,
-		Observed:        make([]*protoc.ObservedProcessDefinition, 0, len(observed)),
-		TimestampMillis: new(time.Now().UnixMilli()),
+		ProcessId:          &identity.ProcessId,
+		Checksum:           new(hex.EncodeToString(checksum)),
+		VersionTag:         &versionTag,
+		Observed:           make([]*protoc.ObservedProcessDefinition, 0, len(observed)),
+		RestoreOperationId: new(observation.restoreID),
+		RestoreEpoch:       new(observation.restoreEpoch),
+		TimestampMillis:    new(time.Now().UnixMilli()),
 	}
 	for _, definition := range observed {
 		allocation.Observed = append(allocation.Observed, &protoc.ObservedProcessDefinition{
@@ -621,21 +651,20 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 		return 0, false, err
 	}
 
-	partitionIds, subscriptionPartitionId, err := d.partitions(identity.ProcessId)
-	if err != nil {
-		return definitionKey, existing, err
-	}
 	group, groupCtx := errgroup.WithContext(ctx)
-	for _, partitionId := range partitionIds {
+	for _, partitionId := range observation.partitionIDs {
 		group.Go(func() error {
 			return d.deploy(groupCtx, partitionId, &proto.DeployProcessDefinitionRequest{
-				Key:          &definitionKey,
-				Version:      &version,
-				Data:         data,
-				ResourceName: &resourceName,
+				PartitionId:        new(partitionId),
+				Key:                &definitionKey,
+				Version:            &version,
+				Data:               data,
+				ResourceName:       &resourceName,
+				RestoreOperationId: new(observation.restoreID),
+				RestoreEpoch:       new(observation.restoreEpoch),
 				// definition-level subscriptions live on exactly one partition;
 				// engine recovery and restore reconciliation use the same rule
-				RegisterProcessDefinitionSubscriptions: new(subscriptionPartitionId == partitionId),
+				RegisterProcessDefinitionSubscriptions: new(observation.subscriptionPartition == partitionId),
 			})
 		})
 	}
@@ -653,11 +682,17 @@ func (d *processDefinitionDeployer) Deploy(ctx context.Context, data []byte, res
 // report an older version, and the allocation would move behind the
 // partition. A partition without a reachable leader fails the observation,
 // as it would fail the deployment.
-func (node *ZenNode) observeProcessDefinition(ctx context.Context, processId string) ([]observedProcessDefinition, error) {
-	partitionIds, _, err := node.deployPartitions(processId)
-	if err != nil {
-		return nil, err
+func (node *ZenNode) observeProcessDefinition(ctx context.Context, processId string) (processObservation, error) {
+	// the restore generation is read before the partitions: a restore that
+	// starts in between gates the allocation, one that completes in between changes the generation
+	clusterState := node.store.ClusterState()
+	observation := processObservation{restoreID: clusterState.Restore.ID, restoreEpoch: clusterState.Restore.Epoch}
+	partitionIds := sortedPartitionIds(clusterState)
+	if len(partitionIds) == 0 {
+		return processObservation{}, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
 	}
+	observation.partitionIDs = partitionIds
+	observation.subscriptionPartition = clusterState.DefinitionSubscriptionPartition(processId)
 	perPartition := make([][]observedProcessDefinition, len(partitionIds))
 	group, groupCtx := errgroup.WithContext(ctx)
 	for i, partitionId := range partitionIds {
@@ -668,9 +703,10 @@ func (node *ZenNode) observeProcessDefinition(ctx context.Context, processId str
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return nil, err
+		return processObservation{}, err
 	}
-	return mergeObservedProcessDefinitions(perPartition), nil
+	observation.definitions = mergeObservedProcessDefinitions(perPartition)
+	return observation, nil
 }
 
 // observeProcessDefinitionOnPartition reads the process on the current leader
@@ -687,24 +723,18 @@ func (node *ZenNode) observeProcessDefinitionOnPartition(ctx context.Context, pa
 		if err != nil {
 			return zenerr.TechnicalError(fmt.Errorf("failed to get client: %w", err))
 		}
+		// only the latest version and the tagged ones decide an allocation
 		resp, err := client.GetProcessDefinitionVersions(ctx, &proto.GetProcessDefinitionVersionsRequest{
-			PartitionId:       new(partitionId),
-			ProcessId:         new(processId),
-			IncludeLatestData: new(true),
+			PartitionId:         new(partitionId),
+			ProcessId:           new(processId),
+			IncludeLatestData:   new(true),
+			LatestAndTaggedOnly: new(true),
 		})
 		if err != nil {
 			return zenerr.TechnicalError(fmt.Errorf("client call to read process definition %s on partition %d failed: %w", processId, partitionId, err))
 		}
 		observed = observed[:0]
-		var latestVersion int32
 		for _, version := range resp.GetVersions() {
-			latestVersion = max(latestVersion, version.GetVersion())
-		}
-		for _, version := range resp.GetVersions() {
-			if version.GetVersion() != latestVersion && version.GetVersionTag() == "" {
-				// only the latest version and the tagged ones decide an allocation
-				continue
-			}
 			observed = append(observed, observedProcessDefinition{
 				key:        version.GetKey(),
 				version:    version.GetVersion(),
@@ -778,17 +808,6 @@ func (node *ZenNode) applyProcessDefinitionAllocation(ctx context.Context, req *
 		return nil, err
 	}
 	return resp, nil
-}
-
-// deployPartitions lists every partition of the cluster and the one owning
-// the definition-level subscriptions of the process.
-func (node *ZenNode) deployPartitions(processId string) ([]uint32, uint32, error) {
-	clusterState := node.store.ClusterState()
-	partitionIds := sortedPartitionIds(clusterState)
-	if len(partitionIds) == 0 {
-		return nil, 0, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
-	}
-	return partitionIds, clusterState.DefinitionSubscriptionPartition(processId), nil
 }
 
 // transientDeployError reports whether a deploy error reflects a transient

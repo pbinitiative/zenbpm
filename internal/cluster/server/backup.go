@@ -418,8 +418,8 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 		Clients:            s.client,
 		ClusterState:       s.store.ClusterState,
 		ApplyRestoreChange: s.applyRestoreChange,
-		ResetProcessDefinitions: func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition) error {
-			return backup.ResetProcessDefinitions(ctx, s.store.WriteProcessDefinitionAllocation, definitions)
+		ResetProcessDefinitions: func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
+			return backup.ResetProcessDefinitions(ctx, s.store.WriteProcessDefinitionAllocation, definitions, restoreID, restoreEpoch)
 		},
 		CoordinatorID:       s.store.NodeID(),
 		BinarySchemaVersion: binSchema,

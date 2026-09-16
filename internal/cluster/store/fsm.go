@@ -175,19 +175,25 @@ func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interf
 // ProcessDefinitionAllocationResult is what the FSM returns (through the raft
 // ApplyFuture) for a process definition allocation command. For an
 // allocation it carries the allocation every partition must deploy and
-// whether it already existed, or the rejection that left the state untouched; a reset carries no allocation.
+// whether it already existed, or the rejection that left the state
+// untouched; a reset carries no allocation. RestoreRejected reports a
+// command fenced off by a cluster restore.
 type ProcessDefinitionAllocationResult struct {
-	Allocation state.ProcessDefinitionAllocation
-	Existing   bool
-	Rejected   *state.ProcessDefinitionAllocationRejectedError
+	Allocation      state.ProcessDefinitionAllocation
+	Existing        bool
+	Rejected        *state.ProcessDefinitionAllocationRejectedError
+	RestoreRejected *state.RestoreRejectedError
 }
 
 // applyProcessDefinitionAllocation allocates or resets through the cluster
 // state; the log index is the sequence a new version's key is derived from,
-// so every replica builds the same key.
+// so every replica builds the same key. Whatever its outcome, the command
+// raises the protocol version the log requires of every member: a binary
+// that does not know it cannot replay the log any more.
 func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) interface{} {
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
+	f.store.state.MinProtocolVersion = max(f.store.state.MinProtocolVersion, state.ProtocolVersionProcessDefinitionAllocation)
 	newState := *f.store.state.DeepCopy()
 	var err error
 	result := ProcessDefinitionAllocationResult{}
@@ -195,18 +201,18 @@ func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAlloc
 	case proto.ProcessDefinitionAllocation_ACTION_UNKNOWN, proto.ProcessDefinitionAllocation_ACTION_ALLOCATE:
 		result.Allocation, result.Existing, err = newState.AllocateProcessDefinition(processDefinitionAllocationFromProto(cmd, logIndex))
 	case proto.ProcessDefinitionAllocation_ACTION_RESET:
-		err = newState.ResetProcessDefinitions(observedProcessDefinitionsFromProto(cmd.GetDefinitions()))
-	//lint:ignore SA1019 the deprecated action is handled on purpose: it only exists to replay raft logs written by earlier binaries
-	case proto.ProcessDefinitionAllocation_ACTION_CONFIRM:
-		// the registry no longer tracks unconfirmed allocations: nothing to do
-		return result
+		err = newState.ResetProcessDefinitions(observedProcessDefinitionsFromProto(cmd.GetDefinitions()), cmd.GetRestoreOperationId(), cmd.GetRestoreEpoch())
 	default:
-		// a command written by a newer binary: refuse it rather than guess
+		// a command written by a newer binary (or by an unreleased revision of this one): refuse it rather than guess
 		err = &state.ProcessDefinitionAllocationRejectedError{
 			ProcessID: cmd.GetProcessId(), Reason: fmt.Sprintf("unsupported allocation action %d", cmd.GetAction()),
 		}
 	}
 	if err != nil {
+		var restoreRejected *state.RestoreRejectedError
+		if errors.As(err, &restoreRejected) {
+			return ProcessDefinitionAllocationResult{RestoreRejected: restoreRejected}
+		}
 		var rejected *state.ProcessDefinitionAllocationRejectedError
 		if !errors.As(err, &rejected) {
 			rejected = &state.ProcessDefinitionAllocationRejectedError{ProcessID: cmd.GetProcessId(), Reason: err.Error()}
@@ -219,19 +225,15 @@ func (f *FSM) applyProcessDefinitionAllocation(cmd *proto.ProcessDefinitionAlloc
 
 func processDefinitionAllocationFromProto(cmd *proto.ProcessDefinitionAllocation, logIndex uint64) state.ProcessDefinitionAllocationRequest {
 	req := state.ProcessDefinitionAllocationRequest{
-		ProcessID:  cmd.GetProcessId(),
-		Checksum:   cmd.GetChecksum(),
-		VersionTag: cmd.GetVersionTag(),
-		Sequence:   logIndex,
-		NowMillis:  cmd.GetTimestampMillis(),
+		ProcessID:    cmd.GetProcessId(),
+		Checksum:     cmd.GetChecksum(),
+		VersionTag:   cmd.GetVersionTag(),
+		Sequence:     logIndex,
+		RestoreID:    cmd.GetRestoreOperationId(),
+		RestoreEpoch: cmd.GetRestoreEpoch(),
+		NowMillis:    cmd.GetTimestampMillis(),
 	}
-	observed := cmd.GetObserved()
-	//lint:ignore SA1019 the deprecated field is read on purpose: it only exists to replay raft logs written by earlier binaries
-	if legacy := cmd.GetObservedLatest(); legacy != nil {
-		// an earlier revision of the command carried one observed definition
-		observed = append(observed, legacy)
-	}
-	for _, observed := range observed {
+	for _, observed := range cmd.GetObserved() {
 		req.Observed = append(req.Observed, state.ProcessDefinitionAllocation{
 			Key:        observed.GetKey(),
 			Version:    observed.GetVersion(),
@@ -352,6 +354,15 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	}
 	if nodeChangeCommand.GetState() != proto.NodeState_NODE_STATE_UNKNOWN {
 		node.State = state.NodeState(nodeChangeCommand.GetState())
+	}
+	// the protocol version is known for a running binary only: a node
+	// recorded as shut down holds none, whatever an announcement in flight
+	// says, so that a node that comes back announces again and one that
+	// comes back with an older binary (which announces nothing) is not mistaken for the one that left
+	if node.State == state.NodeStateShutdown {
+		node.ProtocolVersion = 0
+	} else if version := nodeChangeCommand.GetProtocolVersion(); version > 0 {
+		node.ProtocolVersion = version
 	}
 	if resuming {
 		for partitionId, np := range node.Partitions {

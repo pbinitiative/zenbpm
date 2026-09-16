@@ -37,6 +37,12 @@ type Cluster struct {
 	// allocation gets a millisecond of its own whatever the writers' clocks
 	// say, which keeps the keys unique.
 	ProcessDefinitionKeyClockMillis int64 `json:"processDefinitionKeyClockMillis,omitempty"`
+	// MinProtocolVersion is the protocol version the raft log requires of
+	// every member: the highest version of any command it holds (see
+	// CurrentProtocolVersion). It is raised when such a command is applied and
+	// never lowered; a node running a binary below it cannot join, since it
+	// would stop when the log delivers the command.
+	MinProtocolVersion int32 `json:"minProtocolVersion,omitempty"`
 }
 
 func (c Cluster) GetNode(nodeId string) (Node, error) {
@@ -273,6 +279,11 @@ type Node struct {
 	State      NodeState                `json:"state"`
 	Role       Role                     `json:"role"`
 	Partitions map[uint32]NodePartition `json:"partitions"`
+	// ProtocolVersion is the version of the main raft command set the node's
+	// binary implements, as the node announced it since it last started; zero
+	// while it has not (a node that is still starting, or one running a binary
+	// that predates the announcement). See CurrentProtocolVersion.
+	ProtocolVersion int32 `json:"protocolVersion,omitempty"`
 	// TODO: add zones
 }
 

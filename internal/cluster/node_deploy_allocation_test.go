@@ -3,13 +3,15 @@ package cluster
 import (
 	"context"
 	"crypto/md5" // #nosec G501 -- MD5 is a content fingerprint for change detection, not a security primitive
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/go-hclog"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
@@ -334,6 +336,127 @@ func TestDeployRejectsResourcesWithoutProcessId(t *testing.T) {
 	assert.Zero(t, fc.allocations)
 }
 
+func TestAllocatedDeploymentCannotCrossRestore(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprintf("partial-fanout=%t", partial), func(t *testing.T) {
+			fc := newFakeDeployCluster(t, 2)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			t.Cleanup(cancel)
+			const processID = "restore-deployment"
+			a := deployTestBPMN(processID, "A")
+			b := deployTestBPMN(processID, "B")
+			keyA, _, err := fc.deployer().Deploy(ctx, a, "a.bpmn")
+			require.NoError(t, err)
+			paused := make(chan struct{}, 2)
+			firstDeployed := make(chan struct{}, 1)
+			resume := make(chan struct{})
+			fc.beforeDeploy = func(id uint32, req *proto.DeployProcessDefinitionRequest) {
+				if string(req.GetData()) != string(b) || (partial && id == 1) {
+					return
+				}
+				paused <- struct{}{}
+				select {
+				case <-resume:
+				case <-ctx.Done():
+					panic(ctx.Err())
+				}
+			}
+			fc.afterDeploy = func(id uint32, req *proto.DeployProcessDefinitionRequest) {
+				if partial && id == 1 && string(req.GetData()) == string(b) {
+					firstDeployed <- struct{}{}
+				}
+			}
+			type outcome struct {
+				key      int64
+				existing bool
+				err      error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				key, existing, err := fc.deployer().Deploy(ctx, b, "b.bpmn")
+				done <- outcome{key: key, existing: existing, err: err}
+			}()
+			wait := func(ch <-chan struct{}) {
+				select {
+				case <-ch:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+			}
+			wait(paused)
+			if partial {
+				wait(firstDeployed)
+			} else {
+				wait(paused)
+			}
+			obsolete := fc.clusterState().ProcessDefinitions[processID].Latest
+			require.Equal(t, int32(2), obsolete.Version)
+			token := partition.RestoreToken{OperationID: "restore", Epoch: 1}
+			for id, guard := range fc.guards {
+				guard.EnterRestoreFence(token)
+				// Restore the backup's A-only content on fresh engines, as a real
+				// restore stops the old engines before replacing their databases.
+				fc.engines[id].Stop()
+				storage := inmemory.NewStorage()
+				engine := bpmn.NewEngine(bpmn.EngineWithStorage(storage))
+				t.Cleanup(engine.Stop)
+				_, err := engine.DeployProcessDefinition(ctx, a, keyA, 1)
+				require.NoError(t, err)
+				fc.stores[id], fc.engines[id] = storage, &engine
+			}
+			fc.mu.Lock()
+			fc.cluster.Restore = state.RestoreOperation{ID: token.OperationID, Epoch: token.Epoch, Status: state.RestoreStatusActive, Phase: state.RestorePhaseReconciling}
+			checksum := md5.Sum(a)
+			err = fc.cluster.ResetProcessDefinitions([]state.ObservedProcessDefinition{{ProcessID: processID, Key: keyA, Version: 1, Checksum: hex.EncodeToString(checksum[:])}}, token.OperationID, token.Epoch)
+			fc.cluster.Restore.Status, fc.cluster.Restore.Phase = state.RestoreStatusCompleted, state.RestorePhaseDone
+			fc.mu.Unlock()
+			require.NoError(t, err)
+			for _, guard := range fc.guards {
+				guard.LeaveRestoreFence(token)
+			}
+			close(resume)
+			// the restored partitions refuse the obsolete fan-out; the deployer
+			// observes and allocates again and completes against them
+			result := <-done
+			require.NoError(t, result.err, "the deployment is repeated from a fresh observation")
+			assert.False(t, result.existing)
+			assert.NotEqual(t, obsolete.Key, result.key, "the obsolete allocation is never stored")
+			mappings := fc.definitionMappings(t, processID)
+			for partitionID, mapping := range mappings {
+				require.Len(t, mapping, 2, "partition %d", partitionID)
+				assert.Equal(t, keyA, mapping[1].key, "the restored content is kept")
+				assert.Equal(t, result.key, mapping[2].key)
+			}
+			assert.Equal(t, result.key, fc.clusterState().ProcessDefinitions[processID].Latest.Key)
+			fc.beforeDeploy, fc.afterDeploy = nil, nil
+			sameKey, alreadyExisted, err := fc.deployer().Deploy(ctx, b, "b.bpmn")
+			require.NoError(t, err)
+			assert.True(t, alreadyExisted, "a repeat is answered with the fresh definition")
+			assert.Equal(t, result.key, sameKey)
+		})
+	}
+}
+
+func TestDeployerAndAllocatorAgreeOnEqualVersionObservations(t *testing.T) {
+	for _, observations := range [][]observedProcessDefinition{
+		{{key: 3, version: 1, checksum: []byte("a")}, {key: 9, version: 1, checksum: []byte("b")}},
+		{{key: 9, version: 1, checksum: []byte("b")}, {key: 3, version: 1, checksum: []byte("a")}},
+	} {
+		latest := latestObservedProcessDefinition(observations)
+		require.NotNil(t, latest)
+		var cluster state.Cluster
+		req := state.ProcessDefinitionAllocationRequest{ProcessID: "tie", Checksum: hex.EncodeToString(latest.checksum), NowMillis: time.Now().UnixMilli()}
+		for _, observed := range observations {
+			req.Observed = append(req.Observed, state.ProcessDefinitionAllocation{Key: observed.key, Version: observed.version, Checksum: hex.EncodeToString(observed.checksum)})
+		}
+		allocated, existing, err := cluster.AllocateProcessDefinition(req)
+		require.NoError(t, err)
+		assert.True(t, existing)
+		assert.Equal(t, latest.key, allocated.Key)
+		assert.Equal(t, latest.version, allocated.Version)
+	}
+}
+
 // fakeDeployCluster is a cluster of engine-backed partitions whose
 // allocations go through the replicated cluster state, as the raft FSM
 // applies them, instead of the raft log.
@@ -341,6 +464,7 @@ type fakeDeployCluster struct {
 	t       *testing.T
 	engines map[uint32]*bpmn.Engine
 	stores  map[uint32]*inmemory.Storage
+	guards  map[uint32]*partition.DB
 
 	mu          sync.Mutex
 	cluster     state.Cluster
@@ -356,6 +480,7 @@ func newFakeDeployCluster(t *testing.T, partitions int) *fakeDeployCluster {
 		t:       t,
 		engines: map[uint32]*bpmn.Engine{},
 		stores:  map[uint32]*inmemory.Storage{},
+		guards:  map[uint32]*partition.DB{},
 	}
 	for p := 1; p <= partitions; p++ {
 		store := inmemory.NewStorage()
@@ -363,17 +488,16 @@ func newFakeDeployCluster(t *testing.T, partitions int) *fakeDeployCluster {
 		t.Cleanup(engine.Stop)
 		fc.stores[uint32(p)] = store // #nosec G115 -- test partition ids are tiny
 		fc.engines[uint32(p)] = &engine
+		fc.guards[uint32(p)] = &partition.DB{}
 	}
 	return fc
 }
 
 func (fc *fakeDeployCluster) deployer() *processDefinitionDeployer {
 	return &processDefinitionDeployer{
-		observe:    fc.observe,
-		allocate:   fc.allocate,
-		partitions: fc.partitions,
-		deploy:     fc.deploy,
-		logger:     hclog.NewNullLogger(),
+		observe:  fc.observe,
+		allocate: fc.allocate,
+		deploy:   fc.deploy,
 	}
 }
 
@@ -385,13 +509,17 @@ func (fc *fakeDeployCluster) clusterState() state.Cluster {
 }
 
 // observe reads every partition, as a node reads every partition leader:
-// the latest version with its bytes and the tagged versions, merged by key.
-func (fc *fakeDeployCluster) observe(ctx context.Context, processId string) ([]observedProcessDefinition, error) {
+// the latest version with its bytes and the tagged versions, merged by key,
+// under the restore generation of the cluster state.
+func (fc *fakeDeployCluster) observe(ctx context.Context, processId string) (processObservation, error) {
+	restore := fc.clusterState().Restore
+	observation := processObservation{restoreID: restore.ID, restoreEpoch: restore.Epoch}
+	observation.partitionIDs, observation.subscriptionPartition, _ = fc.partitions(processId)
 	var perPartition [][]observedProcessDefinition
 	for _, store := range fc.stores {
 		definitions, err := store.FindProcessDefinitionsById(ctx, processId)
 		if err != nil {
-			return nil, err
+			return processObservation{}, err
 		}
 		var latest *runtime.ProcessDefinition
 		for i := range definitions {
@@ -418,7 +546,8 @@ func (fc *fakeDeployCluster) observe(ctx context.Context, processId string) ([]o
 		}
 		perPartition = append(perPartition, observed)
 	}
-	return mergeObservedProcessDefinitions(perPartition), nil
+	observation.definitions = mergeObservedProcessDefinitions(perPartition)
+	return observation, nil
 }
 
 // allocate applies the command the way the FSM does: on a copy of the state
@@ -430,11 +559,13 @@ func (fc *fakeDeployCluster) allocate(_ context.Context, req *protoc.ProcessDefi
 	fc.allocations++
 	next := *fc.cluster.DeepCopy()
 	request := state.ProcessDefinitionAllocationRequest{
-		ProcessID:  req.GetProcessId(),
-		Checksum:   req.GetChecksum(),
-		VersionTag: req.GetVersionTag(),
-		Sequence:   uint64(fc.allocations), // #nosec G115 -- a test counter
-		NowMillis:  req.GetTimestampMillis(),
+		ProcessID:    req.GetProcessId(),
+		Checksum:     req.GetChecksum(),
+		VersionTag:   req.GetVersionTag(),
+		Sequence:     uint64(fc.allocations), // #nosec G115 -- a test counter
+		RestoreID:    req.GetRestoreOperationId(),
+		RestoreEpoch: req.GetRestoreEpoch(),
+		NowMillis:    req.GetTimestampMillis(),
 	}
 	for _, observed := range req.GetObserved() {
 		request.Observed = append(request.Observed, state.ProcessDefinitionAllocation{
@@ -473,14 +604,24 @@ func (fc *fakeDeployCluster) deploy(ctx context.Context, partitionId uint32, req
 	if fc.beforeDeploy != nil {
 		fc.beforeDeploy(partitionId, req)
 	}
-	engine := fc.engines[partitionId]
-	if _, err := engine.DeployProcessDefinition(ctx, req.GetData(), req.GetKey(), req.GetVersion()); err != nil {
-		return zenerr.TechnicalError(fmt.Errorf("failed to deploy process definition: %w", err))
-	}
-	if req.GetRegisterProcessDefinitionSubscriptions() {
-		if err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey()); err != nil {
-			return zenerr.TechnicalError(err)
+	err = fc.guards[partitionId].RunDeployment(ctx, partition.RestoreToken{OperationID: req.GetRestoreOperationId(), Epoch: req.GetRestoreEpoch()}, func() error {
+		engine := fc.engines[partitionId]
+		if _, err := engine.DeployProcessDefinition(ctx, req.GetData(), req.GetKey(), req.GetVersion()); err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("failed to deploy process definition: %w", err))
 		}
+		if req.GetRegisterProcessDefinitionSubscriptions() {
+			if err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey()); err != nil {
+				return zenerr.TechnicalError(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, partition.ErrDeploymentGenerationChanged) {
+			// what the server answers for a fan-out that predates a restore
+			return zenerr.Conflict(err)
+		}
+		return err
 	}
 	if fc.afterDeploy != nil {
 		fc.afterDeploy(partitionId, req)

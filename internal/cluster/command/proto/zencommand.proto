@@ -46,6 +46,13 @@ message NodeChange {
   RaftSuffrage suffrage = 3;
   NodeState state = 4;
   Role role = 5;
+  // protocol_version is the version of this command set the node's binary
+  // implements (see state.CurrentProtocolVersion); a node announces it about
+  // itself. Zero leaves the recorded version unchanged. The leader commits a
+  // command only when every member announced a version that includes it, so
+  // a member running an older binary, which would stop on a command it does
+  // not know, is never sent one.
+  int32 protocol_version = 6;
 }
 
 
@@ -150,11 +157,8 @@ message ProcessDefinitionAllocation {
     ACTION_UNKNOWN = 0;
     ACTION_ALLOCATE = 1;
     ACTION_RESET = 3;
-    // ACTION_CONFIRM marked an allocation as deployed to every partition in
-    // an earlier revision of the command. The registry no longer tracks
-    // unconfirmed allocations, so an entry replayed from a raft log written
-    // by that revision changes nothing.
-    ACTION_CONFIRM = 2 [deprecated = true];
+    // 2 (ACTION_CONFIRM) was used by an unreleased revision of the command.
+    reserved 2;
   }
   // action defaults to ACTION_ALLOCATE.
   Action action = 1;
@@ -177,13 +181,19 @@ message ProcessDefinitionAllocation {
   // hold, each with its process_id; the registry is rebuilt from them and
   // every process absent from the list is forgotten.
   repeated ObservedProcessDefinition definitions = 9;
-  // observed_latest is the latest definition of the process the requesting
-  // node read from one partition, as an earlier revision of the command sent
-  // it. It is read only to replay raft log entries written by that revision;
-  // the FSM treats it as one more observed definition.
-  ObservedProcessDefinition observed_latest = 5 [deprecated = true];
-  // key (7) identified the allocation an ACTION_CONFIRM entry referred to.
-  reserved 7;
+  // 5 (observed_latest) and 7 (key) were used by unreleased revisions of the
+  // command; logs written by them are not supported (see README).
+  reserved 5, 7;
+  // restore_operation_id and restore_epoch fence the command against a
+  // cluster restore. For ACTION_ALLOCATE they identify the restore operation
+  // recorded in the cluster state when the partitions were observed (empty
+  // and zero when the cluster was never restored): an allocation whose
+  // observation predates a restore is refused, since the restored partitions
+  // no longer hold what it observed. For ACTION_RESET they are the fencing
+  // token of the restore operation doing the reset, which must own the
+  // cluster and be reconciling it.
+  string restore_operation_id = 10;
+  uint64 restore_epoch = 11;
 }
 
 // ObservedProcessDefinition is a definition as it exists on a partition.

@@ -618,6 +618,87 @@ func (q *Queries) GetElementStatisticsByProcessDefinitionKey(ctx context.Context
 	return items, nil
 }
 
+const listProcessDefinitionVersions = `-- name: ListProcessDefinitionVersions :many
+SELECT
+    d."key",
+    d.version,
+    d.bpmn_process_id,
+    d.bpmn_checksum,
+    d.version_tag,
+    CASE WHEN ?1 <> 0 AND d.version = latest.version THEN d.bpmn_data ELSE '' END AS bpmn_data
+FROM
+    process_definition AS d
+    INNER JOIN (
+        SELECT
+            bpmn_process_id,
+            MAX(version) AS version
+        FROM
+            process_definition
+        WHERE
+            ?2 IS NULL
+            OR bpmn_process_id = ?2
+        GROUP BY
+            bpmn_process_id
+    ) AS latest ON latest.bpmn_process_id = d.bpmn_process_id
+WHERE
+    (?2 IS NULL OR d.bpmn_process_id = ?2)
+    AND (?3 = 0 OR d.version_tag <> '' OR d.version = latest.version)
+ORDER BY
+    d.bpmn_process_id ASC,
+    d.version ASC
+`
+
+type ListProcessDefinitionVersionsParams struct {
+	LatestData          interface{} `json:"latest_data"`
+	BpmnProcessID       interface{} `json:"bpmn_process_id"`
+	LatestAndTaggedOnly interface{} `json:"latest_and_tagged_only"`
+}
+
+type ListProcessDefinitionVersionsRow struct {
+	Key           int64  `json:"key"`
+	Version       int64  `json:"version"`
+	BpmnProcessID string `json:"bpmn_process_id"`
+	BpmnChecksum  []byte `json:"bpmn_checksum"`
+	VersionTag    string `json:"version_tag"`
+	BpmnData      string `json:"bpmn_data"`
+}
+
+// Lists the versions of process definitions, ordered by process id and
+// version, as a deployment observes them. bpmn_process_id restricts the
+// answer to one process (NULL lists every process); latest_data (1/0)
+// includes the BPMN bytes of the latest version of every listed process;
+// latest_and_tagged_only (1/0) keeps only the latest version of every
+// process and the versions carrying a version tag.
+func (q *Queries) ListProcessDefinitionVersions(ctx context.Context, arg ListProcessDefinitionVersionsParams) ([]ListProcessDefinitionVersionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProcessDefinitionVersions, arg.LatestData, arg.BpmnProcessID, arg.LatestAndTaggedOnly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProcessDefinitionVersionsRow{}
+	for rows.Next() {
+		var i ListProcessDefinitionVersionsRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnChecksum,
+			&i.VersionTag,
+			&i.BpmnData,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
 INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name, version_tag)
     VALUES (?, ?, ?, ?, ?, ?, ?)

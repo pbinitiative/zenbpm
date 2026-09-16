@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -261,6 +262,14 @@ func TestWriteProcessDefinitionAllocationRequiresLeader(t *testing.T) {
 		ProcessId: new("order"), Checksum: new("a"),
 	})
 	require.ErrorIs(t, err, zenerr.ErrNotLeader, "callers route the allocation to the cluster leader by this sentinel")
+
+	// the refusal comes from the protocol version check, before anything is
+	// handed to raft: a node that took leadership between the check and the
+	// apply would otherwise enqueue the command without checking the members
+	err = s.requireMemberProtocolVersion(state.ProtocolVersionProcessDefinitionAllocation)
+	require.ErrorIs(t, err, zenerr.ErrNotLeader)
+	var member *state.MemberProtocolVersionError
+	assert.False(t, errors.As(err, &member), "a follower does not judge the members' versions")
 }
 
 // newBootstrappedTestStore opens a single-node store that is its own leader.

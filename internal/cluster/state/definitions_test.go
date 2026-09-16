@@ -218,6 +218,60 @@ func TestAllocateProcessDefinitionCatchesUpWithObservedPartitionState(t *testing
 	assert.Equal(t, behind[0], c.ProcessDefinitions["order"].VersionTags["legacy"], "the partitions are authoritative for the tags they hold")
 }
 
+// TestCatchUpReservesASharedTagForTheNewestObservedDefinition verifies that
+// a tag the partitions hold on different definitions (a history that
+// diverged before allocations were replicated) is reserved for the newest of
+// them, the definition the latest resolution picks too, whatever the order
+// of the observations, on both the allocation and the reset path.
+func TestCatchUpReservesASharedTagForTheNewestObservedDefinition(t *testing.T) {
+	// two partitions accepted different content under the tag at the same
+	// version: the higher key wins, like the latest resolution
+	sameVersion := []ProcessDefinitionAllocation{
+		{Key: 5, Version: 2, Checksum: "aaa", VersionTag: "shared"},
+		{Key: 9, Version: 2, Checksum: "bbb", VersionTag: "shared"},
+	}
+	// a partition that missed a deployment numbered the tagged one lower
+	// than another partition did: the higher version wins
+	differentVersions := []ProcessDefinitionAllocation{
+		{Key: 9, Version: 1, Checksum: "aaa", VersionTag: "shared"},
+		{Key: 4, Version: 2, Checksum: "bbb", VersionTag: "shared"},
+	}
+	for name, tc := range map[string]struct {
+		observed []ProcessDefinitionAllocation
+		want     ProcessDefinitionAllocation
+	}{
+		"same version":       {observed: sameVersion, want: sameVersion[1]},
+		"different versions": {observed: differentVersions, want: differentVersions[1]},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reversed := []ProcessDefinitionAllocation{tc.observed[1], tc.observed[0]}
+			for _, observed := range [][]ProcessDefinitionAllocation{tc.observed, reversed} {
+				var c Cluster
+				_, _, err := c.AllocateProcessDefinition(ProcessDefinitionAllocationRequest{
+					ProcessID: "order", Checksum: "ccc", Sequence: 100, Observed: observed, NowMillis: 10,
+				})
+				require.NoError(t, err)
+				versions := c.ProcessDefinitions["order"]
+				assert.Equal(t, tc.want, versions.VersionTags["shared"], "the tag is reserved for the newest definition holding it")
+				assert.Equal(t, int32(3), versions.Latest.Version)
+
+				restored := Cluster{Restore: RestoreOperation{ID: "op", Epoch: 1, Status: RestoreStatusActive, Phase: RestorePhaseReconciling}}
+				definitions := make([]ObservedProcessDefinition, 0, len(observed))
+				for _, definition := range observed {
+					definitions = append(definitions, ObservedProcessDefinition{
+						ProcessID: "order", Key: definition.Key, Version: definition.Version, Checksum: definition.Checksum, VersionTag: definition.VersionTag,
+					})
+				}
+				require.NoError(t, restored.ResetProcessDefinitions(definitions, "op", 1))
+				assert.Equal(t, ProcessDefinitionVersions{
+					Latest:      tc.want,
+					VersionTags: map[string]ProcessDefinitionAllocation{"shared": tc.want},
+				}, restored.ProcessDefinitions["order"], "the reset resolves the tag the same way")
+			}
+		})
+	}
+}
+
 func TestAllocateProcessDefinitionRejectsIncompleteObservations(t *testing.T) {
 	for _, observed := range []ProcessDefinitionAllocation{
 		{Key: 0, Version: 2, Checksum: "ccc"},

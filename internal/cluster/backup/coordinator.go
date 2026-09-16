@@ -872,7 +872,24 @@ func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32
 	if run.deps.ResetProcessDefinitions == nil {
 		return fmt.Errorf("restore cannot reset the process definition registry: no ResetProcessDefinitions dependency")
 	}
-	byKey := map[int64]*protoc.ObservedProcessDefinition{}
+	// A definition is registered once however many partitions hold it. A key
+	// that partitions report with different versions or metadata (a history
+	// that diverged before allocations were replicated: a partition that
+	// missed a deployment numbered the next one differently) is registered
+	// in each of its forms, and the registry resolves them the way it
+	// resolves what a deployment observes, with the newest version as the
+	// latest; the divergence is logged rather than failing the restore,
+	// like the same-version conflicts of the definition sync.
+	type registeredDefinition struct {
+		processID  string
+		key        int64
+		version    int32
+		checksum   string
+		versionTag string
+	}
+	seen := map[registeredDefinition]bool{}
+	firstByKey := map[int64]registeredDefinition{}
+	var definitions []*protoc.ObservedProcessDefinition
 	for _, id := range ids {
 		leader, err := run.deps.Clients.PartitionLeader(id)
 		if err != nil {
@@ -883,24 +900,37 @@ func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32
 			return fmt.Errorf("definition registry scan on partition %d failed: %w", id, err)
 		}
 		for _, version := range resp.GetVersions() {
-			if _, seen := byKey[version.GetKey()]; seen {
+			definition := registeredDefinition{
+				processID:  version.GetProcessId(),
+				key:        version.GetKey(),
+				version:    version.GetVersion(),
+				checksum:   hex.EncodeToString(version.GetChecksum()),
+				versionTag: version.GetVersionTag(),
+			}
+			if seen[definition] {
 				continue
 			}
-			byKey[version.GetKey()] = &protoc.ObservedProcessDefinition{
-				ProcessId:  new(version.GetProcessId()),
-				Key:        new(version.GetKey()),
-				Version:    new(version.GetVersion()),
-				Checksum:   new(hex.EncodeToString(version.GetChecksum())),
-				VersionTag: new(version.GetVersionTag()),
+			seen[definition] = true
+			if first, ok := firstByKey[definition.key]; ok {
+				log.Warn("restore %s: partition %d holds process definition %d of %q as version %d (checksum %s, version tag %q) while another partition holds it as version %d (checksum %s, version tag %q); the registry keeps the newest version as the latest",
+					run.identity.id, id, definition.key, definition.processID, definition.version, definition.checksum, definition.versionTag, first.version, first.checksum, first.versionTag)
+			} else {
+				firstByKey[definition.key] = definition
 			}
+			definitions = append(definitions, &protoc.ObservedProcessDefinition{
+				ProcessId:  new(definition.processID),
+				Key:        new(definition.key),
+				Version:    new(definition.version),
+				Checksum:   new(definition.checksum),
+				VersionTag: new(definition.versionTag),
+			})
 		}
 	}
-	definitions := make([]*protoc.ObservedProcessDefinition, 0, len(byKey))
-	for _, definition := range byKey {
-		definitions = append(definitions, definition)
-	}
 	slices.SortFunc(definitions, func(a, b *protoc.ObservedProcessDefinition) int {
-		return cmp.Compare(a.GetKey(), b.GetKey())
+		if c := cmp.Compare(a.GetKey(), b.GetKey()); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.GetVersion(), b.GetVersion())
 	})
 	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
 	defer cancel()

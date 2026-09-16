@@ -315,6 +315,40 @@ func TestRunClusterRestoreRebuildsProcessDefinitionRegistry(t *testing.T) {
 	assert.Equal(t, state.RestorePhaseReconciling, fc.registryResetPhase, "the reset happens while the restore still gates the cluster")
 }
 
+// TestRunClusterRestoreRegistersEveryVersionOfADivergedDefinition covers
+// partitions that hold one definition key at different versions (a partition
+// missed a deployment before allocations were replicated and numbered the
+// next one lower): neither form is dropped in favour of the partition
+// scanned first, the registry records the newest as the latest, and the
+// restore completes.
+func TestRunClusterRestoreRegistersEveryVersionOfADivergedDefinition(t *testing.T) {
+	fc := newFakeCluster(t, 2)
+	bpmn := []byte(`<?xml version="1.0"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="skewed-process" isExecutable="true"/></bpmn:definitions>`)
+	for id, version := range map[uint32]int32{1: 2, 2: 3} {
+		fc.partitions[id].definitionRefs = []*proto.DefinitionRef{
+			{Key: new(int64(101)), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()},
+		}
+		fc.partitions[id].resources = map[int64][]byte{101: bpmn}
+		fc.partitions[id].versions = map[int64]int32{101: version}
+		fc.partitions[id].tags = map[int64]string{101: "stable"}
+	}
+
+	report, err := RunClusterRestore(context.Background(), fc.deps(), bytes.NewReader(fc.bundle(t)), true)
+	require.NoError(t, err)
+	assert.Equal(t, state.RestorePhaseDone, report.Phase)
+	assert.Equal(t, 2, report.ProcessDefinitionsRegistered, "both versions of the key are registered")
+	require.Len(t, fc.registryResets, 1)
+	require.Len(t, fc.registryResets[0], 2)
+	assert.Equal(t, int32(2), fc.registryResets[0][0].GetVersion())
+	assert.Equal(t, int32(3), fc.registryResets[0][1].GetVersion())
+
+	checksum := md5.Sum(bpmn) // #nosec G401 -- a content fingerprint
+	newest := state.ProcessDefinitionAllocation{Key: 101, Version: 3, Checksum: hex.EncodeToString(checksum[:]), VersionTag: "stable"}
+	assert.Equal(t, map[string]state.ProcessDefinitionVersions{
+		"skewed-process": {Latest: newest, VersionTags: map[string]state.ProcessDefinitionAllocation{"stable": newest}},
+	}, fc.ClusterState().ProcessDefinitions, "the newest version the partitions hold is the latest")
+}
+
 // TestRunClusterRestoreReportsDivergedDefinitionVersions covers a partition
 // that already holds another definition at the version a missing one has on
 // its source: the copy is refused by the partition, the restore still
@@ -755,6 +789,17 @@ func (c *fakeClient) ImportDefinition(ctx context.Context, req *proto.ImportDefi
 		c.p.versions = map[int64]int32{}
 	}
 	c.p.versions[req.GetKey()] = req.GetVersion()
+	// the version tag is part of the BPMN data: the copy carries the tag the
+	// partition it was fetched from holds
+	for _, source := range c.fc.partitions {
+		if tag, ok := source.tags[req.GetKey()]; ok {
+			if c.p.tags == nil {
+				c.p.tags = map[int64]string{}
+			}
+			c.p.tags[req.GetKey()] = tag
+			break
+		}
+	}
 	return &proto.ImportDefinitionResponse{}, nil
 }
 

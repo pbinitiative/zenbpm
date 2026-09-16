@@ -196,13 +196,18 @@ func (c *Cluster) ResetProcessDefinitions(definitions []ObservedProcessDefinitio
 // the latest when it is newer than the recorded one, and every observed
 // version tag is reserved for the version the partitions hold it on,
 // replacing a tag recorded for an allocation that may never have been
-// deployed. A recorded latest version that no partition holds, while a
-// partition holds another definition at that very version, was never
-// deployed anywhere and could never be (the partitions refuse a second
-// definition at a version): it is replaced by the observed one, so that an
-// allocation made from a wrong observation does not block the process for
-// good. The observations are visited in a fixed order so that every replica
-// ends up with the same state.
+// deployed. A tag the partitions hold on several definitions (a history that
+// diverged before allocations were replicated: each partition refuses a
+// second definition under a tag, but two partitions may have accepted
+// different ones) is reserved for the newest of them, by version then key,
+// the definition the latest resolution prefers as well. A recorded latest
+// version that no partition holds, while a partition holds another
+// definition at that very version, was never deployed anywhere and could
+// never be (the partitions refuse a second definition at a version): it is
+// replaced by the observed one, so that an allocation made from a wrong
+// observation does not block the process for good. The observations are
+// visited in a fixed order so that every replica ends up with the same
+// state.
 func (v *ProcessDefinitionVersions) catchUp(observed []ProcessDefinitionAllocation) {
 	ordered := slices.Clone(observed)
 	slices.SortFunc(ordered, func(a, b ProcessDefinitionAllocation) int {
@@ -212,10 +217,18 @@ func (v *ProcessDefinitionVersions) catchUp(observed []ProcessDefinitionAllocati
 		return cmp.Compare(b.Key, a.Key) // highest key first, like the deployer
 	})
 	recordedLatestHeld := !v.Latest.Exists()
+	observedTags := map[string]ProcessDefinitionAllocation{}
 	for _, definition := range ordered {
 		if definition.Version == v.Latest.Version && definition.Key == v.Latest.Key {
 			recordedLatestHeld = true
 		}
+		if definition.VersionTag == "" {
+			continue
+		}
+		if held, seen := observedTags[definition.VersionTag]; seen && !newerProcessDefinition(definition, held) {
+			continue
+		}
+		observedTags[definition.VersionTag] = definition
 		v.recordVersionTag(definition)
 	}
 	for _, definition := range ordered {
@@ -232,6 +245,16 @@ func (v *ProcessDefinitionVersions) catchUp(observed []ProcessDefinitionAllocati
 			v.Latest = definition
 		}
 	}
+}
+
+// newerProcessDefinition reports whether a is a newer definition than b: a
+// higher version, or the higher key at the same version, the order the
+// deployer and the latest resolution of catchUp use.
+func newerProcessDefinition(a, b ProcessDefinitionAllocation) bool {
+	if a.Version != b.Version {
+		return a.Version > b.Version
+	}
+	return a.Key > b.Key
 }
 
 // nextProcessDefinitionKey builds the key of a new definition version. The

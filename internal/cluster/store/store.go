@@ -295,12 +295,14 @@ func (s *Store) WriteProcessDefinitionAllocation(ctx context.Context, allocation
 // requireMemberProtocolVersion refuses, with a *state.MemberProtocolVersionError,
 // to commit a command of the given protocol version while a server of the
 // raft configuration (every one of them applies the log, voter or not) has
-// not announced a protocol version that includes it. Only the leader checks:
-// a follower cannot commit anyway and reports zenerr.ErrNotLeader through
-// the apply instead.
+// not announced a protocol version that includes it. Only the leader can
+// check, so on any other node the error wraps zenerr.ErrNotLeader: a follower
+// cannot commit anyway, and letting it enqueue would hand the command
+// unchecked to raft should this node take leadership between the check and
+// the apply.
 func (s *Store) requireMemberProtocolVersion(required int32) error {
 	if !s.IsLeader() {
-		return nil
+		return fmt.Errorf("%w: only the cluster leader checks the members' protocol versions and commits", zenerr.ErrNotLeader)
 	}
 	cs := s.ClusterState()
 	if cs.MinProtocolVersion >= required {

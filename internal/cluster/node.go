@@ -687,6 +687,11 @@ func (node *ZenNode) observeProcessDefinition(ctx context.Context, processId str
 	// starts in between gates the allocation, one that completes in between changes the generation
 	clusterState := node.store.ClusterState()
 	observation := processObservation{restoreID: clusterState.Restore.ID, restoreEpoch: clusterState.Restore.Epoch}
+	// The partitions are those of the cluster state at this point; the
+	// deployment fans out to exactly them. The set only grows while the
+	// cluster forms (see config.Cluster.ValidateDesiredPartitions): adding a
+	// partition to a cluster that holds definitions would first have to copy
+	// them onto it, which no code does yet.
 	partitionIds := sortedPartitionIds(clusterState)
 	if len(partitionIds) == 0 {
 		return processObservation{}, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))

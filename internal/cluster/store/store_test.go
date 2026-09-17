@@ -16,6 +16,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/rqlite/rqlite/v10/tcp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -410,6 +411,42 @@ func TestResumeNodeRestoresPartitionFollowerRole(t *testing.T) {
 		p, ok := n.Partitions[1]
 		return ok && p.Role == state.RoleFollower
 	}, 50*time.Millisecond, 5*time.Second)
+}
+
+// TestNodeChangeRecordsProtocolVersionUntilShutdown verifies that a node's
+// announced protocol version is recorded, kept by changes that do not carry
+// one, and cleared when the node shuts down, so that a node coming back
+// announces again and one coming back with an older binary is not mistaken
+// for the one that left.
+func TestNodeChangeRecordsProtocolVersionUntilShutdown(t *testing.T) {
+	s := newBootstrappedTestStore(t)
+	peerId := "peer-1"
+
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{
+		NodeId: new(peerId), State: proto.NodeState_NODE_STATE_STARTED.Enum(), Role: proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}))
+	assert.Zero(t, s.ClusterState().Nodes[peerId].ProtocolVersion, "a node the leader added has announced nothing yet")
+
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerId), ProtocolVersion: new(int32(3))}))
+	peer := s.ClusterState().Nodes[peerId]
+	assert.Equal(t, int32(3), peer.ProtocolVersion)
+	assert.Equal(t, state.NodeStateStarted, peer.State, "an announcement changes nothing else")
+
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerId), Addr: new("127.0.0.1:9")}))
+	assert.Equal(t, int32(3), s.ClusterState().Nodes[peerId].ProtocolVersion, "a change without a version keeps the announced one")
+
+	require.NoError(t, s.shutdownNode(raft.ServerID(peerId)))
+	assert.Zero(t, s.ClusterState().Nodes[peerId].ProtocolVersion, "a shutdown clears the announced version")
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerId), ProtocolVersion: new(int32(3))}))
+	assert.Zero(t, s.ClusterState().Nodes[peerId].ProtocolVersion, "an announcement in flight does not survive the shutdown")
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerId), State: proto.NodeState_NODE_STATE_SHUTDOWN.Enum(), ProtocolVersion: new(int32(3))}))
+	assert.Zero(t, s.ClusterState().Nodes[peerId].ProtocolVersion, "a version announced with the shutdown is dropped")
+	require.NoError(t, s.resumeNode(raft.ServerID(peerId)))
+	assert.Zero(t, s.ClusterState().Nodes[peerId].ProtocolVersion, "a resumed node has to announce again")
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerId), ProtocolVersion: new(int32(3))}))
+	assert.Equal(t, int32(3), s.ClusterState().Nodes[peerId].ProtocolVersion, "the resumed node announced again")
+
+	assert.Equal(t, state.CurrentProtocolVersion, s.ClusterState().Nodes[s.raftID].ProtocolVersion, "the leader announced its own version when it took leadership")
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot

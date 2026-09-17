@@ -78,6 +78,7 @@ type StoreService interface {
 	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
 	WriteRestoreChange(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
+	WriteProcessDefinitionAllocation(ctx context.Context, allocation *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error)
 }
 
 type ControllerService interface {
@@ -729,38 +730,170 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 	return &proto.DeployDmnResourceDefinitionResponse{}, nil
 }
 
+// AllocateProcessDefinition decides the cluster-wide (key, version) of a BPMN
+// deployment through the main raft log, or confirms that an allocation
+// reached every partition. Only the cluster leader can commit it; any other
+// node, and a leader whose apply outcome is unknown, answers UNAVAILABLE so
+// the caller re-resolves the leader and retries. A refused allocation (a
+// version tag already in use) is a bad request, nothing was written.
+func (s *Server) AllocateProcessDefinition(ctx context.Context, req *proto.AllocateProcessDefinitionRequest) (*proto.AllocateProcessDefinitionResponse, error) {
+	allocation, existing, err := s.store.WriteProcessDefinitionAllocation(ctx, req.GetAllocation())
+	if err != nil {
+		var rejected *state.ProcessDefinitionAllocationRejectedError
+		var member *state.MemberProtocolVersionError
+		var restoreRejected *state.RestoreRejectedError
+		var zerr *zenerr.ZenError
+		switch {
+		case errors.As(err, &rejected):
+			zerr = zenerr.BadRequest(err)
+		case errors.As(err, &restoreRejected):
+			// a restore gates the cluster, or replaced the partitions since
+			// the deployment observed them: not the request's fault, and a
+			// later deployment succeeds
+			zerr = zenerr.ClusterError(err)
+		case errors.As(err, &member) && member.Unannounced():
+			// a member that is still starting announces its version shortly:
+			// worth a retry; one running an older binary never does, and the
+			// retry window ends with this message
+			zerr = zenerr.Unavailable(err)
+		case errors.As(err, &member):
+			zerr = zenerr.ClusterError(err)
+		case errors.Is(err, zenerr.ErrNotLeader), errors.Is(err, zenerr.ErrApplyUncertain):
+			// a follower cannot commit, and a leader that lost leadership mid-apply
+			// does not know whether it did: both are retried against the current
+			// leader, which is safe because the allocation is idempotent
+			zerr = zenerr.Unavailable(fmt.Errorf("process definition allocation is not confirmed by the cluster leader: %w", err))
+		default:
+			zerr = zenerr.ClusterError(fmt.Errorf("failed to allocate process definition: %w", err))
+		}
+		return &proto.AllocateProcessDefinitionResponse{Error: zerr.ToProtoError()}, nil
+	}
+	return &proto.AllocateProcessDefinitionResponse{
+		Key:            new(allocation.Key),
+		Version:        new(allocation.Version),
+		AlreadyExisted: new(existing),
+	}, nil
+}
+
+// GetProcessDefinitionVersions lists the versions of a process (of every
+// process without a process id) a partition this node leads holds. A
+// partition this node does not lead answers UNAVAILABLE so that the caller
+// re-resolves the leader: only the leader's database is known to include
+// every deployment the partition acknowledged.
+func (s *Server) GetProcessDefinitionVersions(ctx context.Context, req *proto.GetProcessDefinitionVersionsRequest) (*proto.GetProcessDefinitionVersionsResponse, error) {
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil || !partitionNode.IsLeader(ctx) {
+		return nil, status.Errorf(codes.Unavailable, "partition %d is not led by this node", req.GetPartitionId())
+	}
+	versions, err := partitionNode.DB.ListProcessDefinitionVersions(ctx, partition.ProcessDefinitionVersionsQuery{
+		ProcessID:           req.GetProcessId(),
+		LatestData:          req.GetIncludeLatestData(),
+		LatestAndTaggedOnly: req.GetLatestAndTaggedOnly(),
+	})
+	if err != nil {
+		// the read is linearizable: it is refused where this node lost the
+		// lead or has not caught up, which the caller resolves by asking the
+		// current leader again. The cause (which may quote the query) stays
+		// in the log.
+		log.Warn("failed to list process definition versions of partition %d: %s", req.GetPartitionId(), err)
+		if errors.Is(err, rqstore.ErrNotLeader) || errors.Is(err, rqstore.ErrNotReady) || errors.Is(err, rqstore.ErrStaleRead) {
+			return nil, status.Errorf(codes.Unavailable, "partition %d cannot answer a linearizable read on this node", req.GetPartitionId())
+		}
+		return nil, status.Errorf(codes.Internal, "failed to list process definition versions of partition %d", req.GetPartitionId())
+	}
+	resp := &proto.GetProcessDefinitionVersionsResponse{Versions: make([]*proto.ProcessDefinitionVersion, 0, len(versions))}
+	for _, version := range versions {
+		resp.Versions = append(resp.Versions, &proto.ProcessDefinitionVersion{
+			ProcessId:  new(version.ProcessID),
+			Key:        new(version.Key),
+			Version:    new(version.Version),
+			Checksum:   version.Checksum,
+			VersionTag: new(version.VersionTag),
+			Data:       version.Data,
+		})
+	}
+	return resp, nil
+}
+
+// DeployProcessDefinition stores a BPMN definition on the partition the
+// request addresses, which this node must lead (without a partition id, a
+// sender that predates the field, on every partition this node leads). With
+// a version the definition is stored under exactly the (key, version) the
+// cluster allocated; without one (a sender that predates cluster-wide
+// allocation) the partition assigns the version itself.
 func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
+	if req.GetVersion() < 0 {
+		return &proto.DeployProcessDefinitionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("process definition version must not be negative, got %d", req.GetVersion())).ToProtoError(),
+		}, nil
+	}
 	engines := s.controller.Engines(ctx)
-	var err error
-	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
+	if id := req.GetPartitionId(); id != 0 {
+		// a leadership change since the deployer resolved the leader is a
+		// transient condition it retries against the current leader
+		engine, led := engines[id]
+		if !led {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.Unavailable(fmt.Errorf("partition %d is not led by this node", id)).ToProtoError(),
+			}, nil
+		}
+		engines = map[uint32]*bpmn.Engine{id: engine}
+	}
+	if len(engines) == 0 {
+		return &proto.DeployProcessDefinitionResponse{
+			Error: zenerr.Unavailable(fmt.Errorf("no engine available on this node")).ToProtoError(),
+		}, nil
+	}
+	register := req.GetRegisterProcessDefinitionSubscriptions()
+	for id, engine := range engines {
+		pn := s.controller.GetPartition(ctx, id)
+		if pn == nil || pn.DB == nil {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.Unavailable(fmt.Errorf("partition unavailable on this node")).ToProtoError(),
+			}, nil
+		}
+		generation := partition.RestoreToken{OperationID: req.GetRestoreOperationId(), Epoch: req.GetRestoreEpoch()}
+		if req.GetVersion() == 0 {
+			// a sender that predates cluster-wide allocation observed nothing
+			// and carries no generation: it deploys under the current one
+			generation = pn.DB.DeploymentGeneration()
+		}
+		err := pn.DB.RunDeployment(ctx, generation, func() error {
+			var err error
+			if req.GetVersion() > 0 {
+				_, err = engine.DeployProcessDefinition(ctx, req.GetData(), req.GetKey(), req.GetVersion())
+			} else {
+				_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
+			}
+			if err != nil {
+				return fmt.Errorf("store process definition: %w", err)
+			}
+			if register {
+				if err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey()); err != nil {
+					return fmt.Errorf("register process definition subscriptions: %w", err)
+				}
+			}
+			return nil
+		})
 		if err != nil {
 			return &proto.DeployProcessDefinitionResponse{
 				Error: deployError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
 			}, nil
 		}
-	}
-	if req.GetRegisterProcessDefinitionSubscriptions() {
-		engine := s.GetRandomEngine(ctx)
-		if engine == nil {
-			return &proto.DeployProcessDefinitionResponse{
-				Error: zenerr.Unavailable(fmt.Errorf("no engine available on this node")).ToProtoError(),
-			}, nil
-		}
-		err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey())
-		if err != nil {
-			return &proto.DeployProcessDefinitionResponse{
-				Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition subscriptions: %w", err)).ToProtoError(),
-			}, nil
-		}
+		register = false
 	}
 	return &proto.DeployProcessDefinitionResponse{}, nil
 }
 
 // deployError classifies a deploy failure: a partition store that is not open
 // (yet) is a transient condition the caller may retry against the current
-// leader, everything else is a technical error.
+// leader, a deployment that observed the partitions before a restore
+// replaced them is a conflict the deployer resolves by observing and
+// allocating again, everything else is a technical error.
 func deployError(err error) *zenerr.ZenError {
+	if errors.Is(err, partition.ErrDeploymentGenerationChanged) {
+		return zenerr.Conflict(err)
+	}
 	if errors.Is(err, rqstore.ErrNotOpen) {
 		return zenerr.Unavailable(err)
 	}
@@ -1240,11 +1373,11 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			return nil, err
 		}
 		parentTokensMap := make(map[int64]sql.ExecutionToken, len(parentTokens))
-		for i, _ := range parentTokens {
+		for i := range parentTokens {
 			parentTokensMap[parentTokens[i].Key] = parentTokens[i]
 		}
 
-		for i, _ := range instances {
+		for i := range instances {
 			var businessKey *string
 			if instances[i].BusinessKey.Valid {
 				businessKey = &instances[i].BusinessKey.String
@@ -1320,7 +1453,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 
 	parentInstanceKey := req.GetParentInstanceKey()
 	procInstances := make([]*proto.ProcessInstance, len(instances))
-	for i, _ := range instances {
+	for i := range instances {
 		var businessKey *string
 		if instances[i].BusinessKey.Valid {
 			businessKey = &instances[i].BusinessKey.String

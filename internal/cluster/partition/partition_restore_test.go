@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -61,7 +63,7 @@ func TestRestoreFenceRejectsWritesWithoutTheOwnerToken(t *testing.T) {
 	require.ErrorIs(t, insert(WithRestoreToken(ctx, token), 6), ErrPartitionFenced)
 	require.NoError(t, insert(WithRestoreToken(ctx, newer), 7))
 
-	db.LeaveRestoreFence()
+	db.LeaveRestoreFence(newer)
 	require.NoError(t, insert(ctx, 8))
 }
 
@@ -120,19 +122,12 @@ func TestDefinitionImporterImportsWithoutStartingExecution(t *testing.T) {
 	assert.Equal(t, int64(1), dmnDef.Version)
 
 	// once the partition is un-gated a regular engine executes the imported process
-	db.LeaveRestoreFence()
+	db.LeaveRestoreFence(token)
 	engine := bpmn.NewEngine(bpmn.EngineWithStorage(db))
 	defer engine.Stop()
 	instance, err := engine.CreateInstanceByKey(ctx, 4711, nil)
 	require.NoError(t, err)
 	assert.Equal(t, bpmnruntime.ActivityStateCompleted, instance.ProcessInstance().State)
-}
-
-func readFixture(t *testing.T, parts ...string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(parts...))
-	require.NoError(t, err)
-	return data
 }
 
 func TestLoadUnderFenceIsOrderedAgainstFenceChanges(t *testing.T) {
@@ -306,4 +301,116 @@ func TestSchemaObjectsListsTablesAndViews(t *testing.T) {
 		assert.False(t, strings.HasPrefix(name, "sqlite_") && name != "sqlite_sequence", "internal table %s must not be listed", name)
 	}
 	assert.Equal(t, []string{"definition_keys"}, views)
+}
+
+func TestDeploymentGenerationSurvivesFenceRelease(t *testing.T) {
+	pn, _, _, _, _ := prepareTestSetup(t, false)
+	t.Cleanup(func() { require.NoError(t, pn.Stop()) })
+	db := pn.DB
+	ctx := t.Context()
+	old := RestoreToken{}
+	current := RestoreToken{OperationID: "restore", Epoch: 2}
+	data := readFixture(t, "..", "..", "..", "test", "e2e", "testdata", "timer_start_event", "timer_start_event.bpmn")
+	engine := bpmn.NewEngine(bpmn.EngineWithStorage(db))
+	t.Cleanup(engine.Stop)
+	deploy := func() error {
+		if _, err := engine.DeployProcessDefinition(ctx, data, 5001, 1); err != nil {
+			return fmt.Errorf("deploy fixture: %w", err)
+		}
+		return engine.RegisterProcessDefinitionSubscriptions(ctx, 5001)
+	}
+	db.EnterRestoreFence(current)
+	require.ErrorIs(t, db.RunDeployment(ctx, current, deploy), ErrPartitionFenced, "generation does not grant owner privileges")
+	db.LeaveRestoreFence(current)
+	// The test store has no durable restore; model the replicated main state
+	// from which a reopened partition also learns its generation.
+	db.zenState = func() state.Cluster {
+		return state.Cluster{Restore: state.RestoreOperation{ID: current.OperationID, Epoch: current.Epoch, Status: state.RestoreStatusCompleted, Phase: state.RestorePhaseDone}}
+	}
+	require.ErrorIs(t, db.RunDeployment(ctx, old, deploy), ErrDeploymentGenerationChanged)
+	assert.Zero(t, queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
+	assert.Zero(t, queryCount(t, db, "SELECT COUNT(*) FROM timer"))
+	require.NoError(t, db.RunDeployment(ctx, current, deploy))
+	assert.Equal(t, int64(1), queryCount(t, db, "SELECT COUNT(*) FROM process_definition"))
+	timers, err := db.FindProcessDefinitionTimers(ctx, 5001, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	assert.Len(t, timers, 1)
+
+	// Even without an in-memory fence history, durable main state rejects old
+	// requests. A restarted partition must not treat them as initial writes.
+	reopened, err := NewDB(nil, 1, db.logger, config.Persistence{}, nil, db.zenState)
+	require.NoError(t, err)
+	t.Cleanup(reopened.Close)
+	require.ErrorIs(t, reopened.RunDeployment(ctx, old, deploy), ErrDeploymentGenerationChanged)
+	called := false
+	require.NoError(t, reopened.RunDeployment(ctx, current, func() error {
+		called = true
+		return nil
+	}))
+	assert.True(t, called, "a reopened database initializes its generation from durable state")
+}
+
+func TestRestoreWaitsForCompleteDeployment(t *testing.T) {
+	db := &DB{}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	deployed := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	t.Cleanup(cancel)
+	go func() {
+		deployed <- db.RunDeployment(ctx, RestoreToken{}, func() error {
+			close(entered)
+			select {
+			case <-release:
+				// Engine writes acquire fenceMu; no recursive read lock is held.
+				db.fenceMu.RLock()
+				defer db.fenceMu.RUnlock()
+				return db.checkWriteAllowedLocked(ctx)
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if db.deploymentMu.TryLock() {
+		db.deploymentMu.Unlock()
+		t.Fatal("restore must wait for subscription work too")
+	}
+	close(release)
+	require.NoError(t, <-deployed)
+	db.EnterRestoreFence(RestoreToken{OperationID: "next", Epoch: 1})
+	require.ErrorIs(t, db.RunDeployment(ctx, RestoreToken{}, func() error { t.Fatal("obsolete deployment ran"); return nil }), ErrDeploymentGenerationChanged)
+}
+
+func TestDefinitionVersionsQueryFiltersOneProcess(t *testing.T) {
+	pn, _, _, _, _ := prepareTestSetup(t, false)
+	t.Cleanup(func() { require.NoError(t, pn.Stop()) })
+	ctx := t.Context()
+	_, err := pn.DB.ExecContext(ctx, `INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name, version_tag) VALUES
+		(1, 1, 'target', 'A', X'01', 'target', 'stable'),
+		(2, 2, 'target', 'B', X'02', 'target', ''),
+		(3, 3, 'target', 'C', X'03', 'target', ''),
+		(4, 1, 'other', 'D', X'04', 'other', '')`)
+	require.NoError(t, err)
+	versions, err := pn.DB.ListProcessDefinitionVersions(ctx, ProcessDefinitionVersionsQuery{ProcessID: "target", LatestData: true, LatestAndTaggedOnly: true})
+	require.NoError(t, err)
+	require.Len(t, versions, 2)
+	assert.Equal(t, int32(1), versions[0].Version)
+	assert.Empty(t, versions[0].Data)
+	assert.Equal(t, int32(3), versions[1].Version)
+	assert.Equal(t, []byte("C"), versions[1].Data)
+	all, err := pn.DB.ListProcessDefinitionVersions(ctx, ProcessDefinitionVersionsQuery{})
+	require.NoError(t, err)
+	assert.Len(t, all, 4)
+}
+
+func readFixture(t *testing.T, parts ...string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(parts...))
+	require.NoError(t, err)
+	return data
 }

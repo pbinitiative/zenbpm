@@ -15,6 +15,10 @@ import (
 // late a node learns about the restore.
 var ErrPartitionFenced = errors.New("partition is fenced for cluster restore")
 
+// ErrDeploymentGenerationChanged requires a new observation/allocation, not a
+// retry of the same partition request under its obsolete key and version.
+var ErrDeploymentGenerationChanged = errors.New("deployment predates a cluster restore; observe and allocate again")
+
 // RestoreToken identifies the restore operation that owns the cluster. The
 // restore coordinator stamps it on every request; a fenced partition only
 // accepts writes whose token matches its own.
@@ -45,23 +49,72 @@ func RestoreTokenFromContext(ctx context.Context) (RestoreToken, bool) {
 // LeaveRestoreFence is called. Re-entering with a newer token replaces the
 // previous one, which fences out a coordinator that lost the restore.
 func (rq *DB) EnterRestoreFence(token RestoreToken) {
+	rq.deploymentMu.Lock()
+	defer rq.deploymentMu.Unlock()
 	rq.fenceMu.Lock()
 	defer rq.fenceMu.Unlock()
-	if rq.fence == nil || *rq.fence != token {
+	if rq.logger != nil && (rq.fence == nil || *rq.fence != token) {
 		rq.logger.Info("Partition write fence entered for cluster restore", "partition", rq.Partition, "restore", token.String())
 	}
 	fence := token
 	rq.fence = &fence
+	rq.deploymentGeneration = token
 }
 
-// LeaveRestoreFence lets application writes through again.
-func (rq *DB) LeaveRestoreFence() {
+// LeaveRestoreFence lets application writes through again, retaining the
+// generation from durable cluster state even if this node missed maintenance.
+func (rq *DB) LeaveRestoreFence(generation RestoreToken) {
+	rq.deploymentMu.Lock()
+	defer rq.deploymentMu.Unlock()
 	rq.fenceMu.Lock()
 	defer rq.fenceMu.Unlock()
-	if rq.fence != nil {
+	if rq.logger != nil && rq.fence != nil {
 		rq.logger.Info("Partition write fence lifted", "partition", rq.Partition, "restore", rq.fence.String())
 	}
 	rq.fence = nil
+	rq.deploymentGeneration = generation
+}
+
+// RunDeployment admits ordinary deployment work for its allocation generation.
+// It does NOT grant restore-owner privileges. Holding deploymentMu throughout
+// the callback orders both definition and subscription writes against restore,
+// without recursively acquiring fenceMu when the engine writes to storage.
+func (rq *DB) RunDeployment(ctx context.Context, generation RestoreToken, deploy func() error) error {
+	rq.deploymentMu.RLock()
+	defer rq.deploymentMu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("admit deployment: %w", err)
+	}
+	if generation != rq.deploymentGeneration {
+		return ErrDeploymentGenerationChanged
+	}
+	rq.fenceMu.RLock()
+	fenced := rq.fence != nil
+	rq.fenceMu.RUnlock()
+	if fenced {
+		return ErrPartitionFenced
+	}
+	if rq.zenState != nil {
+		restore := rq.zenState().Restore
+		if restore.GatesCluster() {
+			return ErrPartitionFenced
+		}
+		if generation != (RestoreToken{OperationID: restore.ID, Epoch: restore.Epoch}) {
+			return ErrDeploymentGenerationChanged
+		}
+	}
+	if err := deploy(); err != nil {
+		return fmt.Errorf("deploy in partition generation %s: %w", generation.String(), err)
+	}
+	return nil
+}
+
+// DeploymentGeneration is the restore generation the partition admits
+// deployments under (see RunDeployment).
+func (rq *DB) DeploymentGeneration() RestoreToken {
+	rq.deploymentMu.RLock()
+	defer rq.deploymentMu.RUnlock()
+	return rq.deploymentGeneration
 }
 
 // RestoreFence returns the token the partition is currently fenced with.

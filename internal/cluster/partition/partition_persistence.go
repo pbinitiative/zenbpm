@@ -46,8 +46,12 @@ import (
 )
 
 type DB struct {
-	Store                  *store.Store
-	Queries                *sql.Queries
+	Store   *store.Store
+	Queries *sql.Queries
+	// LinearizableQueries are the generated queries at LINEARIZABLE read
+	// consistency: for reads whose answer must include every write the
+	// partition acknowledged (see QueryContextLinearizable).
+	LinearizableQueries    *sql.Queries
 	logger                 hclog.Logger
 	node                   *snowflake.Node
 	Partition              uint32
@@ -69,6 +73,10 @@ type DB struct {
 	// partition is fenced for a cluster restore (see partition_restore.go)
 	fenceMu sync.RWMutex
 	fence   *RestoreToken
+	// deploymentMu orders the whole deployment (including subscriptions) against
+	// fence changes. Lock it before fenceMu; ordinary writes only take fenceMu.
+	deploymentMu         sync.RWMutex
+	deploymentGeneration RestoreToken
 }
 
 const (
@@ -149,8 +157,13 @@ func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		zenState:               zenState,
 		historyDeleteBatchSize: opts.historyDeleteBatchSize,
 	}
+	if zenState != nil {
+		restore := zenState().Restore
+		db.deploymentGeneration = RestoreToken{OperationID: restore.ID, Epoch: restore.Epoch}
+	}
 	queries := sql.New(db)
 	db.Queries = queries
+	db.LinearizableQueries = sql.New(linearizableDBTX{DB: db})
 
 	meter := otel.GetMeterProvider().Meter("partition-rqlite")
 	db.execDuration, err = meter.Float64Histogram("rqlite_exec_duration",
@@ -406,6 +419,17 @@ func (rq *DB) generateStatement(sql string, parameters ...interface{}) (*proto.S
 }
 
 func (rq *DB) queryDatabase(ctx context.Context, query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
+	return rq.queryDatabaseAt(ctx, proto.ConsistencyLevel_NONE, query, parameters...)
+}
+
+// queryDatabaseAt runs the query at the given read consistency level. NONE
+// reads the local database as it is; LINEARIZABLE reads on the leader only,
+// once every entry committed before the read is applied (rqlite falls back
+// to a read through the raft log where the leader has not committed in its
+// term yet), so that the answer includes every write the partition
+// acknowledged. A store error is returned as is, wrapped, so that callers
+// can tell store.ErrNotLeader and store.ErrNotReady apart.
+func (rq *DB) queryDatabaseAt(ctx context.Context, level proto.ConsistencyLevel, query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
 	stmts, err := rq.generateStatement(query, parameters...)
 	if err != nil {
 		return nil, err
@@ -417,14 +441,15 @@ func (rq *DB) queryDatabase(ctx context.Context, query string, parameters ...int
 			DbTimeout:   (10 * time.Second).Nanoseconds(),
 			Statements:  []*proto.Statement{stmts},
 		},
-		Timings: false,
-		Level:   proto.ConsistencyLevel_NONE,
+		Timings:             false,
+		Level:               level,
+		LinearizableTimeout: (10 * time.Second).Nanoseconds(),
 	}
 
 	results, _, _, resultsErr := rq.Store.Query(ctx, qr)
 	if resultsErr != nil {
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
-		return nil, resultsErr
+		return nil, fmt.Errorf("failed to query the partition store: %w", resultsErr)
 	}
 	if len(results) == 1 && results[0].Error != "" {
 		err := fmt.Errorf("error executing SQL statement %s %+v: %s", query, parameters, results[0].Error)
@@ -493,7 +518,9 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 			execSpan.SetStatus(codes.Error, nErr.Error())
 			return nil, nErr
 		}
-		lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
+		if e := r.GetE(); e != nil {
+			lastInsertId, rowsAffected = e.LastInsertId, e.RowsAffected+rowsAffected
+		}
 	}
 	return rqliteResult{lastInsertId: lastInsertId, rowsAffected: rowsAffected}, nil
 }
@@ -506,6 +533,16 @@ func (rq *DB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error
 // It records an "rqlite-query" trace span and the query duration metric
 // labeled with the partition and outcome.
 func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (_ *sql.Rows, retErr error) {
+	return rq.queryContextAt(ctx, proto.ConsistencyLevel_NONE, query, args...)
+}
+
+// QueryContextLinearizable is QueryContext at LINEARIZABLE consistency (see
+// queryDatabaseAt): for reads whose answer must include every write the partition acknowledged.
+func (rq *DB) QueryContextLinearizable(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return rq.queryContextAt(ctx, proto.ConsistencyLevel_LINEARIZABLE, query, args...)
+}
+
+func (rq *DB) queryContextAt(ctx context.Context, level proto.ConsistencyLevel, query string, args ...interface{}) (_ *sql.Rows, retErr error) {
 	start := time.Now()
 	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeQuery, query),
@@ -524,7 +561,7 @@ func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{
 		}
 		querySpan.End()
 	}()
-	results, err := rq.queryDatabase(ctx, query, args...)
+	results, err := rq.queryDatabaseAt(ctx, level, query, args...)
 	if err != nil {
 		querySpan.RecordError(err)
 		querySpan.SetStatus(codes.Error, err.Error())

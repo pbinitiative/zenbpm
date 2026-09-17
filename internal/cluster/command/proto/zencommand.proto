@@ -10,12 +10,14 @@ message Command {
     TYPE_NODE_CHANGE = 2;
     TYPE_NODE_PARTITION_CHANGE = 3;
     TYPE_CLUSTER_MAINTENANCE_CHANGE = 4;
+    TYPE_PROCESS_DEFINITION_ALLOCATION = 5;
   }
   Type type = 1;
   oneof request {
     NodeChange node_change = 2;
     NodePartitionChange node_partition_change = 3;
     ClusterMaintenanceChange cluster_maintenance_change = 4;
+    ProcessDefinitionAllocation process_definition_allocation = 5;
   }
 }
 
@@ -44,6 +46,13 @@ message NodeChange {
   RaftSuffrage suffrage = 3;
   NodeState state = 4;
   Role role = 5;
+  // protocol_version is the version of this command set the node's binary
+  // implements (see state.CurrentProtocolVersion); a node announces it about
+  // itself. Zero leaves the recorded version unchanged. The leader commits a
+  // command only when every member announced a version that includes it, so
+  // a member running an older binary, which would stop on a command it does
+  // not know, is never sent one.
+  int32 protocol_version = 6;
 }
 
 
@@ -130,4 +139,71 @@ message RestoreOperationChange {
   // lease_millis is how long the coordinator's ownership stays valid without
   // a further UPDATE (ACQUIRE and UPDATE).
   int64 lease_millis = 11;
+}
+
+// ProcessDefinitionAllocation asks the FSM for the cluster-wide identity of
+// one BPMN deployment: the numeric version and the definition key that every
+// partition must store for the given process. The FSM applies it
+// deterministically (see state.Cluster.AllocateProcessDefinition): a request
+// whose checksum matches the latest allocation of the process returns that
+// allocation unchanged, so retries and concurrent identical deployments
+// converge on one definition; anything else becomes the next version under a
+// key the FSM derives from the command, unless its version tag is already
+// held by a version of different content. ACTION_RESET replaces the whole
+// allocation registry with the definitions the partitions hold (a cluster
+// restore).
+message ProcessDefinitionAllocation {
+  enum Action {
+    ACTION_UNKNOWN = 0;
+    ACTION_ALLOCATE = 1;
+    ACTION_RESET = 3;
+    // 2 (ACTION_CONFIRM) was used by an unreleased revision of the command.
+    reserved 2;
+  }
+  // action defaults to ACTION_ALLOCATE.
+  Action action = 1;
+  string process_id = 2;
+  // checksum is the hex MD5 of the raw BPMN bytes (ACTION_ALLOCATE).
+  string checksum = 3;
+  string version_tag = 4;
+  // timestamp_millis is the writer's clock; the FSM never reads the wall
+  // clock so that every replica applies the command identically. The key of
+  // a new version is derived from it and the raft log index of the command.
+  int64 timestamp_millis = 6;
+  // observed (ACTION_ALLOCATE) is what the partition leaders hold of the
+  // process before the deployment: its latest version and every version
+  // carrying a version tag, read from the partition leaders so that the
+  // observation is not behind the partitions. The FSM catches up with it:
+  // definitions deployed before allocations were replicated raise the latest
+  // version, and their tags become reserved. The FSM never moves backwards.
+  repeated ObservedProcessDefinition observed = 8;
+  // definitions (ACTION_RESET) are the process definitions the partitions
+  // hold, each with its process_id; the registry is rebuilt from them and
+  // every process absent from the list is forgotten.
+  repeated ObservedProcessDefinition definitions = 9;
+  // 5 (observed_latest) and 7 (key) were used by unreleased revisions of the
+  // command; logs written by them are not supported (see README).
+  reserved 5, 7;
+  // restore_operation_id and restore_epoch fence the command against a
+  // cluster restore. For ACTION_ALLOCATE they identify the restore operation
+  // recorded in the cluster state when the partitions were observed (empty
+  // and zero when the cluster was never restored): an allocation whose
+  // observation predates a restore is refused, since the restored partitions
+  // no longer hold what it observed. For ACTION_RESET they are the fencing
+  // token of the restore operation doing the reset, which must own the
+  // cluster and be reconciling it.
+  string restore_operation_id = 10;
+  uint64 restore_epoch = 11;
+}
+
+// ObservedProcessDefinition is a definition as it exists on a partition.
+message ObservedProcessDefinition {
+  int64 key = 1;
+  int32 version = 2;
+  // checksum is the hex MD5 of the raw BPMN bytes.
+  string checksum = 3;
+  string version_tag = 4;
+  // process_id is set where the definition is not implied by the command
+  // (ACTION_RESET).
+  string process_id = 5;
 }

@@ -93,6 +93,10 @@ type Engine struct {
 	// concurrently-completing instances of the same definition would both observe "no active
 	// definition subscription" and both insert one, leaving duplicate active subscriptions.
 	instantiatingRearmMu *sync.Mutex
+	// definitionMu serialises definition deployments and imports: the
+	// read-check-save of a version must not interleave with another one, or
+	// two identical deployments arriving together save the same key twice.
+	definitionMu *sync.Mutex
 
 	// recoverDefinitionSubscriptions reports whether this engine owns startup recovery of
 	// process-definition-level subscriptions for the supplied definition. Standalone engines recover all
@@ -159,6 +163,7 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 		logger:                          logger,
 		runningInstances:                newRunningInstanceCache(),
 		instantiatingRearmMu:            &sync.Mutex{},
+		definitionMu:                    &sync.Mutex{},
 		tracer:                          tracer,
 		meter:                           meter,
 		metrics:                         metrics,

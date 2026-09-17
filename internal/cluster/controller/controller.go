@@ -60,9 +60,13 @@ type Controller struct {
 	retryStopped            bool
 	retryScheduled          map[uint32]bool
 	retryAttempts           map[uint32]uint
-	initializationFailures  map[uint32]uint
-	lifecycleCtx            context.Context
-	lifecycleCancel         context.CancelFunc
+	// announceRetryScheduled and announceAttempts pace the retries of a
+	// failed protocol version announcement (see scheduleProtocolVersionRetry)
+	announceRetryScheduled bool
+	announceAttempts       uint
+	initializationFailures map[uint32]uint
+	lifecycleCtx           context.Context
+	lifecycleCancel        context.CancelFunc
 }
 
 const (
@@ -187,6 +191,87 @@ func (c *Controller) performLeaderOperations(ctx context.Context) {
 	//  - verify that the partitions are spread across the cluster in the desired manner (we dont have spread logic yet)
 }
 
+// announceProtocolVersion tells the cluster leader which protocol version this
+// binary implements when the cluster state does not record it yet: after the
+// node joined or came back (a shutdown clears the recorded version), and after
+// the state was replaced by a snapshot taken by a binary that did not know the
+// field. The leader commits commands of a protocol version only once every
+// member announced it (see state.CurrentProtocolVersion). A failed
+// announcement is retried on the next cluster state change; until it lands,
+// such commands are refused, not lost.
+func (c *Controller) announceProtocolVersion(currentNode state.Node) {
+	if currentNode.ProtocolVersion >= state.CurrentProtocolVersion || c.lifecycleCtx.Err() != nil {
+		return
+	}
+	if currentNode.State == state.NodeStateShutdown {
+		// the cluster holds this node for gone (its heartbeat failed); an
+		// announcement would be dropped until the leader records it as
+		// started again, which is a state change of its own
+		return
+	}
+	if err := c.sendProtocolVersion(); err != nil {
+		c.logger.Warn("Failed to announce the protocol version to the cluster leader; retrying", "protocolVersion", state.CurrentProtocolVersion, "err", err)
+		c.scheduleProtocolVersionRetry()
+		return
+	}
+	c.retryMu.Lock()
+	c.announceAttempts = 0
+	c.retryMu.Unlock()
+	c.logger.Info("Announced the protocol version to the cluster leader", "protocolVersion", state.CurrentProtocolVersion)
+}
+
+func (c *Controller) sendProtocolVersion() error {
+	leaderClient, err := c.client.ClusterLeader()
+	if err != nil {
+		return fmt.Errorf("failed to get cluster leader client: %w", err)
+	}
+	ctxClient, cancel := context.WithTimeout(c.lifecycleCtx, 5*time.Second)
+	defer cancel()
+	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
+		Type: proto.Command_TYPE_NODE_CHANGE.Enum(),
+		Request: &proto.Command_NodeChange{NodeChange: &proto.NodeChange{
+			NodeId: new(c.store.ID()), ProtocolVersion: new(state.CurrentProtocolVersion),
+		}},
+	})
+	return err
+}
+
+// scheduleProtocolVersionRetry re-runs the cluster state handling, and with it
+// the announcement, after a backoff: a failed announcement must not wait for
+// an unrelated state change, which an idle cluster may never produce, since
+// the leader refuses commands of the announced version until it lands. One
+// retry is pending at a time; it is dropped when the controller stops.
+func (c *Controller) scheduleProtocolVersionRetry() {
+	c.retryMu.Lock()
+	if c.retryStopped || c.lifecycleCtx.Err() != nil || c.announceRetryScheduled {
+		c.retryMu.Unlock()
+		return
+	}
+	c.announceRetryScheduled = true
+	c.announceAttempts++
+	delay := c.Config.PartitionRetryDelay
+	for i := uint(1); i < c.announceAttempts && delay < maxRetryDelay; i++ {
+		delay = min(delay*2, maxRetryDelay)
+	}
+	c.backgroundWg.Add(1)
+	c.retryMu.Unlock()
+
+	safego.Go("protocol-version-announcement-retry", c.logger, func() {
+		defer c.backgroundWg.Done()
+		retryTimer := time.NewTimer(delay)
+		defer retryTimer.Stop()
+		select {
+		case <-retryTimer.C:
+		case <-c.shutdownCh:
+			return
+		}
+		c.retryMu.Lock()
+		c.announceRetryScheduled = false
+		c.retryMu.Unlock()
+		c.ClusterStateChangeNotification(c.lifecycleCtx)
+	})
+}
+
 // assignPartition will send a message to store that indicates that a node should start the joining process into a partition cluster
 func (c *Controller) assignPartition(ctx context.Context, partitionId uint32, nodeId string) {
 	if ctx.Err() != nil {
@@ -243,6 +328,7 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
 		return
 	}
+	c.announceProtocolVersion(currentNode)
 	for partitionId, partition := range currentNode.Partitions {
 		partitionOp := c.partitionOperationMutex(partitionId)
 		partitionOp.Lock()
@@ -304,7 +390,7 @@ func (c *Controller) syncRestoreMaintenance() {
 	if cs.RestoreInProgress() {
 		c.enterRestoreMaintenance(cs.Restore)
 	} else {
-		c.leaveRestoreMaintenance()
+		c.leaveRestoreMaintenance(cs.Restore)
 	}
 }
 
@@ -359,17 +445,19 @@ func (c *Controller) quiescePartitionLocked(id uint32, pn *partition.ZenPartitio
 // Like entering, it is ordered against the partition state handlers (which
 // fence a partition they open while the gate holds) through the partition's
 // operation mutex.
-func (c *Controller) leaveRestoreMaintenance() {
+func (c *Controller) leaveRestoreMaintenance(restore state.RestoreOperation) {
+	generation := partition.RestoreToken{OperationID: restore.ID, Epoch: restore.Epoch}
 	for id, pn := range c.GetPartitions() {
-		c.unfencePartition(id, pn)
+		c.unfencePartition(id, pn, generation)
 	}
 }
 
-func (c *Controller) unfencePartition(id uint32, pn *partition.ZenPartitionNode) {
+func (c *Controller) unfencePartition(id uint32, pn *partition.ZenPartitionNode, generation partition.RestoreToken) {
 	partitionOp := c.partitionOperationMutex(id)
 	partitionOp.Lock()
 	defer partitionOp.Unlock()
-	pn.DB.LeaveRestoreFence()
+	// Keep the generation and the decision to lift the gate in the same snapshot.
+	pn.DB.LeaveRestoreFence(generation)
 	c.partitionsMu.Lock()
 	delete(c.quiesced, id)
 	c.partitionsMu.Unlock()

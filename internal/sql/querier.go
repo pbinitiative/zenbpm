@@ -153,6 +153,13 @@ type Querier interface {
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)
 	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
+	// Lists the versions of process definitions, ordered by process id and
+	// version, as a deployment observes them. bpmn_process_id restricts the
+	// answer to one process (NULL lists every process); latest_data (1/0)
+	// includes the BPMN bytes of the latest version of every listed process;
+	// latest_and_tagged_only (1/0) keeps only the latest version of every
+	// process and the versions carrying a version tag.
+	ListProcessDefinitionVersions(ctx context.Context, arg ListProcessDefinitionVersionsParams) ([]ListProcessDefinitionVersionsRow, error)
 	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error

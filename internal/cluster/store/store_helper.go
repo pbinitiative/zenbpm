@@ -121,6 +121,22 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 		return fmt.Errorf("failed to resolve %s: %w", addr, err)
 	}
 
+	// A member receives every command the log holds: a binary that does not
+	// know one would stop on it. The requirement is read once every command
+	// committed so far is applied (the barrier), under the lock that keeps a
+	// command of a newer version from being committed meanwhile.
+	s.membershipMu.Lock()
+	defer s.membershipMu.Unlock()
+	if err := s.raft.Barrier(s.cfg.RaftTimeout).Error(); err != nil {
+		if errors.Is(err, raft.ErrNotLeader) {
+			return zenerr.ErrNotLeader
+		}
+		return fmt.Errorf("failed to wait for the applied log before admitting %s: %w", id, err)
+	}
+	if required := s.ClusterState().MinProtocolVersion; jr.GetProtocolVersion() < required {
+		return &state.MemberProtocolVersionError{Member: id, Reported: jr.GetProtocolVersion(), Required: required}
+	}
+
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
 		s.logger.Info(fmt.Sprintf("failed to get raft configuration: %v", err))
@@ -274,7 +290,8 @@ func (s *Store) HasLeader() bool {
 	if !s.open.Load() {
 		return false
 	}
-	return s.raft.Leader() != ""
+	addr, _ := s.raft.LeaderWithID()
+	return addr != ""
 }
 
 // WaitForLeader blocks until a leader is detected, or the timeout expires.

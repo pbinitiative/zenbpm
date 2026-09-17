@@ -43,9 +43,12 @@ func (node *ZenNode) ClusterRestore(ctx context.Context, r io.Reader, force bool
 		return nil, err
 	}
 	deps := backup.RestoreDeps{
-		Clients:             node.client,
-		ClusterState:        node.store.ClusterState,
-		ApplyRestoreChange:  node.applyRestoreChange,
+		Clients:            node.client,
+		ClusterState:       node.store.ClusterState,
+		ApplyRestoreChange: node.applyRestoreChange,
+		ResetProcessDefinitions: func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
+			return backup.ResetProcessDefinitions(ctx, node.store.WriteProcessDefinitionAllocation, definitions, restoreID, restoreEpoch)
+		},
 		CoordinatorID:       node.store.NodeID(),
 		BinarySchemaVersion: binSchema,
 		SpoolDir:            spoolDir,

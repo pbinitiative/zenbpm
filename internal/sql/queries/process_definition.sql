@@ -277,3 +277,38 @@ ORDER BY
   fd."key" DESC
 LIMIT @limit
 OFFSET @offset;
+
+-- name: ListProcessDefinitionVersions :many
+-- Lists the versions of process definitions, ordered by process id and
+-- version, as a deployment observes them. bpmn_process_id restricts the
+-- answer to one process (NULL lists every process); latest_data (1/0)
+-- includes the BPMN bytes of the latest version of every listed process;
+-- latest_and_tagged_only (1/0) keeps only the latest version of every
+-- process and the versions carrying a version tag.
+SELECT
+    d."key",
+    d.version,
+    d.bpmn_process_id,
+    d.bpmn_checksum,
+    d.version_tag,
+    CASE WHEN @latest_data <> 0 AND d.version = latest.version THEN d.bpmn_data ELSE '' END AS bpmn_data
+FROM
+    process_definition AS d
+    INNER JOIN (
+        SELECT
+            bpmn_process_id,
+            MAX(version) AS version
+        FROM
+            process_definition
+        WHERE
+            sqlc.narg('bpmn_process_id') IS NULL
+            OR bpmn_process_id = sqlc.narg('bpmn_process_id')
+        GROUP BY
+            bpmn_process_id
+    ) AS latest ON latest.bpmn_process_id = d.bpmn_process_id
+WHERE
+    (sqlc.narg('bpmn_process_id') IS NULL OR d.bpmn_process_id = sqlc.narg('bpmn_process_id'))
+    AND (@latest_and_tagged_only = 0 OR d.version_tag <> '' OR d.version = latest.version)
+ORDER BY
+    d.bpmn_process_id ASC,
+    d.version ASC;

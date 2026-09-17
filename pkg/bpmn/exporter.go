@@ -1,6 +1,8 @@
 package bpmn
 
 import (
+	"encoding/hex"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -11,13 +13,15 @@ func (engine *Engine) AddEventExporter(exporter exporter.EventExporter) {
 	engine.exporters = append(engine.exporters, exporter)
 }
 
-func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, checksum string) {
+// exportNewProcessEvent reports a stored definition to the exporters. It must
+// not be called with an engine mutex held: an exporter may call back into the engine.
+func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition) {
 	event := exporter.ProcessEvent{
 		ProcessId:  processInfo.BpmnProcessId,
 		ProcessKey: processInfo.Key,
 		Version:    processInfo.Version,
-		XmlData:    xmlData,
-		Checksum:   checksum,
+		XmlData:    []byte(processInfo.BpmnData),
+		Checksum:   hex.EncodeToString(processInfo.BpmnChecksum[:]),
 	}
 	for _, exp := range engine.exporters {
 		exp.NewProcessEvent(&event)

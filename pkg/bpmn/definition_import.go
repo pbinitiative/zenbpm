@@ -13,7 +13,9 @@ import (
 // It is the cluster restore reconciliation path and differs from
 // LoadFromBytes on purpose: the version is copied instead of assigned, so a
 // historical definition never becomes the latest one, and no deployment
-// event is exported. A definition already stored under key is left alone.
+// event is exported. The definition already stored under key is left alone;
+// a different definition (another version or content) stored under key is
+// refused with storage.ErrUniqueConstraint.
 //
 // A different definition of the same process that already holds the version
 // (or the version tag) means the version histories diverged; the import is
@@ -34,41 +36,40 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 	}
 	definition.Version = version
 
+	engine.definitionMu.Lock()
+	defer engine.definitionMu.Unlock()
 	existing, err := engine.persistence.FindProcessDefinitionsById(ctx, definition.BpmnProcessId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load processes by id %s: %w", definition.BpmnProcessId, err)
 	}
-	var previousLatest *runtime.ProcessDefinition
 	for i := range existing {
-		other := &existing[i]
-		if other.Key == key {
-			return other, nil
-		}
-		if other.Version == version {
-			return nil, fmt.Errorf("process definition %d cannot be imported as version %d of %q: definition %d already holds that version: %w",
-				key, version, definition.BpmnProcessId, other.Key, storage.ErrUniqueConstraint)
-		}
-		if definition.VersionTag != "" && other.VersionTag == definition.VersionTag {
-			return nil, fmt.Errorf("process definition %d cannot be imported with version tag %q of %q: definition %d already holds that tag: %w",
-				key, definition.VersionTag, definition.BpmnProcessId, other.Key, storage.ErrUniqueConstraint)
-		}
-		if previousLatest == nil || other.Version > previousLatest.Version {
-			previousLatest = other
+		if existing[i].Key == key {
+			// the partition already holds the key: the same definition (a
+			// previous import may have stored it and failed before its
+			// subscriptions were registered; registration is idempotent and
+			// leaves a definition that is not the latest version alone), or
+			// another one, which must not be mistaken for it
+			if existing[i].Version != version || existing[i].BpmnChecksum != definition.BpmnChecksum {
+				return nil, fmt.Errorf("process definition %d cannot be imported as version %d of %q: the partition already holds version %d of different content under that key: %w",
+					key, version, definition.BpmnProcessId, existing[i].Version, storage.ErrUniqueConstraint)
+			}
+			if registerSubscriptions {
+				if err := engine.registerProcessDefinitionSubscriptionsLocked(ctx, key); err != nil {
+					return nil, err
+				}
+			}
+			return &existing[i], nil
 		}
 	}
-	if err := engine.persistence.SaveProcessDefinition(ctx, definition); err != nil {
-		return nil, fmt.Errorf("failed to save imported process definition %d: %w", key, err)
+	previousLatest := latestProcessDefinition(existing)
+	if _, err := engine.storeProcessDefinitionVersion(ctx, definition, existing); err != nil {
+		return nil, fmt.Errorf("failed to import process definition %d: %w", key, err)
 	}
 	latest := previousLatest == nil || previousLatest.Version < version
 	if !registerSubscriptions || !latest {
 		return &definition, nil
 	}
-	if previousLatest != nil {
-		if err := engine.deleteProcessDefinitionSubscriptions(ctx, previousLatest); err != nil {
-			return nil, fmt.Errorf("failed to retire subscriptions of process definition %d: %w", previousLatest.Key, err)
-		}
-	}
-	if err := engine.RegisterProcessDefinitionSubscriptions(ctx, key); err != nil {
+	if err := engine.registerProcessDefinitionSubscriptionsLocked(ctx, key); err != nil {
 		return nil, err
 	}
 	return &definition, nil

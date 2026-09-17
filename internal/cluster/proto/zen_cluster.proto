@@ -67,6 +67,14 @@ service ZenService {
   rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
   rpc DeployDmnResourceDefinition(DeployDmnResourceDefinitionRequest) returns (DeployDmnResourceDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
+  // AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
+  // deployment through the main raft log (recipient is the cluster leader).
+  rpc AllocateProcessDefinition(AllocateProcessDefinitionRequest) returns (AllocateProcessDefinitionResponse);
+  // GetProcessDefinitionVersions lists the versions of a BPMN process (of
+  // every process when no process id is given) a partition holds, read on the
+  // partition leader so that the answer includes every deployment the
+  // partition acknowledged (recipient is the partition leader).
+  rpc GetProcessDefinitionVersions(GetProcessDefinitionVersionsRequest) returns (GetProcessDefinitionVersionsResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   // PublishMessage requests a message publish on the engine running on a leader node of partition
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
@@ -123,6 +131,12 @@ message JoinRequest {
   string id = 1;
   string address = 2;
   bool voter = 3;
+  // protocol_version is the main raft command protocol version the joining
+  // binary implements (zencommand.NodeChange.protocol_version). The leader
+  // refuses a join below the version the raft log already requires, so that
+  // a member never receives a command it would stop on. Binaries that
+  // predate the field send zero.
+  int32 protocol_version = 4;
 }
 
 message JoinResponse {
@@ -340,10 +354,70 @@ message DeployProcessDefinitionRequest {
   bytes data = 2;
   string resource_name = 3;
   bool registerProcessDefinitionSubscriptions = 4;
+  // version is the cluster-wide version allocated for this deployment (see
+  // AllocateProcessDefinition). The partition stores the definition under
+  // exactly this (key, version) instead of assigning its own; a partition that
+  // already holds the key answers idempotently. Zero means the sender predates
+  // cluster-wide allocation and the partition falls back to local versioning.
+  int32 version = 5;
+  // The generation under which this deployment was observed and allocated.
+  // These are not restore-owner credentials. An obsolete generation must be
+  // rejected even after the partition has left restore maintenance.
+  string restore_operation_id = 6;
+  uint64 restore_epoch = 7;
+  // partition_id is the partition the deployment is addressed to: the
+  // receiving node stores the definition on that partition only, which it
+  // must lead, and registers the definition-level subscriptions there when
+  // asked to. Zero (a sender that predates the field) means every partition
+  // the node leads.
+  uint32 partition_id = 8;
 }
 
 message DeployProcessDefinitionResponse {
   ErrorResult error = 1;
+}
+
+message AllocateProcessDefinitionRequest {
+  zencommand.ProcessDefinitionAllocation allocation = 1;
+}
+
+message AllocateProcessDefinitionResponse {
+  ErrorResult error = 1;
+  int64 key = 2;
+  int32 version = 3;
+  // already_existed is true when the latest allocation of the process already
+  // had this content, i.e. nothing new was allocated.
+  bool already_existed = 4;
+}
+
+message GetProcessDefinitionVersionsRequest {
+  uint32 partition_id = 1;
+  // process_id restricts the answer to one process; empty lists every process.
+  string process_id = 2;
+  // include_latest_data asks for the BPMN bytes of the latest version of each
+  // process.
+  bool include_latest_data = 3;
+  // latest_and_tagged_only restricts the answer to the latest version of each
+  // process and the versions carrying a version tag: what a deployment
+  // needs, whatever the length of the history.
+  bool latest_and_tagged_only = 4;
+}
+
+// ProcessDefinitionVersion identifies one stored version of a BPMN process.
+message ProcessDefinitionVersion {
+  string process_id = 1;
+  int64 key = 2;
+  int32 version = 3;
+  // checksum is the MD5 of the raw BPMN bytes.
+  bytes checksum = 4;
+  string version_tag = 5;
+  // data carries the BPMN bytes of the latest version when they were asked for.
+  bytes data = 6;
+}
+
+message GetProcessDefinitionVersionsResponse {
+  ErrorResult error = 1;
+  repeated ProcessDefinitionVersion versions = 2;
 }
 
 message CompleteJobRequest {

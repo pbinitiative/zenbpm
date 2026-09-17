@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"cmp"
 	"context"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -187,6 +189,10 @@ type RestoreDeps struct {
 	// and returns the resulting operation. A refused transition is reported as
 	// a *state.RestoreRejectedError.
 	ApplyRestoreChange func(ctx context.Context, change *protoc.RestoreOperationChange) (state.RestoreOperation, error)
+	// ResetProcessDefinitions replaces the cluster's process definition
+	// allocation registry with the definitions the restored partitions hold,
+	// under the fencing token of the restore operation (see ResetProcessDefinitions).
+	ResetProcessDefinitions func(ctx context.Context, definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error
 	// CoordinatorID is the id of the node driving the restore.
 	CoordinatorID       string
 	BinarySchemaVersion string
@@ -756,6 +762,9 @@ func (run *restoreRun) reconcile(ctx context.Context, ids []uint32) error {
 	if err := run.syncDefinitions(ctx, ids); err != nil {
 		return err
 	}
+	if err := run.resetProcessDefinitions(ctx, ids); err != nil {
+		return err
+	}
 	cs := run.deps.ClusterState()
 	opID, epoch := run.token()
 
@@ -849,6 +858,102 @@ func (run *restoreRun) syncDefinitions(ctx context.Context, ids []uint32) error 
 		return run.report.DefinitionsSynced[i].Key < run.report.DefinitionsSynced[j].Key
 	})
 	return nil
+}
+
+// resetProcessDefinitions rebuilds the cluster-wide process definition
+// allocation registry (the (process id → version, key) allocations the main
+// raft state hands to deployments) from the process definitions the
+// partitions hold now that they are loaded and synced. The registry lives in
+// the main raft state, which a restore does not replace, so without the
+// reset later deployments would allocate versions and version tags against
+// the definitions the cluster held before the restore instead of the ones it
+// holds after it.
+func (run *restoreRun) resetProcessDefinitions(ctx context.Context, ids []uint32) error {
+	if run.deps.ResetProcessDefinitions == nil {
+		return fmt.Errorf("restore cannot reset the process definition registry: no ResetProcessDefinitions dependency")
+	}
+	// A definition is registered once however many partitions hold it. A key
+	// that partitions report with different versions or metadata (a history
+	// that diverged before allocations were replicated: a partition that
+	// missed a deployment numbered the next one differently) is registered
+	// in each of its forms, and the registry resolves them the way it
+	// resolves what a deployment observes, with the newest version as the
+	// latest; the divergence is logged rather than failing the restore,
+	// like the same-version conflicts of the definition sync.
+	type registeredDefinition struct {
+		processID  string
+		key        int64
+		version    int32
+		checksum   string
+		versionTag string
+	}
+	seen := map[registeredDefinition]bool{}
+	firstByKey := map[int64]registeredDefinition{}
+	var definitions []*protoc.ObservedProcessDefinition
+	for _, id := range ids {
+		leader, err := run.deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return fmt.Errorf("definition registry scan: failed to get leader for partition %d: %w", id, err)
+		}
+		resp, err := leader.GetProcessDefinitionVersions(ctx, &proto.GetProcessDefinitionVersionsRequest{PartitionId: new(id)})
+		if err != nil {
+			return fmt.Errorf("definition registry scan on partition %d failed: %w", id, err)
+		}
+		for _, version := range resp.GetVersions() {
+			definition := registeredDefinition{
+				processID:  version.GetProcessId(),
+				key:        version.GetKey(),
+				version:    version.GetVersion(),
+				checksum:   hex.EncodeToString(version.GetChecksum()),
+				versionTag: version.GetVersionTag(),
+			}
+			if seen[definition] {
+				continue
+			}
+			seen[definition] = true
+			if first, ok := firstByKey[definition.key]; ok {
+				log.Warn("restore %s: partition %d holds process definition %d of %q as version %d (checksum %s, version tag %q) while another partition holds it as version %d (checksum %s, version tag %q); the registry keeps the newest version as the latest",
+					run.identity.id, id, definition.key, definition.processID, definition.version, definition.checksum, definition.versionTag, first.version, first.checksum, first.versionTag)
+			} else {
+				firstByKey[definition.key] = definition
+			}
+			definitions = append(definitions, &protoc.ObservedProcessDefinition{
+				ProcessId:  new(definition.processID),
+				Key:        new(definition.key),
+				Version:    new(definition.version),
+				Checksum:   new(definition.checksum),
+				VersionTag: new(definition.versionTag),
+			})
+		}
+	}
+	slices.SortFunc(definitions, func(a, b *protoc.ObservedProcessDefinition) int {
+		if c := cmp.Compare(a.GetKey(), b.GetKey()); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.GetVersion(), b.GetVersion())
+	})
+	applyCtx, cancel := context.WithTimeout(ctx, run.deps.Timeouts.StateApply)
+	defer cancel()
+	opID, epoch := run.token()
+	if err := run.deps.ResetProcessDefinitions(applyCtx, definitions, opID, epoch); err != nil {
+		return fmt.Errorf("failed to reset the process definition registry: %w", err)
+	}
+	run.report.ProcessDefinitionsRegistered = len(definitions)
+	return nil
+}
+
+// ResetProcessDefinitions commits an ACTION_RESET allocation command carrying
+// the definitions, fenced by the restore operation's token, through write,
+// the cluster store's WriteProcessDefinitionAllocation.
+func ResetProcessDefinitions(ctx context.Context, write func(context.Context, *protoc.ProcessDefinitionAllocation) (state.ProcessDefinitionAllocation, bool, error), definitions []*protoc.ObservedProcessDefinition, restoreID string, restoreEpoch uint64) error {
+	_, _, err := write(ctx, &protoc.ProcessDefinitionAllocation{
+		Action:             protoc.ProcessDefinitionAllocation_ACTION_RESET.Enum(),
+		Definitions:        definitions,
+		RestoreOperationId: new(restoreID),
+		RestoreEpoch:       new(restoreEpoch),
+		TimestampMillis:    new(time.Now().UnixMilli()),
+	})
+	return err
 }
 
 // scanDefinitions lists the definition refs every partition holds.

@@ -89,7 +89,7 @@ func TestRetryDeployReportsMissingLeaderAsClusterError(t *testing.T) {
 		return errTransientDeploy
 	})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "no partition leader available")
+	assert.ErrorContains(t, err, "no leader available")
 	assert.Greater(t, attempts, 1, "a missing leader is retried until the window expires")
 	var zerr *zenerr.ZenError
 	require.ErrorAs(t, err, &zerr)

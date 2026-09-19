@@ -15,7 +15,7 @@ import (
 func TestAddJobSubRemovesFailedStreamAndAcceptsDesiredState(t *testing.T) {
 	client, healthy, failed := subscriptionTestClient(t)
 
-	err := client.addJobSub(t.Context(), "client-1", "job-a")
+	err := client.addJobSub(t.Context(), "client-1", "job-a", SubscriptionSettings{})
 
 	require.NoError(t, err)
 	assert.Contains(t, client.clientSubs["client-1"].jobTypes, JobType("job-a"))
@@ -24,9 +24,32 @@ func TestAddJobSubRemovesFailedStreamAndAcceptsDesiredState(t *testing.T) {
 	assert.Equal(t, 1, failed.stream.(*subscriptionTestStream).closeCalls)
 }
 
+func TestClientReplaysSubscriptionSettingsOnReconnect(t *testing.T) {
+	client, healthy, _ := subscriptionTestClient(t)
+	settings := SubscriptionSettings{LockDuration: 5 * time.Second, MaxActiveJobs: 3}
+
+	require.NoError(t, client.addJobSub(t.Context(), "client-1", "job-a", settings))
+
+	sent := healthy.stream.(*subscriptionTestStream).sent[0]
+	assert.Equal(t, int64(5000), sent.GetLockDurationMs())
+	assert.Equal(t, int32(3), sent.GetMaxActiveJobs())
+
+	reopened := &clientNodeStream{stream: &subscriptionTestStream{ctx: t.Context()}, nodeID: "reopened-node"}
+	client.clientMu.RLock()
+	replayed := client.resendClientSubscriptions(reopened)
+	client.clientMu.RUnlock()
+
+	require.True(t, replayed)
+	replay := reopened.stream.(*subscriptionTestStream).sent
+	require.Len(t, replay, 1)
+	assert.Equal(t, "job-a", replay[0].GetJobType())
+	assert.Equal(t, int64(5000), replay[0].GetLockDurationMs(), "a reopened leader stream learns the lock duration again")
+	assert.Equal(t, int32(3), replay[0].GetMaxActiveJobs(), "a reopened leader stream learns the active-job cap again")
+}
+
 func TestRemoveJobSubRemovesFailedStreamAndAcceptsDesiredState(t *testing.T) {
 	client, healthy, failed := subscriptionTestClient(t)
-	client.clientSubs["client-1"].jobTypes["job-a"] = struct{}{}
+	client.clientSubs["client-1"].jobTypes["job-a"] = SubscriptionSettings{}
 
 	err := client.removeJobSub(t.Context(), "client-1", "job-a")
 

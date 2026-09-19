@@ -34,6 +34,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/senseyeio/duration"
 )
 
 const (
@@ -1927,6 +1928,75 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 		return public.GetJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.GetJob200JSONResponse(mappedJob), nil
+}
+
+// ExtendJobLock moves the lock deadline of a stream-delivered job. The leader
+// is asked first, because a worker renewing periodically hits this endpoint
+// while the lock is held and that path must not pay for a database read. Only
+// a refusal looks the job up, to tell an unknown key (404) apart from a lock
+// which merely lapsed (409).
+func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLockRequestObject) (public.ExtendJobLockResponseObject, error) {
+	if request.Body == nil || strings.TrimSpace(request.Body.ClientId) == "" {
+		return public.ExtendJobLock400JSONResponse(zenerr.BadRequest(fmt.Errorf("clientId is required: the client id of the job stream the job was delivered to")).ToApiError()), nil
+	}
+	lockDuration, err := parseLockDuration(request.Body.LockDuration)
+	if err != nil {
+		return public.ExtendJobLock400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
+	}
+	lockUntil, err := s.node.ExtendJobLock(ctx, request.JobKey, request.Body.ClientId, lockDuration)
+	if err == nil {
+		return public.ExtendJobLock200JSONResponse{LockUntil: lockUntil}, nil
+	}
+	var zerr *zenerr.ZenError
+	if !errors.As(err, &zerr) {
+		return public.ExtendJobLock500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
+	}
+	switch zerr.Code {
+	case zenerr.ClusterErrorCode:
+		return public.ExtendJobLock502JSONResponse(zerr.ToApiError()), nil
+	case zenerr.ConflictCode:
+		if s.jobIsUnknown(ctx, request.JobKey) {
+			return public.ExtendJobLock404JSONResponse(zenerr.NotFound(fmt.Errorf("job %d not found", request.JobKey)).ToApiError()), nil
+		}
+		return public.ExtendJobLock409JSONResponse(zerr.ToApiError()), nil
+	case zenerr.NotFoundCode:
+		return public.ExtendJobLock404JSONResponse(zerr.ToApiError()), nil
+	case zenerr.BadRequestCode:
+		return public.ExtendJobLock400JSONResponse(zerr.ToApiError()), nil
+	default:
+		return public.ExtendJobLock500JSONResponse(trackInternalServerError(ctx, zerr)), nil
+	}
+}
+
+// jobIsUnknown reports whether the partition holding jobKey answers that no
+// such job exists. A lookup which fails for another reason is not an unknown
+// job, the caller's own error stands then.
+func (s *Server) jobIsUnknown(ctx context.Context, jobKey int64) bool {
+	_, err := s.node.GetJob(ctx, jobKey)
+	if err == nil {
+		return false
+	}
+	var zerr *zenerr.ZenError
+	return errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode
+}
+
+// parseLockDuration turns the optional ISO-8601 duration of an extend-lock
+// request into a time.Duration; absent means zero, i.e. the subscription's
+// value. Calendar units are resolved against now.
+func parseLockDuration(raw *string) (time.Duration, error) {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return 0, nil
+	}
+	parsed, err := duration.ParseISO8601(strings.TrimSpace(*raw))
+	if err != nil {
+		return 0, fmt.Errorf("lockDuration %q is not an ISO-8601 duration such as PT5M: %w", *raw, err)
+	}
+	now := time.Now()
+	lockDuration := parsed.Shift(now).Sub(now)
+	if lockDuration <= 0 {
+		return 0, fmt.Errorf("lockDuration %q must be positive", *raw)
+	}
+	return lockDuration, nil
 }
 
 func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {

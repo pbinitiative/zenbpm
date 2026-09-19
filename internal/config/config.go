@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,6 +32,55 @@ type Config struct {
 	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
 	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
+	JobManager JobManager `yaml:"jobManager" json:"jobManager"` // defaults and caps for job locks handed to job stream clients
+}
+
+// JobManager bounds what a job stream client may ask for when it subscribes to a
+// job type: how long a delivered job stays locked for it and how many jobs of the
+// type it may hold at once. A subscription that sends zero for a value gets the
+// default; a subscription that asks for more than the cap gets the cap.
+type JobManager struct {
+	// DefaultLockDurationMs is the lock duration applied to a subscription that does not name one.
+	DefaultLockDurationMs int64 `yaml:"defaultLockDurationMs" json:"defaultLockDurationMs" env:"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS" env-default:"30000"`
+	// MaxLockDurationMs caps the lock duration of a subscription and of a lock extension.
+	MaxLockDurationMs int64 `yaml:"maxLockDurationMs" json:"maxLockDurationMs" env:"JOB_MANAGER_MAX_LOCK_DURATION_MS" env-default:"86400000"`
+	// DefaultMaxActiveJobs is the per-job-type active-job cap applied to a subscription that does not name one.
+	DefaultMaxActiveJobs int `yaml:"defaultMaxActiveJobs" json:"defaultMaxActiveJobs" env:"JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS" env-default:"10"`
+	// MaxActiveJobsCap caps the per-job-type active-job cap a subscription may ask for.
+	MaxActiveJobsCap int `yaml:"maxActiveJobsCap" json:"maxActiveJobsCap" env:"JOB_MANAGER_MAX_ACTIVE_JOBS_CAP" env-default:"1000"`
+}
+
+// MaxLockDurationMillis is the largest lock duration, in milliseconds, the
+// engine can represent: a larger configured value would wrap to a negative
+// duration and let every lock lapse at once.
+const MaxLockDurationMillis = math.MaxInt64 / int64(time.Millisecond)
+
+// Validate rejects a job manager configuration whose defaults do not fit their
+// caps or which would let a lock lapse at once. Every message names the field
+// and its environment variable.
+func (j JobManager) Validate() error {
+	if j.DefaultLockDurationMs <= 0 {
+		return fmt.Errorf("jobManager.defaultLockDurationMs (JOB_MANAGER_DEFAULT_LOCK_DURATION_MS) must be greater than zero, got %d", j.DefaultLockDurationMs)
+	}
+	if j.MaxLockDurationMs <= 0 {
+		return fmt.Errorf("jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) must be greater than zero, got %d", j.MaxLockDurationMs)
+	}
+	if j.MaxLockDurationMs > MaxLockDurationMillis {
+		return fmt.Errorf("jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) is %d but must not exceed %d, the longest duration the engine can represent", j.MaxLockDurationMs, MaxLockDurationMillis)
+	}
+	if j.DefaultLockDurationMs > j.MaxLockDurationMs {
+		return fmt.Errorf("jobManager.defaultLockDurationMs (JOB_MANAGER_DEFAULT_LOCK_DURATION_MS) is %d but must not exceed jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) %d", j.DefaultLockDurationMs, j.MaxLockDurationMs)
+	}
+	if j.DefaultMaxActiveJobs <= 0 {
+		return fmt.Errorf("jobManager.defaultMaxActiveJobs (JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS) must be greater than zero, got %d", j.DefaultMaxActiveJobs)
+	}
+	if j.MaxActiveJobsCap <= 0 {
+		return fmt.Errorf("jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) must be greater than zero, got %d", j.MaxActiveJobsCap)
+	}
+	if j.DefaultMaxActiveJobs > j.MaxActiveJobsCap {
+		return fmt.Errorf("jobManager.defaultMaxActiveJobs (JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS) is %d but must not exceed jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) %d", j.DefaultMaxActiveJobs, j.MaxActiveJobsCap)
+	}
+	return nil
 }
 
 // TODO: clean up cluster & rqlite configuration
@@ -294,6 +344,9 @@ func (c *Config) validate() error {
 		return err
 	}
 	if err := c.Cluster.ValidateDesiredPartitions(); err != nil {
+		return err
+	}
+	if err := c.JobManager.Validate(); err != nil {
 		return err
 	}
 	if c.Cluster.NodeId == "" {

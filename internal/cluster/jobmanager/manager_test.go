@@ -31,20 +31,23 @@ import (
 var (
 	partition = uint32(1)
 	gen, _    = snowflake.NewNode(int64(partition))
+	// maxActiveJobsPerClient is the engine default a subscription without a
+	// cap of its own gets, per job type
+	maxActiveJobsPerClient = DefaultLockLimits().DefaultMaxActiveJobs
 )
 
 func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
-	server := newJobServer("node-1", nil, nil)
+	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
 	oldStream := &nodeSub{nodeID: "node-2"}
 	server.nodeSubs["node-2"] = oldStream
 
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
 	// node-2 reconnects and replays its subscriptions before the old stream exits
 	replacementStream := &nodeSub{nodeID: "node-2"}
 	server.nodeSubs["node-2"] = replacementStream
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients,
 		"replayed subscription must not duplicate the client in the round robin list")
 
@@ -54,9 +57,10 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
 	server.distributedJobs = append(server.distributedJobs, distributedJob{
-		sentTime: time.Now(),
-		client:   "client-1",
-		jobKey:   gen.Generate().Int64(),
+		lockUntil: time.Now().Add(30 * time.Second),
+		jobType:   "test-job",
+		client:    "client-1",
+		jobKey:    gen.Generate().Int64(),
 	})
 	server.removeNode(replacementStream)
 	assert.Empty(t, server.jobTypes["test-job"].clients)
@@ -74,16 +78,17 @@ func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
 		loader:        loader,
 	}
 	server, stream := newTestJobServer(t, loader, completer)
-	server.subscribeClient("node-2", "client-1", "test-job")
-	server.subscribeClient("node-2", "client-2", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
+	server.subscribeClient("node-2", "client-2", "test-job", SubscriptionSettings{})
 
 	// client-1 already holds all but one of its slots, client-2 holds none
 	now := time.Now()
 	for range maxActiveJobsPerClient - 1 {
 		server.distributedJobs = append(server.distributedJobs, distributedJob{
-			sentTime: now,
-			client:   "client-1",
-			jobKey:   gen.Generate().Int64(),
+			lockUntil: now.Add(30 * time.Second),
+			jobType:   "test-job",
+			client:    "client-1",
+			jobKey:    gen.Generate().Int64(),
 		})
 	}
 
@@ -107,7 +112,7 @@ func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
 func TestServerDistributesToSingleClient(t *testing.T) {
 	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
 	server, stream := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 
 	generatedJobs := generateJobs(3)
 	loader.addJobs(generatedJobs...)
@@ -124,8 +129,8 @@ func TestServerDistributesToSingleClient(t *testing.T) {
 func TestServerRoundRobinUsesBothClients(t *testing.T) {
 	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
 	server, stream := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "test-job")
-	server.subscribeClient("node-2", "client-2", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
+	server.subscribeClient("node-2", "client-2", "test-job", SubscriptionSettings{})
 
 	generatedJobs := generateJobs(10)
 	loader.addJobs(generatedJobs...)
@@ -148,7 +153,7 @@ func TestServerDistributesFairlyBetweenMultipleClients(t *testing.T) {
 	server, stream := newTestJobServer(t, loader, nil)
 	clientIDs := []ClientID{"client-1", "client-2", "client-3"}
 	for _, clientID := range clientIDs {
-		server.subscribeClient("node-2", clientID, "test-job")
+		server.subscribeClient("node-2", clientID, "test-job", SubscriptionSettings{})
 	}
 
 	generatedJobs := generateJobs(9)
@@ -181,16 +186,17 @@ func TestServerNeverAssignsJobsToSaturatedClients(t *testing.T) {
 		},
 	}
 	server, stream := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "job-a")
-	server.subscribeClient("node-2", "client-2", "job-b")
+	server.subscribeClient("node-2", "client-1", "job-a", SubscriptionSettings{})
+	server.subscribeClient("node-2", "client-2", "job-b", SubscriptionSettings{})
 
-	// client-1 holds all of its slots
+	// client-1 holds all of its job-a slots
 	now := time.Now()
 	for range maxActiveJobsPerClient {
 		server.distributedJobs = append(server.distributedJobs, distributedJob{
-			sentTime: now,
-			client:   "client-1",
-			jobKey:   gen.Generate().Int64(),
+			lockUntil: now.Add(30 * time.Second),
+			jobType:   "job-a",
+			client:    "client-1",
+			jobKey:    gen.Generate().Int64(),
 		})
 	}
 
@@ -220,7 +226,7 @@ func TestServerRetriesJobImmediatelyAfterTransientSendFailure(t *testing.T) {
 	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
 	server, stream := newTestJobServer(t, loader, nil)
 	stream.failSends = 1
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 	loader.addJobs(generateJobs(1)...)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -251,13 +257,13 @@ func TestServerSkipListContainsOnlyValidJobKeys(t *testing.T) {
 		},
 	}
 	server, _ := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 
 	activeKey := gen.Generate().Int64()
 	server.distributedJobs = []distributedJob{
-		{sentTime: time.Now().Add(-2 * jobLockDuration), client: "client-1", jobKey: gen.Generate().Int64()},
-		{sentTime: time.Now(), client: "client-1", jobKey: activeKey},
-		{sentTime: time.Now().Add(-2 * jobLockDuration), client: "client-1", jobKey: gen.Generate().Int64()},
+		{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
+		{lockUntil: time.Now().Add(30 * time.Second), jobType: "test-job", client: "client-1", jobKey: activeKey},
+		{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -298,7 +304,7 @@ func TestServerHandlesSubscriptionChangesDuringDistribution(t *testing.T) {
 		},
 	}
 	server, stream := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "test-job")
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 
 	generatedJobs := generateJobs(int(maxActiveJobsPerClient))
 	loader.addJobs(generatedJobs...)
@@ -320,7 +326,7 @@ func TestServerHandlesSubscriptionChangesDuringDistribution(t *testing.T) {
 	// client has no capacity in the in-flight snapshot and becomes eligible on
 	// the next distribution iteration.
 	server.unsubscribeClient("client-1", "test-job")
-	server.subscribeClient("node-2", "client-2", "test-job")
+	server.subscribeClient("node-2", "client-2", "test-job", SubscriptionSettings{})
 	release()
 
 	assert.Eventually(t, func() bool {
@@ -343,28 +349,25 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	testStr := getTestStore(ln)
-	testStr.state.Partitions = make(map[uint32]state.Partition)
+	testStr.updateState(func(cluster *state.Cluster) { cluster.Partitions = map[uint32]state.Partition{} })
 
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 	_ = loader
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.server.Load(), "server should not be initialized")
 
-	*testStr = *getTestStore(ln)
+	testStr.setState(getTestStore(ln).state)
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.NotNil(t, jm1.server, "server should be initialized")
+	assert.NotNil(t, jm1.server.Load(), "server should be initialized")
 
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
+	testStr2 := testStr.forNode("node-2")
 
 	jm2 := createClientNode(t, testStr2)
 
 	client1 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
@@ -376,11 +379,11 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	assert.NoError(t, err)
 	jm2.RemoveClient(t.Context(), "client-1")
 
-	testStr.state.Partitions = map[uint32]state.Partition{}
+	testStr.updateState(func(cluster *state.Cluster) { cluster.Partitions = map[uint32]state.Partition{} })
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.server.Load(), "server should not be initialized")
 
-	testStr2.state.Partitions = map[uint32]state.Partition{}
+	testStr2.updateState(func(cluster *state.Cluster) { cluster.Partitions = map[uint32]state.Partition{} })
 	jm2.OnPartitionRoleChange(t.Context())
 	assert.Empty(t, jm2.client.nodeStreams)
 }
@@ -397,10 +400,7 @@ func TestManagerDistributesJob(t *testing.T) {
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
+	testStr2 := testStr.forNode("node-2")
 
 	jm2 := createClientNode(t, testStr2)
 
@@ -408,7 +408,7 @@ func TestManagerDistributesJob(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	generatedJobs := generateJobs(1)
@@ -418,11 +418,11 @@ func TestManagerDistributesJob(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Contains(t, completer.completedJobs, generatedJobs[0].Key)
-	assert.Positive(t, serverClientCount(jm1.server, job.Type))
+	assert.Positive(t, serverClientCount(jm1.server.Load(), job.Type))
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	assert.Eventually(t, func() bool {
-		return serverClientCount(jm1.server, job.Type) == 0
+		return serverClientCount(jm1.server.Load(), job.Type) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -438,10 +438,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
+	testStr2 := testStr.forNode("node-2")
 
 	jm2 := createClientNode(t, testStr2)
 
@@ -449,13 +446,13 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
@@ -473,7 +470,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return serverClientCount(jm1.server, "test-job") == 0
+		return serverClientCount(jm1.server.Load(), "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -489,10 +486,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
+	testStr2 := testStr.forNode("node-2")
 
 	jm2 := createClientNode(t, testStr2)
 
@@ -500,7 +494,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	// client connects to the node-2
 	err = jm2.AddClient(t.Context(), "client-1", client1)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	client1Jobs := consumeJobs(t, "client-1", client1, jm2)
@@ -511,7 +505,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	client2 := make(chan Job)
 	err = jm2.AddClient(t.Context(), "client-2", client2)
 	assert.NoError(t, err)
-	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job")
+	err = jm2.AddClientJobSub(t.Context(), "client-2", "test-job", SubscriptionSettings{})
 	assert.NoError(t, err)
 
 	client2Jobs := consumeJobs(t, "client-2", client2, jm2)
@@ -532,7 +526,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-		return serverClientCount(jm1.server, "test-job") == 1
+		return serverClientCount(jm1.server.Load(), "test-job") == 1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -547,7 +541,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return serverClientCount(jm1.server, "test-job") == 0
+		return serverClientCount(jm1.server.Load(), "test-job") == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -566,21 +560,18 @@ func TestManagerTroughput(t *testing.T) {
 	assert.NoError(t, err)
 
 	testStr := getTestStore(ln)
-	testStr.state.Partitions = make(map[uint32]state.Partition)
+	testStr.updateState(func(cluster *state.Cluster) { cluster.Partitions = map[uint32]state.Partition{} })
 
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 	_ = loader
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.server.Load(), "server should not be initialized")
 
-	*testStr = *getTestStore(ln)
+	testStr.setState(getTestStore(ln).state)
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.NotNil(t, jm1.server, "server should be initialized")
+	assert.NotNil(t, jm1.server.Load(), "server should be initialized")
 
-	testStr2 := &testStore{
-		state: *testStr.state.DeepCopy(),
-	}
-	testStr2.nodeId = "node-2"
+	testStr2 := testStr.forNode("node-2")
 
 	jm2 := createClientNode(t, testStr2)
 
@@ -595,7 +586,7 @@ func TestManagerTroughput(t *testing.T) {
 		clientID := ClientID(fmt.Sprintf("client-%d", i))
 		err = jm2.AddClient(t.Context(), clientID, client)
 		assert.NoError(t, err)
-		err = jm2.AddClientJobSub(t.Context(), clientID, jobType)
+		err = jm2.AddClientJobSub(t.Context(), clientID, jobType, SubscriptionSettings{})
 		assert.NoError(t, err)
 
 		go func() {
@@ -609,7 +600,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-			return serverClientCount(jm1.server, "test-job") == i+1
+			return serverClientCount(jm1.server.Load(), "test-job") == i+1
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)
@@ -628,8 +619,8 @@ func TestManagerTroughput(t *testing.T) {
 func newTestJobServer(t *testing.T, loader JobLoader, completer JobCompleter) (*jobServer, *captureStream) {
 	t.Helper()
 	require.NoError(t, registerMetrics())
-	server := newJobServer("node-1", loader, completer)
-	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}}
+	server := newJobServer("node-1", loader, completer, DefaultLockLimits())
+	stream := &captureStream{ctx: t.Context(), sent: map[ClientID]int{}, sentByType: map[string]int{}}
 	server.nodeSubs["node-2"] = &nodeSub{nodeID: "node-2", stream: stream}
 	return server, stream
 }
@@ -742,7 +733,7 @@ func getTestStore(ln net.Listener) *testStore {
 	}
 }
 
-func createServerNode(t *testing.T, partition uint32, listener net.Listener, store *testStore) (*JobManager, *testCompleter) {
+func createServerNode(t *testing.T, _ uint32, listener net.Listener, store *testStore) (*JobManager, *testCompleter) {
 	cm := client.NewClientManager(store)
 	completer := &testCompleter{
 		completedJobs: []int64{},
@@ -833,7 +824,7 @@ type testCompleter struct {
 	loader        *testLoader
 }
 
-func (c *testCompleter) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error {
+func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[string]any) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
@@ -845,7 +836,7 @@ func (c *testCompleter) JobCompleteByKey(ctx context.Context, jobKey int64, vari
 	return nil
 }
 
-func (c *testCompleter) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
@@ -903,12 +894,17 @@ func isExpectedGRPCServerStopError(err error) bool {
 	return err == nil || errors.Is(err, grpc.ErrServerStopped) || err.Error() == "network connection closed"
 }
 
+// testStore is a cluster state a test changes while the job manager's
+// goroutines read it, so every access goes through the mutex.
 type testStore struct {
+	mu     sync.RWMutex
 	state  state.Cluster
 	nodeId string
 }
 
 func (s *testStore) ClusterState() state.Cluster {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.state
 }
 
@@ -917,6 +913,8 @@ func (s *testStore) NodeID() string {
 }
 
 func (s *testStore) LeaderWithID() (string, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, node := range s.state.Nodes {
 		if node.Role == state.RoleLeader {
 			return node.Addr, node.Id
@@ -926,20 +924,44 @@ func (s *testStore) LeaderWithID() (string, string) {
 }
 
 func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	partState := s.state.Partitions[partition]
 	leaderId := partState.LeaderId
 	leader := s.state.Nodes[leaderId]
 	return leader.Addr, leader.Id
 }
 
+// setState replaces the cluster state.
+func (s *testStore) setState(cluster state.Cluster) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state = cluster
+}
+
+// updateState lets a test change the cluster state in place.
+func (s *testStore) updateState(change func(cluster *state.Cluster)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	change(&s.state)
+}
+
+// forNode is a deep copy of the store as seen by another node.
+func (s *testStore) forNode(nodeId string) *testStore {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return &testStore{state: *s.state.DeepCopy(), nodeId: nodeId}
+}
+
 // captureStream is a fake job subscription stream that records how many jobs
 // were sent to each client.
 type captureStream struct {
-	ctx       context.Context
-	mu        sync.Mutex
-	sent      map[ClientID]int
-	attempts  int
-	failSends int
+	ctx        context.Context
+	mu         sync.Mutex
+	sent       map[ClientID]int
+	sentByType map[string]int
+	attempts   int
+	failSends  int
 }
 
 func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
@@ -955,7 +977,14 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 		return errors.New("transient send failure")
 	}
 	s.sent[ClientID(resp.GetClientId())]++
+	s.sentByType[resp.GetJobType()]++
 	return nil
+}
+
+func (s *captureStream) sentOfType(jobType string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sentByType[jobType]
 }
 
 func (s *captureStream) Recv() (*proto.SubscribeJobRequest, error) {

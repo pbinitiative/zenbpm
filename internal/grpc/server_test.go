@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
@@ -214,13 +215,18 @@ func TestUnknownRequestError(t *testing.T) {
 }
 
 type jobStreamTestManager struct {
-	subscribeErr     error
-	unsubscribeErr   error
-	completeErr      error
-	failErr          error
-	subscribeCalls   int
-	unsubscribeCalls int
-	removeCalls      int
+	subscribeErr       error
+	unsubscribeErr     error
+	completeErr        error
+	failErr            error
+	extendErr          error
+	extendLockUntil    time.Time
+	subscribeCalls     int
+	unsubscribeCalls   int
+	removeCalls        int
+	subscribedSettings []jobmanager.SubscriptionSettings
+	extendedKeys       []int64
+	extendedDurations  []time.Duration
 }
 
 func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
@@ -231,9 +237,16 @@ func (m *jobStreamTestManager) RemoveClient(context.Context, jobmanager.ClientID
 	m.removeCalls++
 }
 
-func (m *jobStreamTestManager) AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error {
+func (m *jobStreamTestManager) AddClientJobSub(_ context.Context, _ jobmanager.ClientID, _ jobmanager.JobType, settings jobmanager.SubscriptionSettings) error {
 	m.subscribeCalls++
+	m.subscribedSettings = append(m.subscribedSettings, settings)
 	return m.subscribeErr
+}
+
+func (m *jobStreamTestManager) ExtendJobLockReq(_ context.Context, _ jobmanager.ClientID, key int64, duration time.Duration) (time.Time, error) {
+	m.extendedKeys = append(m.extendedKeys, key)
+	m.extendedDurations = append(m.extendedDurations, duration)
+	return m.extendLockUntil, m.extendErr
 }
 
 func (m *jobStreamTestManager) RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error {

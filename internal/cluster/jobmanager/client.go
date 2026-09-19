@@ -25,9 +25,9 @@ type clientSub struct {
 	ctx      context.Context
 	ch       chan Job
 	clientID ClientID
-	// jobTypes the client is subscribed to, kept so the subscriptions can be
-	// replayed to node streams that are opened later.
-	jobTypes map[JobType]struct{}
+	// jobTypes the client is subscribed to with the settings it asked for,
+	// kept so the subscriptions can be replayed to node streams that are opened later.
+	jobTypes map[JobType]SubscriptionSettings
 }
 
 type clientNodeStream struct {
@@ -52,7 +52,6 @@ func (s *clientNodeStream) closeSend() error {
 }
 
 type jobClient struct {
-	// TODO: add mechanism to handle max_active_jobs and lock_duration
 	clientSubs map[ClientID]*clientSub
 	clientMu   *sync.RWMutex
 
@@ -209,12 +208,8 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) bool {
 func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) bool {
 	requests := make([]*proto.SubscribeJobRequest, 0, len(c.clientSubs))
 	for clientID, sub := range c.clientSubs {
-		for jobType := range sub.jobTypes {
-			requests = append(requests, &proto.SubscribeJobRequest{
-				JobType:  new(string(jobType)),
-				Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
-				ClientId: new(string(clientID)),
-			})
+		for jobType, settings := range sub.jobTypes {
+			requests = append(requests, subscribeRequest(clientID, jobType, settings))
 		}
 	}
 	for _, req := range requests {
@@ -258,6 +253,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			CreatedAt:      resp.Job.GetCreatedAt(),
 			ElementType:    resp.Job.GetElementType(),
 			ClientID:       ClientID(resp.GetClientId()),
+			LockUntil:      resp.Job.GetLockUntil(),
 		}
 	}
 }
@@ -382,12 +378,12 @@ func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv 
 		ctx:      ctx,
 		ch:       clientRcv,
 		clientID: clientID,
-		jobTypes: map[JobType]struct{}{},
+		jobTypes: map[JobType]SubscriptionSettings{},
 	}
 	return nil
 }
 
-func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
+func (c *jobClient) removeClient(_ context.Context, clientID ClientID) {
 	var err error
 	removed := false
 	func() {
@@ -412,24 +408,61 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	}
 }
 
-func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+func (c *jobClient) addJobSub(_ context.Context, clientID ClientID, jobType JobType, settings SubscriptionSettings) error {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]
 	if !ok {
 		return fmt.Errorf("client %s is not registered", clientID)
 	}
-	sub.jobTypes[jobType] = struct{}{}
-	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  new(string(jobType)),
-		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
-		ClientId: new(string(clientID)),
-	})
+	sub.jobTypes[jobType] = settings
+	err := c.broadcastToNodes(subscribeRequest(clientID, jobType, settings))
 	if err != nil {
 		c.logger.Error("failed to broadcast client job subscription; desired state will be replayed", "clientID", clientID, "jobType", jobType, "err", err)
 		c.reconcileNodeSubscriptions()
 	}
 	return nil
+}
+
+// subscribeRequest is the subscription as relayed to a partition leader; the
+// settings travel verbatim, defaults and caps are the leader's business.
+func subscribeRequest(clientID ClientID, jobType JobType, settings SubscriptionSettings) *proto.SubscribeJobRequest {
+	return &proto.SubscribeJobRequest{
+		JobType:        new(string(jobType)),
+		Type:           proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
+		ClientId:       new(string(clientID)),
+		LockDurationMs: new(settings.LockDuration.Milliseconds()),
+		MaxActiveJobs:  new(int32(settings.MaxActiveJobs)),
+	}
+}
+
+// extendLock asks the leader of the job's partition to move the lock deadline
+// of the job to now plus duration. A refusal comes back as ErrLockNotHeld or
+// ErrLockHeldByOtherClient so the caller can report it by code.
+func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+	partitionID := zenflake.GetPartitionId(jobKey)
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionID, err)
+	}
+	resp, err := lClient.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
+		Key:            new(jobKey),
+		ClientId:       new(string(clientID)),
+		LockDurationMs: new(duration.Milliseconds()),
+	})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
+	}
+	switch resp.GetRefusal() {
+	case proto.LockRefusal_LOCK_REFUSAL_NOT_HELD:
+		return time.Time{}, ErrLockNotHeld
+	case proto.LockRefusal_LOCK_REFUSAL_HELD_BY_OTHER_CLIENT:
+		return time.Time{}, ErrLockHeldByOtherClient
+	}
+	if resp.Error != nil {
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d: %s", jobKey, resp.Error.GetMessage())
+	}
+	return time.UnixMilli(resp.GetLockUntil()), nil
 }
 
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
@@ -453,7 +486,7 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	return nil
 }
 
-func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
+func (c *jobClient) failJob(ctx context.Context, _ ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {
@@ -475,7 +508,7 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 	return nil
 }
 
-func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+func (c *jobClient) removeJobSub(_ context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]

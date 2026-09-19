@@ -229,14 +229,14 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	}
 }
 
-func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
+func (s *Server) ConfigurationUpdate(_ context.Context, _ *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "ConfigurationUpdate is not implemented")
 }
 
-func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartitionRequest) (*proto.AssignPartitionResponse, error) {
+func (s *Server) AssignPartition(_ context.Context, _ *proto.AssignPartitionRequest) (*proto.AssignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "AssignPartition is not implemented")
 }
-func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
+func (s *Server) UnassignPartition(_ context.Context, _ *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
 func (s *Server) PartitionNodeLeaderChange(ctx context.Context, req *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
@@ -315,6 +315,34 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 		return &proto.CompleteJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 	return &proto.CompleteJobResponse{}, nil
+}
+
+// ExtendJobLock moves the lock deadline of a job distributed by this leader.
+// A refusal is reported both as a conflict error and as a typed refusal, so
+// the caller can act on it without parsing the message.
+func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
+	lockUntil, err := s.jobManager.ExtendJobLock(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(),
+		jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+	if err != nil {
+		refusal := proto.LockRefusal_LOCK_REFUSAL_NONE
+		var zerr *zenerr.ZenError
+		switch {
+		case errors.Is(err, jobmanager.NodeIsNotALeader):
+			// the caller's view of the partition leader is stale: a routing
+			// failure to retry against the current leader, not a defect
+			zerr = zenerr.ClusterError(fmt.Errorf("cannot extend lock of job %d: this node does not lead its partition", req.GetKey()))
+		case errors.Is(err, jobmanager.ErrLockNotHeld):
+			refusal = proto.LockRefusal_LOCK_REFUSAL_NOT_HELD
+			zerr = zenerr.Conflict(fmt.Errorf("lock of job %d is not held: it lapsed, the job was completed or failed, or it was never delivered", req.GetKey()))
+		case errors.Is(err, jobmanager.ErrLockHeldByOtherClient):
+			refusal = proto.LockRefusal_LOCK_REFUSAL_HELD_BY_OTHER_CLIENT
+			zerr = zenerr.Conflict(fmt.Errorf("lock of job %d is held by another client", req.GetKey()))
+		default:
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to extend lock of job %d: %w", req.GetKey(), err))
+		}
+		return &proto.ExtendJobLockResponse{Error: zerr.ToProtoError(), Refusal: refusal.Enum()}, nil
+	}
+	return &proto.ExtendJobLockResponse{LockUntil: new(lockUntil.UnixMilli())}, nil
 }
 
 func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
@@ -2092,7 +2120,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 	}, nil
 }
 
-func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerRequest) (*proto.PprofServerStartResult, error) {
+func (s *Server) StartPprofServer(_ context.Context, _ *proto.PprofServerRequest) (*proto.PprofServerStartResult, error) {
 	if s.cpuProfile.Running == true {
 		err := fmt.Errorf("pprof server already running")
 		return &proto.PprofServerStartResult{

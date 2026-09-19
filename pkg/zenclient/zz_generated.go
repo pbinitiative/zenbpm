@@ -1357,6 +1357,15 @@ type CompleteJobJSONBody struct {
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
+// ExtendJobLockJSONBody defines parameters for ExtendJobLock.
+type ExtendJobLockJSONBody struct {
+	// ClientId The client id of the job stream the job was delivered to.
+	ClientId string `json:"clientId"`
+
+	// LockDuration ISO-8601 duration to lock the job for, counted from now. Absent means the subscription's lock duration.
+	LockDuration *string `json:"lockDuration,omitempty"`
+}
+
 // FailJobJSONBody defines parameters for FailJob.
 type FailJobJSONBody struct {
 	// ErrorCode The error code against which an error catch event is matched.
@@ -1632,6 +1641,9 @@ type AssignJobJSONRequestBody AssignJobJSONBody
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
 
+// ExtendJobLockJSONRequestBody defines body for ExtendJobLock for application/json ContentType.
+type ExtendJobLockJSONRequestBody ExtendJobLockJSONBody
+
 // FailJobJSONRequestBody defines body for FailJob for application/json ContentType.
 type FailJobJSONRequestBody FailJobJSONBody
 
@@ -1761,6 +1773,11 @@ type ClientInterface interface {
 	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExtendJobLockWithBody request with any body
+	ExtendJobLockWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExtendJobLock(ctx context.Context, jobKey int64, body ExtendJobLockJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// FailJobWithBody request with any body
 	FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2008,6 +2025,30 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, jobKey int64, contentT
 
 func (c *Client) CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCompleteJobRequest(c.Server, jobKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExtendJobLockWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExtendJobLockRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExtendJobLock(ctx context.Context, jobKey int64, body ExtendJobLockJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExtendJobLockRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3103,6 +3144,53 @@ func NewCompleteJobRequestWithBody(server string, jobKey int64, contentType stri
 	}
 
 	operationPath := fmt.Sprintf("/jobs/%s/complete", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExtendJobLockRequest calls the generic ExtendJobLock builder with application/json body
+func NewExtendJobLockRequest(server string, jobKey int64, body ExtendJobLockJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExtendJobLockRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewExtendJobLockRequestWithBody generates requests for ExtendJobLock with any type of body
+func NewExtendJobLockRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "jobKey", jobKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/extend-lock", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -4847,6 +4935,11 @@ type ClientWithResponsesInterface interface {
 
 	CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
+	// ExtendJobLockWithBodyWithResponse request with any body
+	ExtendJobLockWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExtendJobLockResponse, error)
+
+	ExtendJobLockWithResponse(ctx context.Context, jobKey int64, body ExtendJobLockJSONRequestBody, reqEditors ...RequestEditorFn) (*ExtendJobLockResponse, error)
+
 	// FailJobWithBodyWithResponse request with any body
 	FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
 
@@ -5318,6 +5411,47 @@ func (r CompleteJobResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CompleteJobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExtendJobLockResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		// LockUntil When the extended lock lapses, on the clock of the partition leader.
+		LockUntil time.Time `json:"lockUntil"`
+	}
+	JSON400 *Error
+	JSON404 *Error
+	JSON405 *MethodNotAllowed
+	JSON409 *Error
+	JSON413 *PayloadTooLarge
+	JSON415 *UnsupportedMediaType
+	JSON500 *Error
+	JSON502 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExtendJobLockResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExtendJobLockResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExtendJobLockResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6320,6 +6454,23 @@ func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, jobKe
 	return ParseCompleteJobResponse(rsp)
 }
 
+// ExtendJobLockWithBodyWithResponse request with arbitrary body returning *ExtendJobLockResponse
+func (c *ClientWithResponses) ExtendJobLockWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExtendJobLockResponse, error) {
+	rsp, err := c.ExtendJobLockWithBody(ctx, jobKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExtendJobLockResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExtendJobLockWithResponse(ctx context.Context, jobKey int64, body ExtendJobLockJSONRequestBody, reqEditors ...RequestEditorFn) (*ExtendJobLockResponse, error) {
+	rsp, err := c.ExtendJobLock(ctx, jobKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExtendJobLockResponse(rsp)
+}
+
 // FailJobWithBodyWithResponse request with arbitrary body returning *FailJobResponse
 func (c *ClientWithResponses) FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error) {
 	rsp, err := c.FailJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
@@ -7234,6 +7385,91 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExtendJobLockResponse parses an HTTP response from a ExtendJobLockWithResponse call
+func ParseExtendJobLockResponse(rsp *http.Response) (*ExtendJobLockResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExtendJobLockResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			// LockUntil When the extended lock lapses, on the clock of the partition leader.
+			LockUntil time.Time `json:"lockUntil"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge

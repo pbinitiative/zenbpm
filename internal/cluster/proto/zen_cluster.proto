@@ -104,6 +104,8 @@ service ZenService {
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   rpc FailJob(FailJobRequest) returns (FailJobResponse);
+  // Moves the lock deadline of a distributed job held by client_id to now plus lock_duration_ms.
+  rpc ExtendJobLock(ExtendJobLockRequest) returns (ExtendJobLockResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
   rpc AssignJobToAssignee(AssignJobToAssigneeRequest) returns (AssignJobToAssigneeResponse);
@@ -442,6 +444,27 @@ message FailJobResponse {
   ErrorResult error = 1;
 }
 
+message ExtendJobLockRequest {
+  int64 key = 1;
+  string client_id = 2;
+  // 0 = the lock duration of the subscription the job was delivered under.
+  int64 lock_duration_ms = 3;
+}
+
+message ExtendJobLockResponse {
+  ErrorResult error = 1;
+  // Unix milliseconds on the leader's clock at which the extended lock lapses.
+  int64 lock_until = 2;
+  // Why the extension was refused; set alongside error so the caller can act on it without parsing text.
+  LockRefusal refusal = 3;
+}
+
+enum LockRefusal {
+  LOCK_REFUSAL_NONE = 0;
+  LOCK_REFUSAL_NOT_HELD = 1;
+  LOCK_REFUSAL_HELD_BY_OTHER_CLIENT = 2;
+}
+
 message ActivateJobRequest {
   string job_type = 1;
 }
@@ -460,6 +483,8 @@ message InternalJob {
   string element_id = 6;
   int64 created_at = 7;
   string element_type = 8;
+  // Unix milliseconds on the leader's clock at which the lock of this delivery lapses.
+  int64 lock_until = 9;
 }
 
 message SetMessageSubscriptionPointerRequest {
@@ -762,6 +787,10 @@ message SubscribeJobRequest {
   }
   Type type = 2;
   string client_id = 3;
+  // 0 = the engine's default lock duration; capped by the leader.
+  int64 lock_duration_ms = 4;
+  // 0 = the engine's default active-job cap; capped by the leader.
+  int32 max_active_jobs = 5;
 }
 
 message SubscribeJobResponse {

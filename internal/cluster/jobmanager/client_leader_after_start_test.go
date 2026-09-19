@@ -21,24 +21,25 @@ func TestClientReachesLeaderElectedAfterStart(t *testing.T) {
 	loader := completer.loader
 
 	// node-2 starts before any partition leader is known.
-	clientStore := &testStore{
-		state:  *serverStore.state.DeepCopy(),
-		nodeId: "node-2",
-	}
-	clientStore.state.Partitions[1] = state.Partition{Id: 1, LeaderId: ""}
+	clientStore := serverStore.forNode("node-2")
+	clientStore.updateState(func(cluster *state.Cluster) {
+		cluster.Partitions[1] = state.Partition{Id: 1, LeaderId: ""}
+	})
 
 	clientManager := createClientNode(t, clientStore)
 	clientJobs := make(chan Job)
 	require.NoError(t, clientManager.AddClient(t.Context(), "client-1", clientJobs))
-	require.NoError(t, clientManager.AddClientJobSub(t.Context(), "client-1", "test-job"))
+	require.NoError(t, clientManager.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{}))
 
 	// Leadership appears after the client subscription already exists.
-	clientStore.state.Partitions[1] = state.Partition{Id: 1, LeaderId: "node-1"}
-	node1 := clientStore.state.Nodes["node-1"]
-	node1.Partitions = map[uint32]state.NodePartition{
-		1: {Id: 1, State: state.NodePartitionStateInitialized, Role: state.RoleLeader},
-	}
-	clientStore.state.Nodes["node-1"] = node1
+	clientStore.updateState(func(cluster *state.Cluster) {
+		cluster.Partitions[1] = state.Partition{Id: 1, LeaderId: "node-1"}
+		node1 := cluster.Nodes["node-1"]
+		node1.Partitions = map[uint32]state.NodePartition{
+			1: {Id: 1, State: state.NodePartitionStateInitialized, Role: state.RoleLeader},
+		}
+		cluster.Nodes["node-1"] = node1
+	})
 	clientManager.OnClusterStateChange(t.Context())
 
 	generatedJobs := generateJobs(1)

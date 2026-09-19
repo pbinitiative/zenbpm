@@ -129,7 +129,8 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
 	}
 
-	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
+	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node,
+		jobmanager.WithLockLimits(jobmanager.LockLimitsFromConfig(conf.JobManager)))
 	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
@@ -246,7 +247,7 @@ func (node *ZenNode) IsAnyPartitionLeader(ctx context.Context) bool {
 	return node.controller.IsAnyPartitionLeader(ctx)
 }
 
-func (node *ZenNode) LeastStressedPartitionLeader(ctx context.Context) (proto.ZenServiceClient, error) {
+func (node *ZenNode) LeastStressedPartitionLeader(_ context.Context) (proto.ZenServiceClient, error) {
 	partition, err := node.store.ClusterState().LeastStressedPartition()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get least stressed partition leader: %w", err)
@@ -939,6 +940,39 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 		return zenerr.ToZenError(resp.Error, e)
 	}
 	return nil
+}
+
+// ExtendJobLock moves the lock deadline of a job delivered over the job stream
+// to clientID to now plus duration (zero: the lock duration of the
+// subscription). A lock which is not held or is held by another client answers
+// a conflict; the job itself is untouched either way.
+func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID string, duration time.Duration) (time.Time, error) {
+	if err := node.rejectIfRestoring(); err != nil {
+		return time.Time{}, err
+	}
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return time.Time{}, zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+	}
+	resp, err := client.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
+		Key:            &key,
+		ClientId:       &clientID,
+		LockDurationMs: new(duration.Milliseconds()),
+	})
+	if err != nil {
+		wrapped := fmt.Errorf("client call to extend lock of job %d failed: %w", key, err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return time.Time{}, zenerr.TechnicalError(wrapped)
+		}
+		// the leader could not be reached: a cluster failure, which the REST
+		// endpoint reports as 502, not an internal error
+		return time.Time{}, zenerr.ClusterError(wrapped)
+	}
+	if resp.Error != nil {
+		return time.Time{}, zenerr.ToZenError(resp.Error, fmt.Errorf("client call to extend lock of job %d failed", key))
+	}
+	return time.UnixMilli(resp.GetLockUntil()), nil
 }
 
 func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) *zenerr.ZenError {

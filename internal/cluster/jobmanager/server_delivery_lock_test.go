@@ -35,19 +35,27 @@ func TestServerLockStartsWhenTheSendCompletes(t *testing.T) {
 	reservedUntil := server.distributedJobs[0].lockUntil
 	server.distributedJobsMu.Unlock()
 
+	gateOpenedAt := time.Now()
 	close(stream.sendGate)
 
+	// the send counter ticks inside the stream before the server restarts the
+	// deadline, so the test waits for the restart itself, not for the send
 	require.Eventually(t, func() bool {
-		return stream.totalSent() == 1
-	}, 5*time.Second, 10*time.Millisecond, "the send must complete")
-	sendCompletedAt := time.Now()
-	server.distributedJobsMu.Lock()
-	defer server.distributedJobsMu.Unlock()
-	require.Len(t, server.distributedJobs, 1)
-	assert.True(t, server.distributedJobs[0].lockUntil.After(reservedUntil),
-		"the leader's deadline restarts once the send completed instead of keeping the one taken before it")
-	assert.WithinDuration(t, sendCompletedAt.Add(time.Second), server.distributedJobs[0].lockUntil, 200*time.Millisecond,
+		return leaderLockUntil(server).After(reservedUntil)
+	}, 5*time.Second, 10*time.Millisecond,
+		"the leader's deadline must restart once the send completed instead of keeping the one taken before it")
+	assert.WithinRange(t, leaderLockUntil(server), gateOpenedAt.Add(time.Second), time.Now().Add(time.Second),
 		"the restarted deadline is the lock duration from the end of the send")
 	assert.Equal(t, reservedUntil.UnixMilli(), stream.deliveredLockUntil(),
 		"the worker is told the deadline taken before the send, which is never later than the leader's")
+}
+
+// leaderLockUntil is the deadline of the single distributed job.
+func leaderLockUntil(server *jobServer) time.Time {
+	server.distributedJobsMu.Lock()
+	defer server.distributedJobsMu.Unlock()
+	if len(server.distributedJobs) != 1 {
+		return time.Time{}
+	}
+	return server.distributedJobs[0].lockUntil
 }

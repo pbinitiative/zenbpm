@@ -305,6 +305,9 @@ func (s *jobServer) distributeJobs() {
 			}
 			s.jobTypes[jType] = jobTypeData // set the updated index
 			lockDuration := s.settingsLocked(jType, clientID).LockDuration
+			// the deadline taken here reserves the job while it is being sent
+			// and is what the worker is told; the leader's own deadline is
+			// restarted once the send completed (see restartLockAfterSend)
 			lockUntil := time.Now().Add(lockDuration)
 			s.distributedJobsMu.Lock()
 			s.distributedJobs = append(s.distributedJobs, distributedJob{
@@ -343,6 +346,7 @@ func (s *jobServer) distributeJobs() {
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
 			}
+			s.restartLockAfterSend(job.Key, clientID, lockDuration)
 			assignedJobs++
 			JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
 				attribute.String("type", job.Type),
@@ -363,6 +367,29 @@ func (s *jobServer) distributeJobs() {
 			// back off to avoid a tight database-query loop until capacity changes
 			s.pause(100 * time.Millisecond)
 		}
+	}
+}
+
+// restartLockAfterSend moves the deadline of a just delivered job to now plus
+// its lock duration. A send blocked by a node whose workers stopped reading
+// can take a good part of the lock duration; counting the lock from the end
+// of the send keeps such a delay from handing the job to another client while
+// the worker just started on it. The deadline is never moved backwards, so an
+// extension which arrived meanwhile stands, and a worker which already
+// completed the job finds no entry to move. The worker keeps the earlier
+// deadline it was sent, which is conservative.
+func (s *jobServer) restartLockAfterSend(jobKey int64, clientID ClientID, lockDuration time.Duration) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	index := slices.IndexFunc(s.distributedJobs, func(job distributedJob) bool {
+		return job.jobKey == jobKey && job.client == clientID
+	})
+	if index < 0 {
+		return
+	}
+	sentUntil := time.Now().Add(lockDuration)
+	if sentUntil.After(s.distributedJobs[index].lockUntil) {
+		s.distributedJobs[index].lockUntil = sentUntil
 	}
 }
 

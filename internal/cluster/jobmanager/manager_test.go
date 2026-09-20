@@ -963,6 +963,11 @@ type captureStream struct {
 	sentByType map[string]int
 	attempts   int
 	failSends  int
+	// sendGate, when set, blocks every job send until it is closed, the way
+	// a stream to a node whose workers stopped reading blocks.
+	sendGate chan struct{}
+	// lastLockUntil is the deadline the last delivered job carried.
+	lastLockUntil int64
 }
 
 func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
@@ -971,15 +976,33 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 		return nil
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.attempts++
 	if s.failSends > 0 {
 		s.failSends--
+		s.mu.Unlock()
 		return errors.New("transient send failure")
 	}
+	gate := s.sendGate
+	s.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.sent[ClientID(resp.GetClientId())]++
 	s.sentByType[resp.GetJobType()]++
+	s.lastLockUntil = resp.GetJob().GetLockUntil()
 	return nil
+}
+
+func (s *captureStream) deliveredLockUntil() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastLockUntil
 }
 
 func (s *captureStream) sentOfType(jobType string) int {

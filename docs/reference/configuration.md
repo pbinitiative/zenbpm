@@ -273,8 +273,9 @@ than the cap gets the cap. See [Jobs](jobs.md#job-locks).
 | `defaultMaxActiveJobs`  | int   | `JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS`  | `10`       | Active jobs per client and job type for a subscription which names no cap |
 | `maxActiveJobsCap`      | int   | `JOB_MANAGER_MAX_ACTIVE_JOBS_CAP`      | `1000`     | Largest active-job cap a subscription may ask for                         |
 
-All four values must be positive and each default must not exceed its cap; a violation ends the start
-with a message naming the field and its environment variable.
+All four values must be positive, each default must not exceed its cap, and `maxActiveJobsCap` must not
+exceed `2147483647`, the largest count a subscription can ask for; a violation ends the start with a
+message naming the field and its environment variable.
 
 ---
 

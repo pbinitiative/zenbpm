@@ -361,6 +361,7 @@ func TestJobManagerValidationNamesFieldAndEnvVariable(t *testing.T) {
 		{"default active jobs above its cap", func(j *JobManager) { j.DefaultMaxActiveJobs = j.MaxActiveJobsCap + 1 }, []string{"jobManager.defaultMaxActiveJobs", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"}},
 		{"max lock duration the engine cannot represent", func(j *JobManager) { j.MaxLockDurationMs = MaxLockDurationMillis + 1 }, []string{"jobManager.maxLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
 		{"max lock duration at the int64 limit", func(j *JobManager) { j.MaxLockDurationMs = math.MaxInt64 }, []string{"jobManager.maxLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
+		{"active jobs cap above what the job stream carries", func(j *JobManager) { j.MaxActiveJobsCap = MaxActiveJobsCapLimit + 1 }, []string{"jobManager.maxActiveJobsCap", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -382,7 +383,8 @@ func TestJobManagerValidationNamesFieldAndEnvVariable(t *testing.T) {
 	}
 	largest := valid
 	largest.MaxLockDurationMs = MaxLockDurationMillis
+	largest.MaxActiveJobsCap = MaxActiveJobsCapLimit
 	if err := largest.Validate(); err != nil {
-		t.Errorf("the largest representable cap must pass, got %v", err)
+		t.Errorf("the largest representable caps must pass, got %v", err)
 	}
 }

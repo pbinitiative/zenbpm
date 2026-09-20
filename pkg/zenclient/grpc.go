@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -554,7 +555,7 @@ func lockExtensionFromResponse(resp *proto.JobStreamResponse) lockExtension {
 	if resp.Error == nil {
 		return lockExtension{lockUntil: time.UnixMilli(resp.LockExtended.GetLockUntil())}
 	}
-	switch proto.JobStreamErrorCode(resp.Error.GetCode()) {
+	switch jobStreamErrorCode(resp.Error) {
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD:
 		return lockExtension{err: ErrLockNotHeld}
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT:
@@ -562,6 +563,17 @@ func lockExtensionFromResponse(resp *proto.JobStreamResponse) lockExtension {
 	default:
 		return lockExtension{err: fmt.Errorf("lock extension of job %d refused: %s", resp.LockExtended.GetKey(), resp.Error.GetMessage())}
 	}
+}
+
+// jobStreamErrorCode reads the typed code of a stream error; a code outside
+// the enum's range, which a wrapping conversion would turn into a bogus
+// negative value, reads as unspecified.
+func jobStreamErrorCode(err *proto.ErrorResult) proto.JobStreamErrorCode {
+	code := err.GetCode()
+	if code > math.MaxInt32 {
+		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED
+	}
+	return proto.JobStreamErrorCode(code)
 }
 
 // failLockWaiters answers every pending ExtendLock call with err. Every
@@ -636,8 +648,22 @@ func subscriptionRequest(jobType string, typ proto.StreamSubscriptionRequest_Typ
 				JobType:        new(jobType),
 				Type:           new(typ),
 				LockDurationMs: new(settings.lockDuration.Milliseconds()),
-				MaxActiveJobs:  new(int32(settings.maxActiveJobs)),
+				MaxActiveJobs:  new(activeJobsForWire(settings.maxActiveJobs)),
 			},
 		},
 	}
+}
+
+// activeJobsForWire narrows the active-job count of WithMaxActiveJobs to the
+// int32 the stream carries without wrapping: a count above what the wire can
+// hold saturates, which the engine's cap then lowers, and a count below zero
+// becomes zero, the request for the engine default.
+func activeJobsForWire(count int) int32 {
+	if count > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if count < 0 {
+		return 0
+	}
+	return int32(count)
 }

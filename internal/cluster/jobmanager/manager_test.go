@@ -895,7 +895,8 @@ func isExpectedGRPCServerStopError(err error) bool {
 }
 
 // testStore is a cluster state a test changes while the job manager's
-// goroutines read it, so every access goes through the mutex.
+// goroutines read it, so every access goes through the mutex and readers get
+// their own copy of the maps.
 type testStore struct {
 	mu     sync.RWMutex
 	state  state.Cluster
@@ -905,7 +906,7 @@ type testStore struct {
 func (s *testStore) ClusterState() state.Cluster {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.state
+	return *s.state.DeepCopy()
 }
 
 func (s *testStore) NodeID() string {
@@ -947,10 +948,10 @@ func (s *testStore) updateState(change func(cluster *state.Cluster)) {
 }
 
 // forNode is a deep copy of the store as seen by another node.
-func (s *testStore) forNode(nodeId string) *testStore {
+func (s *testStore) forNode(nodeID string) *testStore {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return &testStore{state: *s.state.DeepCopy(), nodeId: nodeId}
+	return &testStore{state: *s.state.DeepCopy(), nodeId: nodeID}
 }
 
 // captureStream is a fake job subscription stream that records how many jobs

@@ -226,18 +226,20 @@ func (s *jobServer) distributeJobs() {
 		}
 		sort.Strings(jobTypes)
 
+		// the free slots are summed only up to the batch size, so the sum
+		// can neither overflow nor exceed what one round loads
 		jobsToLoad := int64(0)
 		for _, numberOfSlots := range capacity {
 			if numberOfSlots > 0 {
-				jobsToLoad += int64(numberOfSlots)
+				jobsToLoad = min(jobsToLoad+int64(numberOfSlots), s.maxJobLoadCount)
+			}
+			if jobsToLoad >= s.maxJobLoadCount {
+				break
 			}
 		}
 		if jobsToLoad <= 0 {
 			s.pause(20 * time.Millisecond)
 			continue
-		}
-		if jobsToLoad > s.maxJobLoadCount {
-			jobsToLoad = s.maxJobLoadCount
 		}
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {

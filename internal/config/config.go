@@ -55,9 +55,14 @@ type JobManager struct {
 // duration and let every lock lapse at once.
 const MaxLockDurationMillis = math.MaxInt64 / int64(time.Millisecond)
 
+// MaxActiveJobsCapLimit is the largest active-job cap a subscription can ask
+// for: the job stream carries the count as a 32-bit integer.
+const MaxActiveJobsCapLimit = math.MaxInt32
+
 // Validate rejects a job manager configuration whose defaults do not fit their
-// caps or which would let a lock lapse at once. Every message names the field
-// and its environment variable.
+// caps, which would let a lock lapse at once, or which allows more than the
+// job stream can carry. Every message names the field and its environment
+// variable.
 func (j JobManager) Validate() error {
 	if j.DefaultLockDurationMs <= 0 {
 		return fmt.Errorf("jobManager.defaultLockDurationMs (JOB_MANAGER_DEFAULT_LOCK_DURATION_MS) must be greater than zero, got %d", j.DefaultLockDurationMs)
@@ -76,6 +81,9 @@ func (j JobManager) Validate() error {
 	}
 	if j.MaxActiveJobsCap <= 0 {
 		return fmt.Errorf("jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) must be greater than zero, got %d", j.MaxActiveJobsCap)
+	}
+	if j.MaxActiveJobsCap > MaxActiveJobsCapLimit {
+		return fmt.Errorf("jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) is %d but must not exceed %d, the largest count a subscription can ask for", j.MaxActiveJobsCap, MaxActiveJobsCapLimit)
 	}
 	if j.DefaultMaxActiveJobs > j.MaxActiveJobsCap {
 		return fmt.Errorf("jobManager.defaultMaxActiveJobs (JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS) is %d but must not exceed jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) %d", j.DefaultMaxActiveJobs, j.MaxActiveJobsCap)

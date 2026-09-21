@@ -8,7 +8,7 @@ require (
 	github.com/adhocore/gronx v1.20.3
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/dop251/goja v0.0.0-20251103141225-af2ceb9156d7
-	github.com/getkin/kin-openapi v0.145.0
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/getsentry/sentry-go v0.49.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
@@ -108,7 +108,7 @@ require (
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48 // indirect
 	github.com/rqlite/sql v0.0.0-20260224021119-1b2524a41372 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect

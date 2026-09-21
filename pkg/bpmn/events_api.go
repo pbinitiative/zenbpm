@@ -164,7 +164,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 		if err != nil {
 			return fmt.Errorf("failed to publishEventOnEventGateway %+v: %w", message, err)
 		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return fmt.Errorf("failed to flush publish message b %+v: %w", message, err)
 		}
@@ -175,7 +175,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			return handleMessagePublicationError(ctx, &batch, message, instance, err,
 				"failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey)
 		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
@@ -196,15 +196,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			return handleMessagePublicationError(ctx, &batch, message, instance, err,
 				"failed to publish message %s to receive task in instance %d. ", message.Name, message.ProcessInstanceKey)
 		}
-		// Persist returned tokens explicitly: multi-instance receive-task transitions can yield tokens in a
-		// non-Running state (e.g. Completed/Waiting), which RunProcessInstance's main loop skips and never saves.
-		for _, tok := range tokens {
-			err = batch.SaveToken(ctx, tok)
-			if err != nil {
-				return fmt.Errorf("failed to save token %d for publish message %+v: %w", tok.Key, message, err)
-			}
-		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
@@ -215,7 +207,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			return handleMessagePublicationError(ctx, &batch, message, instance, err,
 				"failed to publish message %s to task %d. ", message.Name, message.ProcessInstanceKey)
 		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}

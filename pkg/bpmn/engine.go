@@ -34,20 +34,21 @@ import (
 // Engine holds the state of the bpmn engine.
 // It interacts with the outside world using persistence storage interface and outside world interacts with it using public methods (message correlations, job updates, ...).
 type Engine struct {
-	context        context.Context
-	contextCancel  context.CancelFunc
-	taskhandlersMu *sync.RWMutex // we can probably remove this once we fix tests reuse same handler matchers
-	taskHandlers   []*taskHandler
-	exporters      []exporter.EventExporter
-	persistence    storage.Storage
-	logger         hclog.Logger
-	tracer         trace.Tracer
-	meter          metric.Meter
-	metrics        *otelPkg.EngineMetrics
-	timerManager   *timerManager
-	dmnEngine      *dmn.ZenDmnEngine
-	feelRuntime    script.FeelRuntime
-	jsRuntime      script.JsRuntime
+	context               context.Context
+	contextCancel         context.CancelFunc
+	taskhandlersMu        *sync.RWMutex // we can probably remove this once we fix tests reuse same handler matchers
+	taskHandlers          []*taskHandler
+	exporters             []exporter.EventExporter
+	persistence           storage.Storage
+	logger                hclog.Logger
+	tracer                trace.Tracer
+	meter                 metric.Meter
+	metrics               *otelPkg.EngineMetrics
+	timerManager          *timerManager
+	reconciliationManager *reconciliationManager
+	dmnEngine             *dmn.ZenDmnEngine
+	feelRuntime           script.FeelRuntime
+	jsRuntime             script.JsRuntime
 
 	// ownsFeelRuntime reports whether the engine created feelRuntime itself and is therefore responsible for stopping it.
 	// Runtimes injected through EngineWithStorageAndFeel remain owned by the caller and are never stopped by the engine.
@@ -71,6 +72,18 @@ type Engine struct {
 	// pollTimerDelay is the interval between timer polling cycles.
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
+
+	// reconciliationInterval is the interval between bounded scans for
+	// durable Running tokens whose foreground continuation was interrupted.
+	reconciliationInterval time.Duration
+
+	// reconciliationBatchSize limits how many Running tokens a single
+	// recovery scan reads from persistence.
+	reconciliationBatchSize int64
+
+	// reconciliationGracePeriod prevents the periodic scan from competing with
+	// foreground continuations that have only just persisted a Running token.
+	reconciliationGracePeriod time.Duration
 
 	// maxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
@@ -123,6 +136,12 @@ const DefaultMaxProcessInstanceNestingDepth int64 = 100
 // It is intentionally much larger than DefaultMaxProcessInstanceNestingDepth: legitimate loops may run
 // thousands of iterations while legitimate nesting rarely exceeds double digits.
 const DefaultMaxProcessInstanceFlowNodeCount int64 = 10000
+
+const (
+	defaultReconciliationInterval    = 60 * time.Second
+	defaultReconciliationGracePeriod = 60 * time.Second
+	defaultReconciliationBatchSize   = int64(256)
+)
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {

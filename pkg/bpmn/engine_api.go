@@ -24,6 +24,9 @@ func (engine *Engine) Start(ctx context.Context) error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
+	if engine.reconciliationManager != nil {
+		engine.reconciliationManager.stop()
+	}
 	pollTimerDelay := engine.pollTimerDelay
 	if pollTimerDelay == 0 {
 		pollTimerDelaySecondsStr := os.Getenv("POLL_TIMER_DELAY_SECONDS")
@@ -41,49 +44,18 @@ func (engine *Engine) Start(ctx context.Context) error {
 	}
 	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
 	engine.timerManager.start()
-	tokens, err := engine.persistence.GetRunningTokens(engine.context)
-	if err != nil {
-		return fmt.Errorf("failed to load running tokens: %w", err)
-	}
-	type instanceToStart struct {
-		instance runtime.ProcessInstance
-		tokens   []runtime.ExecutionToken
-	}
-	instancesToStart := make(map[int64]instanceToStart)
-	skippedInstances := make(map[int64]struct{})
-	for _, token := range tokens {
-		if _, skipped := skippedInstances[token.ProcessInstanceKey]; skipped {
-			continue
-		}
-		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
-			val.tokens = append(val.tokens, token)
-			instancesToStart[token.ProcessInstanceKey] = val
-		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(engine.context, token.ProcessInstanceKey)
-			if err != nil {
-				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
-			}
-			// Failed instances resume only through incident resolution; terminal instances never resume.
-			if instance.ProcessInstance().State != runtime.ActivityStateReady && instance.ProcessInstance().State != runtime.ActivityStateActive {
-				skippedInstances[token.ProcessInstanceKey] = struct{}{}
-				continue
-			}
-			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
-				instance: instance,
-				tokens:   []runtime.ExecutionToken{token},
-			}
-		}
-	}
-	for _, instance := range instancesToStart {
-		err := engine.RunProcessInstance(engine.context, instance.instance, instance.tokens)
-		if err != nil {
-			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.ProcessInstance().Key, err.Error()))
-		}
+	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
+		engine.timerManager.stop()
+		return err
 	}
 
 	if err := engine.recoverInstantiatingReceiveTaskSubscriptions(engine.context); err != nil {
 		engine.logger.Error(fmt.Sprintf("failed to recover instantiating receive task subscriptions: %s", err.Error()))
 	}
+
+	reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize := engine.reconciliationSettings()
+	engine.reconciliationManager = newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
+	engine.reconciliationManager.start()
 
 	return nil
 }
@@ -145,6 +117,9 @@ func (engine *Engine) Stop() {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
+	if engine.reconciliationManager != nil {
+		engine.reconciliationManager.stop()
+	}
 	engine.contextCancel()
 	// Owned script pools are released exactly once, even when Stop is called repeatedly or concurrently.
 	engine.stopOnce.Do(func() {
@@ -161,8 +136,18 @@ func (engine *Engine) Stop() {
 // As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
 // Lock will be released once the RunProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
+// Once tokens are durable, caller cancellation must not strand them. Execution therefore preserves
+// caller values but follows the engine lifecycle for cancellation.
+// Supplied tokens must be persisted before this call; their state is reloaded after acquiring the
+// process-instance lock so a snapshot handled by an earlier lock owner cannot execute twice.
 func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (retErr error) {
-	return engine.runProcessInstance(ctx, instance, executionTokens, nil)
+	continuationCtx, cancelContinuation := engine.continuationContext(ctx)
+	defer cancelContinuation()
+
+	outcome := &runProcessInstanceOutcome{}
+	retErr = engine.runProcessInstance(continuationCtx, instance, executionTokens, outcome)
+	engine.wakeReconciliationAfterContinuationFailure(instance.ProcessInstance().Key, outcome, retErr)
+	return retErr
 }
 
 type runProcessInstanceOutcome struct {
@@ -228,6 +213,76 @@ func (o *runProcessInstanceOutcome) isPersistedFlowNodeCountReplacement(incident
 }
 
 func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken, outcome *runProcessInstanceOutcome) (retErr error) {
+	instanceKey := instance.ProcessInstance().Key
+	engine.runningInstances.lockInstance(instanceKey)
+	defer engine.runningInstances.unlockInstance(instanceKey)
+
+	runningTokens, err := engine.reloadSuppliedRunningTokens(ctx, instanceKey, executionTokens)
+	if err != nil {
+		outcome.recordTechnicalFailure()
+		return fmt.Errorf("failed to reload execution tokens for process instance %d: %w", instanceKey, err)
+	}
+	if len(runningTokens) == 0 {
+		return nil
+	}
+
+	return engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome)
+}
+
+// reloadSuppliedRunningTokens replaces caller snapshots with their persisted state while the
+// process-instance lock is held. A token handled by an earlier lock owner is no longer Running and
+// must not be executed again. Iterating over suppliedTokens preserves the caller's execution order.
+func (engine *Engine) reloadSuppliedRunningTokens(
+	ctx context.Context,
+	processInstanceKey int64,
+	suppliedTokens []runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
+	requestedKeys := make(map[int64]struct{}, len(suppliedTokens))
+	for _, token := range suppliedTokens {
+		if token.State != runtime.TokenStateRunning {
+			continue
+		}
+		if token.ProcessInstanceKey != processInstanceKey {
+			return nil, fmt.Errorf("token %d belongs to process instance %d, expected %d", token.Key, token.ProcessInstanceKey, processInstanceKey)
+		}
+		requestedKeys[token.Key] = struct{}{}
+	}
+	if len(requestedKeys) == 0 {
+		return nil, nil
+	}
+
+	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	persistedByKey := make(map[int64]runtime.ExecutionToken, len(requestedKeys))
+	for _, token := range activeTokens {
+		if token.State != runtime.TokenStateRunning {
+			continue
+		}
+		if _, requested := requestedKeys[token.Key]; requested {
+			persistedByKey[token.Key] = token
+		}
+	}
+
+	runningTokens := make([]runtime.ExecutionToken, 0, len(persistedByKey))
+	seen := make(map[int64]struct{}, len(persistedByKey))
+	for _, suppliedToken := range suppliedTokens {
+		persistedToken, exists := persistedByKey[suppliedToken.Key]
+		if !exists {
+			continue
+		}
+		if _, duplicate := seen[persistedToken.Key]; duplicate {
+			continue
+		}
+		seen[persistedToken.Key] = struct{}{}
+		runningTokens = append(runningTokens, persistedToken)
+	}
+	return runningTokens, nil
+}
+
+// runProcessInstanceLocked executes tokens while the caller holds the process-instance lock.
+func (engine *Engine) runProcessInstanceLocked(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken, outcome *runProcessInstanceOutcome) (retErr error) {
 	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
@@ -236,8 +291,6 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.P
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}()
-	engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
-	defer engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 
 	//refresh
 	err := engine.persistence.RefreshProcessInstance(ctx, instance)

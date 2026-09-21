@@ -68,6 +68,114 @@ func (q *Queries) GetAllTokensForProcessInstance(ctx context.Context, processIns
 	return items, nil
 }
 
+const getRecoverableRunningTokens = `-- name: GetRecoverableRunningTokens :many
+SELECT
+    token."key", token.element_instance_key, token.element_id, token.process_instance_key, token.state, token.created_at
+FROM
+    execution_token AS token INDEXED BY idx_execution_token_state
+WHERE token.state = ?1
+    AND token.key > ?2
+    AND COALESCE(
+        (
+            SELECT MAX(COALESCE(history.completed_at, history.created_at))
+            FROM flow_element_instance AS history INDEXED BY idx_flow_element_instance_execution_token_key
+            WHERE history.execution_token_key = token.key
+        ),
+        token.created_at
+    ) < CAST(?3 AS INTEGER)
+ORDER BY token.key
+LIMIT ?4
+`
+
+type GetRecoverableRunningTokensParams struct {
+	State         int64 `json:"state"`
+	AfterTokenKey int64 `json:"after_token_key"`
+	RunningBefore int64 `json:"running_before"`
+	RowLimit      int64 `json:"row_limit"`
+}
+
+func (q *Queries) GetRecoverableRunningTokens(ctx context.Context, arg GetRecoverableRunningTokensParams) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getRecoverableRunningTokens,
+		arg.State,
+		arg.AfterTokenKey,
+		arg.RunningBefore,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionToken{}
+	for rows.Next() {
+		var i ExecutionToken
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRunningTokensAfter = `-- name: GetRunningTokensAfter :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, state, created_at
+FROM
+    execution_token INDEXED BY idx_execution_token_state
+WHERE state = ?1
+    AND key > ?2
+ORDER BY key
+LIMIT ?3
+`
+
+type GetRunningTokensAfterParams struct {
+	State         int64 `json:"state"`
+	AfterTokenKey int64 `json:"after_token_key"`
+	RowLimit      int64 `json:"row_limit"`
+}
+
+func (q *Queries) GetRunningTokensAfter(ctx context.Context, arg GetRunningTokensAfterParams) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getRunningTokensAfter, arg.State, arg.AfterTokenKey, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionToken{}
+	for rows.Next() {
+		var i ExecutionToken
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTokens = `-- name: GetTokens :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at

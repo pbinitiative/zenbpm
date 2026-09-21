@@ -218,6 +218,8 @@ type MessageStorageWriter interface {
 
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
+	FindRunningTokensAfter(ctx context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error)
+	FindRecoverableRunningTokens(ctx context.Context, afterTokenKey int64, runningBefore time.Time, limit int64) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)

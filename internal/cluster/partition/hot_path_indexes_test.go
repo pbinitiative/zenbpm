@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	zensql "github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ type newIndexUseCase struct {
 // that contains "USING INDEX <index>" is what SQLite picked; the assertions
 // ensure it stays that way.
 type pinnedIndexUseCase struct {
-	name      string
+	name string
 	// scanTargets lists every name SQLite could print in a SCAN line for this
 	// query — the underlying table name plus any alias used in the FROM clause.
 	// EXPLAIN prints the alias, not the table name, so both must be checked
@@ -59,6 +60,21 @@ type pinnedIndexUseCase struct {
 	query       string
 	arguments   []any
 }
+
+const recoverableRunningTokensQuery = `SELECT token.*
+FROM execution_token AS token INDEXED BY idx_execution_token_state
+WHERE token.state = ?
+    AND token.key > ?
+    AND COALESCE(
+        (
+            SELECT MAX(COALESCE(history.completed_at, history.created_at))
+            FROM flow_element_instance AS history INDEXED BY idx_flow_element_instance_execution_token_key
+            WHERE history.execution_token_key = token.key
+        ),
+        token.created_at
+    ) < CAST(? AS INTEGER)
+ORDER BY token.key
+LIMIT ?`
 
 func TestHotPathIndexes(t *testing.T) {
 	partition, conf, clientMgr, testStore, server := prepareTestSetup(t, false)
@@ -175,6 +191,20 @@ func newIndexUseCases() []newIndexUseCase {
 			arguments: []any{int64(1)},
 		},
 		{
+			name:      "bounded running token recovery",
+			table:     "execution_token",
+			index:     "idx_execution_token_state",
+			query:     "SELECT * FROM execution_token INDEXED BY idx_execution_token_state WHERE state = ? AND key > ? ORDER BY key LIMIT ?",
+			arguments: []any{int64(1), int64(0), int64(256)},
+		},
+		{
+			name:      "grace-period running token reconciliation",
+			table:     "execution_token",
+			index:     "idx_execution_token_state",
+			query:     recoverableRunningTokensQuery,
+			arguments: []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
+		},
+		{
 			name:  "active process instance metrics",
 			table: "process_instance",
 			index: "idx_process_instance_state",
@@ -195,11 +225,18 @@ func newIndexUseCases() []newIndexUseCase {
 func pinnedIndexUseCases() []pinnedIndexUseCase {
 	return []pinnedIndexUseCase{
 		{
+			name:        "running token reconciliation uses token history index",
+			scanTargets: []string{"history", "flow_element_instance"},
+			index:       "idx_flow_element_instance_execution_token_key",
+			query:       recoverableRunningTokensQuery,
+			arguments:   []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
+		},
+		{
 			// Without the hint SQLite picks idx_process_instance_state (added in 0012)
 			// and scans every terminal instance on each cleanup pass.
-			name:      "TTL cleanup uses partial cleanup index",
+			name:        "TTL cleanup uses partial cleanup index",
 			scanTargets: []string{"pi", "parent_pi", "et", "process_instance", "execution_token"},
-			index:     "idx_process_instance_cleanup",
+			index:       "idx_process_instance_cleanup",
 			query: `SELECT pi.key
 FROM process_instance AS pi INDEXED BY idx_process_instance_cleanup
     LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
@@ -215,33 +252,33 @@ LIMIT ?`,
 			// Without the hint SQLite picks idx_timer_state_due_at and scans every
 			// timer in that state across the partition instead of the few timers
 			// for one process instance.
-			name:      "process instance timers use FK index",
+			name:        "process instance timers use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_instance_key",
+			index:       "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "process definition timers use FK index",
+			name:        "process definition timers use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_definition_key",
+			index:       "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "process instance timers by element use FK index",
+			name:        "process instance timers by element use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_instance_key",
+			index:       "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND element_id = ? AND state = ?`,
 			arguments: []any{int64(1), "elem", int64(1)},
 		},
 		{
-			name:      "process definition timers by element use FK index",
+			name:        "process definition timers by element use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_definition_key",
+			index:       "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id = ? AND state = ?`,
 			arguments: []any{int64(1), "elem", int64(1)},
@@ -250,33 +287,33 @@ WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id
 			// The planner currently picks the FK index correctly, but pinning makes
 			// the contract explicit and prevents the generic idx_execution_token_state
 			// from shadowing it under different data distributions.
-			name:      "tokens for process instance use FK index",
+			name:        "tokens for process instance use FK index",
 			scanTargets: []string{"execution_token"},
-			index:     "idx_fk_execution_token_process_instance_key",
+			index:       "idx_fk_execution_token_process_instance_key",
 			query: `SELECT * FROM execution_token INDEXED BY idx_fk_execution_token_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
 			arguments: []any{int64(1), int64(1), int64(2)},
 		},
 		{
-			name:      "jobs in state for process instance use FK index",
+			name:        "jobs in state for process instance use FK index",
 			scanTargets: []string{"job"},
-			index:     "idx_fk_job_process_instance_key",
+			index:       "idx_fk_job_process_instance_key",
 			query: `SELECT * FROM job INDEXED BY idx_fk_job_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
 			arguments: []any{int64(1), int64(1), int64(2)},
 		},
 		{
-			name:      "message subscriptions for process instance use FK index",
+			name:        "message subscriptions for process instance use FK index",
 			scanTargets: []string{"message_subscription"},
-			index:     "idx_fk_message_subscription_process_instance_key",
+			index:       "idx_fk_message_subscription_process_instance_key",
 			query: `SELECT * FROM message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "error subscriptions for process instance use FK index",
+			name:        "error subscriptions for process instance use FK index",
 			scanTargets: []string{"error_subscription"},
-			index:     "idx_fk_error_subscription_process_instance_key",
+			index:       "idx_fk_error_subscription_process_instance_key",
 			query: `SELECT * FROM error_subscription INDEXED BY idx_fk_error_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
@@ -286,9 +323,9 @@ WHERE process_instance_key = ? AND state = ?`,
 			// scans every process instance in the active/ready states, instead of joining from
 			// execution_token filtered by process_instance_key. The pin forces a join order
 			// that probes child by parent_process_execution_token.
-			name:      "active subprocess count uses FK join",
+			name:        "active subprocess count uses FK join",
 			scanTargets: []string{"child", "et", "process_instance", "execution_token"},
-			index:     "idx_process_instance_parent_execution_token",
+			index:       "idx_process_instance_parent_execution_token",
 			query: `SELECT CAST(COUNT(*) AS INTEGER)
 FROM process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
     INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key

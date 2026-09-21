@@ -831,6 +831,34 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, _ *testing.T)
 		}
 		assert.True(t, matched, "expected to find created token among active tokens for partition")
 
+		tokens, err = s.FindRunningTokensAfter(t.Context(), token1.Key-1, 1)
+		assert.NoError(t, err)
+		assert.Len(t, tokens, 1)
+		if len(tokens) == 1 {
+			assert.Equal(t, token1.Key, tokens[0].Key)
+		}
+
+		recentActivity := time.Now().Truncate(time.Millisecond)
+		err = s.SaveFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:                s.GenerateId(),
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "recent-token-activity",
+			CreatedAt:          recentActivity,
+			ExecutionTokenKey:  token1.Key,
+		})
+		assert.NoError(t, err)
+
+		tokens, err = s.FindRecoverableRunningTokens(t.Context(), token1.Key-1, recentActivity.Add(-time.Second), 1)
+		assert.NoError(t, err)
+		assert.Empty(t, tokens, "recent token activity must remain inside the reconciliation grace period")
+
+		tokens, err = s.FindRecoverableRunningTokens(t.Context(), token1.Key-1, recentActivity.Add(time.Second), 1)
+		assert.NoError(t, err)
+		assert.Len(t, tokens, 1)
+		if len(tokens) == 1 {
+			assert.Equal(t, token1.Key, tokens[0].Key)
+		}
+
 		tokens, err = s.GetAllTokensForProcessInstance(t.Context(), st.processInstance.ProcessInstance().Key)
 		assert.NoError(t, err)
 		matchedTwice := 0

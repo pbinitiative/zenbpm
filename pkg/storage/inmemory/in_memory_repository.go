@@ -1,6 +1,7 @@
 package inmemory
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -1008,6 +1009,67 @@ func (mem *Storage) GetRunningTokens(_ context.Context) ([]bpmnruntime.Execution
 		}
 	}
 	return activeTokens, nil
+}
+
+func (mem *Storage) FindRunningTokensAfter(_ context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	activeTokens := make([]bpmnruntime.ExecutionToken, 0)
+	for _, token := range mem.ExecutionTokens {
+		if token.State == bpmnruntime.TokenStateRunning && token.Key > afterTokenKey {
+			activeTokens = append(activeTokens, token)
+		}
+	}
+	slices.SortFunc(activeTokens, func(a, b bpmnruntime.ExecutionToken) int {
+		return cmp.Compare(a.Key, b.Key)
+	})
+	if limit >= 0 && int64(len(activeTokens)) > limit {
+		activeTokens = activeTokens[:limit]
+	}
+	return activeTokens, nil
+}
+
+func (mem *Storage) FindRecoverableRunningTokens(
+	_ context.Context,
+	afterTokenKey int64,
+	runningBefore time.Time,
+	limit int64,
+) ([]bpmnruntime.ExecutionToken, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
+	cutoffMillis := runningBefore.UnixMilli()
+	tokens := make([]bpmnruntime.ExecutionToken, 0)
+	for _, token := range mem.ExecutionTokens {
+		if token.State != bpmnruntime.TokenStateRunning || token.Key <= afterTokenKey {
+			continue
+		}
+
+		runningSinceMillis := token.CreatedAt.UnixMilli()
+		for _, history := range mem.FlowElementInstance {
+			if history.ExecutionTokenKey != token.Key {
+				continue
+			}
+			historyMillis := history.CreatedAt.UnixMilli()
+			if history.CompletedAt != nil {
+				historyMillis = history.CompletedAt.UnixMilli()
+			}
+			if historyMillis > runningSinceMillis {
+				runningSinceMillis = historyMillis
+			}
+		}
+		if runningSinceMillis < cutoffMillis {
+			tokens = append(tokens, token)
+		}
+	}
+
+	slices.SortFunc(tokens, func(a, b bpmnruntime.ExecutionToken) int {
+		return cmp.Compare(a.Key, b.Key)
+	})
+	if limit >= 0 && int64(len(tokens)) > limit {
+		tokens = tokens[:limit]
+	}
+	return tokens, nil
 }
 
 var _ storage.TokenStorageWriter = &Storage{}

@@ -114,7 +114,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
 		}
 		tokens = t
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
@@ -124,7 +124,6 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		if err != nil {
 			return nil, nil, err
 		}
-		//TODO: BUG ? Tokens are never saved
 		if timer.Token == nil {
 			return nil, nil, fmt.Errorf("timer %d does not have an associated token", timer.Key)
 		}
@@ -143,7 +142,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
@@ -155,7 +154,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
-		err = batch.Flush(ctx)
+		err = batch.saveTokensAndFlush(ctx, tokens)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}

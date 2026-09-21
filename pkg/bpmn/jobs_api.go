@@ -153,7 +153,7 @@ func (engine *Engine) processBoundaryErrorEvent(
 		return false, err
 	}
 
-	if err := batch.Flush(ctx); err != nil {
+	if err := batch.saveTokensAndFlush(ctx, tokens); err != nil {
 		return false, fmt.Errorf("failed to fail job %+v by boundary error handling: %w", job, err)
 	}
 
@@ -230,7 +230,11 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	if job.State == runtime.ActivityStateCompleted {
-		engine.logger.Error("job %d is already completed", job.Key)
+		engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
+		if _, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey); runErr != nil {
+			engine.logger.Warn("failed to continue process instance for an already completed job",
+				"job", job.Key, "processInstance", job.ProcessInstanceKey, "err", runErr)
+		}
 		return nil
 	}
 
@@ -367,8 +371,8 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		// The job completion has already been durably flushed above. A successfully persisted
 		// incident is a domain outcome and must not invite a retry of the completed job, while a
 		// technical continuation failure must remain observable so recovery can be triggered.
-		outcome := &runProcessInstanceOutcome{}
-		if runErr := engine.runProcessInstance(ctx, instance, tokens, outcome); runErr != nil {
+		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, instance.ProcessInstance().Key)
+		if runErr != nil {
 			if !outcome.isPersistedIncidentOnly() {
 				return fmt.Errorf("failed to continue process instance %d after completing job %d: %w",
 					instance.ProcessInstance().Key, job.Key, runErr)

@@ -22,7 +22,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/navsmb/datetime v0.2.0
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rqlite/rqlite/v10 v10.3.2
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46

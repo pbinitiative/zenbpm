@@ -139,7 +139,11 @@ type jobServer struct {
 	completer JobCompleter
 	limits    LockLimits
 
-	maxJobLoadCount          int64
+	maxJobLoadCount int64
+	// maxQueryParameters is how many parameters the query loading a batch may
+	// carry: one per locked job key, one per job type and one for the limit.
+	// It is sql.MaxQueryParameters; tests lower it.
+	maxQueryParameters       int
 	distributedJobs          []distributedJob
 	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
@@ -154,20 +158,21 @@ func newJobServer(
 	limits LockLimits,
 ) *jobServer {
 	return &jobServer{
-		nodeMu:            &sync.RWMutex{},
-		nodeSubs:          map[NodeId]*nodeSub{},
-		nodeID:            nodeID,
-		distributedJobs:   []distributedJob{},
-		distributedJobsMu: &sync.Mutex{},
-		subscriptions:     map[JobType]map[ClientID]*nodeSub{},
-		settings:          map[JobType]map[ClientID]SubscriptionSettings{},
-		jobTypes:          map[JobType]jobTypeData{},
-		clientMu:          &sync.RWMutex{},
-		logger:            hclog.Default().Named("job-manager-server"),
-		loader:            jobLoader,
-		maxJobLoadCount:   300,
-		completer:         jobCompleter,
-		limits:            limits,
+		nodeMu:             &sync.RWMutex{},
+		nodeSubs:           map[NodeId]*nodeSub{},
+		nodeID:             nodeID,
+		distributedJobs:    []distributedJob{},
+		distributedJobsMu:  &sync.Mutex{},
+		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
+		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
+		jobTypes:           map[JobType]jobTypeData{},
+		clientMu:           &sync.RWMutex{},
+		logger:             hclog.Default().Named("job-manager-server"),
+		loader:             jobLoader,
+		maxJobLoadCount:    300,
+		maxQueryParameters: sql.MaxQueryParameters,
+		completer:          jobCompleter,
+		limits:             limits,
 	}
 }
 
@@ -241,6 +246,20 @@ func (s *jobServer) distributeJobs() {
 			s.pause(20 * time.Millisecond)
 			continue
 		}
+		// the query loading a batch carries one parameter per requested job
+		// type, one per locked key (a placeholder when nothing is locked) and
+		// one for the limit, and SQLite refuses a query with more parameters
+		// than maxQueryParameters; so a round delivers no more jobs than the
+		// query of the next round can still exclude, whatever the
+		// subscriptions ask for
+		lockBudget := s.maxQueryParameters - 1 - len(jobTypes) - max(1, len(currentKeys))
+		if lockBudget <= 0 {
+			s.logger.Warn("leader holds as many locked jobs as one query can exclude, waiting for locks to lapse or jobs to complete",
+				"lockedJobs", len(currentKeys), "requestedJobTypes", len(jobTypes), "maxQueryParameters", s.maxQueryParameters)
+			s.pause(1 * time.Second)
+			continue
+		}
+		jobsToLoad = min(jobsToLoad, int64(lockBudget))
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
@@ -628,6 +647,12 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	}
 	jobTypeData := s.jobTypes[jType]
 	jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
+	if len(jobTypeData.clients) == 0 {
+		// a job type nobody subscribes to any more must go, as when its
+		// last client or node leaves; kept, it would count in every round
+		delete(s.jobTypes, jType)
+		return
+	}
 	s.jobTypes[jType] = jobTypeData
 }
 

@@ -611,8 +611,10 @@ type WaitingJob struct {
 	CreatedAt      *int64                 `protobuf:"varint,6,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
 	ElementType    *string                `protobuf:"bytes,7,opt,name=element_type,json=elementType" json:"element_type,omitempty"`
 	// Unix milliseconds on the clock of the partition leader at which the lock this
-	// delivery holds lapses. Compare it to the time of receipt rather than to the local
-	// clock, the two clocks may differ.
+	// delivery holds lapses. With synchronised clocks, lock_until minus the local time
+	// estimates the remaining time; it is conservative, the leader counts the lock from
+	// the end of the send. When the clocks cannot be trusted, count the lock duration
+	// of the subscription from the moment of receipt instead of comparing timestamps.
 	LockUntil     *int64 `protobuf:"varint,8,opt,name=lock_until,json=lockUntil" json:"lock_until,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

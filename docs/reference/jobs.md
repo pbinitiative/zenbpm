@@ -72,6 +72,8 @@ The Go client offers `Worker.ExtendLock(ctx, jobKey, duration)`, `WithLockDurati
 
 **Active-job cap.** The cap is counted per *client and job type*: a client holding its ten jobs of one type still receives jobs of every other type it subscribed to. The leader loads at most the sum of the free slots per round, and never more than its internal batch size of 300 jobs. Lowering the cap by subscribing again binds the next delivery, jobs already held stay held.
 
+A leader also holds at most about 32,700 locked jobs across all its clients and job types, whatever the subscriptions add up to: every locked key is a parameter of the query which loads the next batch, and the database accepts 32,766 parameters per query. A leader at that bound logs a warning and delivers again as locks lapse or jobs complete.
+
 The cap is enforced by each partition leader for the jobs of its own partitions. A cluster whose partitions are led by several nodes therefore lets a client hold up to the cap *per leader*; there is no cluster-wide budget. Size the cap for the number of partition leaders, or run the workers against a cluster with a single partition, until such a budget exists.
 
 > ⚠️ **Upgrade note:** before locks became configurable, the ten-job cap was counted per client across all job types. A client subscribed to several job types may now receive more jobs in total than before. Set `max_active_jobs` per type to restore the old total.

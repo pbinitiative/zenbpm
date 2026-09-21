@@ -87,8 +87,10 @@ message WaitingJob {
   int64 created_at = 6;
   string element_type = 7;
   // Unix milliseconds on the clock of the partition leader at which the lock this
-  // delivery holds lapses. Compare it to the time of receipt rather than to the local
-  // clock, the two clocks may differ.
+  // delivery holds lapses. With synchronised clocks, lock_until minus the local time
+  // estimates the remaining time; it is conservative, the leader counts the lock from
+  // the end of the send. When the clocks cannot be trusted, count the lock duration
+  // of the subscription from the moment of receipt instead of comparing timestamps.
   int64 lock_until = 8;
 }
 

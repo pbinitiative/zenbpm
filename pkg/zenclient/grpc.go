@@ -263,27 +263,48 @@ func (w *Worker) performWork() {
 			}
 			return
 		}
-		w.processMessage(stream, jobToComplete)
+		if retire := w.processMessage(stream, jobToComplete); retire != nil {
+			w.logger.Error(fmt.Sprintf("zenclient: %s; reopening the job stream", retire))
+			if w.reconnect() {
+				continue
+			}
+			return
+		}
 	}
 }
 
 // processMessage handles a single, error-free message received from the stream:
 // it logs server-reported job errors, skips empty responses, and dispatches
-// real jobs to a handler goroutine.
-func (w *Worker) processMessage(stream grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse], jobToComplete *proto.JobStreamResponse) {
+// real jobs to a handler goroutine. It returns a reason when the stream is no
+// longer usable and must be reopened before anything else is received on it.
+func (w *Worker) processMessage(stream grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse], jobToComplete *proto.JobStreamResponse) error {
 	if jobToComplete.LockExtended != nil {
 		w.answerLockWaiter(jobToComplete)
-		return
+		return nil
 	}
 	if jobToComplete.Error != nil {
 		w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.GetMessage()))
-		return
+		if jobToComplete.Job == nil && w.hasLockWaiters() {
+			// An error the engine attributes to no job answers either a
+			// subscription request or, on an engine which predates lock
+			// extension, an extension request. With extension answers
+			// pending the stream cannot tell which: were the waiters simply
+			// dropped, a correlated answer still on its way would be handed
+			// to the next call for the same key. So the pending calls fail
+			// and the stream is retired; the answers of the old stream never
+			// reach the new one.
+			retire := fmt.Errorf("engine answered a request it did not understand, it may predate lock extension: %s", jobToComplete.Error.GetMessage())
+			w.failLockWaiters(retire)
+			return retire
+		}
+		return nil
 	}
 	if jobToComplete.Job == nil {
 		w.logger.Error("received job stream response with no job and no error; skipping")
-		return
+		return nil
 	}
 	go w.handleJob(stream.Context(), jobToComplete.Job, w.send)
+	return nil
 }
 
 // handleRecvError reacts to an error returned by stream.Recv. It returns true
@@ -464,10 +485,10 @@ type lockExtension struct {
 //
 // A cancelled ctx ends the wait, both for the turn to send and for the
 // answer; a request already sent is still applied by the engine, only its
-// answer is discarded. The Send itself is not interruptible. Pass a ctx with
-// a deadline: an engine which predates lock extension answers the request
-// with a generic stream error and never with a lock answer, so without a
-// deadline the call waits until the worker stops or reconnects.
+// answer is discarded. The Send itself is not interruptible, so pass a ctx
+// with a deadline. An engine which predates lock extension answers the
+// request with a stream error naming no job; every pending call then fails
+// with an error saying so and the worker reopens its stream.
 func (w *Worker) ExtendLock(ctx context.Context, jobKey int64, d time.Duration) (time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return time.Time{}, err
@@ -574,6 +595,13 @@ func jobStreamErrorCode(err *proto.ErrorResult) proto.JobStreamErrorCode {
 		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED
 	}
 	return proto.JobStreamErrorCode(code)
+}
+
+// hasLockWaiters reports whether any ExtendLock call waits for an answer.
+func (w *Worker) hasLockWaiters() bool {
+	w.lockWaitersMu.Lock()
+	defer w.lockWaitersMu.Unlock()
+	return len(w.lockWaiters) > 0
 }
 
 // failLockWaiters answers every pending ExtendLock call with err. Every

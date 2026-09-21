@@ -275,7 +275,8 @@ than the cap gets the cap. See [Jobs](jobs.md#job-locks).
 
 All four values must be positive, each default must not exceed its cap, and `maxActiveJobsCap` must not
 exceed `2147483647`, the largest count a subscription can ask for; a violation ends the start with a
-message naming the field and its environment variable.
+message naming the field and its environment variable. A value left out takes the default; a `0`
+written in the YAML file or in the environment variable is a violation, not a request for the default.
 
 ---
 

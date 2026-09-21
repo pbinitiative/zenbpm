@@ -734,6 +734,13 @@ func getTestStore(ln net.Listener) *testStore {
 }
 
 func createServerNode(t *testing.T, _ uint32, listener net.Listener, store *testStore) (*JobManager, *testCompleter) {
+	jm, completer, _ := createServerNodeWithGRPC(t, listener, store)
+	return jm, completer
+}
+
+// createServerNodeWithGRPC is createServerNode which also hands out the fake
+// gRPC server, for tests which look at the requests the client node sent.
+func createServerNodeWithGRPC(t *testing.T, listener net.Listener, store *testStore) (*JobManager, *testCompleter, *grpcSrv) {
 	cm := client.NewClientManager(store)
 	completer := &testCompleter{
 		completedJobs: []int64{},
@@ -743,11 +750,14 @@ func createServerNode(t *testing.T, _ uint32, listener net.Listener, store *test
 		},
 	}
 	jm := New(t.Context(), store, cm, completer.loader, completer)
+	zenSrv := &grpcSrv{jobManager: jm}
+	serveTestGRPC(t, listener, zenSrv)
+	jm.Start()
+	return jm, completer, zenSrv
+}
 
+func serveTestGRPC(t *testing.T, listener net.Listener, zenSrv *grpcSrv) {
 	srv := grpc.NewServer()
-	zenSrv := &grpcSrv{
-		jobManager: jm,
-	}
 	proto.RegisterZenServiceServer(srv, zenSrv)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(listener) }()
@@ -756,8 +766,6 @@ func createServerNode(t *testing.T, _ uint32, listener net.Listener, store *test
 		err := <-serveErr
 		require.True(t, isExpectedGRPCServerStopError(err), "gRPC server failed: %v", err)
 	})
-	jm.Start()
-	return jm, completer
 }
 
 func createClientNode(t *testing.T, store *testStore) *JobManager {
@@ -777,6 +785,30 @@ func createClientNode(t *testing.T, store *testStore) *JobManager {
 type grpcSrv struct {
 	proto.UnimplementedZenServiceServer
 	jobManager *JobManager
+	// failRequests records every FailJob request as the wire carried it
+	failRequestsMu sync.Mutex
+	failRequests   []*proto.FailJobRequest
+}
+
+func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
+	s.failRequestsMu.Lock()
+	s.failRequests = append(s.failRequests, req)
+	s.failRequestsMu.Unlock()
+	vars := make(map[string]any)
+	if err := json.Unmarshal(req.Variables, &vars); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal variables: %w", err)
+	}
+	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err)
+	}
+	return &proto.FailJobResponse{}, nil
+}
+
+func (s *grpcSrv) receivedFailRequests() []*proto.FailJobRequest {
+	s.failRequestsMu.Lock()
+	defer s.failRequestsMu.Unlock()
+	return slices.Clone(s.failRequests)
 }
 
 func (s *grpcSrv) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {

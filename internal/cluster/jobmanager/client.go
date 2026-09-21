@@ -501,7 +501,7 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	return nil
 }
 
-func (c *jobClient) failJob(ctx context.Context, _ ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {
@@ -516,6 +516,7 @@ func (c *jobClient) failJob(ctx context.Context, _ ClientID, jobKey int64, messa
 		Message:   &message,
 		ErrorCode: errorCode,
 		Variables: vars,
+		ClientId:  new(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to fail job %d from client: %w", jobKey, err)

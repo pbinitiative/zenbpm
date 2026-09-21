@@ -67,15 +67,37 @@ type JobManager struct {
 // Option configures a JobManager.
 type Option func(*JobManager)
 
-// LockLimitsFromConfig converts the validated configuration section into the
-// limits the job server applies.
+// LockLimitsFromConfig converts the configuration section into the limits the
+// job server applies. A field left at zero takes the engine default: a
+// configuration read from a file or the environment never has one, its
+// validation rejects zero, but one built as a struct literal, as tests do,
+// leaves out what it does not care about, and a zero active-job cap would
+// stop every delivery.
 func LockLimitsFromConfig(conf config.JobManager) LockLimits {
 	return LockLimits{
 		DefaultLockDuration:  DurationFromMillis(conf.DefaultLockDurationMs),
 		MaxLockDuration:      DurationFromMillis(conf.MaxLockDurationMs),
 		DefaultMaxActiveJobs: conf.DefaultMaxActiveJobs,
 		MaxActiveJobsCap:     conf.MaxActiveJobsCap,
+	}.withDefaults()
+}
+
+// withDefaults returns the limits with every zero field replaced by its default.
+func (l LockLimits) withDefaults() LockLimits {
+	defaults := DefaultLockLimits()
+	if l.DefaultLockDuration <= 0 {
+		l.DefaultLockDuration = defaults.DefaultLockDuration
 	}
+	if l.MaxLockDuration <= 0 {
+		l.MaxLockDuration = defaults.MaxLockDuration
+	}
+	if l.DefaultMaxActiveJobs <= 0 {
+		l.DefaultMaxActiveJobs = defaults.DefaultMaxActiveJobs
+	}
+	if l.MaxActiveJobsCap <= 0 {
+		l.MaxActiveJobsCap = defaults.MaxActiveJobsCap
+	}
+	return l
 }
 
 // WithLockLimits sets the defaults and caps applied to job stream subscriptions.

@@ -39,15 +39,32 @@ type Config struct {
 // job type: how long a delivered job stays locked for it and how many jobs of the
 // type it may hold at once. A subscription that sends zero for a value gets the
 // default; a subscription that asks for more than the cap gets the cap.
+//
+// The fields carry no env-default: the defaults are set by DefaultJobManager
+// before the file and the environment are read, so that a value left out keeps
+// its default while a zero written in the file or the environment stays zero
+// and fails validation, as a zero lock would let every lock lapse at once.
 type JobManager struct {
 	// DefaultLockDurationMs is the lock duration applied to a subscription that does not name one.
-	DefaultLockDurationMs int64 `yaml:"defaultLockDurationMs" json:"defaultLockDurationMs" env:"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS" env-default:"30000"`
+	DefaultLockDurationMs int64 `yaml:"defaultLockDurationMs" json:"defaultLockDurationMs" env:"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS"`
 	// MaxLockDurationMs caps the lock duration of a subscription and of a lock extension.
-	MaxLockDurationMs int64 `yaml:"maxLockDurationMs" json:"maxLockDurationMs" env:"JOB_MANAGER_MAX_LOCK_DURATION_MS" env-default:"86400000"`
+	MaxLockDurationMs int64 `yaml:"maxLockDurationMs" json:"maxLockDurationMs" env:"JOB_MANAGER_MAX_LOCK_DURATION_MS"`
 	// DefaultMaxActiveJobs is the per-job-type active-job cap applied to a subscription that does not name one.
-	DefaultMaxActiveJobs int `yaml:"defaultMaxActiveJobs" json:"defaultMaxActiveJobs" env:"JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS" env-default:"10"`
+	DefaultMaxActiveJobs int `yaml:"defaultMaxActiveJobs" json:"defaultMaxActiveJobs" env:"JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS"`
 	// MaxActiveJobsCap caps the per-job-type active-job cap a subscription may ask for.
-	MaxActiveJobsCap int `yaml:"maxActiveJobsCap" json:"maxActiveJobsCap" env:"JOB_MANAGER_MAX_ACTIVE_JOBS_CAP" env-default:"1000"`
+	MaxActiveJobsCap int `yaml:"maxActiveJobsCap" json:"maxActiveJobsCap" env:"JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"`
+}
+
+// DefaultJobManager is the job manager section of a configuration which names
+// nothing: locks of 30 seconds, at most 24 hours, ten jobs per client and job
+// type, at most a thousand.
+func DefaultJobManager() JobManager {
+	return JobManager{
+		DefaultLockDurationMs: 30000,
+		MaxLockDurationMs:     86400000,
+		DefaultMaxActiveJobs:  10,
+		MaxActiveJobsCap:      1000,
+	}
 }
 
 // MaxLockDurationMillis is the largest lock duration, in milliseconds, the
@@ -429,7 +446,7 @@ func (c *Config) validate() error {
 }
 
 func InitConfig() Config {
-	c := Config{}
+	c := Config{JobManager: DefaultJobManager()}
 	var fileName string
 	confFile := os.Getenv("CONFIG_FILE")
 	if confFile == "" {

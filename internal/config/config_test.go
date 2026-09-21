@@ -66,7 +66,8 @@ func TestRestoreSpoolDirDefaultsUnderTheDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("CLUSTER_RAFT_DIR", dataDir)
 
-	var c Config
+	// the whole configuration is validated, so the sections without env-defaults start from their defaults
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -82,7 +83,8 @@ func TestRestoreSpoolDirFromEnvIsMadeAbsolute(t *testing.T) {
 	t.Setenv("CLUSTER_RAFT_DIR", t.TempDir())
 	t.Setenv("CLUSTER_RESTORE_SPOOL_DIR", "restore-scratch")
 
-	var c Config
+	// the whole configuration is validated, so the sections without env-defaults start from their defaults
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -300,7 +302,7 @@ func TestJobManagerDefaults(t *testing.T) {
 		}
 	}
 
-	var c Config
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -313,13 +315,28 @@ func TestJobManagerDefaults(t *testing.T) {
 	}
 }
 
+// TestJobManagerOmittedInYAMLKeepsTheDefaults reads a file without a job
+// manager section the way InitConfig does.
+func TestJobManagerOmittedInYAMLKeepsTheDefaults(t *testing.T) {
+	unsetJobManagerEnv(t)
+	configFile := writeConfigFile(t, "httpServer:\n  addr: :8080\n")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	if c.JobManager != DefaultJobManager() {
+		t.Errorf("expected the defaults %+v, got %+v", DefaultJobManager(), c.JobManager)
+	}
+}
+
 func TestJobManagerFromEnv(t *testing.T) {
 	t.Setenv("JOB_MANAGER_DEFAULT_LOCK_DURATION_MS", "5000")
 	t.Setenv("JOB_MANAGER_MAX_LOCK_DURATION_MS", "60000")
 	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
 	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "40")
 
-	var c Config
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -330,13 +347,10 @@ func TestJobManagerFromEnv(t *testing.T) {
 }
 
 func TestJobManagerFromYAML(t *testing.T) {
-	configFile := t.TempDir() + "/config.yaml"
-	content := "jobManager:\n  defaultLockDurationMs: 7000\n  maxLockDurationMs: 70000\n  defaultMaxActiveJobs: 7\n  maxActiveJobsCap: 70\n"
-	if err := os.WriteFile(configFile, []byte(content), 0o600); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	unsetJobManagerEnv(t)
+	configFile := writeConfigFile(t, "jobManager:\n  defaultLockDurationMs: 7000\n  maxLockDurationMs: 70000\n  defaultMaxActiveJobs: 7\n  maxActiveJobsCap: 70\n")
 
-	var c Config
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 		t.Fatalf("failed to read YAML config: %v", err)
 	}
@@ -344,6 +358,95 @@ func TestJobManagerFromYAML(t *testing.T) {
 	if c.JobManager != expected {
 		t.Errorf("expected job manager settings %+v, got %+v", expected, c.JobManager)
 	}
+}
+
+// TestJobManagerZeroInYAMLIsAViolation shows a zero written in the file is
+// not taken for an omitted value: it stays zero and validation names it.
+func TestJobManagerZeroInYAMLIsAViolation(t *testing.T) {
+	unsetJobManagerEnv(t)
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{"zero default lock duration", "jobManager:\n  defaultLockDurationMs: 0\n", "jobManager.defaultLockDurationMs"},
+		{"zero max lock duration", "jobManager:\n  maxLockDurationMs: 0\n", "jobManager.maxLockDurationMs"},
+		{"zero default active jobs", "jobManager:\n  defaultMaxActiveJobs: 0\n", "jobManager.defaultMaxActiveJobs"},
+		{"zero active jobs cap", "jobManager:\n  maxActiveJobsCap: 0\n", "jobManager.maxActiveJobsCap"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configFile := writeConfigFile(t, tt.content)
+
+			c := Config{JobManager: DefaultJobManager()}
+			if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+				t.Fatalf("failed to read YAML config: %v", err)
+			}
+
+			err := c.JobManager.Validate()
+			if err == nil {
+				t.Fatalf("expected a zero in the file to be a violation, got %+v", c.JobManager)
+			}
+			if !strings.Contains(err.Error(), tt.expected) {
+				t.Errorf("expected the message to name %s, got %q", tt.expected, err)
+			}
+		})
+	}
+}
+
+func TestJobManagerZeroInEnvIsAViolation(t *testing.T) {
+	unsetJobManagerEnv(t)
+	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "0")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+
+	err := c.JobManager.Validate()
+	if err == nil || !strings.Contains(err.Error(), "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP") {
+		t.Errorf("expected a zero in the environment to be a violation naming the variable, got %v", err)
+	}
+}
+
+// TestJobManagerEnvOverridesTheFile shows the environment still wins over the
+// file, a zero in the file included.
+func TestJobManagerEnvOverridesTheFile(t *testing.T) {
+	unsetJobManagerEnv(t)
+	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
+	configFile := writeConfigFile(t, "jobManager:\n  defaultMaxActiveJobs: 0\n  maxActiveJobsCap: 70\n")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+
+	expected := JobManager{DefaultLockDurationMs: 30000, MaxLockDurationMs: 86400000, DefaultMaxActiveJobs: 4, MaxActiveJobsCap: 70}
+	if c.JobManager != expected {
+		t.Errorf("expected %+v, got %+v", expected, c.JobManager)
+	}
+	if err := c.JobManager.Validate(); err != nil {
+		t.Errorf("the overridden configuration must validate, got %v", err)
+	}
+}
+
+func unsetJobManagerEnv(t *testing.T) {
+	t.Helper()
+	for _, env := range []string{"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS", "JOB_MANAGER_MAX_LOCK_DURATION_MS", "JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"} {
+		t.Setenv(env, "")
+		if err := os.Unsetenv(env); err != nil {
+			t.Fatalf("failed to unset %s: %v", env, err)
+		}
+	}
+}
+
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	configFile := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(configFile, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+	return configFile
 }
 
 func TestJobManagerValidationNamesFieldAndEnvVariable(t *testing.T) {

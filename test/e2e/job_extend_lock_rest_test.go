@@ -76,6 +76,22 @@ func TestRestJobExtendLock(t *testing.T) {
 		assert.Contains(t, response.JSON409.Message, "another client")
 	})
 
+	t.Run("a duration beyond what the engine can represent is lowered to the cap", func(t *testing.T) {
+		// wrapped instead of saturated, this many hours would come out as
+		// some twenty-five minutes and the lock would lapse long before the
+		// caller expects it to
+		before := time.Now()
+		response, err := app.restClient.ExtendJobLockWithResponse(t.Context(), jobKey, zenclient.ExtendJobLockJSONRequestBody{
+			ClientId:     clientID,
+			LockDuration: new("PT5124096H"),
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode(), "unexpected response: %s body: %s", response.Status(), string(response.Body))
+		require.NotNil(t, response.JSON200)
+		assert.WithinRange(t, response.JSON200.LockUntil, before.Add(24*time.Hour).Add(-time.Second), time.Now().Add(24*time.Hour).Add(time.Second),
+			"the engine cap of twenty-four hours applies")
+	})
+
 	t.Run("a malformed duration is refused with 400", func(t *testing.T) {
 		response, err := app.restClient.ExtendJobLockWithResponse(t.Context(), jobKey, zenclient.ExtendJobLockJSONRequestBody{
 			ClientId:     clientID,

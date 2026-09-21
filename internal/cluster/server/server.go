@@ -319,8 +319,16 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 
 // ExtendJobLock moves the lock deadline of a job distributed by this leader.
 // A refusal is reported both as a conflict error and as a typed refusal, so
-// the caller can act on it without parsing the message.
+// the caller can act on it without parsing the message. Only the leader of
+// the job's partition holds its locks and the current copy of its jobs, so a
+// node which does not lead the partition answers nothing about the lock: the
+// caller's view of the leader is stale, a routing failure to retry against
+// the current leader, not a defect.
 func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
+	if !s.leadsPartitionOf(req.GetKey()) {
+		zerr := zenerr.ClusterError(fmt.Errorf("cannot extend lock of job %d: this node does not lead its partition", req.GetKey()))
+		return &proto.ExtendJobLockResponse{Error: zerr.ToProtoError(), Refusal: proto.LockRefusal_LOCK_REFUSAL_NONE.Enum()}, nil
+	}
 	lockUntil, err := s.jobManager.ExtendJobLock(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(),
 		jobmanager.DurationFromMillis(req.GetLockDurationMs()))
 	if err != nil {
@@ -328,12 +336,14 @@ func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequ
 		var zerr *zenerr.ZenError
 		switch {
 		case errors.Is(err, jobmanager.NodeIsNotALeader):
-			// the caller's view of the partition leader is stale: a routing
-			// failure to retry against the current leader, not a defect
 			zerr = zenerr.ClusterError(fmt.Errorf("cannot extend lock of job %d: this node does not lead its partition", req.GetKey()))
 		case errors.Is(err, jobmanager.ErrLockNotHeld):
 			refusal = proto.LockRefusal_LOCK_REFUSAL_NOT_HELD
-			zerr = zenerr.Conflict(fmt.Errorf("lock of job %d is not held: it lapsed, the job was completed or failed, or it was never delivered", req.GetKey()))
+			if s.jobIsUnknown(ctx, req.GetKey()) {
+				zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
+			} else {
+				zerr = zenerr.Conflict(fmt.Errorf("lock of job %d is not held: it lapsed, the job was completed or failed, or it was never delivered", req.GetKey()))
+			}
 		case errors.Is(err, jobmanager.ErrLockHeldByOtherClient):
 			refusal = proto.LockRefusal_LOCK_REFUSAL_HELD_BY_OTHER_CLIENT
 			zerr = zenerr.Conflict(fmt.Errorf("lock of job %d is held by another client", req.GetKey()))
@@ -343,6 +353,27 @@ func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequ
 		return &proto.ExtendJobLockResponse{Error: zerr.ToProtoError(), Refusal: refusal.Enum()}, nil
 	}
 	return &proto.ExtendJobLockResponse{LockUntil: new(lockUntil.UnixMilli())}, nil
+}
+
+// leadsPartitionOf reports whether the cluster state names this node the
+// leader of the partition the key belongs to.
+func (s *Server) leadsPartitionOf(jobKey int64) bool {
+	_, leaderID := s.store.ClusterState().ActivePartitionLeader(zenflake.GetPartitionId(jobKey))
+	return leaderID != "" && leaderID == s.store.NodeID()
+}
+
+// jobIsUnknown reports whether the partition this node leads has no job with
+// the key. The leader's own database decides, a follower's copy may lag
+// behind it and miss a job created a moment ago; the caller made sure this
+// node leads the partition. A lookup which fails for another reason, or a
+// partition without queries, is not an unknown job.
+func (s *Server) jobIsUnknown(ctx context.Context, jobKey int64) bool {
+	queries := s.controller.PartitionQueries(ctx, zenflake.GetPartitionId(jobKey))
+	if queries == nil {
+		return false
+	}
+	_, err := queries.FindJobByJobKey(ctx, jobKey)
+	return isErrNotFound(err)
 }
 
 func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {

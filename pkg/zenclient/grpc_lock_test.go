@@ -200,6 +200,78 @@ func TestExtendLock_FailsPendingCallWhenTheStreamReconnects(t *testing.T) {
 	assert.Zero(t, pendingLockWaiters(worker))
 }
 
+// TestExtendLock_FailsWhenTheEngineAnswersWithAnErrorNamingNoJob shows an
+// engine which predates lock extension, and answers the request with a plain
+// stream error, fails the call instead of leaving it, and its waiter, behind;
+// the worker then reopens its stream.
+func TestExtendLock_FailsWhenTheEngineAnswersWithAnErrorNamingNoJob(t *testing.T) {
+	stream, reopened := newFakeBidiStream(), newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}, {stream: reopened}}}
+	worker := lockTestWorkerOn(t, client)
+	go func() {
+		assert.Eventually(t, func() bool { return len(stream.sentRequests()) == 1 }, time.Second, 5*time.Millisecond)
+		stream.recvCh <- recvResult{resp: &proto.JobStreamResponse{
+			Error: &proto.ErrorResult{Message: new("unexpected job stream request: <nil> (type <nil>)")},
+		}}
+	}()
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := worker.ExtendLock(context.Background(), 7, 0)
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "predate lock extension")
+		assert.Contains(t, err.Error(), "unexpected job stream request")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ExtendLock kept waiting for a lock answer an old engine never sends")
+	}
+	assert.Zero(t, pendingLockWaiters(worker), "the answered call must not leave its waiter behind")
+	assert.Eventually(t, func() bool { return client.callCount() == 2 }, 5*time.Second, 5*time.Millisecond,
+		"the stream whose answers can no longer be told apart is reopened")
+}
+
+// TestExtendLock_ErrorNamingNoJobDoesNotHandAnOldAnswerToTheNextCall shows
+// the answer to a call failed by such an error, should it still arrive, never
+// reaches a later call for the same key: the later call goes out on the
+// reopened stream and gets its own answer.
+func TestExtendLock_ErrorNamingNoJobDoesNotHandAnOldAnswerToTheNextCall(t *testing.T) {
+	stream, reopened := newFakeBidiStream(), newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}, {stream: reopened}}}
+	worker := lockTestWorkerOn(t, client)
+	first := make(chan error, 1)
+	go func() {
+		_, err := worker.ExtendLock(context.Background(), 7, time.Hour)
+		first <- err
+	}()
+	require.Eventually(t, func() bool { return len(stream.sentRequests()) == 1 }, time.Second, 5*time.Millisecond)
+	// a subscription request of the worker failed on the engine, then the
+	// first call's answer follows in request order
+	stream.recvCh <- recvResult{resp: &proto.JobStreamResponse{Error: &proto.ErrorResult{Message: new("Failed to subscribe to job type other")}}}
+	stream.recvCh <- recvResult{resp: &proto.JobStreamResponse{
+		LockExtended: &proto.LockExtended{Key: new(int64(7)), LockUntil: new(time.Now().Add(time.Hour).UnixMilli())},
+	}}
+	require.Error(t, <-first)
+	require.Eventually(t, func() bool { return client.callCount() == 2 }, 5*time.Second, 5*time.Millisecond)
+
+	secondDeadline := time.Now().Add(time.Second).Truncate(time.Millisecond)
+	go func() {
+		assert.Eventually(t, func() bool { return len(reopened.sentRequests()) == 1 }, time.Second, 5*time.Millisecond)
+		reopened.recvCh <- recvResult{resp: &proto.JobStreamResponse{
+			LockExtended: &proto.LockExtended{Key: new(int64(7)), LockUntil: new(secondDeadline.UnixMilli())},
+		}}
+	}()
+
+	got, err := worker.ExtendLock(context.Background(), 7, time.Second)
+
+	require.NoError(t, err)
+	assert.Equal(t, secondDeadline, got, "the second call must get its own deadline, not the hour of the failed first call")
+	assert.Zero(t, pendingLockWaiters(worker))
+}
+
 // pendingLockWaiters counts the registered ExtendLock waiters under the lock
 // the worker protects them with.
 func pendingLockWaiters(w *Worker) int {
@@ -216,7 +288,14 @@ func pendingLockWaiters(w *Worker) int {
 // its receive loop runs, so answers pushed into the stream reach ExtendLock.
 func lockTestWorker(t *testing.T, stream *fakeBidiStream) *Worker {
 	t.Helper()
-	client := &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}}}
+	return lockTestWorkerOn(t, &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}}})
+}
+
+// lockTestWorkerOn registers a worker without job types on the streams the
+// client hands out, one per connection, so every request a test sees on a
+// stream is one the test made.
+func lockTestWorkerOn(t *testing.T, client *fakeZenBpmClient) *Worker {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	worker, err := (&Grpc{Client: client}).WithLogger(&captureLogger{}).RegisterWorkerWithOptions(ctx, "test-client",

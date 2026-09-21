@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"slices"
@@ -1930,11 +1931,10 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 	return public.GetJob200JSONResponse(mappedJob), nil
 }
 
-// ExtendJobLock moves the lock deadline of a stream-delivered job. The leader
-// is asked first, because a worker renewing periodically hits this endpoint
-// while the lock is held and that path must not pay for a database read. Only
-// a refusal looks the job up, to tell an unknown key (404) apart from a lock
-// which merely lapsed (409).
+// ExtendJobLock moves the lock deadline of a stream-delivered job. The
+// partition leader answers from memory while the lock is held, and only on a
+// refusal looks the job up in its own database to tell an unknown key (404)
+// apart from a lock which merely lapsed (409).
 func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLockRequestObject) (public.ExtendJobLockResponseObject, error) {
 	if request.Body == nil || strings.TrimSpace(request.Body.ClientId) == "" {
 		return public.ExtendJobLock400JSONResponse(zenerr.BadRequest(fmt.Errorf("clientId is required: the client id of the job stream the job was delivered to")).ToApiError()), nil
@@ -1955,9 +1955,6 @@ func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLock
 	case zenerr.ClusterErrorCode:
 		return public.ExtendJobLock502JSONResponse(zerr.ToApiError()), nil
 	case zenerr.ConflictCode:
-		if s.jobIsUnknown(ctx, request.JobKey) {
-			return public.ExtendJobLock404JSONResponse(zenerr.NotFound(fmt.Errorf("job %d not found", request.JobKey)).ToApiError()), nil
-		}
 		return public.ExtendJobLock409JSONResponse(zerr.ToApiError()), nil
 	case zenerr.NotFoundCode:
 		return public.ExtendJobLock404JSONResponse(zerr.ToApiError()), nil
@@ -1968,21 +1965,13 @@ func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLock
 	}
 }
 
-// jobIsUnknown reports whether the partition holding jobKey answers that no
-// such job exists. A lookup which fails for another reason is not an unknown
-// job, the caller's own error stands then.
-func (s *Server) jobIsUnknown(ctx context.Context, jobKey int64) bool {
-	_, err := s.node.GetJob(ctx, jobKey)
-	if err == nil {
-		return false
-	}
-	var zerr *zenerr.ZenError
-	return errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode
-}
-
 // parseLockDuration turns the optional ISO-8601 duration of an extend-lock
 // request into a time.Duration; absent means zero, i.e. the subscription's
-// value. Calendar units are resolved against now.
+// value. Calendar units are resolved against now. A duration longer than a
+// time.Duration can hold saturates at the maximum, which the engine cap then
+// lowers, like an oversized millisecond count on the job stream does; left
+// to plain arithmetic it would wrap, and PT5124096H would come out as some
+// twenty-five minutes, a lock far shorter than the caller asked for.
 func parseLockDuration(raw *string) (time.Duration, error) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return 0, nil
@@ -1991,12 +1980,50 @@ func parseLockDuration(raw *string) (time.Duration, error) {
 	if err != nil {
 		return 0, fmt.Errorf("lockDuration %q is not an ISO-8601 duration such as PT5M: %w", *raw, err)
 	}
-	now := time.Now()
-	lockDuration := parsed.Shift(now).Sub(now)
+	lockDuration := saturatingSum(calendarPartOf(parsed, time.Now()), timePartOf(parsed))
 	if lockDuration <= 0 {
 		return 0, fmt.Errorf("lockDuration %q must be positive", *raw)
 	}
 	return lockDuration, nil
+}
+
+// calendarPartOf resolves the years, months, weeks and days of an ISO-8601
+// duration against now. A time.Duration holds under 293 years, so a calendar
+// part with more of any unit saturates before it reaches the date arithmetic,
+// which would wrap on such counts.
+func calendarPartOf(parsed duration.Duration, now time.Time) time.Duration {
+	const maxYears = 293
+	if parsed.Y > maxYears || parsed.M > maxYears*12 || parsed.W > maxYears*53 || parsed.D > maxYears*366 {
+		return time.Duration(math.MaxInt64)
+	}
+	// Sub saturates, so a sum of the bounded units beyond the maximum is safe
+	return now.AddDate(parsed.Y, parsed.M, parsed.W*7+parsed.D).Sub(now)
+}
+
+// timePartOf converts the hours, minutes and seconds of an ISO-8601 duration
+// into a time.Duration, saturating at the maximum instead of wrapping.
+func timePartOf(parsed duration.Duration) time.Duration {
+	const maxSeconds = math.MaxInt64 / int64(time.Second)
+	seconds := int64(0)
+	for _, part := range []struct{ count, secondsPerUnit int64 }{
+		{int64(parsed.TH), 60 * 60},
+		{int64(parsed.TM), 60},
+		{int64(parsed.TS), 1},
+	} {
+		if part.count > (maxSeconds-seconds)/part.secondsPerUnit {
+			return time.Duration(math.MaxInt64)
+		}
+		seconds += part.count * part.secondsPerUnit
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// saturatingSum adds two non-negative durations, saturating at the maximum.
+func saturatingSum(a, b time.Duration) time.Duration {
+	if a > time.Duration(math.MaxInt64)-b {
+		return time.Duration(math.MaxInt64)
+	}
+	return a + b
 }
 
 func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {

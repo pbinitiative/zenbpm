@@ -76,6 +76,10 @@ enum JobStreamErrorCode {
   JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD = 1;
   // The job is currently locked for a different client id.
   JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT = 2;
+  // The leader of the job's partition could not be reached or has just changed. The
+  // outcome is unconfirmed: the deadline may already have moved, and a leader change
+  // forgets the lock. Retry the extension in a moment.
+  JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE = 3;
 }
 
 message WaitingJob {

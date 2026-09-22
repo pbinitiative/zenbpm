@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -81,6 +82,7 @@ func TestRecvClientRequestsReportsLockExtensionRefusalByCode(t *testing.T) {
 	}{
 		{"not held", jobmanager.ErrLockNotHeld, proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD},
 		{"held by other client", jobmanager.ErrLockHeldByOtherClient, proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT},
+		{"leader unavailable", fmt.Errorf("%w: node-42 at 10.0.0.1 does not lead the partition", jobmanager.ErrLeaderUnavailable), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE},
 		{"anything else", errors.New("node-42 at 10.0.0.1 refused the request"), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED},
 	}
 	for _, tt := range tests {

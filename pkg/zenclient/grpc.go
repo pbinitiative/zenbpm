@@ -45,6 +45,14 @@ var (
 	// ErrLockHeldByOtherClient is returned by Worker.ExtendLock when the job
 	// is currently locked for a different client id.
 	ErrLockHeldByOtherClient = errors.New("job lock is held by another client")
+	// ErrLeaderUnavailable is returned by Worker.ExtendLock when the leader
+	// of the job's partition could not be reached or has just changed. The
+	// outcome is unconfirmed: a leader which lost the connection after
+	// applying the extension has moved the deadline already, and a leader
+	// change forgets the lock. Retry the call in a moment rather than
+	// failing the job, and count on the deadline of the last confirmed
+	// answer only.
+	ErrLeaderUnavailable = errors.New("leader of the job's partition is unavailable")
 )
 
 // subscriptionSettings is what the worker asks the engine for per job type;
@@ -111,13 +119,21 @@ type Worker struct {
 	client   proto.ZenBpmClient
 	stream   grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse]
 	// streamCancel cancels the RPC context of the current stream. It is
-	// guarded by sendSlot together with stream and is invoked whenever the
-	// stream is replaced or discarded, so abandoned streams are fully torn
-	// down and the server releases the client registration immediately.
+	// invoked whenever the stream is replaced or discarded, so abandoned
+	// streams are fully torn down and the server releases the client
+	// registration immediately.
 	streamCancel context.CancelFunc
-	// sendSlot is a one-place semaphore guarding stream, streamCancel and
-	// every Send on the stream. A channel rather than a mutex, so that a
-	// caller with a deadline can stop waiting for its turn (see ExtendLock).
+	// streamMu guards stream and streamCancel. Both are written only while
+	// sendSlot is held as well, so a sender holding the slot reads them
+	// without streamMu, while a reconnect reads streamCancel under streamMu
+	// alone: it must cancel the old stream before it can hold the slot or
+	// subMu, a send blocked on that stream keeps both until the cancellation
+	// frees it.
+	streamMu sync.Mutex
+	// sendSlot is a one-place semaphore serialising every Send on the stream
+	// and the publication of a replacement stream. A channel rather than a
+	// mutex, so that a caller with a deadline can stop waiting for its turn
+	// (see ExtendLock).
 	sendSlot chan struct{}
 	logger   Logger
 	clientID string
@@ -210,6 +226,17 @@ func (c *Grpc) RegisterWorkerWithOptions(ctx context.Context, clientID string, f
 // stream swap is guarded by sendSlot so that concurrent job handlers calling
 // send never race with the replacement of w.stream.
 func (w *Worker) connect() error {
+	// Release the previous (dead) stream's resources first of all and let the
+	// server clean up its side of the old stream immediately. A send blocked
+	// on the old stream, by a peer which stopped reading, holds the send slot
+	// and, when it is a subscription change, subMu as well; only the
+	// cancellation frees it, so nothing below may wait for either before it.
+	w.streamMu.Lock()
+	previousCancel := w.streamCancel
+	w.streamMu.Unlock()
+	if previousCancel != nil {
+		previousCancel()
+	}
 	md := metadata.New(map[string]string{
 		MetadataClientID: w.clientID,
 	})
@@ -232,17 +259,14 @@ func (w *Worker) connect() error {
 		}
 	}
 	w.sendSlot <- struct{}{}
-	if w.streamCancel != nil {
-		// Release the previous (dead) stream's resources and let the server
-		// clean up its side of the old stream immediately.
-		w.streamCancel()
-	}
 	// Every pending lock extension went out on the old stream, so its answer
 	// never arrives; fail them before the new stream is published, while the
 	// slot is held, so no request of the new stream can be failed with them.
 	w.failLockWaiters(fmt.Errorf("job stream was reconnected before the engine answered"))
+	w.streamMu.Lock()
 	w.stream = stream
 	w.streamCancel = cancel
+	w.streamMu.Unlock()
 	w.releaseSend()
 	w.connectedAt = time.Now()
 	return nil
@@ -250,9 +274,12 @@ func (w *Worker) connect() error {
 
 func (w *Worker) performWork() {
 	for {
-		w.sendSlot <- struct{}{}
+		// the stream is read under streamMu, not the send slot: a send
+		// blocked on the stream holds the slot, and the receive loop must
+		// still get to the error which starts the reconnect freeing it
+		w.streamMu.Lock()
 		stream := w.stream
-		w.releaseSend()
+		w.streamMu.Unlock()
 		if stream == nil {
 			return
 		}
@@ -581,6 +608,8 @@ func lockExtensionFromResponse(resp *proto.JobStreamResponse) lockExtension {
 		return lockExtension{err: ErrLockNotHeld}
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT:
 		return lockExtension{err: ErrLockHeldByOtherClient}
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE:
+		return lockExtension{err: fmt.Errorf("%w: %s", ErrLeaderUnavailable, resp.Error.GetMessage())}
 	default:
 		return lockExtension{err: fmt.Errorf("lock extension of job %d refused: %s", resp.LockExtended.GetKey(), resp.Error.GetMessage())}
 	}

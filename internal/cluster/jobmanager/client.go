@@ -16,10 +16,13 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type clientSub struct {
@@ -453,12 +456,21 @@ func activeJobsForWire(count int) int32 {
 
 // extendLock asks the leader of the job's partition to move the lock deadline
 // of the job to now plus duration. A refusal comes back as ErrLockNotHeld or
-// ErrLockHeldByOtherClient so the caller can report it by code.
+// ErrLockHeldByOtherClient so the caller can report it by code. A leader
+// which is not known, out of reach or too slow to answer, or which answers
+// that it does not lead the partition any more, comes back as
+// ErrLeaderUnavailable, so the caller can tell a leader change, which passes,
+// from a failure which does not; any other answer of the transport, such as a
+// node without this call, is such a failure. When the caller's own context
+// ended, that is what the error says, not the cluster.
 func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
+	}
 	partitionID := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionID, err)
+		return time.Time{}, fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
 	}
 	resp, err := lClient.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
 		Key:            new(jobKey),
@@ -466,6 +478,9 @@ func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey in
 		LockDurationMs: new(duration.Milliseconds()),
 	})
 	if err != nil {
+		if ctx.Err() == nil && leaderOutOfReach(err) {
+			return time.Time{}, fmt.Errorf("%w: the leader of partition %d did not answer the extension of job %d: %w", ErrLeaderUnavailable, partitionID, jobKey, err)
+		}
 		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
 	}
 	switch resp.GetRefusal() {
@@ -475,9 +490,23 @@ func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey in
 		return time.Time{}, ErrLockHeldByOtherClient
 	}
 	if resp.Error != nil {
+		if resp.Error.GetCode() == uint32(zenerr.ClusterErrorCode) {
+			return time.Time{}, fmt.Errorf("%w: %s", ErrLeaderUnavailable, resp.Error.GetMessage())
+		}
 		return time.Time{}, fmt.Errorf("failed to extend lock of job %d: %s", jobKey, resp.Error.GetMessage())
 	}
 	return time.UnixMilli(resp.GetLockUntil()), nil
+}
+
+// leaderOutOfReach reports whether a failed call to a leader says the leader
+// could not be reached or did not answer in time, the transient conditions
+// worth a retry, rather than that it refused or does not know the call.
+func leaderOutOfReach(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return true
+	}
+	return false
 }
 
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {

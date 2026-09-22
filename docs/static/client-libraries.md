@@ -123,7 +123,10 @@ worker, err := zen.RegisterWorkerWithOptions(context.Background(), "my-client-id
 The engine caps both values at its configured maximum and reports the effective deadline in
 `job.GetLockUntil()`. The worker does not renew locks by itself: a handler which needs longer than
 its lock calls `worker.ExtendLock(ctx, job.GetKey(), 0)` before the deadline, with a `ctx` that
-carries a deadline. See [Jobs](../reference/jobs.md) for the lock semantics.
+carries a deadline. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
+leader could not be reached or has just changed: retry the call in a moment instead of failing the
+job, and count on the deadline of the last confirmed answer only, the outcome of the failed call is
+unknown. See [Jobs](../reference/jobs.md) for the lock semantics.
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

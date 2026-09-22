@@ -84,6 +84,7 @@ func TestExtendLock_MapsRefusalCodesToErrors(t *testing.T) {
 	}{
 		{"not held", proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD, ErrLockNotHeld},
 		{"held by other client", proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT, ErrLockHeldByOtherClient},
+		{"leader unavailable", proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE, ErrLeaderUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -270,6 +271,74 @@ func TestExtendLock_ErrorNamingNoJobDoesNotHandAnOldAnswerToTheNextCall(t *testi
 	require.NoError(t, err)
 	assert.Equal(t, secondDeadline, got, "the second call must get its own deadline, not the hour of the failed first call")
 	assert.Zero(t, pendingLockWaiters(worker))
+}
+
+// TestReconnectDoesNotWaitBehindASendBlockedOnTheOldStream shows a reconnect
+// cancels the old stream before it needs the send slot: a send blocked on
+// that stream, by a peer which stopped reading, holds the slot and would
+// otherwise hold up the reconnect for as long as the transport lets it block.
+func TestReconnectDoesNotWaitBehindASendBlockedOnTheOldStream(t *testing.T) {
+	stream, reopened := newFakeBidiStream(), newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}, {stream: reopened}}}
+	worker := lockTestWorkerOn(t, client)
+	stream.setBlockSends()
+	blockedSend := make(chan error, 1)
+	go func() {
+		blockedSend <- worker.send(&proto.JobStreamRequest{})
+	}()
+	require.Eventually(t, func() bool { return len(worker.sendSlot) == 1 }, time.Second, 5*time.Millisecond, "the send must hold the slot")
+
+	stream.pushError(fmt.Errorf("transport is closing"))
+
+	select {
+	case err := <-blockedSend:
+		assert.ErrorIs(t, err, context.Canceled, "the blocked send is freed by cancelling its stream")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reconnect never cancelled the old stream the send is blocked on")
+	}
+	assert.Eventually(t, func() bool { return client.callCount() == 2 }, 5*time.Second, 5*time.Millisecond, "the stream is reopened")
+}
+
+// TestReconnectDoesNotWaitBehindASubscriptionChangeBlockedOnTheOldStream
+// shows the same for a subscription change, which holds the subscription
+// lock while its send blocks: the reconnect cancels the old stream before it
+// takes that lock to replay the subscriptions.
+func TestReconnectDoesNotWaitBehindASubscriptionChangeBlockedOnTheOldStream(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(w *Worker) error
+	}{
+		{"adding a subscription", func(w *Worker) error { return w.AddJobSubscription("other-type") }},
+		{"removing a subscription", func(w *Worker) error { return w.RemoveJobSubscription("test-type") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream, reopened := newFakeBidiStream(), newFakeBidiStream()
+			client := &fakeZenBpmClient{results: []jobStreamResult{{stream: stream}, {stream: reopened}}}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			worker, err := (&Grpc{Client: client}).WithLogger(&captureLogger{}).RegisterWorkerWithOptions(ctx, "test-client",
+				func(context.Context, *proto.WaitingJob) (map[string]any, *WorkerError) { return nil, nil },
+				WithJobType("test-type"))
+			require.NoError(t, err)
+			stream.setBlockSends()
+			blockedChange := make(chan error, 1)
+			go func() {
+				blockedChange <- tt.change(worker)
+			}()
+			require.Eventually(t, func() bool { return len(worker.sendSlot) == 1 }, time.Second, 5*time.Millisecond, "the change must hold the slot")
+
+			stream.pushError(fmt.Errorf("transport is closing"))
+
+			select {
+			case err := <-blockedChange:
+				assert.ErrorIs(t, err, context.Canceled, "the blocked change is freed by cancelling its stream")
+			case <-time.After(5 * time.Second):
+				t.Fatal("the reconnect never cancelled the old stream the subscription change is blocked on")
+			}
+			assert.Eventually(t, func() bool { return client.callCount() == 2 }, 5*time.Second, 5*time.Millisecond, "the stream is reopened")
+		})
+	}
 }
 
 // pendingLockWaiters counts the registered ExtendLock waiters under the lock

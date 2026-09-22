@@ -961,18 +961,25 @@ func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID stri
 		LockDurationMs: new(duration.Milliseconds()),
 	})
 	if err != nil {
-		wrapped := fmt.Errorf("client call to extend lock of job %d failed: %w", key, err)
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return time.Time{}, zenerr.TechnicalError(wrapped)
-		}
-		// the leader could not be reached: a cluster failure, which the REST
-		// endpoint reports as 502, not an internal error
-		return time.Time{}, zenerr.ClusterError(wrapped)
+		return time.Time{}, leaderCallFailure(ctx, fmt.Errorf("client call to extend lock of job %d failed: %w", key, err))
 	}
 	if resp.Error != nil {
 		return time.Time{}, zenerr.ToZenError(resp.Error, fmt.Errorf("client call to extend lock of job %d failed", key))
 	}
 	return time.UnixMilli(resp.GetLockUntil()), nil
+}
+
+// leaderCallFailure classifies a failed call to a partition leader. When the
+// caller's own context ended, the caller is gone and the cluster is not to
+// blame: an internal error. Otherwise the leader could not be reached, or not
+// in time, which is the same transient cluster failure whether the transport
+// refused at once or the call ran into its deadline; the REST endpoint reports
+// it as 502, a status to retry, not as an internal error.
+func leaderCallFailure(ctx context.Context, err error) *zenerr.ZenError {
+	if ctx.Err() != nil {
+		return zenerr.TechnicalError(err)
+	}
+	return zenerr.ClusterError(err)
 }
 
 func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) *zenerr.ZenError {

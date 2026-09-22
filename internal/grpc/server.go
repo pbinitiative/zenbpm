@@ -305,6 +305,10 @@ func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, r
 	case errors.Is(err, jobmanager.ErrLockHeldByOtherClient):
 		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT
 		message = "Lock is held by another client"
+	case errors.Is(err, jobmanager.ErrLeaderUnavailable):
+		s.logger.Warn("leader unavailable for a lock extension of a job-stream client", "clientID", clientID, "jobKey", req.GetKey(), "err", err)
+		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE
+		message = "The leader of the job's partition is unavailable at the moment, retry the extension"
 	default:
 		s.logger.Error("failed to extend job lock for job-stream client", "clientID", clientID, "jobKey", req.GetKey(), "err", err)
 		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED

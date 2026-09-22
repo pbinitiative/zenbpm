@@ -42,9 +42,9 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "the job must be delivered once")
 	server.distributedJobsMu.Lock()
 	require.Len(t, server.distributedJobs, 1)
-	assert.WithinRange(t, server.distributedJobs[0].lockUntil, sentAt.Add(2*time.Second), time.Now().Add(2*time.Second),
+	assert.WithinRange(t, theLockedJob(t, server).lockUntil, sentAt.Add(2*time.Second), time.Now().Add(2*time.Second),
 		"the delivery is locked for the subscription's duration")
-	assert.Equal(t, 2*time.Second, server.distributedJobs[0].lockDuration)
+	assert.Equal(t, 2*time.Second, theLockedJob(t, server).lockDuration)
 	server.distributedJobsMu.Unlock()
 
 	require.Eventually(t, func() bool {
@@ -55,7 +55,7 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 
 	// let the lock lapse without waiting for it
 	server.distributedJobsMu.Lock()
-	server.distributedJobs[0].lockUntil = time.Now().Add(-time.Millisecond)
+	theLockedJob(t, server).lockUntil = time.Now().Add(-time.Millisecond)
 	server.distributedJobsMu.Unlock()
 
 	require.Eventually(t, func() bool {
@@ -71,20 +71,20 @@ func TestServerExtendLockMovesTheDeadline(t *testing.T) {
 	limits.MaxLockDuration = 10 * time.Second
 	server := newJobServer("node-1", nil, nil, limits)
 	jobKey := gen.Generate().Int64()
-	server.distributedJobs = []distributedJob{{
+	lockJobs(server, distributedJob{
 		client:       "client-1",
 		jobKey:       jobKey,
 		jobType:      "test-job",
 		lockUntil:    time.Now().Add(time.Hour),
 		lockDuration: 2 * time.Second,
-	}}
+	})
 
 	before := time.Now()
 	lockUntil, err := server.extendLock("client-1", jobKey, 5*time.Second)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(5*time.Second), time.Now().Add(5*time.Second),
 		"the deadline is now plus the requested duration, whatever it was before")
-	assert.Equal(t, lockUntil, server.distributedJobs[0].lockUntil, "the answer is what the entry holds")
+	assert.Equal(t, lockUntil, theLockedJob(t, server).lockUntil, "the answer is what the entry holds")
 
 	before = time.Now()
 	lockUntil, err = server.extendLock("client-1", jobKey, 0)
@@ -103,7 +103,7 @@ func TestServerExtendLockOfUnknownOrForeignJob(t *testing.T) {
 	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
 	heldKey := gen.Generate().Int64()
 	deadline := time.Now().Add(time.Minute)
-	server.distributedJobs = []distributedJob{{client: "client-1", jobKey: heldKey, jobType: "test-job", lockUntil: deadline}}
+	lockJobs(server, distributedJob{client: "client-1", jobKey: heldKey, jobType: "test-job", lockUntil: deadline})
 
 	_, err := server.extendLock("client-1", gen.Generate().Int64(), time.Second)
 	assert.ErrorIs(t, err, ErrLockNotHeld)
@@ -111,21 +111,21 @@ func TestServerExtendLockOfUnknownOrForeignJob(t *testing.T) {
 	_, err = server.extendLock("client-2", heldKey, time.Second)
 	assert.ErrorIs(t, err, ErrLockHeldByOtherClient)
 
-	assert.Equal(t, deadline, server.distributedJobs[0].lockUntil, "a refused extension leaves the lock untouched")
+	assert.Equal(t, deadline, theLockedJob(t, server).lockUntil, "a refused extension leaves the lock untouched")
 	assert.Len(t, server.distributedJobs, 1)
 }
 
 func TestServerExtendLockOfLapsedEntryIsRefused(t *testing.T) {
 	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
 	lapsedKey := gen.Generate().Int64()
-	server.distributedJobs = []distributedJob{{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)}}
+	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
 
 	_, err := server.extendLock("client-1", lapsedKey, time.Minute)
 
 	assert.ErrorIs(t, err, ErrLockNotHeld, "the published deadline decides, not the next cleanup round")
 	assert.Empty(t, server.distributedJobs, "a lapsed entry is dropped so the job is loadable again")
 
-	server.distributedJobs = []distributedJob{{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)}}
+	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
 	_, err = server.extendLock("client-2", lapsedKey, time.Minute)
 	assert.ErrorIs(t, err, ErrLockNotHeld, "a lapsed lock is held by nobody, not by another client")
 }
@@ -176,9 +176,9 @@ func TestServerCapacityIsCountedPerJobType(t *testing.T) {
 	server.subscribeClient("node-2", "client-1", "job-a", SubscriptionSettings{MaxActiveJobs: 1})
 	server.subscribeClient("node-2", "client-1", "job-b", SubscriptionSettings{MaxActiveJobs: 2})
 	// client-1 already holds its only job-a slot
-	server.distributedJobs = []distributedJob{{
+	lockJobs(server, distributedJob{
 		client: "client-1", jobKey: gen.Generate().Int64(), jobType: "job-a", lockUntil: time.Now().Add(time.Minute),
-	}}
+	})
 	loader.addJobs(generateJobsOfType(1, "job-a")...)
 	loader.addJobs(generateJobsOfType(2, "job-b")...)
 
@@ -214,11 +214,11 @@ func TestServerDefaultsAndCapsApply(t *testing.T) {
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients, "a resubscription does not duplicate the client")
 
 	deliveredUntil := time.Now().Add(time.Minute)
-	server.distributedJobs = []distributedJob{{client: "client-1", jobKey: 1, jobType: "test-job", lockUntil: deliveredUntil, lockDuration: time.Minute}}
+	lockJobs(server, distributedJob{client: "client-1", jobKey: 1, jobType: "test-job", lockUntil: deliveredUntil, lockDuration: time.Minute})
 	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{LockDuration: 5 * time.Second, MaxActiveJobs: 3})
 	assert.Equal(t, SubscriptionSettings{LockDuration: 5 * time.Second, MaxActiveJobs: 3}, server.settings["test-job"]["client-1"])
-	assert.Equal(t, deliveredUntil, server.distributedJobs[0].lockUntil, "a job already delivered keeps the deadline it was delivered with")
-	assert.Equal(t, time.Minute, server.distributedJobs[0].lockDuration, "and renews with the lock duration it was delivered under")
+	assert.Equal(t, deliveredUntil, theLockedJob(t, server).lockUntil, "a job already delivered keeps the deadline it was delivered with")
+	assert.Equal(t, time.Minute, theLockedJob(t, server).lockDuration, "and renews with the lock duration it was delivered under")
 
 	server.unsubscribeClient("client-1", "test-job")
 	assert.Empty(t, server.settings["test-job"], "unsubscribing drops the settings")
@@ -229,7 +229,7 @@ func TestServerCompletionByAnotherClientReleasesTheLock(t *testing.T) {
 	completer := &testCompleter{completedJobs: []int64{}, loader: loader}
 	server := newJobServer("node-1", loader, completer, DefaultLockLimits())
 	jobKey := gen.Generate().Int64()
-	server.distributedJobs = []distributedJob{{client: "client-1", jobKey: jobKey, jobType: "test-job", lockUntil: time.Now().Add(time.Minute)}}
+	lockJobs(server, distributedJob{client: "client-1", jobKey: jobKey, jobType: "test-job", lockUntil: time.Now().Add(time.Minute)})
 
 	require.NoError(t, server.completeJob(t.Context(), "rest-client", jobKey, nil))
 

@@ -67,6 +67,7 @@ A value of `0` means the engine's default; a value above the cap is lowered to t
 
 - `LockExtended{key, lock_until}` on success;
 - `ErrorResult` with `code` = `JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD` (1) when the lock lapsed, the job was completed or failed, or it was never delivered to this client, or `JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT` (2) when another client holds it. A refused extension leaves the job untouched. The `LockExtended` next to the error carries only the key.
+- `ErrorResult` with `code` = `JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE` (3) when the leader of the job's partition could not be reached or has just changed. Unlike a refusal, this leaves the outcome unconfirmed: a leader which lost the connection after applying the extension has moved the deadline already, and a leader change forgets the lock (see below). Retry the extension in a moment, as the REST `extendJobLock` endpoint's 502 asks you to, and count on the deadline of the last confirmed answer only. The Go client reports it as `zenclient.ErrLeaderUnavailable`.
 
 The Go client offers `Worker.ExtendLock(ctx, jobKey, duration)`, `WithLockDuration` and `WithMaxActiveJobs` (through `RegisterWorkerWithOptions` and `WithJobType`); it does not renew locks by itself.
 

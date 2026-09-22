@@ -146,15 +146,23 @@ func New(
 	return manager
 }
 
+// Start runs the leader-side server and the client side of the manager. The
+// server lifecycle, its context and cancellation, is guarded by roleChangeMu
+// like in OnPartitionRoleChange, so the two never start a second server or
+// cancel each other's.
 func (m *JobManager) Start() {
 	err := registerMetrics()
 	if err != nil {
 		hclog.Default().Error("Failed to register metrics", "err", err)
 	}
-	m.serverCtx, m.serverCancel = context.WithCancel(m.ctx)
-	server := newJobServer(NodeId(m.store.NodeID()), m.loader, m.completer, m.limits)
-	server.startServer(m.serverCtx)
-	m.server.Store(server)
+	m.roleChangeMu.Lock()
+	if m.serverCtx == nil {
+		m.serverCtx, m.serverCancel = context.WithCancel(m.ctx)
+		server := newJobServer(NodeId(m.store.NodeID()), m.loader, m.completer, m.limits)
+		server.startServer(m.serverCtx)
+		m.server.Store(server)
+	}
+	m.roleChangeMu.Unlock()
 	m.client.startClient()
 	m.started.Store(true)
 }

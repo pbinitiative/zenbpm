@@ -32,7 +32,7 @@ func TestServerLockStartsWhenTheSendCompletes(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "the send must be in progress")
 	server.distributedJobsMu.Lock()
 	require.Len(t, server.distributedJobs, 1, "the job is reserved while its send is blocked")
-	reservedUntil := server.distributedJobs[0].lockUntil
+	reservedUntil := theLockedJob(t, server).lockUntil
 	server.distributedJobsMu.Unlock()
 
 	gateOpenedAt := time.Now()
@@ -54,8 +54,8 @@ func TestServerLockStartsWhenTheSendCompletes(t *testing.T) {
 func leaderLockUntil(server *jobServer) time.Time {
 	server.distributedJobsMu.Lock()
 	defer server.distributedJobsMu.Unlock()
-	if len(server.distributedJobs) != 1 {
-		return time.Time{}
+	for _, job := range server.distributedJobs {
+		return job.lockUntil
 	}
-	return server.distributedJobs[0].lockUntil
+	return time.Time{}
 }

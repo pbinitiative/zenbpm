@@ -51,9 +51,7 @@ func TestServerNeverLocksMoreJobsThanOneQueryCanExclude(t *testing.T) {
 	}, 300*time.Millisecond, 10*time.Millisecond, "with every slot of the query taken, nothing more may be delivered")
 
 	completed := 0
-	server.distributedJobsMu.Lock()
-	locked := append([]distributedJob(nil), server.distributedJobs...)
-	server.distributedJobsMu.Unlock()
+	locked := lockedJobs(server)
 	for _, job := range locked[:3] {
 		require.NoError(t, server.completeJob(ctx, "client-1", job.jobKey, nil))
 		completed++

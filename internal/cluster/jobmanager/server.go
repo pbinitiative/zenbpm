@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -37,6 +38,11 @@ var (
 	// ErrLockHeldByOtherClient is returned by a lock extension for a job which
 	// is currently locked for a different client.
 	ErrLockHeldByOtherClient = errors.New("job lock is held by another client")
+	// ErrLeaderUnavailable is returned by a lock extension which could not
+	// reach the leader of the job's partition, or reached a node which does
+	// not lead it any more: a transient condition of the cluster, the
+	// extension may be retried in a moment.
+	ErrLeaderUnavailable = errors.New("leader of the job's partition is unavailable")
 )
 
 type JobLoader interface {
@@ -143,8 +149,11 @@ type jobServer struct {
 	// maxQueryParameters is how many parameters the query loading a batch may
 	// carry: one per locked job key, one per job type and one for the limit.
 	// It is sql.MaxQueryParameters; tests lower it.
-	maxQueryParameters       int
-	distributedJobs          []distributedJob
+	maxQueryParameters int
+	// distributedJobs are the jobs delivered and still locked, by job key, so
+	// that a renewal, a completion or a failure finds its entry without a
+	// scan of every lock the leader holds.
+	distributedJobs          map[int64]*distributedJob
 	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
 
@@ -161,7 +170,7 @@ func newJobServer(
 		nodeMu:             &sync.RWMutex{},
 		nodeSubs:           map[NodeId]*nodeSub{},
 		nodeID:             nodeID,
-		distributedJobs:    []distributedJob{},
+		distributedJobs:    map[int64]*distributedJob{},
 		distributedJobsMu:  &sync.Mutex{},
 		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
 		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
@@ -329,13 +338,13 @@ func (s *jobServer) distributeJobs() {
 			// restarted once the send completed (see restartLockAfterSend)
 			lockUntil := time.Now().Add(lockDuration)
 			s.distributedJobsMu.Lock()
-			s.distributedJobs = append(s.distributedJobs, distributedJob{
+			s.distributedJobs[job.Key] = &distributedJob{
 				client:       clientID,
 				jobKey:       job.Key,
 				jobType:      jType,
 				lockUntil:    lockUntil,
 				lockDuration: lockDuration,
-			})
+			}
 			s.distributedJobsMu.Unlock()
 			s.clientMu.Unlock()
 			// this might be bottleneck for now...in the future we might want
@@ -358,9 +367,9 @@ func (s *jobServer) distributeJobs() {
 			})
 			if err != nil {
 				s.distributedJobsMu.Lock()
-				s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(distributed distributedJob) bool {
-					return distributed.jobKey == job.Key && distributed.client == clientID
-				})
+				if locked, ok := s.distributedJobs[job.Key]; ok && locked.client == clientID {
+					delete(s.distributedJobs, job.Key)
+				}
 				s.distributedJobsMu.Unlock()
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
@@ -400,15 +409,13 @@ func (s *jobServer) distributeJobs() {
 func (s *jobServer) restartLockAfterSend(jobKey int64, clientID ClientID, lockDuration time.Duration) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
-	index := slices.IndexFunc(s.distributedJobs, func(job distributedJob) bool {
-		return job.jobKey == jobKey && job.client == clientID
-	})
-	if index < 0 {
+	locked, ok := s.distributedJobs[jobKey]
+	if !ok || locked.client != clientID {
 		return
 	}
 	sentUntil := time.Now().Add(lockDuration)
-	if sentUntil.After(s.distributedJobs[index].lockUntil) {
-		s.distributedJobs[index].lockUntil = sentUntil
+	if sentUntil.After(locked.lockUntil) {
+		locked.lockUntil = sentUntil
 	}
 }
 
@@ -441,10 +448,9 @@ func (s *jobServer) capacityLocked(now time.Time) (map[clientAndType]int, map[Jo
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
 	currentKeys := make([]int64, 0, len(s.distributedJobs))
-	for i := len(s.distributedJobs) - 1; i >= 0; i-- {
-		job := s.distributedJobs[i]
+	for key, job := range s.distributedJobs {
 		if job.lockUntil.Before(now) {
-			s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
+			delete(s.distributedJobs, key)
 			continue
 		}
 		// only track capacity for clients that are still subscribed,
@@ -453,7 +459,7 @@ func (s *jobServer) capacityLocked(now time.Time) (map[clientAndType]int, map[Jo
 		if _, ok := capacity[slot]; ok {
 			capacity[slot]--
 		}
-		currentKeys = append(currentKeys, job.jobKey)
+		currentKeys = append(currentKeys, key)
 	}
 	return capacity, jobTypeClients, currentKeys
 }
@@ -574,7 +580,7 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 	}
 	if len(removedClients) > 0 {
 		s.distributedJobsMu.Lock()
-		s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+		maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
 			_, removed := removedClients[job.client]
 			return removed
 		})
@@ -682,7 +688,7 @@ func (s *jobServer) removeClient(clientID ClientID) {
 		}
 	}
 	s.distributedJobsMu.Lock()
-	s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+	maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
 		return job.client == clientID
 	})
 	s.distributedJobsMu.Unlock()
@@ -698,16 +704,13 @@ func (s *jobServer) removeClient(clientID ClientID) {
 func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
-	index := slices.IndexFunc(s.distributedJobs, func(job distributedJob) bool {
-		return job.jobKey == jobKey
-	})
-	if index < 0 {
+	job, ok := s.distributedJobs[jobKey]
+	if !ok {
 		return time.Time{}, ErrLockNotHeld
 	}
 	now := time.Now()
-	job := &s.distributedJobs[index]
 	if job.lockUntil.Before(now) {
-		s.distributedJobs = slices.Delete(s.distributedJobs, index, index+1)
+		delete(s.distributedJobs, jobKey)
 		return time.Time{}, ErrLockNotHeld
 	}
 	if job.client != clientID {
@@ -746,17 +749,15 @@ func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64
 func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
-	for i, job := range s.distributedJobs {
-		if job.jobKey != jobKey {
-			continue
-		}
-		if job.client != clientID {
-			s.logger.Debug("job "+outcome+" by a client other than the lock holder",
-				"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
-		}
-		s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
+	job, ok := s.distributedJobs[jobKey]
+	if !ok {
 		return
 	}
+	if job.client != clientID {
+		s.logger.Debug("job "+outcome+" by a client other than the lock holder",
+			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
+	}
+	delete(s.distributedJobs, jobKey)
 }
 
 func (s *jobServer) onJobRejected(_ context.Context, _ int64) {

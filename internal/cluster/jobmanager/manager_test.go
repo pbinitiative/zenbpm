@@ -20,6 +20,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
@@ -56,7 +57,7 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Same(t, replacementStream, server.subscriptions["test-job"]["client-1"])
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
-	server.distributedJobs = append(server.distributedJobs, distributedJob{
+	lockJobs(server, distributedJob{
 		lockUntil: time.Now().Add(30 * time.Second),
 		jobType:   "test-job",
 		client:    "client-1",
@@ -84,7 +85,7 @@ func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {
 	// client-1 already holds all but one of its slots, client-2 holds none
 	now := time.Now()
 	for range maxActiveJobsPerClient - 1 {
-		server.distributedJobs = append(server.distributedJobs, distributedJob{
+		lockJobs(server, distributedJob{
 			lockUntil: now.Add(30 * time.Second),
 			jobType:   "test-job",
 			client:    "client-1",
@@ -192,7 +193,7 @@ func TestServerNeverAssignsJobsToSaturatedClients(t *testing.T) {
 	// client-1 holds all of its job-a slots
 	now := time.Now()
 	for range maxActiveJobsPerClient {
-		server.distributedJobs = append(server.distributedJobs, distributedJob{
+		lockJobs(server, distributedJob{
 			lockUntil: now.Add(30 * time.Second),
 			jobType:   "job-a",
 			client:    "client-1",
@@ -260,11 +261,11 @@ func TestServerSkipListContainsOnlyValidJobKeys(t *testing.T) {
 	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
 
 	activeKey := gen.Generate().Int64()
-	server.distributedJobs = []distributedJob{
-		{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
-		{lockUntil: time.Now().Add(30 * time.Second), jobType: "test-job", client: "client-1", jobKey: activeKey},
-		{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
-	}
+	lockJobs(server,
+		distributedJob{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
+		distributedJob{lockUntil: time.Now().Add(30 * time.Second), jobType: "test-job", client: "client-1", jobKey: activeKey},
+		distributedJob{lockUntil: time.Now().Add(-time.Second), jobType: "test-job", client: "client-1", jobKey: gen.Generate().Int64()},
+	)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -788,6 +789,19 @@ type grpcSrv struct {
 	// failRequests records every FailJob request as the wire carried it
 	failRequestsMu sync.Mutex
 	failRequests   []*proto.FailJobRequest
+	// extendLockResponse, when set, is what every ExtendJobLock answers
+	extendLockResponse *proto.ExtendJobLockResponse
+}
+
+func (s *grpcSrv) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
+	if s.extendLockResponse != nil {
+		return s.extendLockResponse, nil
+	}
+	lockUntil, err := s.jobManager.ExtendJobLock(ctx, ClientID(req.GetClientId()), req.GetKey(), DurationFromMillis(req.GetLockDurationMs()))
+	if err != nil {
+		return &proto.ExtendJobLockResponse{Error: zenerr.TechnicalError(err).ToProtoError()}, nil
+	}
+	return &proto.ExtendJobLockResponse{LockUntil: new(lockUntil.UnixMilli())}, nil
 }
 
 func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {

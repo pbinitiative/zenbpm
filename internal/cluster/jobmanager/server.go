@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"math"
 	"slices"
 	"sort"
 	"sync"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,10 +26,23 @@ import (
 const (
 	MetadataNodeID   string = "node_id"
 	MetadataClientID string = "client_id"
-	// each job will remain assigned to client until this duration expires
-	jobLockDuration               time.Duration = 30 * time.Second
-	emptyDistributionCounterSleep int           = 100 // counter that puts job loader to sleep for 1 second
-	maxActiveJobsPerClient        int64         = 10
+	// counter that puts job loader to sleep for 1 second
+	emptyDistributionCounterSleep int = 100
+)
+
+var (
+	// ErrLockNotHeld is returned by a lock extension for a job which is not
+	// distributed at the moment: its lock lapsed, it was completed or failed,
+	// or it was never delivered by this leader.
+	ErrLockNotHeld = errors.New("job lock is not held")
+	// ErrLockHeldByOtherClient is returned by a lock extension for a job which
+	// is currently locked for a different client.
+	ErrLockHeldByOtherClient = errors.New("job lock is held by another client")
+	// ErrLeaderUnavailable is returned by a lock extension which could not
+	// reach the leader of the job's partition, or reached a node which does
+	// not lead it any more: a transient condition of the cluster, the
+	// extension may be retried in a moment.
+	ErrLeaderUnavailable = errors.New("leader of the job's partition is unavailable")
 )
 
 type JobLoader interface {
@@ -39,10 +55,64 @@ type JobCompleter interface {
 	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error
 }
 
+// LockLimits are the engine-wide defaults and caps applied to what a client
+// asks for in a subscription (see config.JobManager).
+type LockLimits struct {
+	DefaultLockDuration  time.Duration
+	MaxLockDuration      time.Duration
+	DefaultMaxActiveJobs int
+	MaxActiveJobsCap     int
+}
+
+// DefaultLockLimits are the limits used when none are configured: 30 seconds
+// per delivery, at most 24 hours, ten jobs per client and job type, at most a thousand.
+func DefaultLockLimits() LockLimits {
+	return LockLimits{
+		DefaultLockDuration:  30 * time.Second,
+		MaxLockDuration:      24 * time.Hour,
+		DefaultMaxActiveJobs: 10,
+		MaxActiveJobsCap:     1000,
+	}
+}
+
+// SubscriptionSettings is what a client asks for when it subscribes to a job
+// type. A zero value means "the engine's default"; a value above the engine's
+// cap is lowered to the cap.
+type SubscriptionSettings struct {
+	LockDuration  time.Duration
+	MaxActiveJobs int
+}
+
+// DurationFromMillis converts a millisecond count taken from the wire or the
+// configuration into a duration without wrapping: a count above what a
+// duration can hold saturates at the maximum (which the caps then lower), a
+// count of zero or less becomes zero, the request for the engine default.
+func DurationFromMillis(ms int64) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+	if ms > config.MaxLockDurationMillis {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// distributedJob is a job delivered to a client whose lock has not lapsed.
 type distributedJob struct {
-	sentTime time.Time
-	client   ClientID
-	jobKey   int64
+	client  ClientID
+	jobKey  int64
+	jobType JobType
+	// lockUntil is when the delivery stops reserving the job for the client.
+	lockUntil time.Time
+	// lockDuration is the subscription's lock duration at delivery time; an
+	// extension which names no duration uses it.
+	lockDuration time.Duration
+}
+
+// clientAndType is the granularity at which active jobs are capped.
+type clientAndType struct {
+	client  ClientID
+	jobType JobType
 }
 
 type nodeSub struct {
@@ -63,13 +133,27 @@ type jobServer struct {
 
 	clientMu      *sync.RWMutex
 	subscriptions map[JobType]map[ClientID]*nodeSub
-	jobTypes      map[JobType]jobTypeData
+	// settings holds the effective (defaults applied, caps enforced) settings
+	// of every subscription, keyed like subscriptions.
+	settings map[JobType]map[ClientID]SubscriptionSettings
+	// settingsVersion counts subscription changes, so a distribution round
+	// can tell that the capacity it snapshotted is stale.
+	settingsVersion uint64
+	jobTypes        map[JobType]jobTypeData
 
 	loader    JobLoader
 	completer JobCompleter
+	limits    LockLimits
 
-	maxJobLoadCount          int64
-	distributedJobs          []distributedJob
+	maxJobLoadCount int64
+	// maxQueryParameters is how many parameters the query loading a batch may
+	// carry: one per locked job key, one per job type and one for the limit.
+	// It is sql.MaxQueryParameters; tests lower it.
+	maxQueryParameters int
+	// distributedJobs are the jobs delivered and still locked, by job key, so
+	// that a renewal, a completion or a failure finds its entry without a
+	// scan of every lock the leader holds.
+	distributedJobs          map[int64]*distributedJob
 	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
 
@@ -80,21 +164,40 @@ func newJobServer(
 	nodeID NodeId,
 	jobLoader JobLoader,
 	jobCompleter JobCompleter,
+	limits LockLimits,
 ) *jobServer {
 	return &jobServer{
-		nodeMu:            &sync.RWMutex{},
-		nodeSubs:          map[NodeId]*nodeSub{},
-		nodeID:            nodeID,
-		distributedJobs:   []distributedJob{},
-		distributedJobsMu: &sync.Mutex{},
-		subscriptions:     map[JobType]map[ClientID]*nodeSub{},
-		jobTypes:          map[JobType]jobTypeData{},
-		clientMu:          &sync.RWMutex{},
-		logger:            hclog.Default().Named("job-manager-server"),
-		loader:            jobLoader,
-		maxJobLoadCount:   300,
-		completer:         jobCompleter,
+		nodeMu:             &sync.RWMutex{},
+		nodeSubs:           map[NodeId]*nodeSub{},
+		nodeID:             nodeID,
+		distributedJobs:    map[int64]*distributedJob{},
+		distributedJobsMu:  &sync.Mutex{},
+		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
+		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
+		jobTypes:           map[JobType]jobTypeData{},
+		clientMu:           &sync.RWMutex{},
+		logger:             hclog.Default().Named("job-manager-server"),
+		loader:             jobLoader,
+		maxJobLoadCount:    300,
+		maxQueryParameters: sql.MaxQueryParameters,
+		completer:          jobCompleter,
+		limits:             limits,
 	}
+}
+
+// effectiveSettings applies the engine defaults to zero values and lowers
+// values above the caps, so that every stored subscription is usable as is.
+func (s *jobServer) effectiveSettings(requested SubscriptionSettings) SubscriptionSettings {
+	effective := requested
+	if effective.LockDuration <= 0 {
+		effective.LockDuration = s.limits.DefaultLockDuration
+	}
+	effective.LockDuration = min(effective.LockDuration, s.limits.MaxLockDuration)
+	if effective.MaxActiveJobs <= 0 {
+		effective.MaxActiveJobs = s.limits.DefaultMaxActiveJobs
+	}
+	effective.MaxActiveJobs = min(effective.MaxActiveJobs, s.limits.MaxActiveJobsCap)
+	return effective
 }
 
 func (s *jobServer) startServer(ctx context.Context) {
@@ -122,38 +225,14 @@ func (s *jobServer) distributeJobs() {
 			return
 		}
 		s.clientMu.RLock()
-		clients := make(map[ClientID]int64)
-		jobTypeClients := make(map[JobType][]ClientID, len(s.jobTypes))
-		for jobType, jobTypeData := range s.jobTypes {
-			jobTypeClients[jobType] = slices.Clone(jobTypeData.clients)
-			for _, client := range jobTypeData.clients {
-				clients[client] = maxActiveJobsPerClient
-			}
-		}
+		capacity, jobTypeClients, currentKeys := s.capacityLocked(time.Now())
+		settingsVersion := s.settingsVersion
 		s.clientMu.RUnlock()
-		s.distributedJobsMu.Lock()
-		currentKeys := make([]int64, 0, len(s.distributedJobs))
-		now := time.Now()
-		for i := len(s.distributedJobs) - 1; i >= 0; i-- {
-			job := s.distributedJobs[i]
-			if job.sentTime.Add(jobLockDuration).Before(now) {
-				// fmt.Println("releasing job", job)
-				s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
-				continue
-			}
-			// only track capacity for clients that are still subscribed,
-			// jobs of already removed clients must not create phantom entries
-			if _, ok := clients[job.client]; ok {
-				clients[job.client]--
-			}
-			currentKeys = append(currentKeys, job.jobKey)
-		}
-		s.distributedJobsMu.Unlock()
 
 		jobTypes := make([]string, 0, len(jobTypeClients))
 		for jobType, typeClients := range jobTypeClients {
 			for _, clientID := range typeClients {
-				if clients[clientID] > 0 {
+				if capacity[clientAndType{client: clientID, jobType: jobType}] > 0 {
 					jobTypes = append(jobTypes, string(jobType))
 					break
 				}
@@ -161,19 +240,35 @@ func (s *jobServer) distributeJobs() {
 		}
 		sort.Strings(jobTypes)
 
+		// the free slots are summed only up to the batch size, so the sum
+		// can neither overflow nor exceed what one round loads
 		jobsToLoad := int64(0)
-		for _, numberOfSlots := range clients {
+		for _, numberOfSlots := range capacity {
 			if numberOfSlots > 0 {
-				jobsToLoad += numberOfSlots
+				jobsToLoad = min(jobsToLoad+int64(numberOfSlots), s.maxJobLoadCount)
+			}
+			if jobsToLoad >= s.maxJobLoadCount {
+				break
 			}
 		}
 		if jobsToLoad <= 0 {
 			s.pause(20 * time.Millisecond)
 			continue
 		}
-		if jobsToLoad > s.maxJobLoadCount {
-			jobsToLoad = s.maxJobLoadCount
+		// the query loading a batch carries one parameter per requested job
+		// type, one per locked key (a placeholder when nothing is locked) and
+		// one for the limit, and SQLite refuses a query with more parameters
+		// than maxQueryParameters; so a round delivers no more jobs than the
+		// query of the next round can still exclude, whatever the
+		// subscriptions ask for
+		lockBudget := s.maxQueryParameters - 1 - len(jobTypes) - max(1, len(currentKeys))
+		if lockBudget <= 0 {
+			s.logger.Warn("leader holds as many locked jobs as one query can exclude, waiting for locks to lapse or jobs to complete",
+				"lockedJobs", len(currentKeys), "requestedJobTypes", len(jobTypes), "maxQueryParameters", s.maxQueryParameters)
+			s.pause(1 * time.Second)
+			continue
 		}
+		jobsToLoad = min(jobsToLoad, int64(lockBudget))
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
@@ -195,6 +290,12 @@ func (s *jobServer) distributeJobs() {
 		assignedJobs := 0
 		for _, job := range jobs {
 			s.clientMu.Lock()
+			if s.settingsVersion != settingsVersion {
+				// a subscription changed since the snapshot: a lowered cap
+				// must bind the deliveries of this batch, not the next one
+				capacity, _, _ = s.capacityLocked(time.Now())
+				settingsVersion = s.settingsVersion
+			}
 			jType := JobType(job.Type)
 			jobTypeData := s.jobTypes[jType]
 			// check if there are any clients able to process
@@ -210,9 +311,8 @@ func (s *jobServer) distributeJobs() {
 			for offset := 1; offset <= numClients; offset++ {
 				idx := (jobTypeData.index + offset) % numClients
 				candidateID := jobTypeData.clients[idx]
-				// clients subscribed after the capacity snapshot was taken have
-				// no known capacity in this round and are treated as saturated
-				if clients[candidateID] <= 0 {
+				slot := clientAndType{client: candidateID, jobType: jType}
+				if capacity[slot] <= 0 {
 					continue
 				}
 				candidateStream, ok := s.subscriptions[jType][candidateID]
@@ -222,7 +322,7 @@ func (s *jobServer) distributeJobs() {
 				jobTypeData.index = idx
 				clientID = candidateID
 				nodeStream = candidateStream
-				clients[clientID]--
+				capacity[slot]--
 				break
 			}
 			if nodeStream == nil {
@@ -232,12 +332,19 @@ func (s *jobServer) distributeJobs() {
 				continue
 			}
 			s.jobTypes[jType] = jobTypeData // set the updated index
+			lockDuration := s.settingsLocked(jType, clientID).LockDuration
+			// the deadline taken here reserves the job while it is being sent
+			// and is what the worker is told; the leader's own deadline is
+			// restarted once the send completed (see restartLockAfterSend)
+			lockUntil := time.Now().Add(lockDuration)
 			s.distributedJobsMu.Lock()
-			s.distributedJobs = append(s.distributedJobs, distributedJob{
-				sentTime: time.Now(),
-				client:   clientID,
-				jobKey:   job.Key,
-			})
+			s.distributedJobs[job.Key] = &distributedJob{
+				client:       clientID,
+				jobKey:       job.Key,
+				jobType:      jType,
+				lockUntil:    lockUntil,
+				lockDuration: lockDuration,
+			}
 			s.distributedJobsMu.Unlock()
 			s.clientMu.Unlock()
 			// this might be bottleneck for now...in the future we might want
@@ -255,17 +362,19 @@ func (s *jobServer) distributeJobs() {
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
+					LockUntil:      new(lockUntil.UnixMilli()),
 				},
 			})
 			if err != nil {
 				s.distributedJobsMu.Lock()
-				s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(distributed distributedJob) bool {
-					return distributed.jobKey == job.Key && distributed.client == clientID
-				})
+				if locked, ok := s.distributedJobs[job.Key]; ok && locked.client == clientID {
+					delete(s.distributedJobs, job.Key)
+				}
 				s.distributedJobsMu.Unlock()
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
 			}
+			s.restartLockAfterSend(job.Key, clientID, lockDuration)
 			assignedJobs++
 			JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
 				attribute.String("type", job.Type),
@@ -287,6 +396,72 @@ func (s *jobServer) distributeJobs() {
 			s.pause(100 * time.Millisecond)
 		}
 	}
+}
+
+// restartLockAfterSend moves the deadline of a just delivered job to now plus
+// its lock duration. A send blocked by a node whose workers stopped reading
+// can take a good part of the lock duration; counting the lock from the end
+// of the send keeps such a delay from handing the job to another client while
+// the worker just started on it. The deadline is never moved backwards, so an
+// extension which arrived meanwhile stands, and a worker which already
+// completed the job finds no entry to move. The worker keeps the earlier
+// deadline it was sent, which is conservative.
+func (s *jobServer) restartLockAfterSend(jobKey int64, clientID ClientID, lockDuration time.Duration) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	locked, ok := s.distributedJobs[jobKey]
+	if !ok || locked.client != clientID {
+		return
+	}
+	sentUntil := time.Now().Add(lockDuration)
+	if sentUntil.After(locked.lockUntil) {
+		locked.lockUntil = sentUntil
+	}
+}
+
+// settingsLocked returns the effective settings of a subscription. The
+// settings are kept in step with the round robin list under clientMu, so an
+// entry is never missing; should a bookkeeping slip ever make one missing,
+// the engine defaults apply rather than a zero lock duration, which would
+// redeliver the job on every round. The caller holds clientMu.
+func (s *jobServer) settingsLocked(jobType JobType, client ClientID) SubscriptionSettings {
+	if settings, ok := s.settings[jobType][client]; ok {
+		return settings
+	}
+	s.logger.Warn("subscription has no settings, applying the engine defaults", "jobType", jobType, "client", client)
+	return s.effectiveSettings(SubscriptionSettings{})
+}
+
+// capacityLocked drops every lapsed lock and returns how many more jobs each
+// (client, job type) may be sent, the clients of every job type, and the keys
+// of the jobs still locked. A job type never eats into another type's slots.
+// The caller holds clientMu.
+func (s *jobServer) capacityLocked(now time.Time) (map[clientAndType]int, map[JobType][]ClientID, []int64) {
+	capacity := make(map[clientAndType]int)
+	jobTypeClients := make(map[JobType][]ClientID, len(s.jobTypes))
+	for jobType, jobTypeData := range s.jobTypes {
+		jobTypeClients[jobType] = slices.Clone(jobTypeData.clients)
+		for _, client := range jobTypeData.clients {
+			capacity[clientAndType{client: client, jobType: jobType}] = s.settingsLocked(jobType, client).MaxActiveJobs
+		}
+	}
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	currentKeys := make([]int64, 0, len(s.distributedJobs))
+	for key, job := range s.distributedJobs {
+		if job.lockUntil.Before(now) {
+			delete(s.distributedJobs, key)
+			continue
+		}
+		// only track capacity for clients that are still subscribed,
+		// jobs of already removed clients must not create phantom entries
+		slot := clientAndType{client: job.client, jobType: job.jobType}
+		if _, ok := capacity[slot]; ok {
+			capacity[slot]--
+		}
+		currentKeys = append(currentKeys, key)
+	}
+	return capacity, jobTypeClients, currentKeys
 }
 
 // pause delays the distribution loop for d, returning early when the server
@@ -315,6 +490,15 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 		stream: stream,
 	}
 	s.nodeMu.Lock()
+	// A stream arriving once the server context ended must be refused rather
+	// than registered: the distribution loop is gone (or about to close every
+	// registered stream under this same lock), so the stream would never see
+	// a job nor the close message and the client would keep it as its healthy
+	// stream to the partition leader for good.
+	if s.ctx == nil || s.ctx.Err() != nil {
+		s.nodeMu.Unlock()
+		return fmt.Errorf("job server of node %s is not distributing jobs: %w", s.nodeID, NodeIsNotALeader)
+	}
 	s.nodeSubs[nodeID] = nodeSub
 	s.nodeMu.Unlock()
 	s.handleJobStreamRecv(nodeSub)
@@ -336,7 +520,10 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 		}
 		switch req.GetType() {
 		case proto.SubscribeJobRequest_TYPE_SUBSCRIBE:
-			s.subscribeClient(stream.nodeID, ClientID(req.GetClientId()), JobType(req.GetJobType()))
+			s.subscribeClient(stream.nodeID, ClientID(req.GetClientId()), JobType(req.GetJobType()), SubscriptionSettings{
+				LockDuration:  DurationFromMillis(req.GetLockDurationMs()),
+				MaxActiveJobs: int(req.GetMaxActiveJobs()),
+			})
 		case proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE:
 			s.unsubscribeClient(ClientID(req.GetClientId()), JobType(req.GetJobType()))
 		case proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL:
@@ -363,6 +550,8 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 				continue
 			}
 			delete(s.subscriptions[jobType], clientID)
+			delete(s.settings[jobType], clientID)
+			s.settingsVersion++
 			removed[clientID] = struct{}{}
 			removedClients[clientID] = struct{}{}
 		}
@@ -391,7 +580,7 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 	}
 	if len(removedClients) > 0 {
 		s.distributedJobsMu.Lock()
-		s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+		maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
 			_, removed := removedClients[job.client]
 			return removed
 		})
@@ -408,7 +597,11 @@ func (s *jobServer) removeNodeSubscription(closing *nodeSub) {
 	}
 }
 
-func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jType JobType) {
+// subscribeClient registers the client for the job type with the requested
+// settings; defaults and caps are applied here, once. A resubscription of the
+// same client and type replaces the settings, jobs already delivered keep the
+// deadline they were delivered with.
+func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jType JobType, requested SubscriptionSettings) {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 	s.nodeMu.RLock()
@@ -420,6 +613,7 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 	}
 	if _, ok := s.subscriptions[jType]; !ok {
 		s.subscriptions[jType] = map[ClientID]*nodeSub{}
+		s.settings[jType] = map[ClientID]SubscriptionSettings{}
 	}
 	if _, ok := s.jobTypes[jType]; !ok {
 		s.jobTypes[jType] = jobTypeData{
@@ -427,6 +621,8 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 			clients: make([]ClientID, 0, 10),
 		}
 	}
+	s.settings[jType][clientID] = s.effectiveSettings(requested)
+	s.settingsVersion++
 	jobTypeData := s.jobTypes[jType]
 	if _, alreadySubscribed := s.subscriptions[jType][clientID]; alreadySubscribed {
 		// resubscribing the same client (e.g. a replay after a stream was
@@ -443,6 +639,8 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 	delete(s.subscriptions[jType], clientID)
+	delete(s.settings[jType], clientID)
+	s.settingsVersion++
 	index := -1
 	for i, client := range s.jobTypes[jType].clients {
 		if client == clientID {
@@ -455,6 +653,12 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	}
 	jobTypeData := s.jobTypes[jType]
 	jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
+	if len(jobTypeData.clients) == 0 {
+		// a job type nobody subscribes to any more must go, as when its
+		// last client or node leaves; kept, it would count in every round
+		delete(s.jobTypes, jType)
+		return
+	}
 	s.jobTypes[jType] = jobTypeData
 }
 
@@ -463,7 +667,9 @@ func (s *jobServer) removeClient(clientID ClientID) {
 	defer s.clientMu.Unlock()
 	for jobType := range s.subscriptions {
 		delete(s.subscriptions[jobType], clientID)
+		delete(s.settings[jobType], clientID)
 	}
+	s.settingsVersion++
 	for jType, jobTypeData := range s.jobTypes {
 		index := -1
 		for k, client := range jobTypeData.clients {
@@ -482,10 +688,40 @@ func (s *jobServer) removeClient(clientID ClientID) {
 		}
 	}
 	s.distributedJobsMu.Lock()
-	s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+	maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
 		return job.client == clientID
 	})
 	s.distributedJobsMu.Unlock()
+}
+
+// extendLock moves the lock deadline of a distributed job to now plus
+// duration. Zero duration means the lock duration of the subscription the job
+// was delivered under; a duration above the engine cap is lowered to the cap.
+// The deadline is relative to now rather than to the previous deadline, so a
+// client renewing periodically keeps a stable lead instead of accumulating one.
+// A lock whose deadline passed is gone even if no distribution round has
+// dropped the entry yet: the published deadline decides, not the cleanup.
+func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	job, ok := s.distributedJobs[jobKey]
+	if !ok {
+		return time.Time{}, ErrLockNotHeld
+	}
+	now := time.Now()
+	if job.lockUntil.Before(now) {
+		delete(s.distributedJobs, jobKey)
+		return time.Time{}, ErrLockNotHeld
+	}
+	if job.client != clientID {
+		return time.Time{}, ErrLockHeldByOtherClient
+	}
+	if duration <= 0 {
+		duration = job.lockDuration
+	}
+	duration = min(duration, s.limits.MaxLockDuration)
+	job.lockUntil = now.Add(duration)
+	return job.lockUntil, nil
 }
 
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
@@ -493,15 +729,7 @@ func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
-	s.distributedJobsMu.Lock()
-	for i, job := range s.distributedJobs {
-		if job.jobKey != jobKey {
-			continue
-		}
-		s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
-		break
-	}
-	s.distributedJobsMu.Unlock()
+	s.releaseLock(clientID, jobKey, "completed")
 	return nil
 }
 
@@ -510,18 +738,28 @@ func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64
 	if err != nil {
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
 	}
-	s.distributedJobsMu.Lock()
-	for i, job := range s.distributedJobs {
-		if job.jobKey != jobKey {
-			continue
-		}
-		s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
-		break
-	}
-	s.distributedJobsMu.Unlock()
+	s.releaseLock(clientID, jobKey, "failed")
 	return nil
 }
 
-func (s *jobServer) onJobRejected(ctx context.Context, jobKey int64) {
+// releaseLock drops the distributed entry of a job the engine no longer waits
+// for. Completion is deliberately not bound to the lock holder: a REST client
+// which never held the lock may complete a job. The mismatch is logged so that
+// a future ownership check has data to look at.
+func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	job, ok := s.distributedJobs[jobKey]
+	if !ok {
+		return
+	}
+	if job.client != clientID {
+		s.logger.Debug("job "+outcome+" by a client other than the lock holder",
+			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
+	}
+	delete(s.distributedJobs, jobKey)
+}
+
+func (s *jobServer) onJobRejected(_ context.Context, _ int64) {
 	// TODO: unlock the job and assign to new node, if there is no new node we need to remove the type from currently needed jobTypes
 }

@@ -10,6 +10,7 @@ import (
 	"net"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
@@ -40,10 +41,11 @@ type Server struct {
 type jobManager interface {
 	AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error
 	RemoveClient(context.Context, jobmanager.ClientID)
-	AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
+	AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType, jobmanager.SubscriptionSettings) error
 	RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
 	CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error
 	FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error
+	ExtendJobLockReq(context.Context, jobmanager.ClientID, int64, time.Duration) (time.Time, error)
 }
 
 // NewServer returns a new instance of ZenBpm GRPC server
@@ -197,12 +199,20 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				}
 				continue
 			}
+		case *proto.JobStreamRequest_ExtendLock:
+			if !s.sendJobStreamResponse(stream, sendMu, s.extendLock(stream.Context(), clientID, req.ExtendLock)) {
+				return
+			}
 		case *proto.JobStreamRequest_Subscription:
 			switch req.Subscription.GetType() {
 			case proto.StreamSubscriptionRequest_TYPE_UNDEFINED:
 			case proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE:
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
-				if err := s.jobManager.AddClientJobSub(stream.Context(), clientID, jobType); err != nil {
+				settings := jobmanager.SubscriptionSettings{
+					LockDuration:  jobmanager.DurationFromMillis(req.Subscription.GetLockDurationMs()),
+					MaxActiveJobs: int(req.Subscription.GetMaxActiveJobs()),
+				}
+				if err := s.jobManager.AddClientJobSub(stream.Context(), clientID, jobType, settings); err != nil {
 					s.logger.Error("failed to subscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
 					if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 						Error: &proto.ErrorResult{
@@ -265,6 +275,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					ElementId:      &job.ElementID,
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
+					LockUntil:      &job.LockUntil,
 				},
 			})
 			if err != nil {
@@ -272,6 +283,40 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 				continue
 			}
 		}
+	}
+}
+
+// extendLock answers a lock extension with the new deadline, or with an error
+// whose code tells a lapsed lock from one held by somebody else. Either answer
+// names the job key so the client can match it to its request.
+func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, req *proto.JobExtendLockRequest) *proto.JobStreamResponse {
+	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+	if err == nil {
+		return &proto.JobStreamResponse{
+			LockExtended: &proto.LockExtended{Key: req.Key, LockUntil: new(lockUntil.UnixMilli())},
+		}
+	}
+	var code proto.JobStreamErrorCode
+	var message string
+	switch {
+	case errors.Is(err, jobmanager.ErrLockNotHeld):
+		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD
+		message = "Lock is not held: it lapsed, the job was completed or failed, or it was never delivered to this client"
+	case errors.Is(err, jobmanager.ErrLockHeldByOtherClient):
+		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT
+		message = "Lock is held by another client"
+	case errors.Is(err, jobmanager.ErrLeaderUnavailable):
+		s.logger.Warn("leader unavailable for a lock extension of a job-stream client", "clientID", clientID, "jobKey", req.GetKey(), "err", err)
+		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE
+		message = "The leader of the job's partition is unavailable at the moment, retry the extension"
+	default:
+		s.logger.Error("failed to extend job lock for job-stream client", "clientID", clientID, "jobKey", req.GetKey(), "err", err)
+		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED
+		message = "Failed to extend job lock"
+	}
+	return &proto.JobStreamResponse{
+		Error:        &proto.ErrorResult{Code: new(uint32(code)), Message: &message},
+		LockExtended: &proto.LockExtended{Key: req.Key},
 	}
 }
 

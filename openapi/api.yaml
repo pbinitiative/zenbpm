@@ -2440,6 +2440,100 @@ paths:
         415:
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /jobs/{jobKey}/extend-lock:
+    post:
+      operationId: extendJobLock
+      tags:
+        - job
+      summary: Extend the lock of a job delivered over the gRPC job stream
+      description: |
+        Moves the lock deadline of a job to now plus `lockDuration` (absent: the lock duration of the
+        subscription the job was delivered under, capped by `jobManager.maxLockDurationMs`) and answers
+        the new deadline. `clientId` is the client id of the job stream the job was delivered to; a job
+        which is not locked at the moment (the lock lapsed, the job was completed or failed) or which is
+        locked for a different client answers 409, and the job itself is left untouched. It exists for
+        workers which receive jobs over the stream but send their commands over REST. Jobs fetched through
+        `GET /jobs` hold no lock and cannot extend one.
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370540
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - clientId
+              properties:
+                clientId:
+                  type: string
+                  description: The client id of the job stream the job was delivered to.
+                lockDuration:
+                  type: string
+                  description: ISO-8601 duration to lock the job for, counted from now. Absent means the subscription's lock duration.
+                  example: PT5M
+            example:
+              clientId: "order-worker-1"
+              lockDuration: "PT5M"
+      responses:
+        200:
+          description: Lock extended
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - lockUntil
+                properties:
+                  lockUntil:
+                    type: string
+                    format: date-time
+                    description: When the extended lock lapses, on the clock of the partition leader.
+              example:
+                lockUntil: "2025-08-22T15:20:30Z"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: The lock is not held or is held by another client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   /jobs/{jobKey}/fail:
     post:
       operationId: failJob

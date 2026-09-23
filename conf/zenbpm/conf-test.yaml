@@ -4,6 +4,11 @@ httpServer:
   addr: :8080
 grpcServer:
   addr: :9090
+jobManager:
+  defaultLockDurationMs: 30000 #30s
+  maxLockDurationMs: 86400000 #24h
+  defaultMaxActiveJobs: 10
+  maxActiveJobsCap: 1000
 cluster:
   addr: localhost:8090
   adv: localhost:8090

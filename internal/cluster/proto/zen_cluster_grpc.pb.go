@@ -76,6 +76,7 @@ const (
 	ZenService_SubscribeJob_FullMethodName                           = "/cluster.ZenService/SubscribeJob"
 	ZenService_CompleteJob_FullMethodName                            = "/cluster.ZenService/CompleteJob"
 	ZenService_FailJob_FullMethodName                                = "/cluster.ZenService/FailJob"
+	ZenService_ExtendJobLock_FullMethodName                          = "/cluster.ZenService/ExtendJobLock"
 	ZenService_ReassignJob_FullMethodName                            = "/cluster.ZenService/ReassignJob"
 	ZenService_AssignJobToAssignee_FullMethodName                    = "/cluster.ZenService/AssignJobToAssignee"
 	ZenService_GetProcessDefinitionStatistics_FullMethodName         = "/cluster.ZenService/GetProcessDefinitionStatistics"
@@ -171,6 +172,8 @@ type ZenServiceClient interface {
 	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
 	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
 	FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error)
+	// Moves the lock deadline of a distributed job held by client_id to now plus lock_duration_ms.
+	ExtendJobLock(ctx context.Context, in *ExtendJobLockRequest, opts ...grpc.CallOption) (*ExtendJobLockResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 	AssignJobToAssignee(ctx context.Context, in *AssignJobToAssigneeRequest, opts ...grpc.CallOption) (*AssignJobToAssigneeResponse, error)
@@ -783,6 +786,16 @@ func (c *zenServiceClient) FailJob(ctx context.Context, in *FailJobRequest, opts
 	return out, nil
 }
 
+func (c *zenServiceClient) ExtendJobLock(ctx context.Context, in *ExtendJobLockRequest, opts ...grpc.CallOption) (*ExtendJobLockResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExtendJobLockResponse)
+	err := c.cc.Invoke(ctx, ZenService_ExtendJobLock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReassignJobResponse)
@@ -921,6 +934,8 @@ type ZenServiceServer interface {
 	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
 	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
 	FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error)
+	// Moves the lock deadline of a distributed job held by client_id to now plus lock_duration_ms.
+	ExtendJobLock(context.Context, *ExtendJobLockRequest) (*ExtendJobLockResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	AssignJobToAssignee(context.Context, *AssignJobToAssigneeRequest) (*AssignJobToAssigneeResponse, error)
@@ -1104,6 +1119,9 @@ func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRe
 }
 func (UnimplementedZenServiceServer) FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FailJob not implemented")
+}
+func (UnimplementedZenServiceServer) ExtendJobLock(context.Context, *ExtendJobLockRequest) (*ExtendJobLockResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExtendJobLock not implemented")
 }
 func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReassignJob not implemented")
@@ -2095,6 +2113,24 @@ func _ZenService_FailJob_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_ExtendJobLock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExtendJobLockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ExtendJobLock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_ExtendJobLock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ExtendJobLock(ctx, req.(*ExtendJobLockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_ReassignJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReassignJobRequest)
 	if err := dec(in); err != nil {
@@ -2391,6 +2427,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FailJob",
 			Handler:    _ZenService_FailJob_Handler,
+		},
+		{
+			MethodName: "ExtendJobLock",
+			Handler:    _ZenService_ExtendJobLock_Handler,
 		},
 		{
 			MethodName: "ReassignJob",

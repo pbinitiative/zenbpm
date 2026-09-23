@@ -20,6 +20,7 @@ Top-level configuration object.
 | `grpcServer`  | `GrpcServer` | Configuration of the public GRPC server     |
 | `tracing`     | `Tracing`    | Tracing and observability configuration     |
 | `cluster`     | `Cluster`    | Cluster and Raft consensus configuration    |
+| `jobManager`  | `JobManager` | Defaults and caps for job stream locks      |
 
 ---
 
@@ -258,6 +259,27 @@ Configuration for caching and storage.
 
 ---
 
+## Job Manager Configuration: `JobManager`
+
+Defaults and caps for what a gRPC job stream client may ask for per job type subscription: how long a
+delivered job stays locked for it (`lock_duration_ms`) and how many jobs of the type it may hold at
+once (`max_active_jobs`). A subscription which sends `0` gets the default; one which asks for more
+than the cap gets the cap. See [Jobs](jobs.md#job-locks).
+
+| Field                   | Type  | Env Variable                           | Default    | Description                                                               |
+|-------------------------|-------|----------------------------------------|------------|---------------------------------------------------------------------------|
+| `defaultLockDurationMs` | int64 | `JOB_MANAGER_DEFAULT_LOCK_DURATION_MS` | `30000`    | Lock duration applied to a subscription which does not name one (30 s)    |
+| `maxLockDurationMs`     | int64 | `JOB_MANAGER_MAX_LOCK_DURATION_MS`     | `86400000` | Longest lock a subscription or a lock extension may ask for (24 h)        |
+| `defaultMaxActiveJobs`  | int   | `JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS`  | `10`       | Active jobs per client and job type for a subscription which names no cap |
+| `maxActiveJobsCap`      | int   | `JOB_MANAGER_MAX_ACTIVE_JOBS_CAP`      | `1000`     | Largest active-job cap a subscription may ask for                         |
+
+All four values must be positive, each default must not exceed its cap, and `maxActiveJobsCap` must not
+exceed `2147483647`, the largest count a subscription can ask for; a violation ends the start with a
+message naming the field and its environment variable. A value left out takes the default; a `0`
+written in the YAML file or in the environment variable is a violation, not a request for the default.
+
+---
+
 ## Tracing Configuration: `Tracing`
 
 Distributed tracing settings using OpenTelemetry.
@@ -296,6 +318,11 @@ httpServer:
   maxRequestBodyBytes: 10485760
 grpcServer:
   addr: :9090
+jobManager:
+  defaultLockDurationMs: 30000 #30s
+  maxLockDurationMs: 86400000 #24h
+  defaultMaxActiveJobs: 10
+  maxActiveJobsCap: 1000
 cluster:
   addr: localhost:8090
   adv: localhost:8090

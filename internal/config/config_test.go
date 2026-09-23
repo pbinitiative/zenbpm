@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +66,8 @@ func TestRestoreSpoolDirDefaultsUnderTheDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("CLUSTER_RAFT_DIR", dataDir)
 
-	var c Config
+	// the whole configuration is validated, so the sections without env-defaults start from their defaults
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -81,7 +83,8 @@ func TestRestoreSpoolDirFromEnvIsMadeAbsolute(t *testing.T) {
 	t.Setenv("CLUSTER_RAFT_DIR", t.TempDir())
 	t.Setenv("CLUSTER_RESTORE_SPOOL_DIR", "restore-scratch")
 
-	var c Config
+	// the whole configuration is validated, so the sections without env-defaults start from their defaults
+	c := Config{JobManager: DefaultJobManager()}
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -288,5 +291,203 @@ func TestClusterDesiredPartitionsValidation(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "desiredPartitions=2") {
 		t.Errorf("error should name the offending value, got %q", err.Error())
+	}
+}
+
+func TestJobManagerDefaults(t *testing.T) {
+	for _, env := range []string{"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS", "JOB_MANAGER_MAX_LOCK_DURATION_MS", "JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"} {
+		t.Setenv(env, "")
+		if err := os.Unsetenv(env); err != nil {
+			t.Fatalf("failed to unset %s: %v", env, err)
+		}
+	}
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	expected := JobManager{DefaultLockDurationMs: 30000, MaxLockDurationMs: 86400000, DefaultMaxActiveJobs: 10, MaxActiveJobsCap: 1000}
+	if c.JobManager != expected {
+		t.Errorf("expected job manager defaults %+v, got %+v", expected, c.JobManager)
+	}
+	if err := c.JobManager.Validate(); err != nil {
+		t.Errorf("the defaults must validate, got %v", err)
+	}
+}
+
+// TestJobManagerOmittedInYAMLKeepsTheDefaults reads a file without a job
+// manager section the way InitConfig does.
+func TestJobManagerOmittedInYAMLKeepsTheDefaults(t *testing.T) {
+	unsetJobManagerEnv(t)
+	configFile := writeConfigFile(t, "httpServer:\n  addr: :8080\n")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	if c.JobManager != DefaultJobManager() {
+		t.Errorf("expected the defaults %+v, got %+v", DefaultJobManager(), c.JobManager)
+	}
+}
+
+func TestJobManagerFromEnv(t *testing.T) {
+	t.Setenv("JOB_MANAGER_DEFAULT_LOCK_DURATION_MS", "5000")
+	t.Setenv("JOB_MANAGER_MAX_LOCK_DURATION_MS", "60000")
+	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
+	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "40")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	expected := JobManager{DefaultLockDurationMs: 5000, MaxLockDurationMs: 60000, DefaultMaxActiveJobs: 4, MaxActiveJobsCap: 40}
+	if c.JobManager != expected {
+		t.Errorf("expected job manager settings %+v, got %+v", expected, c.JobManager)
+	}
+}
+
+func TestJobManagerFromYAML(t *testing.T) {
+	unsetJobManagerEnv(t)
+	configFile := writeConfigFile(t, "jobManager:\n  defaultLockDurationMs: 7000\n  maxLockDurationMs: 70000\n  defaultMaxActiveJobs: 7\n  maxActiveJobsCap: 70\n")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	expected := JobManager{DefaultLockDurationMs: 7000, MaxLockDurationMs: 70000, DefaultMaxActiveJobs: 7, MaxActiveJobsCap: 70}
+	if c.JobManager != expected {
+		t.Errorf("expected job manager settings %+v, got %+v", expected, c.JobManager)
+	}
+}
+
+// TestJobManagerZeroInYAMLIsAViolation shows a zero written in the file is
+// not taken for an omitted value: it stays zero and validation names it.
+func TestJobManagerZeroInYAMLIsAViolation(t *testing.T) {
+	unsetJobManagerEnv(t)
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{"zero default lock duration", "jobManager:\n  defaultLockDurationMs: 0\n", "jobManager.defaultLockDurationMs"},
+		{"zero max lock duration", "jobManager:\n  maxLockDurationMs: 0\n", "jobManager.maxLockDurationMs"},
+		{"zero default active jobs", "jobManager:\n  defaultMaxActiveJobs: 0\n", "jobManager.defaultMaxActiveJobs"},
+		{"zero active jobs cap", "jobManager:\n  maxActiveJobsCap: 0\n", "jobManager.maxActiveJobsCap"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configFile := writeConfigFile(t, tt.content)
+
+			c := Config{JobManager: DefaultJobManager()}
+			if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+				t.Fatalf("failed to read YAML config: %v", err)
+			}
+
+			err := c.JobManager.Validate()
+			if err == nil {
+				t.Fatalf("expected a zero in the file to be a violation, got %+v", c.JobManager)
+			}
+			if !strings.Contains(err.Error(), tt.expected) {
+				t.Errorf("expected the message to name %s, got %q", tt.expected, err)
+			}
+		})
+	}
+}
+
+func TestJobManagerZeroInEnvIsAViolation(t *testing.T) {
+	unsetJobManagerEnv(t)
+	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "0")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+
+	err := c.JobManager.Validate()
+	if err == nil || !strings.Contains(err.Error(), "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP") {
+		t.Errorf("expected a zero in the environment to be a violation naming the variable, got %v", err)
+	}
+}
+
+// TestJobManagerEnvOverridesTheFile shows the environment still wins over the
+// file, a zero in the file included.
+func TestJobManagerEnvOverridesTheFile(t *testing.T) {
+	unsetJobManagerEnv(t)
+	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
+	configFile := writeConfigFile(t, "jobManager:\n  defaultMaxActiveJobs: 0\n  maxActiveJobsCap: 70\n")
+
+	c := Config{JobManager: DefaultJobManager()}
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+
+	expected := JobManager{DefaultLockDurationMs: 30000, MaxLockDurationMs: 86400000, DefaultMaxActiveJobs: 4, MaxActiveJobsCap: 70}
+	if c.JobManager != expected {
+		t.Errorf("expected %+v, got %+v", expected, c.JobManager)
+	}
+	if err := c.JobManager.Validate(); err != nil {
+		t.Errorf("the overridden configuration must validate, got %v", err)
+	}
+}
+
+func unsetJobManagerEnv(t *testing.T) {
+	t.Helper()
+	for _, env := range []string{"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS", "JOB_MANAGER_MAX_LOCK_DURATION_MS", "JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"} {
+		t.Setenv(env, "")
+		if err := os.Unsetenv(env); err != nil {
+			t.Fatalf("failed to unset %s: %v", env, err)
+		}
+	}
+}
+
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	configFile := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(configFile, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+	return configFile
+}
+
+func TestJobManagerValidationNamesFieldAndEnvVariable(t *testing.T) {
+	valid := JobManager{DefaultLockDurationMs: 30000, MaxLockDurationMs: 86400000, DefaultMaxActiveJobs: 10, MaxActiveJobsCap: 1000}
+	tests := []struct {
+		name     string
+		mutate   func(*JobManager)
+		expected []string
+	}{
+		{"zero default lock duration", func(j *JobManager) { j.DefaultLockDurationMs = 0 }, []string{"jobManager.defaultLockDurationMs", "JOB_MANAGER_DEFAULT_LOCK_DURATION_MS"}},
+		{"negative max lock duration", func(j *JobManager) { j.MaxLockDurationMs = -1 }, []string{"jobManager.maxLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
+		{"default lock duration above its cap", func(j *JobManager) { j.DefaultLockDurationMs = j.MaxLockDurationMs + 1 }, []string{"jobManager.defaultLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
+		{"zero default active jobs", func(j *JobManager) { j.DefaultMaxActiveJobs = 0 }, []string{"jobManager.defaultMaxActiveJobs", "JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS"}},
+		{"zero active jobs cap", func(j *JobManager) { j.MaxActiveJobsCap = 0 }, []string{"jobManager.maxActiveJobsCap", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"}},
+		{"default active jobs above its cap", func(j *JobManager) { j.DefaultMaxActiveJobs = j.MaxActiveJobsCap + 1 }, []string{"jobManager.defaultMaxActiveJobs", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"}},
+		{"max lock duration the engine cannot represent", func(j *JobManager) { j.MaxLockDurationMs = MaxLockDurationMillis + 1 }, []string{"jobManager.maxLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
+		{"max lock duration at the int64 limit", func(j *JobManager) { j.MaxLockDurationMs = math.MaxInt64 }, []string{"jobManager.maxLockDurationMs", "JOB_MANAGER_MAX_LOCK_DURATION_MS"}},
+		{"active jobs cap above what the job stream carries", func(j *JobManager) { j.MaxActiveJobsCap = MaxActiveJobsCapLimit + 1 }, []string{"jobManager.maxActiveJobsCap", "JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := valid
+			tt.mutate(&conf)
+			err := conf.Validate()
+			if err == nil {
+				t.Fatal("expected a validation error")
+			}
+			for _, expected := range tt.expected {
+				if !strings.Contains(err.Error(), expected) {
+					t.Errorf("error %q should name %q", err.Error(), expected)
+				}
+			}
+		})
+	}
+	if err := valid.Validate(); err != nil {
+		t.Errorf("the valid configuration must pass, got %v", err)
+	}
+	largest := valid
+	largest.MaxLockDurationMs = MaxLockDurationMillis
+	largest.MaxActiveJobsCap = MaxActiveJobsCapLimit
+	if err := largest.Validate(); err != nil {
+		t.Errorf("the largest representable caps must pass, got %v", err)
 	}
 }

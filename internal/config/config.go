@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,6 +32,80 @@ type Config struct {
 	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
 	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
+	JobManager JobManager `yaml:"jobManager" json:"jobManager"` // defaults and caps for job locks handed to job stream clients
+}
+
+// JobManager bounds what a job stream client may ask for when it subscribes to a
+// job type: how long a delivered job stays locked for it and how many jobs of the
+// type it may hold at once. A subscription that sends zero for a value gets the
+// default; a subscription that asks for more than the cap gets the cap.
+//
+// The fields carry no env-default: the defaults are set by DefaultJobManager
+// before the file and the environment are read, so that a value left out keeps
+// its default while a zero written in the file or the environment stays zero
+// and fails validation, as a zero lock would let every lock lapse at once.
+type JobManager struct {
+	// DefaultLockDurationMs is the lock duration applied to a subscription that does not name one.
+	DefaultLockDurationMs int64 `yaml:"defaultLockDurationMs" json:"defaultLockDurationMs" env:"JOB_MANAGER_DEFAULT_LOCK_DURATION_MS"`
+	// MaxLockDurationMs caps the lock duration of a subscription and of a lock extension.
+	MaxLockDurationMs int64 `yaml:"maxLockDurationMs" json:"maxLockDurationMs" env:"JOB_MANAGER_MAX_LOCK_DURATION_MS"`
+	// DefaultMaxActiveJobs is the per-job-type active-job cap applied to a subscription that does not name one.
+	DefaultMaxActiveJobs int `yaml:"defaultMaxActiveJobs" json:"defaultMaxActiveJobs" env:"JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS"`
+	// MaxActiveJobsCap caps the per-job-type active-job cap a subscription may ask for.
+	MaxActiveJobsCap int `yaml:"maxActiveJobsCap" json:"maxActiveJobsCap" env:"JOB_MANAGER_MAX_ACTIVE_JOBS_CAP"`
+}
+
+// DefaultJobManager is the job manager section of a configuration which names
+// nothing: locks of 30 seconds, at most 24 hours, ten jobs per client and job
+// type, at most a thousand.
+func DefaultJobManager() JobManager {
+	return JobManager{
+		DefaultLockDurationMs: 30000,
+		MaxLockDurationMs:     86400000,
+		DefaultMaxActiveJobs:  10,
+		MaxActiveJobsCap:      1000,
+	}
+}
+
+// MaxLockDurationMillis is the largest lock duration, in milliseconds, the
+// engine can represent: a larger configured value would wrap to a negative
+// duration and let every lock lapse at once.
+const MaxLockDurationMillis = math.MaxInt64 / int64(time.Millisecond)
+
+// MaxActiveJobsCapLimit is the largest active-job cap a subscription can ask
+// for: the job stream carries the count as a 32-bit integer.
+const MaxActiveJobsCapLimit = math.MaxInt32
+
+// Validate rejects a job manager configuration whose defaults do not fit their
+// caps, which would let a lock lapse at once, or which allows more than the
+// job stream can carry. Every message names the field and its environment
+// variable.
+func (j JobManager) Validate() error {
+	if j.DefaultLockDurationMs <= 0 {
+		return fmt.Errorf("jobManager.defaultLockDurationMs (JOB_MANAGER_DEFAULT_LOCK_DURATION_MS) must be greater than zero, got %d", j.DefaultLockDurationMs)
+	}
+	if j.MaxLockDurationMs <= 0 {
+		return fmt.Errorf("jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) must be greater than zero, got %d", j.MaxLockDurationMs)
+	}
+	if j.MaxLockDurationMs > MaxLockDurationMillis {
+		return fmt.Errorf("jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) is %d but must not exceed %d, the longest duration the engine can represent", j.MaxLockDurationMs, MaxLockDurationMillis)
+	}
+	if j.DefaultLockDurationMs > j.MaxLockDurationMs {
+		return fmt.Errorf("jobManager.defaultLockDurationMs (JOB_MANAGER_DEFAULT_LOCK_DURATION_MS) is %d but must not exceed jobManager.maxLockDurationMs (JOB_MANAGER_MAX_LOCK_DURATION_MS) %d", j.DefaultLockDurationMs, j.MaxLockDurationMs)
+	}
+	if j.DefaultMaxActiveJobs <= 0 {
+		return fmt.Errorf("jobManager.defaultMaxActiveJobs (JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS) must be greater than zero, got %d", j.DefaultMaxActiveJobs)
+	}
+	if j.MaxActiveJobsCap <= 0 {
+		return fmt.Errorf("jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) must be greater than zero, got %d", j.MaxActiveJobsCap)
+	}
+	if j.MaxActiveJobsCap > MaxActiveJobsCapLimit {
+		return fmt.Errorf("jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) is %d but must not exceed %d, the largest count a subscription can ask for", j.MaxActiveJobsCap, MaxActiveJobsCapLimit)
+	}
+	if j.DefaultMaxActiveJobs > j.MaxActiveJobsCap {
+		return fmt.Errorf("jobManager.defaultMaxActiveJobs (JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS) is %d but must not exceed jobManager.maxActiveJobsCap (JOB_MANAGER_MAX_ACTIVE_JOBS_CAP) %d", j.DefaultMaxActiveJobs, j.MaxActiveJobsCap)
+	}
+	return nil
 }
 
 // TODO: clean up cluster & rqlite configuration
@@ -296,6 +371,9 @@ func (c *Config) validate() error {
 	if err := c.Cluster.ValidateDesiredPartitions(); err != nil {
 		return err
 	}
+	if err := c.JobManager.Validate(); err != nil {
+		return err
+	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv
 	}
@@ -368,7 +446,7 @@ func (c *Config) validate() error {
 }
 
 func InitConfig() Config {
-	c := Config{}
+	c := Config{JobManager: DefaultJobManager()}
 	var fileName string
 	confFile := os.Getenv("CONFIG_FILE")
 	if confFile == "" {

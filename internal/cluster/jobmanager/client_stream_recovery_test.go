@@ -20,15 +20,12 @@ func TestClientResubscribesAfterStreamLoss(t *testing.T) {
 	serverManager, completer := createServerNode(t, 1, listener, serverStore)
 	loader := completer.loader
 
-	clientStore := &testStore{
-		state:  *serverStore.state.DeepCopy(),
-		nodeId: "node-2",
-	}
+	clientStore := serverStore.forNode("node-2")
 	clientManager := createClientNode(t, clientStore)
 
 	clientJobs := make(chan Job)
 	require.NoError(t, clientManager.AddClient(t.Context(), "client-1", clientJobs))
-	require.NoError(t, clientManager.AddClientJobSub(t.Context(), "client-1", "test-job"))
+	require.NoError(t, clientManager.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{}))
 
 	firstBatch := generateJobs(1)
 	loader.addJobs(firstBatch...)
@@ -37,13 +34,13 @@ func TestClientResubscribesAfterStreamLoss(t *testing.T) {
 	require.NoError(t, clientManager.CompleteJobReq(t.Context(), "client-1", firstJob.Key, nil))
 
 	// Restart the leader-side server without publishing a role change to node-2.
-	serverStore.state.Partitions = map[uint32]state.Partition{}
+	serverStore.updateState(func(cluster *state.Cluster) { cluster.Partitions = map[uint32]state.Partition{} })
 	serverManager.OnPartitionRoleChange(t.Context())
-	assert.Nil(t, serverManager.server)
+	assert.Nil(t, serverManager.server.Load())
 
-	*serverStore = *getTestStore(listener)
+	serverStore.setState(getTestStore(listener).state)
 	serverManager.OnPartitionRoleChange(t.Context())
-	require.NotNil(t, serverManager.server)
+	require.NotNil(t, serverManager.server.Load())
 
 	secondBatch := generateJobs(1)
 	loader.addJobs(secondBatch...)

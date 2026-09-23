@@ -12,6 +12,7 @@ message JobStreamRequest{
     StreamSubscriptionRequest subscription = 1;
     JobCompleteRequest complete = 2;
     JobFailRequest fail = 3;
+    JobExtendLockRequest extend_lock = 4;
   }
 }
 
@@ -23,8 +24,14 @@ message StreamSubscriptionRequest{
   }
   string job_type = 1;
   Type type = 2;
-  // int32 lock_duration = 3; // the duration in ms that the job will be locked for completion only by client_id
-  // int32 max_active_jobs = 4; // maximum active jobs of provided job_type for current stream and client_id, uniqueness across streams is not guaranteed as new streams can reach different node in the cluster.
+  // How long a job of this type stays locked for this client after delivery, in milliseconds.
+  // 0 = the engine's default (jobManager.defaultLockDurationMs). A value above
+  // jobManager.maxLockDurationMs is capped, never rejected; the effective deadline is
+  // reported in lock_until of every delivery.
+  int64 lock_duration_ms = 3;
+  // How many jobs of this type this client may hold at once. 0 = the engine's default
+  // (jobManager.defaultMaxActiveJobs). A value above jobManager.maxActiveJobsCap is capped.
+  int32 max_active_jobs = 4;
 }
 
 message JobCompleteRequest{
@@ -39,9 +46,40 @@ message JobFailRequest{
   bytes variables = 4;
 }
 
+// Moves the lock deadline of a job this client holds to now plus lock_duration_ms.
+// The engine answers with a LockExtended carrying the new deadline, or with an
+// ErrorResult whose code is one of JobStreamErrorCode and a LockExtended carrying only the key.
+message JobExtendLockRequest{
+  int64 key = 1;
+  // 0 = extend by the lock_duration_ms of the subscription the job was delivered under.
+  // A value above jobManager.maxLockDurationMs is capped.
+  int64 lock_duration_ms = 2;
+}
+
 message JobStreamResponse {
   ErrorResult error = 1;
   WaitingJob job = 2;
+  // The answer to a JobExtendLockRequest. On an error it carries only the key.
+  LockExtended lock_extended = 3;
+}
+
+message LockExtended {
+  int64 key = 1;
+  // Unix milliseconds on the clock of the partition leader at which the lock lapses.
+  int64 lock_until = 2;
+}
+
+// Values of ErrorResult.code. Zero means the error carries no code.
+enum JobStreamErrorCode {
+  JOB_STREAM_ERROR_CODE_UNSPECIFIED = 0;
+  // The lock lapsed, the job was completed or failed, or it was never delivered to this stream.
+  JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD = 1;
+  // The job is currently locked for a different client id.
+  JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT = 2;
+  // The leader of the job's partition could not be reached or has just changed. The
+  // outcome is unconfirmed: the deadline may already have moved, and a leader change
+  // forgets the lock. Retry the extension in a moment.
+  JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE = 3;
 }
 
 message WaitingJob {
@@ -52,6 +90,12 @@ message WaitingJob {
   string element_id = 5;
   int64 created_at = 6;
   string element_type = 7;
+  // Unix milliseconds on the clock of the partition leader at which the lock this
+  // delivery holds lapses. With synchronised clocks, lock_until minus the local time
+  // estimates the remaining time; it is conservative, the leader counts the lock from
+  // the end of the send. When the clocks cannot be trusted, count the lock duration
+  // of the subscription from the moment of receipt instead of comparing timestamps.
+  int64 lock_until = 8;
 }
 
 message ErrorResult {

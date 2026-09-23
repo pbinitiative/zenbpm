@@ -555,6 +555,9 @@ type fakeBidiStream struct {
 	mu      sync.Mutex
 	sent    []*proto.JobStreamRequest
 	sendErr error
+	// blockSends makes every Send wait until the stream's context ends, the
+	// way a send to a peer which stopped reading blocks on flow control.
+	blockSends bool
 }
 
 type recvResult struct {
@@ -596,12 +599,24 @@ func (s *fakeBidiStream) sentRequests() []*proto.JobStreamRequest {
 
 func (s *fakeBidiStream) Send(req *proto.JobStreamRequest) error {
 	s.mu.Lock()
+	if s.blockSends {
+		s.mu.Unlock()
+		<-s.ctx.Done()
+		return s.ctx.Err()
+	}
 	defer s.mu.Unlock()
 	if s.sendErr != nil {
 		return s.sendErr
 	}
 	s.sent = append(s.sent, req)
 	return nil
+}
+
+// setBlockSends makes every subsequent Send block until the stream is cancelled.
+func (s *fakeBidiStream) setBlockSends() {
+	s.mu.Lock()
+	s.blockSends = true
+	s.mu.Unlock()
 }
 
 func (s *fakeBidiStream) Recv() (*proto.JobStreamResponse, error) {

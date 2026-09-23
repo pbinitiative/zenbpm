@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"slices"
 	"sync"
 	"time"
@@ -15,19 +16,22 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type clientSub struct {
 	ctx      context.Context
 	ch       chan Job
 	clientID ClientID
-	// jobTypes the client is subscribed to, kept so the subscriptions can be
-	// replayed to node streams that are opened later.
-	jobTypes map[JobType]struct{}
+	// jobTypes the client is subscribed to with the settings it asked for,
+	// kept so the subscriptions can be replayed to node streams that are opened later.
+	jobTypes map[JobType]SubscriptionSettings
 }
 
 type clientNodeStream struct {
@@ -52,7 +56,6 @@ func (s *clientNodeStream) closeSend() error {
 }
 
 type jobClient struct {
-	// TODO: add mechanism to handle max_active_jobs and lock_duration
 	clientSubs map[ClientID]*clientSub
 	clientMu   *sync.RWMutex
 
@@ -209,12 +212,8 @@ func (c *jobClient) subscribeNodeToPartition(partition uint32) bool {
 func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) bool {
 	requests := make([]*proto.SubscribeJobRequest, 0, len(c.clientSubs))
 	for clientID, sub := range c.clientSubs {
-		for jobType := range sub.jobTypes {
-			requests = append(requests, &proto.SubscribeJobRequest{
-				JobType:  new(string(jobType)),
-				Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
-				ClientId: new(string(clientID)),
-			})
+		for jobType, settings := range sub.jobTypes {
+			requests = append(requests, subscribeRequest(clientID, jobType, settings))
 		}
 	}
 	for _, req := range requests {
@@ -258,6 +257,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			CreatedAt:      resp.Job.GetCreatedAt(),
 			ElementType:    resp.Job.GetElementType(),
 			ClientID:       ClientID(resp.GetClientId()),
+			LockUntil:      resp.Job.GetLockUntil(),
 		}
 	}
 }
@@ -382,12 +382,12 @@ func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv 
 		ctx:      ctx,
 		ch:       clientRcv,
 		clientID: clientID,
-		jobTypes: map[JobType]struct{}{},
+		jobTypes: map[JobType]SubscriptionSettings{},
 	}
 	return nil
 }
 
-func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
+func (c *jobClient) removeClient(_ context.Context, clientID ClientID) {
 	var err error
 	removed := false
 	func() {
@@ -412,24 +412,101 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	}
 }
 
-func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+func (c *jobClient) addJobSub(_ context.Context, clientID ClientID, jobType JobType, settings SubscriptionSettings) error {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]
 	if !ok {
 		return fmt.Errorf("client %s is not registered", clientID)
 	}
-	sub.jobTypes[jobType] = struct{}{}
-	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  new(string(jobType)),
-		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
-		ClientId: new(string(clientID)),
-	})
+	sub.jobTypes[jobType] = settings
+	err := c.broadcastToNodes(subscribeRequest(clientID, jobType, settings))
 	if err != nil {
 		c.logger.Error("failed to broadcast client job subscription; desired state will be replayed", "clientID", clientID, "jobType", jobType, "err", err)
 		c.reconcileNodeSubscriptions()
 	}
 	return nil
+}
+
+// subscribeRequest is the subscription as relayed to a partition leader; the
+// settings travel verbatim, defaults and caps are the leader's business.
+func subscribeRequest(clientID ClientID, jobType JobType, settings SubscriptionSettings) *proto.SubscribeJobRequest {
+	return &proto.SubscribeJobRequest{
+		JobType:        new(string(jobType)),
+		Type:           proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
+		ClientId:       new(string(clientID)),
+		LockDurationMs: new(settings.LockDuration.Milliseconds()),
+		MaxActiveJobs:  new(activeJobsForWire(settings.MaxActiveJobs)),
+	}
+}
+
+// activeJobsForWire narrows an active-job count to the int32 the stream
+// carries without wrapping: a count above what the wire can hold saturates,
+// which the leader's cap then lowers, and a count below zero becomes zero,
+// the request for the engine default.
+func activeJobsForWire(count int) int32 {
+	if count > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if count < 0 {
+		return 0
+	}
+	return int32(count)
+}
+
+// extendLock asks the leader of the job's partition to move the lock deadline
+// of the job to now plus duration. A refusal comes back as ErrLockNotHeld or
+// ErrLockHeldByOtherClient so the caller can report it by code. A leader
+// which is not known, out of reach or too slow to answer, or which answers
+// that it does not lead the partition any more, comes back as
+// ErrLeaderUnavailable, so the caller can tell a leader change, which passes,
+// from a failure which does not; any other answer of the transport, such as a
+// node without this call, is such a failure. When the caller's own context
+// ended, that is what the error says, not the cluster.
+func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
+	}
+	partitionID := zenflake.GetPartitionId(jobKey)
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
+	}
+	resp, err := lClient.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
+		Key:            new(jobKey),
+		ClientId:       new(string(clientID)),
+		LockDurationMs: new(duration.Milliseconds()),
+	})
+	if err != nil {
+		if ctx.Err() == nil && leaderOutOfReach(err) {
+			return time.Time{}, fmt.Errorf("%w: the leader of partition %d did not answer the extension of job %d: %w", ErrLeaderUnavailable, partitionID, jobKey, err)
+		}
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
+	}
+	switch resp.GetRefusal() {
+	case proto.LockRefusal_LOCK_REFUSAL_NOT_HELD:
+		return time.Time{}, ErrLockNotHeld
+	case proto.LockRefusal_LOCK_REFUSAL_HELD_BY_OTHER_CLIENT:
+		return time.Time{}, ErrLockHeldByOtherClient
+	}
+	if resp.Error != nil {
+		if resp.Error.GetCode() == uint32(zenerr.ClusterErrorCode) {
+			return time.Time{}, fmt.Errorf("%w: %s", ErrLeaderUnavailable, resp.Error.GetMessage())
+		}
+		return time.Time{}, fmt.Errorf("failed to extend lock of job %d: %s", jobKey, resp.Error.GetMessage())
+	}
+	return time.UnixMilli(resp.GetLockUntil()), nil
+}
+
+// leaderOutOfReach reports whether a failed call to a leader says the leader
+// could not be reached or did not answer in time, the transient conditions
+// worth a retry, rather than that it refused or does not know the call.
+func leaderOutOfReach(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return true
+	}
+	return false
 }
 
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
@@ -468,6 +545,7 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 		Message:   &message,
 		ErrorCode: errorCode,
 		Variables: vars,
+		ClientId:  new(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to fail job %d from client: %w", jobKey, err)
@@ -475,7 +553,7 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 	return nil
 }
 
-func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+func (c *jobClient) removeJobSub(_ context.Context, clientID ClientID, jobType JobType) error {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 	sub, ok := c.clientSubs[clientID]

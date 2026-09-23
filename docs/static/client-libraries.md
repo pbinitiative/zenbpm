@@ -113,6 +113,20 @@ jobWorker := func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *
 
 zen.RegisterWorker(context.Background(), "my-client-id", jobWorker, "my-job-type")
 ```
+
+`RegisterWorker` subscribes with the engine's default lock duration and active-job cap. To ask for
+other values per job type, use `RegisterWorkerWithOptions`:
+```go
+worker, err := zen.RegisterWorkerWithOptions(context.Background(), "my-client-id", jobWorker,
+	zenclient.WithJobType("my-job-type", zenclient.WithLockDuration(5*time.Minute), zenclient.WithMaxActiveJobs(20)))
+```
+The engine caps both values at its configured maximum and reports the effective deadline in
+`job.GetLockUntil()`. The worker does not renew locks by itself: a handler which needs longer than
+its lock calls `worker.ExtendLock(ctx, job.GetKey(), 0)` before the deadline, with a `ctx` that
+carries a deadline. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
+leader could not be reached or has just changed: retry the call in a moment instead of failing the
+job, and count on the deadline of the last confirmed answer only, the outcome of the failed call is
+unknown. See [Jobs](../reference/jobs.md) for the lock semantics.
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

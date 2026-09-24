@@ -24,6 +24,100 @@ func TestReconciliationManager(t *testing.T) {
 		assert.Equal(t, int64(256), batchSize)
 	})
 
+	t.Run("publishes reconciliation manager before startup recovery", func(t *testing.T) {
+		store := newBlockingStartupRecoveryStorage()
+		engine := NewEngine(EngineWithStorage(store))
+		startResult := make(chan error, 1)
+		t.Cleanup(func() {
+			store.unblock()
+			engine.Stop()
+		})
+
+		go func() {
+			startResult <- engine.Start(t.Context())
+		}()
+
+		select {
+		case <-store.entered:
+		case <-time.After(time.Second):
+			t.Fatal("startup recovery was not reached")
+		}
+		publishedManager := engine.currentReconciliationManager()
+		store.unblock()
+
+		require.NoError(t, <-startResult)
+		require.NotNil(t, publishedManager)
+		assert.Same(t, publishedManager, engine.currentReconciliationManager())
+	})
+
+	t.Run("stop interrupts startup recovery", func(t *testing.T) {
+		store := newBlockingStartupRecoveryStorage()
+		engine := NewEngine(EngineWithStorage(store))
+		startResult := make(chan error, 1)
+		t.Cleanup(func() {
+			store.unblock()
+			engine.Stop()
+		})
+
+		go func() {
+			startResult <- engine.Start(t.Context())
+		}()
+		select {
+		case <-store.entered:
+		case <-time.After(time.Second):
+			t.Fatal("startup recovery was not reached")
+		}
+
+		stopDone := make(chan struct{})
+		go func() {
+			engine.Stop()
+			close(stopDone)
+		}()
+		select {
+		case <-stopDone:
+		case <-time.After(time.Second):
+			t.Fatal("Stop did not interrupt startup recovery")
+		}
+
+		require.ErrorIs(t, <-startResult, context.Canceled)
+		assert.Nil(t, engine.currentReconciliationManager())
+	})
+
+	t.Run("synchronizes manager replacement with wake delivery", func(t *testing.T) {
+		engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+		t.Cleanup(engine.Stop)
+		first := newReconciliationManager(&engine, time.Hour, time.Hour, 1)
+		second := newReconciliationManager(&engine, time.Hour, time.Hour, 1)
+		defer first.stop()
+		defer second.stop()
+		require.Nil(t, engine.swapReconciliationManager(first))
+
+		var waitGroup sync.WaitGroup
+		waitGroup.Add(2)
+		start := make(chan struct{})
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			for i := 0; i < 1_000; i++ {
+				engine.wakeReconciliation(int64(i + 1))
+			}
+		}()
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			for i := 0; i < 1_000; i++ {
+				if i%2 == 0 {
+					engine.swapReconciliationManager(second)
+				} else {
+					engine.swapReconciliationManager(first)
+				}
+			}
+		}()
+		close(start)
+		waitGroup.Wait()
+		engine.swapReconciliationManager(nil)
+	})
+
 	t.Run("job continuation survives request cancellation after commit", func(t *testing.T) {
 		store := &cancelAfterFlushStorage{Storage: inmemory.NewStorage()}
 		engine := NewEngine(EngineWithStorage(store))
@@ -114,7 +208,7 @@ func TestReconciliationManager(t *testing.T) {
 		engine.reconciliationInterval = time.Hour
 		require.NoError(t, engine.Start(t.Context()))
 		t.Cleanup(engine.Stop)
-		engine.reconciliationManager.stop()
+		engine.swapReconciliationManager(nil).stop()
 
 		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 		require.NoError(t, err)
@@ -137,7 +231,7 @@ func TestReconciliationManager(t *testing.T) {
 		engine.reconciliationBatchSize = 1
 		require.NoError(t, engine.Start(t.Context()))
 		t.Cleanup(engine.Stop)
-		engine.reconciliationManager.stop()
+		engine.swapReconciliationManager(nil).stop()
 
 		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 		require.NoError(t, err)
@@ -149,8 +243,9 @@ func TestReconciliationManager(t *testing.T) {
 		firstToken := persistJobCompletionWithoutContinuation(t, &engine, store, requireSinglePendingJob(t, store, first.ProcessInstance().Key))
 		secondToken := persistJobCompletionWithoutContinuation(t, &engine, store, requireSinglePendingJob(t, store, second.ProcessInstance().Key))
 
-		engine.reconciliationManager = newReconciliationManager(&engine, 10*time.Millisecond, time.Millisecond, 1)
-		engine.reconciliationManager.start()
+		reconciliationManager := newReconciliationManager(&engine, 10*time.Millisecond, time.Millisecond, 1)
+		require.Nil(t, engine.swapReconciliationManager(reconciliationManager))
+		reconciliationManager.start()
 
 		require.Eventually(t, func() bool {
 			firstPersisted, firstErr := store.GetTokenByKey(t.Context(), firstToken.Key)
@@ -159,7 +254,7 @@ func TestReconciliationManager(t *testing.T) {
 				firstPersisted.State == runtime.TokenStateCompleted &&
 				secondPersisted.State == runtime.TokenStateCompleted
 		}, time.Second, 5*time.Millisecond)
-		engine.reconciliationManager.stop()
+		engine.swapReconciliationManager(nil).stop()
 
 		firstPersisted, err := store.FindProcessInstanceByKey(t.Context(), first.ProcessInstance().Key)
 		require.NoError(t, err)
@@ -177,7 +272,7 @@ func TestReconciliationManager(t *testing.T) {
 		engine.reconciliationInterval = time.Hour
 		require.NoError(t, engine.Start(t.Context()))
 		t.Cleanup(engine.Stop)
-		engine.reconciliationManager.stop()
+		engine.swapReconciliationManager(nil).stop()
 
 		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 		require.NoError(t, err)
@@ -226,7 +321,7 @@ func TestReconciliationManager(t *testing.T) {
 		seeder.reconciliationInterval = time.Hour
 		seeder.reconciliationBatchSize = 1
 		require.NoError(t, seeder.Start(t.Context()))
-		seeder.reconciliationManager.stop()
+		seeder.swapReconciliationManager(nil).stop()
 		t.Cleanup(seeder.Stop)
 
 		definition, err := seeder.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
@@ -325,6 +420,44 @@ type cancelAfterFlushStorage struct {
 	*inmemory.Storage
 	mu     sync.Mutex
 	cancel context.CancelFunc
+}
+
+type blockingStartupRecoveryStorage struct {
+	*inmemory.Storage
+	entered     chan struct{}
+	release     chan struct{}
+	enteredOnce sync.Once
+	releaseOnce sync.Once
+}
+
+func newBlockingStartupRecoveryStorage() *blockingStartupRecoveryStorage {
+	return &blockingStartupRecoveryStorage{
+		Storage: inmemory.NewStorage(),
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (store *blockingStartupRecoveryStorage) FindRunningTokensAfter(
+	ctx context.Context,
+	afterTokenKey int64,
+	limit int64,
+) ([]runtime.ExecutionToken, error) {
+	store.enteredOnce.Do(func() {
+		close(store.entered)
+	})
+	select {
+	case <-store.release:
+		return store.Storage.FindRunningTokensAfter(ctx, afterTokenKey, limit)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (store *blockingStartupRecoveryStorage) unblock() {
+	store.releaseOnce.Do(func() {
+		close(store.release)
+	})
 }
 
 func (store *cancelAfterFlushStorage) cancelNextSuccessfulFlush(cancel context.CancelFunc) {

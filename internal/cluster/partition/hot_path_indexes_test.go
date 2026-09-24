@@ -85,37 +85,29 @@ func TestHotPathIndexes(t *testing.T) {
 
 	db := newTestDB(t, partition, conf, clientMgr, testStore, "test-hot-path-indexes")
 
-	t.Run("new index use cases (added in 0012)", func(t *testing.T) {
-		tests := newIndexUseCases()
+	for _, tt := range newIndexUseCases() {
+		t.Run("new index: "+tt.name, func(t *testing.T) {
+			details := explainQueryPlan(t, db, tt.query, tt.arguments...)
+			plan := strings.Join(details, "\n")
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				details := explainQueryPlan(t, db, tt.query, tt.arguments...)
-				plan := strings.Join(details, "\n")
+			// SQLite prints either "USING INDEX <name>" or "USING COVERING INDEX <name>"
+			// (the latter when the index covers every column the query needs).
+			require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
+			require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
+		})
+	}
 
-				// SQLite prints either "USING INDEX <name>" or "USING COVERING INDEX <name>"
-				// (the latter when the index covers every column the query needs).
-				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
-				require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
-			})
-		}
-	})
+	for _, tt := range pinnedIndexUseCases() {
+		t.Run("pinned index: "+tt.name, func(t *testing.T) {
+			details := explainQueryPlan(t, db, tt.query, tt.arguments...)
+			plan := strings.Join(details, "\n")
 
-	t.Run("pinned index use cases (must use a specific older index)", func(t *testing.T) {
-		tests := pinnedIndexUseCases()
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				details := explainQueryPlan(t, db, tt.query, tt.arguments...)
-				plan := strings.Join(details, "\n")
-
-				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
-				for _, target := range tt.scanTargets {
-					require.NotContains(t, plan, "SCAN "+target, "query plan:\n%s", plan)
-				}
-			})
-		}
-	})
+			require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
+			for _, target := range tt.scanTargets {
+				require.NotContains(t, plan, "SCAN "+target, "query plan:\n%s", plan)
+			}
+		})
+	}
 
 	t.Run("rollback removes and forward migration restores indexes", func(t *testing.T) {
 		migration := findMigration(t, "0012_hot_path_indexes.up.sql")
@@ -226,7 +218,7 @@ func pinnedIndexUseCases() []pinnedIndexUseCase {
 	return []pinnedIndexUseCase{
 		{
 			name:        "running token reconciliation uses token history index",
-			scanTargets: []string{"history", "flow_element_instance"},
+			scanTargets: []string{"token", "execution_token", "history", "flow_element_instance"},
 			index:       "idx_flow_element_instance_execution_token_key",
 			query:       recoverableRunningTokensQuery,
 			arguments:   []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},

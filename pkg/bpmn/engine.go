@@ -34,17 +34,23 @@ import (
 // Engine holds the state of the bpmn engine.
 // It interacts with the outside world using persistence storage interface and outside world interacts with it using public methods (message correlations, job updates, ...).
 type Engine struct {
-	context               context.Context
-	contextCancel         context.CancelFunc
-	taskhandlersMu        *sync.RWMutex // we can probably remove this once we fix tests reuse same handler matchers
-	taskHandlers          []*taskHandler
-	exporters             []exporter.EventExporter
-	persistence           storage.Storage
-	logger                hclog.Logger
-	tracer                trace.Tracer
-	meter                 metric.Meter
-	metrics               *otelPkg.EngineMetrics
-	timerManager          *timerManager
+	context        context.Context
+	contextCancel  context.CancelFunc
+	taskhandlersMu *sync.RWMutex // we can probably remove this once we fix tests reuse same handler matchers
+	taskHandlers   []*taskHandler
+	exporters      []exporter.EventExporter
+	persistence    storage.Storage
+	logger         hclog.Logger
+	tracer         trace.Tracer
+	meter          metric.Meter
+	metrics        *otelPkg.EngineMetrics
+	timerManager   *timerManager
+	// lifecycleMu serializes timer and reconciliation manager replacement without
+	// covering startup persistence work, which Stop must remain able to cancel.
+	lifecycleMu *sync.Mutex
+	// reconciliationMu protects publication and wake delivery. It is a pointer because
+	// NewEngine returns Engine by value and engine copies must share the same lock.
+	reconciliationMu      *sync.RWMutex
 	reconciliationManager *reconciliationManager
 	dmnEngine             *dmn.ZenDmnEngine
 	feelRuntime           script.FeelRuntime
@@ -186,6 +192,8 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 		tracer:                          tracer,
 		meter:                           meter,
 		metrics:                         metrics,
+		lifecycleMu:                     &sync.Mutex{},
+		reconciliationMu:                &sync.RWMutex{},
 		maxProcessInstanceNestingDepth:  DefaultMaxProcessInstanceNestingDepth,
 		maxProcessInstanceFlowNodeCount: DefaultMaxProcessInstanceFlowNodeCount,
 		stopOnce:                        &sync.Once{},

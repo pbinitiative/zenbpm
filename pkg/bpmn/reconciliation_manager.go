@@ -238,7 +238,39 @@ func (engine *Engine) wakeReconciliationAfterContinuationFailure(
 }
 
 func (engine *Engine) wakeReconciliation(processInstanceKey int64) {
+	engine.reconciliationMu.RLock()
+	defer engine.reconciliationMu.RUnlock()
+
 	if engine.reconciliationManager != nil {
 		engine.reconciliationManager.wake(processInstanceKey)
 	}
+}
+
+// swapReconciliationManager publishes replacement before returning the previous manager.
+// wakeReconciliation holds the read lock through the non-blocking delivery, so once this
+// method returns no new wake can be sent to the previous manager.
+func (engine *Engine) swapReconciliationManager(replacement *reconciliationManager) *reconciliationManager {
+	engine.reconciliationMu.Lock()
+	defer engine.reconciliationMu.Unlock()
+
+	previous := engine.reconciliationManager
+	engine.reconciliationManager = replacement
+	return previous
+}
+
+func (engine *Engine) currentReconciliationManager() *reconciliationManager {
+	engine.reconciliationMu.RLock()
+	defer engine.reconciliationMu.RUnlock()
+	return engine.reconciliationManager
+}
+
+func (engine *Engine) detachReconciliationManager(expected *reconciliationManager) *reconciliationManager {
+	engine.reconciliationMu.Lock()
+	defer engine.reconciliationMu.Unlock()
+
+	if engine.reconciliationManager != expected {
+		return nil
+	}
+	engine.reconciliationManager = nil
+	return expected
 }

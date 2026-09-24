@@ -21,12 +21,6 @@ import (
 // Start will start the process engine instance.ProcessInstance().
 // Engine will start to pull process instances with execution tokens that need to be processed
 func (engine *Engine) Start(ctx context.Context) error {
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
-	}
-	if engine.reconciliationManager != nil {
-		engine.reconciliationManager.stop()
-	}
 	pollTimerDelay := engine.pollTimerDelay
 	if pollTimerDelay == 0 {
 		pollTimerDelaySecondsStr := os.Getenv("POLL_TIMER_DELAY_SECONDS")
@@ -42,20 +36,39 @@ func (engine *Engine) Start(ctx context.Context) error {
 			}
 		}
 	}
-	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
-	engine.timerManager.start()
-	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
+
+	reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize := engine.reconciliationSettings()
+	reconciliationManager := newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
+	timerManager := newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
+
+	engine.lifecycleMu.Lock()
+	if engine.timerManager != nil {
 		engine.timerManager.stop()
+	}
+	previousReconciliationManager := engine.swapReconciliationManager(reconciliationManager)
+	if previousReconciliationManager != nil {
+		previousReconciliationManager.stop()
+	}
+	reconciliationManager.start()
+	engine.timerManager = timerManager
+	timerManager.start()
+	engine.lifecycleMu.Unlock()
+
+	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
+		engine.lifecycleMu.Lock()
+		if engine.timerManager == timerManager {
+			timerManager.stop()
+		}
+		if activeReconciliationManager := engine.detachReconciliationManager(reconciliationManager); activeReconciliationManager != nil {
+			activeReconciliationManager.stop()
+		}
+		engine.lifecycleMu.Unlock()
 		return err
 	}
 
 	if err := engine.recoverInstantiatingReceiveTaskSubscriptions(engine.context); err != nil {
 		engine.logger.Error(fmt.Sprintf("failed to recover instantiating receive task subscriptions: %s", err.Error()))
 	}
-
-	reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize := engine.reconciliationSettings()
-	engine.reconciliationManager = newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
-	engine.reconciliationManager.start()
 
 	return nil
 }
@@ -109,6 +122,9 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 // Runtimes injected through EngineWithStorageAndFeel or EngineWithJs remain owned by the caller and are left running.
 // Calling Stop multiple times is safe.
 func (engine *Engine) Stop() {
+	engine.lifecycleMu.Lock()
+	defer engine.lifecycleMu.Unlock()
+
 	// The timer manager and the engine context are deliberately handled outside stopOnce. Both operations are
 	// idempotent and must always act on the receiver's current state: Start may create a fresh timer manager
 	// after a previous Stop, and (because NewEngine returns Engine by value) a copy sharing the same stopOnce
@@ -117,8 +133,8 @@ func (engine *Engine) Stop() {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
-	if engine.reconciliationManager != nil {
-		engine.reconciliationManager.stop()
+	if reconciliationManager := engine.swapReconciliationManager(nil); reconciliationManager != nil {
+		reconciliationManager.stop()
 	}
 	engine.contextCancel()
 	// Owned script pools are released exactly once, even when Stop is called repeatedly or concurrently.

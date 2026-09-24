@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -31,6 +32,17 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
+// engineLifecycle owns the background managers started by an Engine. NewEngine
+// returns Engine by value, so this state must be shared by every value copy.
+type engineLifecycle struct {
+	managerMu sync.Mutex
+
+	timerManager atomic.Pointer[timerManager]
+
+	reconciliationMu      sync.RWMutex
+	reconciliationManager *reconciliationManager
+}
+
 // Engine holds the state of the bpmn engine.
 // It interacts with the outside world using persistence storage interface and outside world interacts with it using public methods (message correlations, job updates, ...).
 type Engine struct {
@@ -44,17 +56,10 @@ type Engine struct {
 	tracer         trace.Tracer
 	meter          metric.Meter
 	metrics        *otelPkg.EngineMetrics
-	timerManager   *timerManager
-	// lifecycleMu serializes timer and reconciliation manager replacement without
-	// covering startup persistence work, which Stop must remain able to cancel.
-	lifecycleMu *sync.Mutex
-	// reconciliationMu protects publication and wake delivery. It is a pointer because
-	// NewEngine returns Engine by value and engine copies must share the same lock.
-	reconciliationMu      *sync.RWMutex
-	reconciliationManager *reconciliationManager
-	dmnEngine             *dmn.ZenDmnEngine
-	feelRuntime           script.FeelRuntime
-	jsRuntime             script.JsRuntime
+	lifecycle      *engineLifecycle
+	dmnEngine      *dmn.ZenDmnEngine
+	feelRuntime    script.FeelRuntime
+	jsRuntime      script.JsRuntime
 
 	// ownsFeelRuntime reports whether the engine created feelRuntime itself and is therefore responsible for stopping it.
 	// Runtimes injected through EngineWithStorageAndFeel remain owned by the caller and are never stopped by the engine.
@@ -65,9 +70,9 @@ type Engine struct {
 	ownsJsRuntime bool
 
 	// stopOnce guarantees that Stop releases engine-owned script pools (DMN engine, FEEL and JavaScript runtimes)
-	// exactly once, even when Stop is called multiple times or from multiple goroutines. Timer manager shutdown and
-	// context cancellation are intentionally NOT guarded by it (see Stop). It is a pointer because Engine values are
-	// copied (NewEngine returns Engine by value).
+	// exactly once, even when Stop is called multiple times or from multiple goroutines. Background-manager shutdown
+	// and context cancellation are intentionally NOT guarded by it (see Stop). It is a pointer because Engine values
+	// are copied (NewEngine returns Engine by value).
 	stopOnce *sync.Once
 
 	// constructed is set once newEngine has finished applying options and creating default runtimes.
@@ -192,8 +197,7 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 		tracer:                          tracer,
 		meter:                           meter,
 		metrics:                         metrics,
-		lifecycleMu:                     &sync.Mutex{},
-		reconciliationMu:                &sync.RWMutex{},
+		lifecycle:                       &engineLifecycle{},
 		maxProcessInstanceNestingDepth:  DefaultMaxProcessInstanceNestingDepth,
 		maxProcessInstanceFlowNodeCount: DefaultMaxProcessInstanceFlowNodeCount,
 		stopOnce:                        &sync.Once{},
@@ -985,8 +989,8 @@ func (engine *Engine) createTimerStartEventTimers(
 		// Definition reconciliation during restore uses an engine that is never
 		// started. Persist the timer now; the real engine's timer manager will
 		// discover it when maintenance mode ends.
-		if engine.timerManager != nil {
-			engine.timerManager.registerTimer(saved)
+		if timerManager := engine.currentTimerManager(); timerManager != nil {
+			timerManager.registerTimer(saved)
 		}
 		if !viaEngineBatch {
 			engine.recordTimerMetric(ctx, saved)

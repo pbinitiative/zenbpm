@@ -36,7 +36,9 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 		return currentToken, fmt.Errorf("failed to save timer: %w", err)
 	}
 	batch.AddPostFlushAction(ctx, func() {
-		engine.timerManager.registerTimer(*timer)
+		if timerManager := engine.currentTimerManager(); timerManager != nil {
+			timerManager.registerTimer(*timer)
+		}
 	})
 
 	currentToken.State = runtime.TokenStateWaiting
@@ -55,9 +57,13 @@ func (engine *Engine) cancelTimer(ctx context.Context, batch *EngineBatch, timer
 	// its waiter cannot fire and contend on the instance lock while the cancelling batch is still
 	// open. The cost is the failed-flush recovery gap described above; do not defer this removal
 	// entirely to the post-flush action.
-	engine.timerManager.removeTimer(timer)
+	if timerManager := engine.currentTimerManager(); timerManager != nil {
+		timerManager.removeTimer(timer)
+	}
 	batch.AddPostFlushAction(ctx, func() {
-		engine.timerManager.tombstoneCancelledTimer(timer)
+		if timerManager := engine.currentTimerManager(); timerManager != nil {
+			timerManager.tombstoneCancelledTimer(timer)
+		}
 	})
 	return nil
 }

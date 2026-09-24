@@ -505,7 +505,9 @@ func (engine *Engine) persistNextCycleTimer(ctx context.Context, batch *EngineBa
 		return fmt.Errorf("failed to save next cycle timer for element %s: %w", elementId, err)
 	}
 	batch.AddPostFlushAction(ctx, func() {
-		engine.timerManager.registerTimer(timer)
+		if timerManager := engine.currentTimerManager(); timerManager != nil {
+			timerManager.registerTimer(timer)
+		}
 	})
 	return nil
 }

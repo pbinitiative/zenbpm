@@ -238,11 +238,11 @@ func (engine *Engine) wakeReconciliationAfterContinuationFailure(
 }
 
 func (engine *Engine) wakeReconciliation(processInstanceKey int64) {
-	engine.reconciliationMu.RLock()
-	defer engine.reconciliationMu.RUnlock()
+	engine.lifecycle.reconciliationMu.RLock()
+	defer engine.lifecycle.reconciliationMu.RUnlock()
 
-	if engine.reconciliationManager != nil {
-		engine.reconciliationManager.wake(processInstanceKey)
+	if engine.lifecycle.reconciliationManager != nil {
+		engine.lifecycle.reconciliationManager.wake(processInstanceKey)
 	}
 }
 
@@ -250,27 +250,27 @@ func (engine *Engine) wakeReconciliation(processInstanceKey int64) {
 // wakeReconciliation holds the read lock through the non-blocking delivery, so once this
 // method returns no new wake can be sent to the previous manager.
 func (engine *Engine) swapReconciliationManager(replacement *reconciliationManager) *reconciliationManager {
-	engine.reconciliationMu.Lock()
-	defer engine.reconciliationMu.Unlock()
+	engine.lifecycle.reconciliationMu.Lock()
+	defer engine.lifecycle.reconciliationMu.Unlock()
 
-	previous := engine.reconciliationManager
-	engine.reconciliationManager = replacement
+	previous := engine.lifecycle.reconciliationManager
+	engine.lifecycle.reconciliationManager = replacement
 	return previous
 }
 
 func (engine *Engine) currentReconciliationManager() *reconciliationManager {
-	engine.reconciliationMu.RLock()
-	defer engine.reconciliationMu.RUnlock()
-	return engine.reconciliationManager
+	engine.lifecycle.reconciliationMu.RLock()
+	defer engine.lifecycle.reconciliationMu.RUnlock()
+	return engine.lifecycle.reconciliationManager
 }
 
 func (engine *Engine) detachReconciliationManager(expected *reconciliationManager) *reconciliationManager {
-	engine.reconciliationMu.Lock()
-	defer engine.reconciliationMu.Unlock()
+	engine.lifecycle.reconciliationMu.Lock()
+	defer engine.lifecycle.reconciliationMu.Unlock()
 
-	if engine.reconciliationManager != expected {
+	if engine.lifecycle.reconciliationManager != expected {
 		return nil
 	}
-	engine.reconciliationManager = nil
+	engine.lifecycle.reconciliationManager = nil
 	return expected
 }

@@ -65,6 +65,10 @@ func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFu
 	}
 }
 
+func (engine *Engine) currentTimerManager() *timerManager {
+	return engine.lifecycle.timerManager.Load()
+}
+
 // registerTimer will register the time if its due date is in the current cycle
 func (tm *timerManager) registerTimer(timer runtime.Timer) {
 	tm.mu.RLock()

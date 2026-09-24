@@ -41,28 +41,28 @@ func (engine *Engine) Start(ctx context.Context) error {
 	reconciliationManager := newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
 	timerManager := newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
 
-	engine.lifecycleMu.Lock()
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
+	engine.lifecycle.managerMu.Lock()
+	if currentTimerManager := engine.lifecycle.timerManager.Load(); currentTimerManager != nil {
+		currentTimerManager.stop()
 	}
 	previousReconciliationManager := engine.swapReconciliationManager(reconciliationManager)
 	if previousReconciliationManager != nil {
 		previousReconciliationManager.stop()
 	}
 	reconciliationManager.start()
-	engine.timerManager = timerManager
 	timerManager.start()
-	engine.lifecycleMu.Unlock()
+	engine.lifecycle.timerManager.Store(timerManager)
+	engine.lifecycle.managerMu.Unlock()
 
 	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
-		engine.lifecycleMu.Lock()
-		if engine.timerManager == timerManager {
+		engine.lifecycle.managerMu.Lock()
+		if engine.lifecycle.timerManager.Load() == timerManager {
 			timerManager.stop()
 		}
 		if activeReconciliationManager := engine.detachReconciliationManager(reconciliationManager); activeReconciliationManager != nil {
 			activeReconciliationManager.stop()
 		}
-		engine.lifecycleMu.Unlock()
+		engine.lifecycle.managerMu.Unlock()
 		return err
 	}
 
@@ -122,16 +122,13 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 // Runtimes injected through EngineWithStorageAndFeel or EngineWithJs remain owned by the caller and are left running.
 // Calling Stop multiple times is safe.
 func (engine *Engine) Stop() {
-	engine.lifecycleMu.Lock()
-	defer engine.lifecycleMu.Unlock()
+	engine.lifecycle.managerMu.Lock()
+	defer engine.lifecycle.managerMu.Unlock()
 
-	// The timer manager and the engine context are deliberately handled outside stopOnce. Both operations are
-	// idempotent and must always act on the receiver's current state: Start may create a fresh timer manager
-	// after a previous Stop, and (because NewEngine returns Engine by value) a copy sharing the same stopOnce
-	// may be stopped before the running engine. Guarding them with the one-shot Once would leave the live
-	// timer manager goroutine running forever in both cases.
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
+	// Manager shutdown and context cancellation are deliberately handled outside stopOnce. They are idempotent
+	// and must always act on the current shared lifecycle because Start may install fresh managers after a prior Stop.
+	if timerManager := engine.lifecycle.timerManager.Load(); timerManager != nil {
+		timerManager.stop()
 	}
 	if reconciliationManager := engine.swapReconciliationManager(nil); reconciliationManager != nil {
 		reconciliationManager.stop()

@@ -2,6 +2,7 @@ package inmemory
 
 import (
 	"cmp"
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -1011,65 +1012,127 @@ func (mem *Storage) GetRunningTokens(_ context.Context) ([]bpmnruntime.Execution
 	return activeTokens, nil
 }
 
-func (mem *Storage) FindRunningTokensAfter(_ context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) FindRunningTokensAfter(ctx context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	activeTokens := make([]bpmnruntime.ExecutionToken, 0)
+	activeTokens := make(tokenMaxHeap, 0)
 	for _, token := range mem.ExecutionTokens {
-		if token.State == bpmnruntime.TokenStateRunning && token.Key > afterTokenKey {
-			activeTokens = append(activeTokens, token)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if token.State == bpmnruntime.TokenStateRunning && token.Key > afterTokenKey && mem.hasRecoverableInstance(token.ProcessInstanceKey) {
+			activeTokens.add(token, limit)
 		}
 	}
 	slices.SortFunc(activeTokens, func(a, b bpmnruntime.ExecutionToken) int {
 		return cmp.Compare(a.Key, b.Key)
 	})
-	if limit >= 0 && int64(len(activeTokens)) > limit {
-		activeTokens = activeTokens[:limit]
-	}
 	return activeTokens, nil
 }
 
 func (mem *Storage) FindRecoverableRunningTokens(
-	_ context.Context,
+	ctx context.Context,
 	afterTokenKey int64,
 	runningBefore time.Time,
 	limit int64,
 ) ([]bpmnruntime.ExecutionToken, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 
 	cutoffMillis := runningBefore.UnixMilli()
-	tokens := make([]bpmnruntime.ExecutionToken, 0)
+	candidates := make(map[int64]bpmnruntime.ExecutionToken)
 	for _, token := range mem.ExecutionTokens {
-		if token.State != bpmnruntime.TokenStateRunning || token.Key <= afterTokenKey {
-			continue
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-
-		runningSinceMillis := token.CreatedAt.UnixMilli()
-		for _, history := range mem.FlowElementInstance {
-			if history.ExecutionTokenKey != token.Key {
-				continue
-			}
-			historyMillis := history.CreatedAt.UnixMilli()
-			if history.CompletedAt != nil {
-				historyMillis = history.CompletedAt.UnixMilli()
-			}
-			if historyMillis > runningSinceMillis {
-				runningSinceMillis = historyMillis
-			}
-		}
-		if runningSinceMillis < cutoffMillis {
-			tokens = append(tokens, token)
+		if token.State == bpmnruntime.TokenStateRunning && token.Key > afterTokenKey && mem.hasRecoverableInstance(token.ProcessInstanceKey) {
+			candidates[token.Key] = token
 		}
 	}
-
+	if len(candidates) == 0 {
+		return []bpmnruntime.ExecutionToken{}, nil
+	}
+	latestActivity := make(map[int64]int64, len(candidates))
+	for _, history := range mem.FlowElementInstance {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, wanted := candidates[history.ExecutionTokenKey]; !wanted {
+			continue
+		}
+		historyMillis := history.CreatedAt.UnixMilli()
+		if history.CompletedAt != nil {
+			historyMillis = history.CompletedAt.UnixMilli()
+		}
+		if previous, exists := latestActivity[history.ExecutionTokenKey]; !exists || historyMillis > previous {
+			latestActivity[history.ExecutionTokenKey] = historyMillis
+		}
+	}
+	tokens := make(tokenMaxHeap, 0)
+	for _, token := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		runningSinceMillis := token.CreatedAt.UnixMilli()
+		if historyMillis, exists := latestActivity[token.Key]; exists && historyMillis > runningSinceMillis {
+			runningSinceMillis = historyMillis
+		}
+		if runningSinceMillis < cutoffMillis {
+			tokens.add(token, limit)
+		}
+	}
 	slices.SortFunc(tokens, func(a, b bpmnruntime.ExecutionToken) int {
 		return cmp.Compare(a.Key, b.Key)
 	})
-	if limit >= 0 && int64(len(tokens)) > limit {
-		tokens = tokens[:limit]
-	}
 	return tokens, nil
+}
+
+// The SQL scans only tokens belonging to Active or Ready instances. Keep the
+// in-memory implementation's page contents consistent with that filter.
+func (mem *Storage) hasRecoverableInstance(processInstanceKey int64) bool {
+	instance, exists := mem.ProcessInstances[processInstanceKey]
+	if !exists {
+		return false
+	}
+	state := instance.ProcessInstance().State
+	return state == bpmnruntime.ActivityStateActive || state == bpmnruntime.ActivityStateReady
+}
+
+// tokenMaxHeap keeps only the lowest keys needed for a page while scanning maps.
+type tokenMaxHeap []bpmnruntime.ExecutionToken
+
+func (tokens tokenMaxHeap) Len() int           { return len(tokens) }
+func (tokens tokenMaxHeap) Less(i, j int) bool { return tokens[i].Key > tokens[j].Key }
+func (tokens tokenMaxHeap) Swap(i, j int)      { tokens[i], tokens[j] = tokens[j], tokens[i] }
+func (tokens *tokenMaxHeap) Push(value any) {
+	*tokens = append(*tokens, value.(bpmnruntime.ExecutionToken))
+}
+func (tokens *tokenMaxHeap) Pop() any {
+	last := len(*tokens) - 1
+	value := (*tokens)[last]
+	*tokens = (*tokens)[:last]
+	return value
+}
+
+func (tokens *tokenMaxHeap) add(token bpmnruntime.ExecutionToken, limit int64) {
+	if limit == 0 {
+		return
+	}
+	if limit > 0 && int64(len(*tokens)) >= limit {
+		if token.Key >= (*tokens)[0].Key {
+			return
+		}
+		(*tokens)[0] = token
+		heap.Fix(tokens, 0)
+		return
+	}
+	heap.Push(tokens, token)
 }
 
 var _ storage.TokenStorageWriter = &Storage{}

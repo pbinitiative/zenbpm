@@ -73,7 +73,9 @@ SELECT
     token."key", token.element_instance_key, token.element_id, token.process_instance_key, token.state, token.created_at
 FROM
     execution_token AS token INDEXED BY idx_execution_token_state
+    JOIN process_instance AS pi ON pi.key = token.process_instance_key
 WHERE token.state = ?1
+    AND pi.state IN (1, 8)
     AND token.key > ?2
     AND COALESCE(
         (
@@ -131,12 +133,14 @@ func (q *Queries) GetRecoverableRunningTokens(ctx context.Context, arg GetRecove
 
 const getRunningTokensAfter = `-- name: GetRunningTokensAfter :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, state, created_at
+    token."key", token.element_instance_key, token.element_id, token.process_instance_key, token.state, token.created_at
 FROM
-    execution_token INDEXED BY idx_execution_token_state
-WHERE state = ?1
-    AND key > ?2
-ORDER BY key
+    execution_token AS token INDEXED BY idx_execution_token_state
+    JOIN process_instance AS pi ON pi.key = token.process_instance_key
+WHERE token.state = ?1
+    AND pi.state IN (1, 8)
+    AND token.key > ?2
+ORDER BY token.key
 LIMIT ?3
 `
 

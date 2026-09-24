@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -224,6 +225,74 @@ func TestReconciliationManager(t *testing.T) {
 		assert.Equal(t, runtime.ActivityStateCompleted, persisted.ProcessInstance().State)
 	})
 
+	t.Run("technical failure during a completed-job retry remains retryable", func(t *testing.T) {
+		readErr := errors.New("temporary token read failure")
+		store := &retryReadFailureStorage{Storage: inmemory.NewStorage(), err: readErr}
+		engine := NewEngine(EngineWithStorage(store))
+		t.Cleanup(engine.Stop)
+
+		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+		require.NoError(t, err)
+		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+		require.NoError(t, err)
+		job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
+		token := persistJobCompletionWithoutContinuation(t, &engine, store, job)
+
+		store.failNextRead = true
+		err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
+		require.ErrorIs(t, err, readErr)
+		persisted, err := store.GetTokenByKey(t.Context(), token.Key)
+		require.NoError(t, err)
+		require.Equal(t, runtime.TokenStateRunning, persisted.State)
+
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, nil))
+		persistedInstance, err := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Equal(t, runtime.ActivityStateCompleted, persistedInstance.ProcessInstance().State)
+	})
+
+	t.Run("periodic recovery parks a stranded branch at a parallel join beside a live job", func(t *testing.T) {
+		store := inmemory.NewStorage()
+		engine := NewEngine(EngineWithStorage(store))
+		t.Cleanup(engine.Stop)
+
+		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/fork-controlled-parallel-join.bpmn")
+		require.NoError(t, err)
+		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+		require.NoError(t, err)
+		jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Len(t, jobs, 2)
+
+		strandedJob := jobs[0]
+		liveJob := jobs[1]
+		strandedToken := persistJobCompletionWithoutContinuation(t, &engine, store, strandedJob)
+		manager := newReconciliationManager(&engine, time.Hour, -time.Second, 1)
+		t.Cleanup(manager.stop)
+		manager.reconcileNextBatch()
+
+		persistedToken, err := store.GetTokenByKey(t.Context(), strandedToken.Key)
+		require.NoError(t, err)
+		require.Equal(t, runtime.TokenStateWaiting, persistedToken.State)
+		pendingJobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Len(t, pendingJobs, 1)
+		require.Equal(t, liveJob.Key, pendingJobs[0].Key)
+
+		manager.reconcileNextBatch()
+		pendingJobs, err = store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Len(t, pendingJobs, 1, "repeated scans must not duplicate the sibling job")
+
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), liveJob.Key, nil))
+		joinedJob := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
+		require.Equal(t, "id-b-1", joinedJob.ElementId)
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), joinedJob.Key, nil))
+		persistedInstance, err := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Equal(t, runtime.ActivityStateCompleted, persistedInstance.ProcessInstance().State)
+	})
+
 	t.Run("periodic recovery advances through limited keyset pages", func(t *testing.T) {
 		store := &recordingRunningTokenStorage{Storage: inmemory.NewStorage()}
 		engine := NewEngine(EngineWithStorage(store))
@@ -302,6 +371,9 @@ func TestReconciliationManager(t *testing.T) {
 		const processInstanceKey int64 = 42
 		engine.runningInstances.lockInstance(processInstanceKey)
 		defer engine.runningInstances.unlockInstance(processInstanceKey)
+		require.NoError(t, store.SaveProcessInstance(t.Context(), &runtime.DefaultProcessInstance{
+			ProcessInstanceData: runtime.ProcessInstanceData{Key: processInstanceKey, State: runtime.ActivityStateActive},
+		}))
 		require.NoError(t, store.SaveToken(t.Context(), runtime.ExecutionToken{
 			Key:                200,
 			ProcessInstanceKey: processInstanceKey,
@@ -540,4 +612,18 @@ func (store *recordingRunningTokenStorage) resetScanCalls() {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.calls = nil
+}
+
+type retryReadFailureStorage struct {
+	*inmemory.Storage
+	failNextRead bool
+	err          error
+}
+
+func (store *retryReadFailureStorage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	if store.failNextRead {
+		store.failNextRead = false
+		return nil, store.err
+	}
+	return store.Storage.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 }

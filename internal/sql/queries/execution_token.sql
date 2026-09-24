@@ -20,12 +20,14 @@ WHERE state = @state;
 
 -- name: GetRunningTokensAfter :many
 SELECT
-    *
+    token.*
 FROM
-    execution_token INDEXED BY idx_execution_token_state
-WHERE state = @state
-    AND key > @after_token_key
-ORDER BY key
+    execution_token AS token INDEXED BY idx_execution_token_state
+    JOIN process_instance AS pi ON pi.key = token.process_instance_key
+WHERE token.state = @state
+    AND pi.state IN (1, 8)
+    AND token.key > @after_token_key
+ORDER BY token.key
 LIMIT @row_limit;
 
 -- name: GetRecoverableRunningTokens :many
@@ -33,7 +35,9 @@ SELECT
     token.*
 FROM
     execution_token AS token INDEXED BY idx_execution_token_state
+    JOIN process_instance AS pi ON pi.key = token.process_instance_key
 WHERE token.state = @state
+    AND pi.state IN (1, 8)
     AND token.key > @after_token_key
     AND COALESCE(
         (

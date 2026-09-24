@@ -63,7 +63,9 @@ type pinnedIndexUseCase struct {
 
 const recoverableRunningTokensQuery = `SELECT token.*
 FROM execution_token AS token INDEXED BY idx_execution_token_state
+JOIN process_instance AS pi ON pi.key = token.process_instance_key
 WHERE token.state = ?
+    AND pi.state IN (1, 8)
     AND token.key > ?
     AND COALESCE(
         (
@@ -184,14 +186,14 @@ func newIndexUseCases() []newIndexUseCase {
 		},
 		{
 			name:      "bounded running token recovery",
-			table:     "execution_token",
+			table:     "token",
 			index:     "idx_execution_token_state",
-			query:     "SELECT * FROM execution_token INDEXED BY idx_execution_token_state WHERE state = ? AND key > ? ORDER BY key LIMIT ?",
+			query:     "SELECT token.* FROM execution_token AS token INDEXED BY idx_execution_token_state JOIN process_instance AS pi ON pi.key = token.process_instance_key WHERE token.state = ? AND pi.state IN (1, 8) AND token.key > ? ORDER BY token.key LIMIT ?",
 			arguments: []any{int64(1), int64(0), int64(256)},
 		},
 		{
 			name:      "grace-period running token reconciliation",
-			table:     "execution_token",
+			table:     "token",
 			index:     "idx_execution_token_state",
 			query:     recoverableRunningTokensQuery,
 			arguments: []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
@@ -218,7 +220,7 @@ func pinnedIndexUseCases() []pinnedIndexUseCase {
 	return []pinnedIndexUseCase{
 		{
 			name:        "running token reconciliation uses token history index",
-			scanTargets: []string{"token", "execution_token", "history", "flow_element_instance"},
+			scanTargets: []string{"token", "execution_token", "pi", "process_instance", "history", "flow_element_instance"},
 			index:       "idx_flow_element_instance_execution_token_key",
 			query:       recoverableRunningTokensQuery,
 			arguments:   []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},

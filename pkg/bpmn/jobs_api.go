@@ -231,7 +231,12 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	if job.State == runtime.ActivityStateCompleted {
 		engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
-		if _, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey); runErr != nil {
+		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey)
+		if runErr != nil {
+			if !outcome.isPersistedIncidentOnly() {
+				return fmt.Errorf("failed to continue process instance %d after retrying completed job %d: %w",
+					job.ProcessInstanceKey, job.Key, runErr)
+			}
 			engine.logger.Warn("failed to continue process instance for an already completed job",
 				"job", job.Key, "processInstance", job.ProcessInstanceKey, "err", runErr)
 		}

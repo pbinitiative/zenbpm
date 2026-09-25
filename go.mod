@@ -27,7 +27,7 @@ require (
 	github.com/rqlite/rqlite/v10 v10.3.5
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46
 	github.com/stretchr/testify v1.12.1
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0

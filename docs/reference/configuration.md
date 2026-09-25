@@ -101,6 +101,12 @@ The engine exposes `reconciliation_recoveries`, `reconciliation_failures` (with 
 instance with durable Running tokens. Scan or resume errors are counted as failures; cancellation during shutdown is
 excluded. Recovery failures are logged; later scans or wakeups can retry them. They do not automatically raise process incidents.
 
+Repeated technical recovery failures use exponential backoff per process instance. The first delay is the larger of
+five seconds and the configured scan interval; later delays double up to the larger of five minutes and that initial
+delay. The manager schedules these retries even when periodic scanning is disabled. Scan-query errors use the same
+backoff on subsequent scan ticks. Additional wakeups during the cooldown do not bypass it. A successful recovery or
+an instance with no Running tokens resets its failure count.
+
 ---
 
 ### Raft Configuration: `ClusterRaft`

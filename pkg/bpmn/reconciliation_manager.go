@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
 	"sync"
@@ -12,7 +13,43 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const reconciliationBusyRetryDelay = 250 * time.Millisecond
+const (
+	reconciliationBusyRetryDelay = 250 * time.Millisecond
+	reconciliationMinRetryDelay  = 5 * time.Second
+	reconciliationMaxRetryDelay  = 5 * time.Minute
+)
+
+type reconciliationRetry struct {
+	processInstanceKey int64
+	failures           uint8
+	next               time.Time
+	index              int
+}
+
+type reconciliationRetryHeap []*reconciliationRetry
+
+func (retries reconciliationRetryHeap) Len() int { return len(retries) }
+func (retries reconciliationRetryHeap) Less(i, j int) bool {
+	return retries[i].next.Before(retries[j].next)
+}
+func (retries reconciliationRetryHeap) Swap(i, j int) {
+	retries[i], retries[j] = retries[j], retries[i]
+	retries[i].index = i
+	retries[j].index = j
+}
+func (retries *reconciliationRetryHeap) Push(value any) {
+	retry := value.(*reconciliationRetry)
+	retry.index = len(*retries)
+	*retries = append(*retries, retry)
+}
+func (retries *reconciliationRetryHeap) Pop() any {
+	last := len(*retries) - 1
+	retry := (*retries)[last]
+	(*retries)[last] = nil
+	*retries = (*retries)[:last]
+	retry.index = -1
+	return retry
+}
 
 type reconciliationManager struct {
 	engine      *Engine
@@ -20,14 +57,20 @@ type reconciliationManager struct {
 	gracePeriod time.Duration
 	batchSize   int64
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wakeMu     sync.Mutex
-	wakeQueue  []int64
-	wakeQueued map[int64]struct{}
-	wakeSignal chan struct{}
-	wg         sync.WaitGroup
-	cursor     int64
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wakeMu         sync.Mutex
+	wakeQueue      []int64
+	wakeQueued     map[int64]struct{}
+	wakeSignal     chan struct{}
+	retryByKey     map[int64]*reconciliationRetry
+	retryQueue     reconciliationRetryHeap
+	retryBaseDelay time.Duration
+	retryMaxDelay  time.Duration
+	scanFailures   uint8
+	nextScan       time.Time
+	wg             sync.WaitGroup
+	cursor         int64
 }
 
 func newReconciliationManager(engine *Engine, interval time.Duration, gracePeriod time.Duration, batchSize int64) *reconciliationManager {
@@ -41,6 +84,7 @@ func newReconciliationManager(engine *Engine, interval time.Duration, gracePerio
 		cancel:      cancel,
 		wakeQueued:  make(map[int64]struct{}),
 		wakeSignal:  make(chan struct{}, 1),
+		retryByKey:  make(map[int64]*reconciliationRetry),
 	}
 }
 
@@ -96,6 +140,73 @@ func (manager *reconciliationManager) nextWake() (int64, bool) {
 	return processInstanceKey, true
 }
 
+func reconciliationRetryDelay(base, maximum time.Duration, failures uint8) time.Duration {
+	delay := base
+	for attempt := uint8(1); attempt < failures && delay < maximum; attempt++ {
+		if delay >= maximum/2 {
+			return maximum
+		}
+		delay *= 2
+	}
+	return delay
+}
+
+func (manager *reconciliationManager) retryBounds() (time.Duration, time.Duration) {
+	base := manager.retryBaseDelay
+	if base <= 0 {
+		base = max(reconciliationMinRetryDelay, manager.interval)
+	}
+	maximum := manager.retryMaxDelay
+	if maximum <= 0 {
+		maximum = max(reconciliationMaxRetryDelay, base)
+	}
+	return base, max(maximum, base)
+}
+
+// The retry state and heap are owned by the manager loop. A retry is removed
+// after a successful attempt or a no-op (for example, an instance completed
+// through another path), so resolved instances do not accumulate in memory.
+func (manager *reconciliationManager) delayRetry(processInstanceKey int64) (time.Duration, uint8) {
+	retry := manager.retryByKey[processInstanceKey]
+	if retry == nil {
+		retry = &reconciliationRetry{processInstanceKey: processInstanceKey, index: -1}
+		manager.retryByKey[processInstanceKey] = retry
+	}
+	if retry.failures < 255 {
+		retry.failures++
+	}
+	base, maximum := manager.retryBounds()
+	delay := reconciliationRetryDelay(base, maximum, retry.failures)
+	retry.next = time.Now().Add(delay)
+	if retry.index < 0 {
+		heap.Push(&manager.retryQueue, retry)
+	} else {
+		heap.Fix(&manager.retryQueue, retry.index)
+	}
+	return delay, retry.failures
+}
+
+func (manager *reconciliationManager) clearRetry(processInstanceKey int64) {
+	retry := manager.retryByKey[processInstanceKey]
+	if retry == nil {
+		return
+	}
+	if retry.index >= 0 {
+		heap.Remove(&manager.retryQueue, retry.index)
+	}
+	delete(manager.retryByKey, processInstanceKey)
+}
+
+func (manager *reconciliationManager) delayScan() (time.Duration, uint8) {
+	if manager.scanFailures < 255 {
+		manager.scanFailures++
+	}
+	base, maximum := manager.retryBounds()
+	delay := reconciliationRetryDelay(base, maximum, manager.scanFailures)
+	manager.nextScan = time.Now().Add(delay)
+	return delay, manager.scanFailures
+}
+
 func (manager *reconciliationManager) run() {
 	var ticks <-chan time.Time
 	if manager.interval > 0 {
@@ -105,17 +216,36 @@ func (manager *reconciliationManager) run() {
 	}
 	var retryTimer *time.Timer
 	var retryTicks <-chan time.Time
+	var technicalTimer *time.Timer
+	var technicalTicks <-chan time.Time
 	var busyKeys []int64
 	busySet := make(map[int64]struct{})
 	defer func() {
 		if retryTimer != nil {
 			retryTimer.Stop()
 		}
+		if technicalTimer != nil {
+			technicalTimer.Stop()
+		}
 	}()
 
 	for {
 		if manager.ctx.Err() != nil {
 			return
+		}
+		if len(manager.retryQueue) == 0 {
+			if technicalTimer != nil {
+				technicalTimer.Stop()
+			}
+			technicalTicks = nil
+		} else {
+			untilRetry := max(time.Until(manager.retryQueue[0].next), 0)
+			if technicalTimer == nil {
+				technicalTimer = time.NewTimer(untilRetry)
+			} else {
+				technicalTimer.Reset(untilRetry)
+			}
+			technicalTicks = technicalTimer.C
 		}
 		select {
 		case <-manager.ctx.Done():
@@ -141,6 +271,12 @@ func (manager *reconciliationManager) run() {
 			}
 			busyKeys = nil
 			clear(busySet)
+		case <-technicalTicks:
+			now := time.Now()
+			for len(manager.retryQueue) > 0 && !manager.retryQueue[0].next.After(now) {
+				retry := heap.Pop(&manager.retryQueue).(*reconciliationRetry)
+				manager.wake(retry.processInstanceKey)
+			}
 		case <-ticks:
 			manager.reconcileNextBatch()
 		}
@@ -148,24 +284,37 @@ func (manager *reconciliationManager) run() {
 }
 
 func (manager *reconciliationManager) reconcileNextBatch() {
+	if time.Now().Before(manager.nextScan) {
+		return
+	}
 	started := time.Now()
 	defer func() { manager.engine.recordReconciliationScanDuration(manager.ctx, time.Since(started)) }()
 	runningBefore := time.Now().Add(-manager.gracePeriod)
 	tokens, err := manager.engine.persistence.FindRecoverableRunningTokens(manager.ctx, manager.cursor, runningBefore, manager.batchSize)
 	if err != nil {
+		if manager.ctx.Err() != nil {
+			return
+		}
 		manager.engine.recordReconciliationFailure(manager.ctx, "scan")
-		manager.engine.logger.Error("failed to scan recoverable running tokens", "afterTokenKey", manager.cursor, "runningBefore", runningBefore, "limit", manager.batchSize, "err", err)
+		delay, failures := manager.delayScan()
+		manager.engine.logger.Error("failed to scan recoverable running tokens", "afterTokenKey", manager.cursor, "runningBefore", runningBefore, "limit", manager.batchSize, "err", err, "consecutiveFailures", failures, "retryAfter", delay)
 		return
 	}
 	if len(tokens) == 0 && manager.cursor != 0 {
 		manager.cursor = 0
 		tokens, err = manager.engine.persistence.FindRecoverableRunningTokens(manager.ctx, manager.cursor, runningBefore, manager.batchSize)
 		if err != nil {
+			if manager.ctx.Err() != nil {
+				return
+			}
 			manager.engine.recordReconciliationFailure(manager.ctx, "scan")
-			manager.engine.logger.Error("failed to restart recoverable running token scan", "runningBefore", runningBefore, "limit", manager.batchSize, "err", err)
+			delay, failures := manager.delayScan()
+			manager.engine.logger.Error("failed to restart recoverable running token scan", "runningBefore", runningBefore, "limit", manager.batchSize, "err", err, "consecutiveFailures", failures, "retryAfter", delay)
 			return
 		}
 	}
+	manager.scanFailures = 0
+	manager.nextScan = time.Time{}
 	if len(tokens) == 0 {
 		return
 	}
@@ -185,14 +334,30 @@ func (manager *reconciliationManager) reconcileNextBatch() {
 // resume reports a busy instance lock so explicit wakeups can be retried even
 // when periodic scanning is disabled. Periodic scans may simply revisit it later.
 func (manager *reconciliationManager) resume(processInstanceKey int64) bool {
-	recovered, acquired, err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey)
+	if retry := manager.retryByKey[processInstanceKey]; retry != nil && time.Now().Before(retry.next) {
+		return false
+	}
+	outcome, acquired, err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey)
 	if !acquired {
 		return true
 	}
 	if err != nil {
+		if manager.ctx.Err() != nil {
+			manager.clearRetry(processInstanceKey)
+			return false
+		}
 		manager.engine.recordReconciliationFailure(manager.ctx, "resume")
-		manager.engine.logger.Error("failed to recover running process instance", "processInstance", processInstanceKey, "err", err)
-	} else if recovered {
+		if !outcome.isPersistedIncidentOnly() {
+			delay, failures := manager.delayRetry(processInstanceKey)
+			manager.engine.logger.Error("failed to recover running process instance", "processInstance", processInstanceKey, "err", err, "consecutiveFailures", failures, "retryAfter", delay)
+		} else {
+			manager.clearRetry(processInstanceKey)
+			manager.engine.logger.Error("failed to recover running process instance", "processInstance", processInstanceKey, "err", err)
+		}
+		return false
+	}
+	manager.clearRetry(processInstanceKey)
+	if outcome.resumedRunningTokens {
 		manager.engine.recordReconciliationRecovery(manager.ctx)
 		manager.engine.logger.Info("recovered running process instance", "processInstance", processInstanceKey)
 	}
@@ -280,14 +445,14 @@ func (engine *Engine) resumeProcessInstanceByKey(ctx context.Context, processIns
 	return engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
 }
 
-func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (recovered bool, acquired bool, err error) {
+func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (outcome *runProcessInstanceOutcome, acquired bool, err error) {
 	if !engine.runningInstances.tryLockInstanceOnce(processInstanceKey) {
-		return false, false, nil
+		return nil, false, nil
 	}
 	defer engine.runningInstances.unlockInstance(processInstanceKey)
-	outcome := &runProcessInstanceOutcome{}
+	outcome = &runProcessInstanceOutcome{}
 	err = engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
-	return outcome.resumedRunningTokens, true, err
+	return outcome, true, err
 }
 
 func (engine *Engine) resumeProcessInstanceLockedByKey(ctx context.Context, processInstanceKey int64, outcome *runProcessInstanceOutcome) error {

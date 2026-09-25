@@ -721,38 +721,7 @@ func TestTaskJustDeclaredOutputVariablesMapToProcessInstance(t *testing.T) {
 }
 
 func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
-	// TODO: flaky test...sometimes the call path is id-a-1,id-b-2,id-b-1
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	cp := CallPath{}
-	// setup
-	store := inmemory.NewStorage()
-	bpmnEngine := NewEngine(EngineWithStorage(store))
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/parallel-gateway-flow.bpmn")
-	assert.NoError(t, err)
-
-	// given
-	ah := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
-	defer bpmnEngine.RemoveHandler(ah)
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
-	assert.Equal(t, "id-a-1", cp.CallPath)
-
-	// when
-	bh := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
-	defer bpmnEngine.RemoveHandler(bh)
-	b2h := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
-	defer bpmnEngine.RemoveHandler(b2h)
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
-	assert.NoError(t, err)
-	err = bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
-	assert.NotNil(t, instance)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
-
-	// then
-	assert.Nil(t, err)
-	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
+	t.Skip("runtime handler changes are unsupported; restarting Waiting tokens cannot trigger newly registered handlers")
 }
 
 func TestJobCompleteIsHandledCorrectly(t *testing.T) {

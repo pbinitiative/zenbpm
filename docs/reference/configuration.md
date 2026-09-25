@@ -96,10 +96,13 @@ When upgrading a cluster that already has active process instances, counting sta
 the migration is applied. Existing audit history is intentionally not used to reconstruct runtime counters because
 audit rows may already have been removed by history cleanup.
 
-The engine exposes `reconciliation_recoveries`, `reconciliation_failures` (with an `operation` attribute), and
-`reconciliation_scan_duration` in milliseconds. A recovery is counted after the engine successfully resumes an
-instance with durable Running tokens. Scan or resume errors are counted as failures; cancellation during shutdown is
-excluded. Recovery failures are logged; later scans or wakeups can retry them. They do not automatically raise process incidents.
+The engine exposes `reconciliation_recoveries`, `reconciliation_failures` (with an `operation` attribute),
+`reconciliation_scan_duration` in milliseconds, `reconciliation_wake_queue_depth`, and
+`reconciliation_retry_queue_depth`. The two queue metrics report distinct process instances waiting for an explicit
+wakeup or a technical retry; a growing depth indicates that recovery is falling behind. A recovery is counted after
+the engine successfully resumes an instance with durable Running tokens. Scan or resume errors are counted as failures;
+cancellation during shutdown is excluded. Recovery failures are logged; later scans or wakeups can retry them. They do
+not automatically raise process incidents.
 
 Repeated technical recovery failures use exponential backoff per process instance. The first delay is the larger of
 five seconds and the configured scan interval; later delays double up to the larger of five minutes and that initial

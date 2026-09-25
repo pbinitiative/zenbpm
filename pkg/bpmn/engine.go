@@ -92,8 +92,9 @@ type Engine struct {
 	// recovery scan reads from persistence.
 	reconciliationBatchSize int64
 
-	// reconciliationGracePeriod prevents the periodic scan from competing with
-	// foreground continuations that have only just persisted a Running token.
+	// reconciliationGracePeriod reduces contention with foreground continuations
+	// for recently active Running tokens. Correctness relies on reloading tokens
+	// under the instance lock, including when the grace period has elapsed.
 	reconciliationGracePeriod time.Duration
 	// disablePeriodicReconciliation leaves startup recovery and explicit wakeups enabled.
 	disablePeriodicReconciliation bool

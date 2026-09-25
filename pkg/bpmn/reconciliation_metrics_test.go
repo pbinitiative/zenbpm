@@ -12,6 +12,36 @@ import (
 )
 
 func TestReconciliationMetrics(t *testing.T) {
+	t.Run("tracks pending wakeups and technical retries", func(t *testing.T) {
+		engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+		t.Cleanup(engine.Stop)
+		metricsEngine, reader := newMetricsTestEngine(t)
+		engine.metrics = metricsEngine.metrics
+		manager := newReconciliationManager(&engine, time.Hour, time.Second, 1)
+		t.Cleanup(manager.stop)
+
+		manager.wake(11)
+		manager.wake(11)
+		manager.wake(12)
+		require.Equal(t, int64(2), counterValue(t, reader, "reconciliation_wake_queue_depth"))
+		_, ok := manager.nextWake()
+		require.True(t, ok)
+		require.Equal(t, int64(1), counterValue(t, reader, "reconciliation_wake_queue_depth"))
+
+		manager.delayRetry(11)
+		manager.delayRetry(11)
+		manager.delayRetry(12)
+		require.Equal(t, int64(2), counterValue(t, reader, "reconciliation_retry_queue_depth"))
+		manager.clearRetry(11)
+		require.Equal(t, int64(1), counterValue(t, reader, "reconciliation_retry_queue_depth"))
+
+		manager.stop()
+		require.Zero(t, counterValue(t, reader, "reconciliation_wake_queue_depth"))
+		require.Zero(t, counterValue(t, reader, "reconciliation_retry_queue_depth"))
+		manager.wake(13)
+		require.Zero(t, counterValue(t, reader, "reconciliation_wake_queue_depth"))
+	})
+
 	t.Run("counts only successful recovery", func(t *testing.T) {
 		store := inmemory.NewStorage()
 		engine := NewEngine(EngineWithStorage(store))

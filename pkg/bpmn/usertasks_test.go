@@ -28,42 +28,6 @@ func TestUserTasksCanBeHandled(t *testing.T) {
 
 func TestUserTasksCanBeContinue(t *testing.T) {
 	t.Skip("runtime modification of handlers is not supported yet")
-	// setup
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-user-task.bpmn")
-	assert.NoError(t, err)
-	cp := CallPath{}
-
-	// given
-
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
-	assert.NoError(t, err)
-
-	userConfirm := false
-	h := bpmnEngine.NewTaskHandler().Id("user-task").Handler(func(job ActivatedJob) {
-		if userConfirm {
-			cp.TaskHandler(job)
-		}
-	})
-	defer bpmnEngine.RemoveHandler(h)
-
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
-	assert.NoError(t, err)
-	err = bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
-	assert.NoError(t, err)
-
-	//when
-	userConfirm = true
-	tokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
-	assert.NoError(t, err)
-	err = bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
-	assert.NoError(t, err)
-
-	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
-	assert.NoError(t, err)
-
-	// then
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
-	assert.Equal(t, "user-task", cp.CallPath)
 }
 
 func TestUserTaskAssigneeMapping(t *testing.T) {

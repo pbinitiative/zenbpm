@@ -1176,6 +1176,11 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 }
 
 var _ storage.ProcessInstanceStorageReader = &DB{}
+var _ storage.CompleteProcessInstanceSnapshot = &DB{}
+
+// CompleteProcessInstanceSnapshot reports that GetProcessInstance and
+// inflateProcessInstance load the same current state as RefreshProcessInstance.
+func (*DB) CompleteProcessInstanceSnapshot() {}
 
 func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
 	processInstanceKey := processInstance.ProcessInstance().Key

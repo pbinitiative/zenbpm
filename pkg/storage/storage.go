@@ -146,6 +146,13 @@ type ProcessInstanceStorageReader interface {
 	RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error)
 }
 
+// CompleteProcessInstanceSnapshot marks storage whose FindProcessInstanceByKey
+// returns every current field that RefreshProcessInstance would apply. The
+// engine may skip a second read when it already holds the instance lock.
+type CompleteProcessInstanceSnapshot interface {
+	CompleteProcessInstanceSnapshot()
+}
+
 type ProcessInstanceStorageWriter interface {
 	// SaveProcessInstance persists the instance
 	// and potentially overwrites prior data stored with given process instance key

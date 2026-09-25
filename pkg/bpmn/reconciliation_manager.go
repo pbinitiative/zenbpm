@@ -9,6 +9,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -99,6 +100,26 @@ func (manager *reconciliationManager) start() {
 func (manager *reconciliationManager) stop() {
 	manager.cancel()
 	manager.wg.Wait()
+	manager.wakeMu.Lock()
+	manager.addWakeQueueDepth(-int64(len(manager.wakeQueue)))
+	manager.wakeQueue = nil
+	clear(manager.wakeQueued)
+	manager.wakeMu.Unlock()
+	manager.addRetryQueueDepth(-int64(len(manager.retryByKey)))
+	clear(manager.retryByKey)
+	manager.retryQueue = nil
+}
+
+func (manager *reconciliationManager) addWakeQueueDepth(delta int64) {
+	if delta != 0 && manager.engine.metrics != nil && manager.engine.metrics.ReconciliationWakeQueueDepth != nil {
+		manager.engine.metrics.ReconciliationWakeQueueDepth.Add(context.Background(), delta)
+	}
+}
+
+func (manager *reconciliationManager) addRetryQueueDepth(delta int64) {
+	if delta != 0 && manager.engine.metrics != nil && manager.engine.metrics.ReconciliationRetryQueueDepth != nil {
+		manager.engine.metrics.ReconciliationRetryQueueDepth.Add(context.Background(), delta)
+	}
 }
 
 func (manager *reconciliationManager) wake(processInstanceKey int64) {
@@ -107,11 +128,15 @@ func (manager *reconciliationManager) wake(processInstanceKey int64) {
 	}
 	manager.wakeMu.Lock()
 	defer manager.wakeMu.Unlock()
+	if manager.ctx.Err() != nil {
+		return
+	}
 	if _, queued := manager.wakeQueued[processInstanceKey]; queued {
 		return
 	}
 	manager.wakeQueued[processInstanceKey] = struct{}{}
 	manager.wakeQueue = append(manager.wakeQueue, processInstanceKey)
+	manager.addWakeQueueDepth(1)
 	// The signal can be coalesced because the keys remain in wakeQueue.
 	select {
 	case manager.wakeSignal <- struct{}{}:
@@ -129,6 +154,7 @@ func (manager *reconciliationManager) nextWake() (int64, bool) {
 	manager.wakeQueue[0] = 0
 	manager.wakeQueue = manager.wakeQueue[1:]
 	delete(manager.wakeQueued, processInstanceKey)
+	manager.addWakeQueueDepth(-1)
 	if len(manager.wakeQueue) == 0 {
 		manager.wakeQueue = nil
 	} else {
@@ -171,6 +197,7 @@ func (manager *reconciliationManager) delayRetry(processInstanceKey int64) (time
 	if retry == nil {
 		retry = &reconciliationRetry{processInstanceKey: processInstanceKey, index: -1}
 		manager.retryByKey[processInstanceKey] = retry
+		manager.addRetryQueueDepth(1)
 	}
 	if retry.failures < 255 {
 		retry.failures++
@@ -195,6 +222,7 @@ func (manager *reconciliationManager) clearRetry(processInstanceKey int64) {
 		heap.Remove(&manager.retryQueue, retry.index)
 	}
 	delete(manager.retryByKey, processInstanceKey)
+	manager.addRetryQueueDepth(-1)
 }
 
 func (manager *reconciliationManager) delayScan() (time.Duration, uint8) {
@@ -479,6 +507,14 @@ func (engine *Engine) resumeProcessInstanceLockedByKey(ctx context.Context, proc
 	}
 	if len(runningTokens) == 0 {
 		return nil
+	}
+	if _, complete := engine.persistence.(storage.CompleteProcessInstanceSnapshot); !complete {
+		// Some storage implementations keep mutable fields outside the instance
+		// snapshot (for example, the in-memory flow-node counter).
+		if err := engine.persistence.RefreshProcessInstance(ctx, instance); err != nil {
+			outcome.recordTechnicalFailure()
+			return fmt.Errorf("failed to refresh process instance %d for continuation: %w", processInstanceKey, err)
+		}
 	}
 
 	if err := engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome); err != nil {

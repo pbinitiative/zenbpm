@@ -133,7 +133,8 @@ func (engine *Engine) Stop() {
 	defer engine.lifecycle.managerMu.Unlock()
 
 	// Manager shutdown and context cancellation are deliberately handled outside stopOnce. They are idempotent
-	// and must always act on the current shared lifecycle because Start may install fresh managers after a prior Stop.
+	// and must act on the current shared lifecycle: a value copy of the Engine may be stopped while another copy
+	// runs, and a failed Start may already have detached its managers. Start refuses to run after Stop.
 	if timerManager := engine.lifecycle.timerManager.Swap(nil); timerManager != nil {
 		timerManager.stop()
 	}
@@ -246,6 +247,12 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.P
 	if len(runningTokens) == 0 {
 		return nil
 	}
+	// The supplied instance may predate another lock owner. Recovery paths load
+	// the instance under this lock and can skip this extra persistence read.
+	if err := engine.persistence.RefreshProcessInstance(ctx, instance); err != nil {
+		outcome.recordTechnicalFailure()
+		return fmt.Errorf("failed to refresh process instance %d: %w", instanceKey, err)
+	}
 
 	return engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome)
 }
@@ -332,12 +339,6 @@ func (engine *Engine) runProcessInstanceLocked(ctx context.Context, instance run
 		))
 	}()
 
-	//refresh
-	err := engine.persistence.RefreshProcessInstance(ctx, instance)
-	if err != nil {
-		outcome.recordTechnicalFailure()
-		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
 	switch instance.ProcessInstance().State {
 	case runtime.ActivityStateTerminated:
 		return newEngineErrorf("process instance %d is terminated", instance.ProcessInstance().Key)
@@ -372,7 +373,7 @@ func (engine *Engine) runProcessInstanceLocked(ctx context.Context, instance run
 	))
 
 	instance.ProcessInstance().State = runtime.ActivityStateActive
-	err = engine.persistence.SaveProcessInstance(ctx, instance)
+	err := engine.persistence.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		outcome.recordTechnicalFailure()
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.ProcessInstance().Key), err)

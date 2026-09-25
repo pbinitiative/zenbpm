@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const reconciliationWakeBufferSize = 64
+const reconciliationBusyRetryDelay = 250 * time.Millisecond
 
 type reconciliationManager struct {
 	engine      *Engine
@@ -20,11 +20,14 @@ type reconciliationManager struct {
 	gracePeriod time.Duration
 	batchSize   int64
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wakeCh chan int64
-	wg     sync.WaitGroup
-	cursor int64
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wakeMu     sync.Mutex
+	wakeQueue  []int64
+	wakeQueued map[int64]struct{}
+	wakeSignal chan struct{}
+	wg         sync.WaitGroup
+	cursor     int64
 }
 
 func newReconciliationManager(engine *Engine, interval time.Duration, gracePeriod time.Duration, batchSize int64) *reconciliationManager {
@@ -36,7 +39,8 @@ func newReconciliationManager(engine *Engine, interval time.Duration, gracePerio
 		batchSize:   batchSize,
 		ctx:         ctx,
 		cancel:      cancel,
-		wakeCh:      make(chan int64, reconciliationWakeBufferSize),
+		wakeQueued:  make(map[int64]struct{}),
+		wakeSignal:  make(chan struct{}, 1),
 	}
 }
 
@@ -54,10 +58,42 @@ func (manager *reconciliationManager) stop() {
 }
 
 func (manager *reconciliationManager) wake(processInstanceKey int64) {
+	if manager.ctx.Err() != nil {
+		return
+	}
+	manager.wakeMu.Lock()
+	defer manager.wakeMu.Unlock()
+	if _, queued := manager.wakeQueued[processInstanceKey]; queued {
+		return
+	}
+	manager.wakeQueued[processInstanceKey] = struct{}{}
+	manager.wakeQueue = append(manager.wakeQueue, processInstanceKey)
+	// The signal can be coalesced because the keys remain in wakeQueue.
 	select {
-	case manager.wakeCh <- processInstanceKey:
+	case manager.wakeSignal <- struct{}{}:
 	default:
 	}
+}
+
+func (manager *reconciliationManager) nextWake() (int64, bool) {
+	manager.wakeMu.Lock()
+	defer manager.wakeMu.Unlock()
+	if len(manager.wakeQueue) == 0 {
+		return 0, false
+	}
+	processInstanceKey := manager.wakeQueue[0]
+	manager.wakeQueue[0] = 0
+	manager.wakeQueue = manager.wakeQueue[1:]
+	delete(manager.wakeQueued, processInstanceKey)
+	if len(manager.wakeQueue) == 0 {
+		manager.wakeQueue = nil
+	} else {
+		select {
+		case manager.wakeSignal <- struct{}{}:
+		default:
+		}
+	}
+	return processInstanceKey, true
 }
 
 func (manager *reconciliationManager) run() {
@@ -67,13 +103,44 @@ func (manager *reconciliationManager) run() {
 		defer ticker.Stop()
 		ticks = ticker.C
 	}
+	var retryTimer *time.Timer
+	var retryTicks <-chan time.Time
+	var busyKeys []int64
+	busySet := make(map[int64]struct{})
+	defer func() {
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+	}()
 
 	for {
+		if manager.ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-manager.ctx.Done():
 			return
-		case processInstanceKey := <-manager.wakeCh:
-			manager.resume(processInstanceKey)
+		case <-manager.wakeSignal:
+			if processInstanceKey, ok := manager.nextWake(); ok {
+				if manager.resume(processInstanceKey) {
+					if _, queued := busySet[processInstanceKey]; !queued {
+						busySet[processInstanceKey] = struct{}{}
+						busyKeys = append(busyKeys, processInstanceKey)
+					}
+					if retryTimer == nil {
+						retryTimer = time.NewTimer(reconciliationBusyRetryDelay)
+						retryTicks = retryTimer.C
+					}
+				}
+			}
+		case <-retryTicks:
+			retryTimer = nil
+			retryTicks = nil
+			for _, processInstanceKey := range busyKeys {
+				manager.wake(processInstanceKey)
+			}
+			busyKeys = nil
+			clear(busySet)
 		case <-ticks:
 			manager.reconcileNextBatch()
 		}
@@ -115,8 +182,13 @@ func (manager *reconciliationManager) reconcileNextBatch() {
 	}
 }
 
-func (manager *reconciliationManager) resume(processInstanceKey int64) {
-	recovered, err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey)
+// resume reports a busy instance lock so explicit wakeups can be retried even
+// when periodic scanning is disabled. Periodic scans may simply revisit it later.
+func (manager *reconciliationManager) resume(processInstanceKey int64) bool {
+	recovered, acquired, err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey)
+	if !acquired {
+		return true
+	}
 	if err != nil {
 		manager.engine.recordReconciliationFailure(manager.ctx, "resume")
 		manager.engine.logger.Error("failed to recover running process instance", "processInstance", processInstanceKey, "err", err)
@@ -124,6 +196,7 @@ func (manager *reconciliationManager) resume(processInstanceKey int64) {
 		manager.engine.recordReconciliationRecovery(manager.ctx)
 		manager.engine.logger.Info("recovered running process instance", "processInstance", processInstanceKey)
 	}
+	return false
 }
 
 func (engine *Engine) recordReconciliationRecovery(ctx context.Context) {
@@ -207,14 +280,14 @@ func (engine *Engine) resumeProcessInstanceByKey(ctx context.Context, processIns
 	return engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
 }
 
-func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bool, error) {
+func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (recovered bool, acquired bool, err error) {
 	if !engine.runningInstances.tryLockInstanceOnce(processInstanceKey) {
-		return false, nil
+		return false, false, nil
 	}
 	defer engine.runningInstances.unlockInstance(processInstanceKey)
 	outcome := &runProcessInstanceOutcome{}
-	err := engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
-	return outcome.resumedRunningTokens, err
+	err = engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
+	return outcome.resumedRunningTokens, true, err
 }
 
 func (engine *Engine) resumeProcessInstanceLockedByKey(ctx context.Context, processInstanceKey int64, outcome *runProcessInstanceOutcome) error {
@@ -294,7 +367,7 @@ func (engine *Engine) wakeReconciliation(processInstanceKey int64) {
 }
 
 // swapReconciliationManager publishes replacement before returning the previous manager.
-// wakeReconciliation holds the read lock through the non-blocking delivery, so once this
+// wakeReconciliation holds the read lock through the non-blocking enqueue, so once this
 // method returns no new wake can be sent to the previous manager.
 func (engine *Engine) swapReconciliationManager(replacement *reconciliationManager) *reconciliationManager {
 	engine.lifecycle.reconciliationMu.Lock()

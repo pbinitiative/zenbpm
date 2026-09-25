@@ -1176,6 +1176,11 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 }
 
 var _ storage.ProcessInstanceStorageReader = &DB{}
+var _ storage.CompleteProcessInstanceSnapshot = &DB{}
+
+// CompleteProcessInstanceSnapshot reports that GetProcessInstance and
+// inflateProcessInstance load the same current state as RefreshProcessInstance.
+func (*DB) CompleteProcessInstanceSnapshot() {}
 
 func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
 	processInstanceKey := processInstance.ProcessInstance().Key
@@ -2545,8 +2550,42 @@ func (rq *DB) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToke
 	return GetActiveTokens(ctx, rq.Queries, rq.Partition)
 }
 
+func (rq *DB) FindRunningTokensAfter(ctx context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error) {
+	tokens, err := rq.Queries.GetRunningTokensAfter(ctx, sql.GetRunningTokensAfterParams{
+		State:         int64(bpmnruntime.TokenStateRunning),
+		AfterTokenKey: afterTokenKey,
+		RowLimit:      limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find running tokens after key %d: %w", afterTokenKey, err)
+	}
+	return mapExecutionTokens(tokens), nil
+}
+
+func (rq *DB) FindRecoverableRunningTokens(
+	ctx context.Context,
+	afterTokenKey int64,
+	runningBefore time.Time,
+	limit int64,
+) ([]bpmnruntime.ExecutionToken, error) {
+	tokens, err := rq.Queries.GetRecoverableRunningTokens(ctx, sql.GetRecoverableRunningTokensParams{
+		State:         int64(bpmnruntime.TokenStateRunning),
+		AfterTokenKey: afterTokenKey,
+		RunningBefore: runningBefore.UnixMilli(),
+		RowLimit:      limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find recoverable running tokens after key %d: %w", afterTokenKey, err)
+	}
+	return mapExecutionTokens(tokens), nil
+}
+
 func GetActiveTokens(ctx context.Context, db *sql.Queries, partitionId uint32) ([]bpmnruntime.ExecutionToken, error) {
 	tokens, err := db.GetTokensInState(ctx, int64(bpmnruntime.TokenStateRunning))
+	return mapExecutionTokens(tokens), err
+}
+
+func mapExecutionTokens(tokens []sql.ExecutionToken) []bpmnruntime.ExecutionToken {
 	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
 		res[i] = bpmnruntime.ExecutionToken{
@@ -2558,7 +2597,7 @@ func GetActiveTokens(ctx context.Context, db *sql.Queries, partitionId uint32) (
 			CreatedAt:          time.UnixMilli(tok.CreatedAt),
 		}
 	}
-	return res, err
+	return res
 }
 
 func (rq *DB) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {

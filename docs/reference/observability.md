@@ -61,6 +61,8 @@ histograms a `_milliseconds` suffix).
 | `incidents_created_total` / `incidents_resolved_total` | counter | `element_id` | Incident lifecycle counters (recorded only after the write batch is successfully flushed) |
 | `timers_scheduled_total` / `timers_fired_total` / `timers_cancelled_total` | counter | — | Timer lifecycle counters (recorded only after the write batch is successfully flushed; covers instance-level timers as well as definition-level timer start events and their cycle renewals) |
 | `messages_correlated_total` / `message_correlation_failed_total` | counter | `message_name` (+ `reason` on failures) | Message correlation outcomes. Failed lookups (no active subscription) use `message_name="unknown"`, `reason="subscription_not_found"` — the caller-provided name is never used as a label to keep cardinality bounded. Failures after a subscription was found use the (definition-bounded) real name with `reason="publish_failed"` |
+| `reconciliation_wake_queue_depth` | up/down counter | — | Distinct process instances waiting for an explicit recovery wakeup |
+| `reconciliation_retry_queue_depth` | up/down counter | — | Process instances awaiting a technical recovery retry |
 
 ### DMN
 

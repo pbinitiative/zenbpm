@@ -152,21 +152,6 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if err != nil {
 		return fmt.Errorf("failed to find execution token %d for incident %d: %w", incident.Token.Key, key, err)
 	}
-	// Startup recovery skips instances in the Failed state, so incident resolution is the only
-	// path that can reschedule persisted Running sibling tokens (e.g. parallel branches that were
-	// not drained before the incident was flushed or the node stopped). Gather them for every
-	// token-bound incident regardless of its type, otherwise those siblings stay stranded forever.
-	executionTokens := []runtime.ExecutionToken{incident.Token}
-	activeTokens, findErr := engine.persistence.GetActiveTokensForProcessInstance(ctx, incident.ProcessInstanceKey)
-	if findErr != nil {
-		return fmt.Errorf("failed to find active execution tokens for process instance %d: %w", incident.ProcessInstanceKey, findErr)
-	}
-	for _, token := range activeTokens {
-		if token.Key != incident.Token.Key && token.State == runtime.TokenStateRunning {
-			executionTokens = append(executionTokens, token)
-		}
-	}
-
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key)
@@ -226,9 +211,10 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return newEngineErrorf("failed to complete incident with key: %d", key)
 	}
 
-	executionTokens[0] = incident.Token
-	outcome := &runProcessInstanceOutcome{}
-	if runErr := engine.runProcessInstance(ctx, instance, executionTokens, outcome); runErr != nil {
+	// Reload every persisted Running token under the instance lock. This includes sibling branches
+	// that may have been stranded while the instance was Failed and avoids executing a stale snapshot.
+	outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, instance.ProcessInstance().Key)
+	if runErr != nil {
 		if !outcome.isPersistedFlowNodeCountReplacement(incident.Type) {
 			return fmt.Errorf("failed to continue process instance %d after resolving incident %d: %w",
 				instance.ProcessInstance().Key, incident.Key, runErr)

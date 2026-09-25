@@ -182,6 +182,12 @@ type Restore struct {
 
 // Engine configures the behaviour of the BPMN engines running on the node partitions.
 type Engine struct {
+	// ReconciliationScanDisabled disables periodic scans for durable Running tokens.
+	// Startup recovery and explicit retry wakeups continue when it is true.
+	ReconciliationScanDisabled       bool  `yaml:"reconciliationScanDisabled" json:"reconciliationScanDisabled" env:"CLUSTER_ENGINE_RECONCILIATION_SCAN_DISABLED" env-default:"false"`
+	ReconciliationIntervalSeconds    int64 `yaml:"reconciliationIntervalSeconds" json:"reconciliationIntervalSeconds" env:"CLUSTER_ENGINE_RECONCILIATION_INTERVAL_SECONDS" env-default:"60"`
+	ReconciliationGracePeriodSeconds int64 `yaml:"reconciliationGracePeriodSeconds" json:"reconciliationGracePeriodSeconds" env:"CLUSTER_ENGINE_RECONCILIATION_GRACE_PERIOD_SECONDS" env-default:"60"`
+	ReconciliationBatchSize          int64 `yaml:"reconciliationBatchSize" json:"reconciliationBatchSize" env:"CLUSTER_ENGINE_RECONCILIATION_BATCH_SIZE" env-default:"256"`
 	// MaxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). When a child process instance exceeds the limit,
 	// the engine stops its creation and raises an incident describing a potential infinite loop. Values <= 0 disable the check.
@@ -194,6 +200,20 @@ type Engine struct {
 	// This constraint is intentionally separate from (and is much larger than) MaxProcessInstanceNestingDepth:
 	// legitimate loops may run thousands of iterations while legitimate nesting rarely exceeds double digits.
 	MaxProcessInstanceFlowNodeCount int64 `yaml:"maxProcessInstanceFlowNodeCount" json:"maxProcessInstanceFlowNodeCount" env:"CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT" env-default:"10000"`
+}
+
+func (e Engine) ValidateReconciliation() error {
+	maxSeconds := int64(math.MaxInt64 / int64(time.Second))
+	if e.ReconciliationIntervalSeconds <= 0 || e.ReconciliationIntervalSeconds > maxSeconds {
+		return fmt.Errorf("cluster.engine.reconciliationIntervalSeconds must be between 1 and %d, got %d", maxSeconds, e.ReconciliationIntervalSeconds)
+	}
+	if e.ReconciliationGracePeriodSeconds <= 0 || e.ReconciliationGracePeriodSeconds > maxSeconds {
+		return fmt.Errorf("cluster.engine.reconciliationGracePeriodSeconds must be between 1 and %d, got %d", maxSeconds, e.ReconciliationGracePeriodSeconds)
+	}
+	if e.ReconciliationBatchSize <= 0 {
+		return fmt.Errorf("cluster.engine.reconciliationBatchSize must be greater than zero, got %d", e.ReconciliationBatchSize)
+	}
+	return nil
 }
 
 // CDC configures the rqlite change data capture output.
@@ -372,6 +392,9 @@ func (c *Config) validate() error {
 		return err
 	}
 	if err := c.JobManager.Validate(); err != nil {
+		return err
+	}
+	if err := c.Cluster.Engine.ValidateReconciliation(); err != nil {
 		return err
 	}
 	if c.Cluster.NodeId == "" {

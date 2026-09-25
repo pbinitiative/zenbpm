@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	zensql "github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ type newIndexUseCase struct {
 // that contains "USING INDEX <index>" is what SQLite picked; the assertions
 // ensure it stays that way.
 type pinnedIndexUseCase struct {
-	name      string
+	name string
 	// scanTargets lists every name SQLite could print in a SCAN line for this
 	// query — the underlying table name plus any alias used in the FROM clause.
 	// EXPLAIN prints the alias, not the table name, so both must be checked
@@ -69,37 +70,29 @@ func TestHotPathIndexes(t *testing.T) {
 
 	db := newTestDB(t, partition, conf, clientMgr, testStore, "test-hot-path-indexes")
 
-	t.Run("new index use cases (added in 0012)", func(t *testing.T) {
-		tests := newIndexUseCases()
+	for _, tt := range newIndexUseCases() {
+		t.Run("new index: "+tt.name, func(t *testing.T) {
+			details := explainQueryPlan(t, db, tt.query, tt.arguments...)
+			plan := strings.Join(details, "\n")
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				details := explainQueryPlan(t, db, tt.query, tt.arguments...)
-				plan := strings.Join(details, "\n")
+			// SQLite prints either "USING INDEX <name>" or "USING COVERING INDEX <name>"
+			// (the latter when the index covers every column the query needs).
+			require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
+			require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
+		})
+	}
 
-				// SQLite prints either "USING INDEX <name>" or "USING COVERING INDEX <name>"
-				// (the latter when the index covers every column the query needs).
-				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
-				require.NotContains(t, plan, "SCAN "+tt.table, "query plan:\n%s", plan)
-			})
-		}
-	})
+	for _, tt := range pinnedIndexUseCases() {
+		t.Run("pinned index: "+tt.name, func(t *testing.T) {
+			details := explainQueryPlan(t, db, tt.query, tt.arguments...)
+			plan := strings.Join(details, "\n")
 
-	t.Run("pinned index use cases (must use a specific older index)", func(t *testing.T) {
-		tests := pinnedIndexUseCases()
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				details := explainQueryPlan(t, db, tt.query, tt.arguments...)
-				plan := strings.Join(details, "\n")
-
-				require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
-				for _, target := range tt.scanTargets {
-					require.NotContains(t, plan, "SCAN "+target, "query plan:\n%s", plan)
-				}
-			})
-		}
-	})
+			require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX `+regexp.QuoteMeta(tt.index)+`\b`), plan, "query plan:\n%s", plan)
+			for _, target := range tt.scanTargets {
+				require.NotContains(t, plan, "SCAN "+target, "query plan:\n%s", plan)
+			}
+		})
+	}
 
 	t.Run("rollback removes and forward migration restores indexes", func(t *testing.T) {
 		migration := findMigration(t, "0012_hot_path_indexes.up.sql")
@@ -110,6 +103,18 @@ func TestHotPathIndexes(t *testing.T) {
 
 		require.NoError(t, executeUpMigration(t.Context(), db, migration))
 		requireIndexesExist(t, db, true)
+	})
+
+	t.Run("token history index survives a down and up migration round trip", func(t *testing.T) {
+		migration := findMigration(t, "0016_flow_element_instance_execution_token_index.up.sql")
+		const indexName = "idx_flow_element_instance_execution_token_key"
+		requireIndexExists(t, db, indexName, true)
+
+		require.NoError(t, executeRollbackMigration(t.Context(), db, migration))
+		requireIndexExists(t, db, indexName, false)
+
+		require.NoError(t, executeUpMigration(t.Context(), db, migration))
+		requireIndexExists(t, db, indexName, true)
 	})
 }
 
@@ -175,6 +180,20 @@ func newIndexUseCases() []newIndexUseCase {
 			arguments: []any{int64(1)},
 		},
 		{
+			name:      "bounded running token recovery",
+			table:     "token",
+			index:     "idx_execution_token_state",
+			query:     "SELECT token.* FROM execution_token AS token INDEXED BY idx_execution_token_state JOIN process_instance AS pi ON pi.key = token.process_instance_key WHERE token.state = ? AND pi.state IN (1, 8) AND token.key > ? ORDER BY token.key LIMIT ?",
+			arguments: []any{int64(1), int64(0), int64(256)},
+		},
+		{
+			name:      "grace-period running token reconciliation",
+			table:     "token",
+			index:     "idx_execution_token_state",
+			query:     zensql.RecoverableRunningTokensQuery,
+			arguments: []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
+		},
+		{
 			name:  "active process instance metrics",
 			table: "process_instance",
 			index: "idx_process_instance_state",
@@ -195,11 +214,18 @@ func newIndexUseCases() []newIndexUseCase {
 func pinnedIndexUseCases() []pinnedIndexUseCase {
 	return []pinnedIndexUseCase{
 		{
+			name:        "running token reconciliation uses token history index",
+			scanTargets: []string{"token", "execution_token", "pi", "process_instance", "history", "flow_element_instance"},
+			index:       "idx_flow_element_instance_execution_token_key",
+			query:       zensql.RecoverableRunningTokensQuery,
+			arguments:   []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
+		},
+		{
 			// Without the hint SQLite picks idx_process_instance_state (added in 0012)
 			// and scans every terminal instance on each cleanup pass.
-			name:      "TTL cleanup uses partial cleanup index",
+			name:        "TTL cleanup uses partial cleanup index",
 			scanTargets: []string{"pi", "parent_pi", "et", "process_instance", "execution_token"},
-			index:     "idx_process_instance_cleanup",
+			index:       "idx_process_instance_cleanup",
 			query: `SELECT pi.key
 FROM process_instance AS pi INDEXED BY idx_process_instance_cleanup
     LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
@@ -215,33 +241,33 @@ LIMIT ?`,
 			// Without the hint SQLite picks idx_timer_state_due_at and scans every
 			// timer in that state across the partition instead of the few timers
 			// for one process instance.
-			name:      "process instance timers use FK index",
+			name:        "process instance timers use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_instance_key",
+			index:       "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "process definition timers use FK index",
+			name:        "process definition timers use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_definition_key",
+			index:       "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "process instance timers by element use FK index",
+			name:        "process instance timers by element use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_instance_key",
+			index:       "idx_fk_timer_process_instance_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE process_instance_key = ? AND element_id = ? AND state = ?`,
 			arguments: []any{int64(1), "elem", int64(1)},
 		},
 		{
-			name:      "process definition timers by element use FK index",
+			name:        "process definition timers by element use FK index",
 			scanTargets: []string{"timer"},
-			index:     "idx_fk_timer_process_definition_key",
+			index:       "idx_fk_timer_process_definition_key",
 			query: `SELECT * FROM timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id = ? AND state = ?`,
 			arguments: []any{int64(1), "elem", int64(1)},
@@ -250,33 +276,33 @@ WHERE process_definition_key = ? AND process_instance_key IS NULL AND element_id
 			// The planner currently picks the FK index correctly, but pinning makes
 			// the contract explicit and prevents the generic idx_execution_token_state
 			// from shadowing it under different data distributions.
-			name:      "tokens for process instance use FK index",
+			name:        "tokens for process instance use FK index",
 			scanTargets: []string{"execution_token"},
-			index:     "idx_fk_execution_token_process_instance_key",
+			index:       "idx_fk_execution_token_process_instance_key",
 			query: `SELECT * FROM execution_token INDEXED BY idx_fk_execution_token_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
 			arguments: []any{int64(1), int64(1), int64(2)},
 		},
 		{
-			name:      "jobs in state for process instance use FK index",
+			name:        "jobs in state for process instance use FK index",
 			scanTargets: []string{"job"},
-			index:     "idx_fk_job_process_instance_key",
+			index:       "idx_fk_job_process_instance_key",
 			query: `SELECT * FROM job INDEXED BY idx_fk_job_process_instance_key
 WHERE process_instance_key = ? AND state IN (?, ?)`,
 			arguments: []any{int64(1), int64(1), int64(2)},
 		},
 		{
-			name:      "message subscriptions for process instance use FK index",
+			name:        "message subscriptions for process instance use FK index",
 			scanTargets: []string{"message_subscription"},
-			index:     "idx_fk_message_subscription_process_instance_key",
+			index:       "idx_fk_message_subscription_process_instance_key",
 			query: `SELECT * FROM message_subscription INDEXED BY idx_fk_message_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
 		},
 		{
-			name:      "error subscriptions for process instance use FK index",
+			name:        "error subscriptions for process instance use FK index",
 			scanTargets: []string{"error_subscription"},
-			index:     "idx_fk_error_subscription_process_instance_key",
+			index:       "idx_fk_error_subscription_process_instance_key",
 			query: `SELECT * FROM error_subscription INDEXED BY idx_fk_error_subscription_process_instance_key
 WHERE process_instance_key = ? AND state = ?`,
 			arguments: []any{int64(1), int64(1)},
@@ -286,9 +312,9 @@ WHERE process_instance_key = ? AND state = ?`,
 			// scans every process instance in the active/ready states, instead of joining from
 			// execution_token filtered by process_instance_key. The pin forces a join order
 			// that probes child by parent_process_execution_token.
-			name:      "active subprocess count uses FK join",
+			name:        "active subprocess count uses FK join",
 			scanTargets: []string{"child", "et", "process_instance", "execution_token"},
-			index:     "idx_process_instance_parent_execution_token",
+			index:       "idx_process_instance_parent_execution_token",
 			query: `SELECT CAST(COUNT(*) AS INTEGER)
 FROM process_instance AS child INDEXED BY idx_process_instance_parent_execution_token
     INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
@@ -338,17 +364,22 @@ func requireIndexesExist(t *testing.T, db *DB, expected bool) {
 	t.Helper()
 
 	for _, indexName := range hotPathIndexNames {
-		var count int64
-		err := db.QueryRowContext(
-			t.Context(),
-			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
-			indexName,
-		).Scan(&count)
-		require.NoError(t, err)
-		if expected {
-			require.EqualValues(t, 1, count, indexName)
-		} else {
-			require.Zero(t, count, indexName)
-		}
+		requireIndexExists(t, db, indexName, expected)
+	}
+}
+
+func requireIndexExists(t *testing.T, db *DB, indexName string, expected bool) {
+	t.Helper()
+	var count int64
+	err := db.QueryRowContext(
+		t.Context(),
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
+		indexName,
+	).Scan(&count)
+	require.NoError(t, err)
+	if expected {
+		require.EqualValues(t, 1, count, indexName)
+	} else {
+		require.Zero(t, count, indexName)
 	}
 }

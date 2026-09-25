@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_flow_element_instance_execution_token_key;

@@ -328,6 +328,16 @@ func (b *EngineBatch) saveTokens(ctx context.Context, tokens []bpmnruntime.Execu
 	return nil
 }
 
+// saveTokensAndFlush makes continuation tokens durable in the same transaction as the trigger
+// that produced them. Callers may safely release the instance lock after this returns because the
+// next runner can reload the tokens instead of relying on an in-memory snapshot.
+func (b *EngineBatch) saveTokensAndFlush(ctx context.Context, tokens []bpmnruntime.ExecutionToken) error {
+	if err := b.saveTokens(ctx, tokens); err != nil {
+		return err
+	}
+	return b.Flush(ctx)
+}
+
 func (b *EngineBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
 	return markTechnicalFailure(b.b.SaveFlowElementInstance(ctx, historyItem))
 }

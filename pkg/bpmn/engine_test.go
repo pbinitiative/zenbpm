@@ -75,29 +75,6 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 
 func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	t.Skip("runtime modification of handlers is not supported yet")
-	// setup
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
-	assert.NoError(t, err)
-	wasCalled := false
-	handler := func(job ActivatedJob) {
-		wasCalled = true
-		job.Complete()
-	}
-	// // given
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idH := bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
-	defer bpmnEngine.RemoveHandler(idH)
-
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), pi.ProcessInstance().Key)
-	assert.NoError(t, err)
-	err = bpmnEngine.RunProcessInstance(t.Context(), pi, tokens)
-	assert.NoError(t, err)
-
-	// when
-	assert.True(t, wasCalled)
 }
 
 func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {

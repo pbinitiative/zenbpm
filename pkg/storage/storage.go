@@ -146,6 +146,13 @@ type ProcessInstanceStorageReader interface {
 	RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error)
 }
 
+// CompleteProcessInstanceSnapshot marks storage whose FindProcessInstanceByKey
+// returns every current field that RefreshProcessInstance would apply. The
+// engine may skip a second read when it already holds the instance lock.
+type CompleteProcessInstanceSnapshot interface {
+	CompleteProcessInstanceSnapshot()
+}
+
 type ProcessInstanceStorageWriter interface {
 	// SaveProcessInstance persists the instance
 	// and potentially overwrites prior data stored with given process instance key
@@ -218,6 +225,8 @@ type MessageStorageWriter interface {
 
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
+	FindRunningTokensAfter(ctx context.Context, afterTokenKey int64, limit int64) ([]bpmnruntime.ExecutionToken, error)
+	FindRecoverableRunningTokens(ctx context.Context, afterTokenKey int64, runningBefore time.Time, limit int64) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)

@@ -877,6 +877,12 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		bpmn.EngineWithJs(jsRuntime),
 		bpmn.EngineWithMaxProcessInstanceNestingDepth(c.Config.Engine.MaxProcessInstanceNestingDepth),
 		bpmn.EngineWithMaxProcessInstanceFlowNodeCount(c.Config.Engine.MaxProcessInstanceFlowNodeCount),
+		bpmn.EngineWithReconciliation(
+			time.Duration(c.Config.Engine.ReconciliationIntervalSeconds)*time.Second,
+			time.Duration(c.Config.Engine.ReconciliationGracePeriodSeconds)*time.Second,
+			c.Config.Engine.ReconciliationBatchSize,
+			!c.Config.Engine.ReconciliationScanDisabled,
+		),
 		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
 			return db.Partition == clusterState().DefinitionSubscriptionPartition(definition.BpmnProcessId)
 		}),

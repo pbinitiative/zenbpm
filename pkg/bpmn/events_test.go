@@ -244,10 +244,6 @@ func TestHavingIntermediateCatchEventAndServiceTaskInParallelTheProcessStateIsMa
 	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
 	assert.NoError(t, err)
 
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
-	assert.NoError(t, err)
-	err = bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
-	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().GetState())
 
 	for _, message := range engineStorage.MessageSubscriptions {

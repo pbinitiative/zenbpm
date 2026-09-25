@@ -72,6 +72,10 @@ Behaviour settings for the BPMN engines running on the node partitions.
 |---------------------|-------|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `maxProcessInstanceNestingDepth` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_NESTING_DEPTH`| `100`   | Maximum allowed nesting depth of a process instance in the parent-child chain (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than the limit stops execution and raises an incident describing a potential infinite loop. Values `<= 0` disable the check. |
 | `maxProcessInstanceFlowNodeCount` | int64 | `CLUSTER_ENGINE_MAX_PROCESS_INSTANCE_FLOW_NODE_COUNT`| `10000`   | Maximum total number of flow node executions allowed within one process instance. Guards against infinite sequence-flow loops (e.g. an exclusive gateway looping back without a reachable exit condition). Exceeding the limit fails the token and raises an incident. Values `<= 0` disable the check. |
+| `reconciliationScanDisabled` | bool | `CLUSTER_ENGINE_RECONCILIATION_SCAN_DISABLED` | `false` | Disable periodic scans for durable Running tokens. Startup recovery and targeted retry wakeups remain active when true. |
+| `reconciliationIntervalSeconds` | int64 | `CLUSTER_ENGINE_RECONCILIATION_INTERVAL_SECONDS` | `60` | Seconds between periodic recovery scans; must be positive. |
+| `reconciliationGracePeriodSeconds` | int64 | `CLUSTER_ENGINE_RECONCILIATION_GRACE_PERIOD_SECONDS` | `60` | Minimum token age before a periodic scan considers it for recovery; must be positive. |
+| `reconciliationBatchSize` | int64 | `CLUSTER_ENGINE_RECONCILIATION_BATCH_SIZE` | `256` | Maximum Running tokens read per recovery scan and startup recovery page; must be positive. |
 
 Resolving a nesting-depth incident retries the blocked execution instead of bypassing the configured limit. For an
 event-subprocess trigger, resolution recreates the consumed message subscription or timer; if the limit is unchanged,
@@ -91,6 +95,20 @@ counter.
 When upgrading a cluster that already has active process instances, counting starts at zero for those instances when
 the migration is applied. Existing audit history is intentionally not used to reconstruct runtime counters because
 audit rows may already have been removed by history cleanup.
+
+The engine exposes `reconciliation_recoveries`, `reconciliation_failures` (with an `operation` attribute),
+`reconciliation_scan_duration` in milliseconds, `reconciliation_wake_queue_depth`, and
+`reconciliation_retry_queue_depth`. The two queue metrics report distinct process instances waiting for an explicit
+wakeup or a technical retry; a growing depth indicates that recovery is falling behind. A recovery is counted after
+the engine successfully resumes an instance with durable Running tokens. Scan or resume errors are counted as failures;
+cancellation during shutdown is excluded. Recovery failures are logged; later scans or wakeups can retry them. They do
+not automatically raise process incidents.
+
+Repeated technical recovery failures use exponential backoff per process instance. The first delay is the larger of
+five seconds and the configured scan interval; later delays double up to the larger of five minutes and that initial
+delay. The manager schedules these retries even when periodic scanning is disabled. Scan-query errors use the same
+backoff on subsequent scan ticks. Additional wakeups during the cooldown do not bypass it. A successful recovery or
+an instance with no Running tokens resets its failure count.
 
 ---
 

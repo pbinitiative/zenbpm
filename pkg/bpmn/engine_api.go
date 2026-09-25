@@ -12,6 +12,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -21,8 +22,8 @@ import (
 // Start will start the process engine instance.ProcessInstance().
 // Engine will start to pull process instances with execution tokens that need to be processed
 func (engine *Engine) Start(ctx context.Context) error {
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
+	if err := engine.context.Err(); err != nil {
+		return err
 	}
 	pollTimerDelay := engine.pollTimerDelay
 	if pollTimerDelay == 0 {
@@ -39,46 +40,37 @@ func (engine *Engine) Start(ctx context.Context) error {
 			}
 		}
 	}
-	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
-	engine.timerManager.start()
-	tokens, err := engine.persistence.GetRunningTokens(engine.context)
-	if err != nil {
-		return fmt.Errorf("failed to load running tokens: %w", err)
+
+	reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize := engine.reconciliationSettings()
+	if engine.disablePeriodicReconciliation {
+		reconciliationInterval = 0
 	}
-	type instanceToStart struct {
-		instance runtime.ProcessInstance
-		tokens   []runtime.ExecutionToken
+	reconciliationManager := newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
+	timerManager := newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
+
+	engine.lifecycle.managerMu.Lock()
+	if currentTimerManager := engine.lifecycle.timerManager.Load(); currentTimerManager != nil {
+		currentTimerManager.stop()
 	}
-	instancesToStart := make(map[int64]instanceToStart)
-	skippedInstances := make(map[int64]struct{})
-	for _, token := range tokens {
-		if _, skipped := skippedInstances[token.ProcessInstanceKey]; skipped {
-			continue
-		}
-		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
-			val.tokens = append(val.tokens, token)
-			instancesToStart[token.ProcessInstanceKey] = val
-		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(engine.context, token.ProcessInstanceKey)
-			if err != nil {
-				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
-			}
-			// Failed instances resume only through incident resolution; terminal instances never resume.
-			if instance.ProcessInstance().State != runtime.ActivityStateReady && instance.ProcessInstance().State != runtime.ActivityStateActive {
-				skippedInstances[token.ProcessInstanceKey] = struct{}{}
-				continue
-			}
-			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
-				instance: instance,
-				tokens:   []runtime.ExecutionToken{token},
-			}
-		}
+	previousReconciliationManager := engine.swapReconciliationManager(reconciliationManager)
+	if previousReconciliationManager != nil {
+		previousReconciliationManager.stop()
 	}
-	for _, instance := range instancesToStart {
-		err := engine.RunProcessInstance(engine.context, instance.instance, instance.tokens)
-		if err != nil {
-			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.ProcessInstance().Key, err.Error()))
+	reconciliationManager.start()
+	timerManager.start()
+	engine.lifecycle.timerManager.Store(timerManager)
+	engine.lifecycle.managerMu.Unlock()
+
+	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
+		engine.lifecycle.managerMu.Lock()
+		if engine.lifecycle.timerManager.CompareAndSwap(timerManager, nil) {
+			timerManager.stop()
 		}
+		if activeReconciliationManager := engine.detachReconciliationManager(reconciliationManager); activeReconciliationManager != nil {
+			activeReconciliationManager.stop()
+		}
+		engine.lifecycle.managerMu.Unlock()
+		return err
 	}
 
 	if err := engine.recoverInstantiatingReceiveTaskSubscriptions(engine.context); err != nil {
@@ -137,13 +129,17 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 // Runtimes injected through EngineWithStorageAndFeel or EngineWithJs remain owned by the caller and are left running.
 // Calling Stop multiple times is safe.
 func (engine *Engine) Stop() {
-	// The timer manager and the engine context are deliberately handled outside stopOnce. Both operations are
-	// idempotent and must always act on the receiver's current state: Start may create a fresh timer manager
-	// after a previous Stop, and (because NewEngine returns Engine by value) a copy sharing the same stopOnce
-	// may be stopped before the running engine. Guarding them with the one-shot Once would leave the live
-	// timer manager goroutine running forever in both cases.
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
+	engine.lifecycle.managerMu.Lock()
+	defer engine.lifecycle.managerMu.Unlock()
+
+	// Manager shutdown and context cancellation are deliberately handled outside stopOnce. They are idempotent
+	// and must act on the current shared lifecycle: a value copy of the Engine may be stopped while another copy
+	// runs, and a failed Start may already have detached its managers. Start refuses to run after Stop.
+	if timerManager := engine.lifecycle.timerManager.Swap(nil); timerManager != nil {
+		timerManager.stop()
+	}
+	if reconciliationManager := engine.swapReconciliationManager(nil); reconciliationManager != nil {
+		reconciliationManager.stop()
 	}
 	engine.contextCancel()
 	// Owned script pools are released exactly once, even when Stop is called repeatedly or concurrently.
@@ -161,13 +157,24 @@ func (engine *Engine) Stop() {
 // As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
 // Lock will be released once the RunProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
+// Once tokens are durable, caller cancellation must not strand them. Execution therefore preserves
+// caller values but follows the engine lifecycle for cancellation.
+// Supplied tokens must be persisted before this call; their state is reloaded after acquiring the
+// process-instance lock so a snapshot handled by an earlier lock owner cannot execute twice.
 func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (retErr error) {
-	return engine.runProcessInstance(ctx, instance, executionTokens, nil)
+	continuationCtx, cancelContinuation := engine.continuationContext(ctx)
+	defer cancelContinuation()
+
+	outcome := &runProcessInstanceOutcome{}
+	retErr = engine.runProcessInstance(continuationCtx, instance, executionTokens, outcome)
+	engine.wakeReconciliationAfterContinuationFailure(instance.ProcessInstance().Key, outcome, retErr)
+	return retErr
 }
 
 type runProcessInstanceOutcome struct {
-	persistedIncident bool
-	technicalFailure  bool
+	persistedIncident    bool
+	technicalFailure     bool
+	resumedRunningTokens bool
 }
 
 type technicalFailureError struct {
@@ -228,6 +235,101 @@ func (o *runProcessInstanceOutcome) isPersistedFlowNodeCountReplacement(incident
 }
 
 func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken, outcome *runProcessInstanceOutcome) (retErr error) {
+	instanceKey := instance.ProcessInstance().Key
+	engine.runningInstances.lockInstance(instanceKey)
+	defer engine.runningInstances.unlockInstance(instanceKey)
+
+	runningTokens, err := engine.reloadSuppliedRunningTokens(ctx, instanceKey, executionTokens)
+	if err != nil {
+		outcome.recordTechnicalFailure()
+		return fmt.Errorf("failed to reload execution tokens for process instance %d: %w", instanceKey, err)
+	}
+	if len(runningTokens) == 0 {
+		return nil
+	}
+	// The supplied instance may predate another lock owner. Recovery paths load
+	// the instance under this lock and can skip this extra persistence read.
+	if err := engine.persistence.RefreshProcessInstance(ctx, instance); err != nil {
+		outcome.recordTechnicalFailure()
+		return fmt.Errorf("failed to refresh process instance %d: %w", instanceKey, err)
+	}
+
+	return engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome)
+}
+
+// reloadSuppliedRunningTokens replaces caller snapshots with their persisted state while the
+// process-instance lock is held. A token handled by an earlier lock owner is no longer Running and
+// must not be executed again. Iterating over suppliedTokens preserves the caller's execution order.
+func (engine *Engine) reloadSuppliedRunningTokens(
+	ctx context.Context,
+	processInstanceKey int64,
+	suppliedTokens []runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
+	requestedKeys := make(map[int64]struct{}, len(suppliedTokens))
+	for _, token := range suppliedTokens {
+		if token.State != runtime.TokenStateRunning {
+			continue
+		}
+		if token.ProcessInstanceKey != processInstanceKey {
+			return nil, fmt.Errorf("token %d belongs to process instance %d, expected %d", token.Key, token.ProcessInstanceKey, processInstanceKey)
+		}
+		requestedKeys[token.Key] = struct{}{}
+	}
+	if len(requestedKeys) == 0 {
+		return nil, nil
+	}
+
+	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	persistedByKey := make(map[int64]runtime.ExecutionToken, len(requestedKeys))
+	for _, token := range activeTokens {
+		if token.State != runtime.TokenStateRunning {
+			continue
+		}
+		if _, requested := requestedKeys[token.Key]; requested {
+			persistedByKey[token.Key] = token
+		}
+	}
+	for key := range requestedKeys {
+		if _, found := persistedByKey[key]; found {
+			continue
+		}
+		persistedToken, err := engine.persistence.GetTokenByKey(ctx, key)
+		if errors.Is(err, storage.ErrNotFound) {
+			engine.logger.Warn("supplied Running token was not persisted before RunProcessInstance", "token", key, "processInstance", processInstanceKey)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload supplied token %d: %w", key, err)
+		}
+		if persistedToken.ProcessInstanceKey != processInstanceKey {
+			return nil, fmt.Errorf("persisted token %d belongs to process instance %d, expected %d", key, persistedToken.ProcessInstanceKey, processInstanceKey)
+		}
+		if persistedToken.State == runtime.TokenStateRunning {
+			persistedByKey[key] = persistedToken
+		}
+	}
+
+	runningTokens := make([]runtime.ExecutionToken, 0, len(persistedByKey))
+	seen := make(map[int64]struct{}, len(persistedByKey))
+	for _, suppliedToken := range suppliedTokens {
+		persistedToken, exists := persistedByKey[suppliedToken.Key]
+		if !exists {
+			continue
+		}
+		if _, duplicate := seen[persistedToken.Key]; duplicate {
+			continue
+		}
+		seen[persistedToken.Key] = struct{}{}
+		runningTokens = append(runningTokens, persistedToken)
+	}
+	return runningTokens, nil
+}
+
+// runProcessInstanceLocked executes tokens while the caller holds the process-instance lock.
+func (engine *Engine) runProcessInstanceLocked(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken, outcome *runProcessInstanceOutcome) (retErr error) {
 	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
@@ -236,15 +338,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.P
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}()
-	engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
-	defer engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 
-	//refresh
-	err := engine.persistence.RefreshProcessInstance(ctx, instance)
-	if err != nil {
-		outcome.recordTechnicalFailure()
-		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
 	switch instance.ProcessInstance().State {
 	case runtime.ActivityStateTerminated:
 		return newEngineErrorf("process instance %d is terminated", instance.ProcessInstance().Key)
@@ -279,7 +373,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.P
 	))
 
 	instance.ProcessInstance().State = runtime.ActivityStateActive
-	err = engine.persistence.SaveProcessInstance(ctx, instance)
+	err := engine.persistence.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		outcome.recordTechnicalFailure()
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.ProcessInstance().Key), err)

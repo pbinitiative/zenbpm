@@ -153,7 +153,7 @@ func (engine *Engine) processBoundaryErrorEvent(
 		return false, err
 	}
 
-	if err := batch.Flush(ctx); err != nil {
+	if err := batch.saveTokensAndFlush(ctx, tokens); err != nil {
 		return false, fmt.Errorf("failed to fail job %+v by boundary error handling: %w", job, err)
 	}
 
@@ -230,7 +230,38 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	if job.State == runtime.ActivityStateCompleted {
-		engine.logger.Error("job %d is already completed", job.Key)
+		// A duplicate completion can heal any stranded Running sibling, not only the
+		// completed job's token. The token embedded in the job can be a stale
+		// snapshot, so check persisted tokens before taking the instance lock.
+		// The continuation reloads them under the lock if there is Running work.
+		continuationCtx, cancelContinuation := engine.continuationContext(ctx)
+		activeTokens, readErr := engine.persistence.GetActiveTokensForProcessInstance(continuationCtx, job.ProcessInstanceKey)
+		cancelContinuation()
+		if readErr != nil {
+			engine.wakeReconciliation(job.ProcessInstanceKey)
+			return fmt.Errorf("failed to check running tokens for process instance %d after retrying completed job %d: %w",
+				job.ProcessInstanceKey, job.Key, readErr)
+		}
+		needsContinuation := false
+		for _, token := range activeTokens {
+			if token.State == runtime.TokenStateRunning {
+				needsContinuation = true
+				break
+			}
+		}
+		if !needsContinuation {
+			return nil
+		}
+		engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
+		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey)
+		if runErr != nil {
+			if !outcome.isPersistedIncidentOnly() {
+				return fmt.Errorf("failed to continue process instance %d after retrying completed job %d: %w",
+					job.ProcessInstanceKey, job.Key, runErr)
+			}
+			engine.logger.Warn("failed to continue process instance for an already completed job",
+				"job", job.Key, "processInstance", job.ProcessInstanceKey, "err", runErr)
+		}
 		return nil
 	}
 
@@ -367,8 +398,8 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		// The job completion has already been durably flushed above. A successfully persisted
 		// incident is a domain outcome and must not invite a retry of the completed job, while a
 		// technical continuation failure must remain observable so recovery can be triggered.
-		outcome := &runProcessInstanceOutcome{}
-		if runErr := engine.runProcessInstance(ctx, instance, tokens, outcome); runErr != nil {
+		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, instance.ProcessInstance().Key)
+		if runErr != nil {
 			if !outcome.isPersistedIncidentOnly() {
 				return fmt.Errorf("failed to continue process instance %d after completing job %d: %w",
 					instance.ProcessInstance().Key, job.Key, runErr)

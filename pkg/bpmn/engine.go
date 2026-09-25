@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -31,6 +32,17 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
+// engineLifecycle owns the background managers started by an Engine. NewEngine
+// returns Engine by value, so this state must be shared by every value copy.
+type engineLifecycle struct {
+	managerMu sync.Mutex
+
+	timerManager atomic.Pointer[timerManager]
+
+	reconciliationMu      sync.RWMutex
+	reconciliationManager *reconciliationManager
+}
+
 // Engine holds the state of the bpmn engine.
 // It interacts with the outside world using persistence storage interface and outside world interacts with it using public methods (message correlations, job updates, ...).
 type Engine struct {
@@ -44,7 +56,7 @@ type Engine struct {
 	tracer         trace.Tracer
 	meter          metric.Meter
 	metrics        *otelPkg.EngineMetrics
-	timerManager   *timerManager
+	lifecycle      *engineLifecycle
 	dmnEngine      *dmn.ZenDmnEngine
 	feelRuntime    script.FeelRuntime
 	jsRuntime      script.JsRuntime
@@ -58,9 +70,9 @@ type Engine struct {
 	ownsJsRuntime bool
 
 	// stopOnce guarantees that Stop releases engine-owned script pools (DMN engine, FEEL and JavaScript runtimes)
-	// exactly once, even when Stop is called multiple times or from multiple goroutines. Timer manager shutdown and
-	// context cancellation are intentionally NOT guarded by it (see Stop). It is a pointer because Engine values are
-	// copied (NewEngine returns Engine by value).
+	// exactly once, even when Stop is called multiple times or from multiple goroutines. Background-manager shutdown
+	// and context cancellation are intentionally NOT guarded by it (see Stop). It is a pointer because Engine values
+	// are copied (NewEngine returns Engine by value).
 	stopOnce *sync.Once
 
 	// constructed is set once newEngine has finished applying options and creating default runtimes.
@@ -71,6 +83,21 @@ type Engine struct {
 	// pollTimerDelay is the interval between timer polling cycles.
 	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
 	pollTimerDelay time.Duration
+
+	// reconciliationInterval is the interval between bounded scans for
+	// durable Running tokens whose foreground continuation was interrupted.
+	reconciliationInterval time.Duration
+
+	// reconciliationBatchSize limits how many Running tokens a single
+	// recovery scan reads from persistence.
+	reconciliationBatchSize int64
+
+	// reconciliationGracePeriod reduces contention with foreground continuations
+	// for recently active Running tokens. Correctness relies on reloading tokens
+	// under the instance lock, including when the grace period has elapsed.
+	reconciliationGracePeriod time.Duration
+	// disablePeriodicReconciliation leaves startup recovery and explicit wakeups enabled.
+	disablePeriodicReconciliation bool
 
 	// maxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
@@ -124,6 +151,12 @@ const DefaultMaxProcessInstanceNestingDepth int64 = 100
 // thousands of iterations while legitimate nesting rarely exceeds double digits.
 const DefaultMaxProcessInstanceFlowNodeCount int64 = 10000
 
+const (
+	defaultReconciliationInterval    = 60 * time.Second
+	defaultReconciliationGracePeriod = 60 * time.Second
+	defaultReconciliationBatchSize   = int64(256)
+)
+
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
 	return newEngine(engineFactories{
@@ -167,6 +200,7 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 		tracer:                          tracer,
 		meter:                           meter,
 		metrics:                         metrics,
+		lifecycle:                       &engineLifecycle{},
 		maxProcessInstanceNestingDepth:  DefaultMaxProcessInstanceNestingDepth,
 		maxProcessInstanceFlowNodeCount: DefaultMaxProcessInstanceFlowNodeCount,
 		stopOnce:                        &sync.Once{},
@@ -273,6 +307,17 @@ func EngineWithLogger(logger hclog.Logger) EngineOption {
 func EngineWithPollTimerDelay(d time.Duration) EngineOption {
 	return func(engine *Engine) {
 		engine.pollTimerDelay = d
+	}
+}
+
+// EngineWithReconciliation configures durable Running-token recovery. When scanEnabled
+// is false, startup recovery and wakeups still run, but periodic scans do not.
+func EngineWithReconciliation(interval, gracePeriod time.Duration, batchSize int64, scanEnabled bool) EngineOption {
+	return func(engine *Engine) {
+		engine.reconciliationInterval = interval
+		engine.reconciliationGracePeriod = gracePeriod
+		engine.reconciliationBatchSize = batchSize
+		engine.disablePeriodicReconciliation = !scanEnabled
 	}
 }
 
@@ -958,8 +1003,8 @@ func (engine *Engine) createTimerStartEventTimers(
 		// Definition reconciliation during restore uses an engine that is never
 		// started. Persist the timer now; the real engine's timer manager will
 		// discover it when maintenance mode ends.
-		if engine.timerManager != nil {
-			engine.timerManager.registerTimer(saved)
+		if timerManager := engine.currentTimerManager(); timerManager != nil {
+			timerManager.registerTimer(saved)
 		}
 		if !viaEngineBatch {
 			engine.recordTimerMetric(ctx, saved)

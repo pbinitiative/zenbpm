@@ -144,6 +144,8 @@ type Querier interface {
 	GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
+	GetRecoverableRunningTokens(ctx context.Context, arg GetRecoverableRunningTokensParams) ([]ExecutionToken, error)
+	GetRunningTokensAfter(ctx context.Context, arg GetRunningTokensAfterParams) ([]ExecutionToken, error)
 	GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	// Pinned to idx_fk_execution_token_process_instance_key. The newer idx_execution_token_state

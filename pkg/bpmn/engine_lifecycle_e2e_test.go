@@ -23,7 +23,8 @@ func TestEngineLifecycleEndToEnd(t *testing.T) {
 	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
 	defer engine.Stop()
 	require.NoError(t, engine.Start(t.Context()))
-	require.NotNil(t, engine.timerManager, "Start must create the timer manager")
+	timerManager := engine.currentTimerManager()
+	require.NotNil(t, timerManager, "Start must create the timer manager")
 
 	// FEEL evaluation: exclusive gateway with a FEEL condition.
 	gatewayProcess, err := engine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
@@ -57,6 +58,6 @@ func TestEngineLifecycleEndToEnd(t *testing.T) {
 	// exactly once; the deferred goleak verification proves their goroutines exit.
 	engine.Stop()
 	engine.Stop()
-	require.Error(t, engine.timerManager.ctx.Err(), "timer manager must be stopped")
+	require.Error(t, timerManager.ctx.Err(), "timer manager must be stopped")
 	require.Error(t, engine.context.Err(), "engine context must be cancelled")
 }

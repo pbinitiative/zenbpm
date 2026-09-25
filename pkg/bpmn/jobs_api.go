@@ -230,6 +230,28 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	if job.State == runtime.ActivityStateCompleted {
+		// A duplicate completion can heal any stranded Running sibling, not only the
+		// completed job's token. The token embedded in the job can be a stale
+		// snapshot, so check persisted tokens before taking the instance lock.
+		// The continuation reloads them under the lock if there is Running work.
+		continuationCtx, cancelContinuation := engine.continuationContext(ctx)
+		activeTokens, readErr := engine.persistence.GetActiveTokensForProcessInstance(continuationCtx, job.ProcessInstanceKey)
+		cancelContinuation()
+		if readErr != nil {
+			engine.wakeReconciliation(job.ProcessInstanceKey)
+			return fmt.Errorf("failed to check running tokens for process instance %d after retrying completed job %d: %w",
+				job.ProcessInstanceKey, job.Key, readErr)
+		}
+		needsContinuation := false
+		for _, token := range activeTokens {
+			if token.State == runtime.TokenStateRunning {
+				needsContinuation = true
+				break
+			}
+		}
+		if !needsContinuation {
+			return nil
+		}
 		engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
 		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey)
 		if runErr != nil {

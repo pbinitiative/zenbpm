@@ -6,6 +6,10 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
 
+// RecoverableRunningTokensQuery exposes the sqlc-generated statement so
+// query-plan tests can inspect the same SQL used by production.
+const RecoverableRunningTokensQuery = getRecoverableRunningTokens
+
 func ToNullString[S ~string](p *S) sql.NullString {
 	if p == nil {
 		return sql.NullString{

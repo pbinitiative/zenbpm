@@ -61,23 +61,6 @@ type pinnedIndexUseCase struct {
 	arguments   []any
 }
 
-const recoverableRunningTokensQuery = `SELECT token.*
-FROM execution_token AS token INDEXED BY idx_execution_token_state
-JOIN process_instance AS pi ON pi.key = token.process_instance_key
-WHERE token.state = ?
-    AND pi.state IN (1, 8)
-    AND token.key > ?
-    AND COALESCE(
-        (
-            SELECT MAX(COALESCE(history.completed_at, history.created_at))
-            FROM flow_element_instance AS history INDEXED BY idx_flow_element_instance_execution_token_key
-            WHERE history.execution_token_key = token.key
-        ),
-        token.created_at
-    ) < CAST(? AS INTEGER)
-ORDER BY token.key
-LIMIT ?`
-
 func TestHotPathIndexes(t *testing.T) {
 	partition, conf, clientMgr, testStore, server := prepareTestSetup(t, false)
 	t.Cleanup(func() {
@@ -120,6 +103,18 @@ func TestHotPathIndexes(t *testing.T) {
 
 		require.NoError(t, executeUpMigration(t.Context(), db, migration))
 		requireIndexesExist(t, db, true)
+	})
+
+	t.Run("token history index survives a down and up migration round trip", func(t *testing.T) {
+		migration := findMigration(t, "0016_flow_element_instance_execution_token_index.up.sql")
+		const indexName = "idx_flow_element_instance_execution_token_key"
+		requireIndexExists(t, db, indexName, true)
+
+		require.NoError(t, executeRollbackMigration(t.Context(), db, migration))
+		requireIndexExists(t, db, indexName, false)
+
+		require.NoError(t, executeUpMigration(t.Context(), db, migration))
+		requireIndexExists(t, db, indexName, true)
 	})
 }
 
@@ -195,7 +190,7 @@ func newIndexUseCases() []newIndexUseCase {
 			name:      "grace-period running token reconciliation",
 			table:     "token",
 			index:     "idx_execution_token_state",
-			query:     recoverableRunningTokensQuery,
+			query:     zensql.RecoverableRunningTokensQuery,
 			arguments: []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
 		},
 		{
@@ -222,7 +217,7 @@ func pinnedIndexUseCases() []pinnedIndexUseCase {
 			name:        "running token reconciliation uses token history index",
 			scanTargets: []string{"token", "execution_token", "pi", "process_instance", "history", "flow_element_instance"},
 			index:       "idx_flow_element_instance_execution_token_key",
-			query:       recoverableRunningTokensQuery,
+			query:       zensql.RecoverableRunningTokensQuery,
 			arguments:   []any{int64(1), int64(0), time.Now().UnixMilli(), int64(256)},
 		},
 		{
@@ -369,17 +364,22 @@ func requireIndexesExist(t *testing.T, db *DB, expected bool) {
 	t.Helper()
 
 	for _, indexName := range hotPathIndexNames {
-		var count int64
-		err := db.QueryRowContext(
-			t.Context(),
-			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
-			indexName,
-		).Scan(&count)
-		require.NoError(t, err)
-		if expected {
-			require.EqualValues(t, 1, count, indexName)
-		} else {
-			require.Zero(t, count, indexName)
-		}
+		requireIndexExists(t, db, indexName, expected)
+	}
+}
+
+func requireIndexExists(t *testing.T, db *DB, indexName string, expected bool) {
+	t.Helper()
+	var count int64
+	err := db.QueryRowContext(
+		t.Context(),
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
+		indexName,
+	).Scan(&count)
+	require.NoError(t, err)
+	if expected {
+		require.EqualValues(t, 1, count, indexName)
+	} else {
+		require.Zero(t, count, indexName)
 	}
 }

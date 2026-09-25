@@ -12,6 +12,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -282,6 +283,25 @@ func (engine *Engine) reloadSuppliedRunningTokens(
 		}
 		if _, requested := requestedKeys[token.Key]; requested {
 			persistedByKey[token.Key] = token
+		}
+	}
+	for key := range requestedKeys {
+		if _, found := persistedByKey[key]; found {
+			continue
+		}
+		persistedToken, err := engine.persistence.GetTokenByKey(ctx, key)
+		if errors.Is(err, storage.ErrNotFound) {
+			engine.logger.Warn("supplied Running token was not persisted before RunProcessInstance", "token", key, "processInstance", processInstanceKey)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload supplied token %d: %w", key, err)
+		}
+		if persistedToken.ProcessInstanceKey != processInstanceKey {
+			return nil, fmt.Errorf("persisted token %d belongs to process instance %d, expected %d", key, persistedToken.ProcessInstanceKey, processInstanceKey)
+		}
+		if persistedToken.State == runtime.TokenStateRunning {
+			persistedByKey[key] = persistedToken
 		}
 	}
 

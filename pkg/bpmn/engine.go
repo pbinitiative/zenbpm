@@ -95,6 +95,8 @@ type Engine struct {
 	// reconciliationGracePeriod prevents the periodic scan from competing with
 	// foreground continuations that have only just persisted a Running token.
 	reconciliationGracePeriod time.Duration
+	// disablePeriodicReconciliation leaves startup recovery and explicit wakeups enabled.
+	disablePeriodicReconciliation bool
 
 	// maxProcessInstanceNestingDepth is the maximum allowed nesting depth of a process instance in the parent-child chain
 	// (call activities, sub processes, multi-instance bodies). Creating a child instance deeper than this limit
@@ -304,6 +306,17 @@ func EngineWithLogger(logger hclog.Logger) EngineOption {
 func EngineWithPollTimerDelay(d time.Duration) EngineOption {
 	return func(engine *Engine) {
 		engine.pollTimerDelay = d
+	}
+}
+
+// EngineWithReconciliation configures durable Running-token recovery. When scanEnabled
+// is false, startup recovery and wakeups still run, but periodic scans do not.
+func EngineWithReconciliation(interval, gracePeriod time.Duration, batchSize int64, scanEnabled bool) EngineOption {
+	return func(engine *Engine) {
+		engine.reconciliationInterval = interval
+		engine.reconciliationGracePeriod = gracePeriod
+		engine.reconciliationBatchSize = batchSize
+		engine.disablePeriodicReconciliation = !scanEnabled
 	}
 }
 

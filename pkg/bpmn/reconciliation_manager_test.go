@@ -82,6 +82,21 @@ func TestReconciliationManager(t *testing.T) {
 
 		require.ErrorIs(t, <-startResult, context.Canceled)
 		assert.Nil(t, engine.currentReconciliationManager())
+		assert.Nil(t, engine.currentTimerManager())
+	})
+
+	t.Run("failed startup detaches stopped managers", func(t *testing.T) {
+		readErr := errors.New("startup token read failed")
+		store := &failingStartupRecoveryStorage{Storage: inmemory.NewStorage(), err: readErr}
+		engine := NewEngine(EngineWithStorage(store))
+		t.Cleanup(engine.Stop)
+		metricsEngine, reader := newMetricsTestEngine(t)
+		engine.metrics = metricsEngine.metrics
+
+		require.ErrorIs(t, engine.Start(t.Context()), readErr)
+		require.Nil(t, engine.currentTimerManager())
+		require.Nil(t, engine.currentReconciliationManager())
+		require.Equal(t, int64(1), counterValue(t, reader, "reconciliation_failures"))
 	})
 
 	t.Run("synchronizes manager replacement with wake delivery", func(t *testing.T) {
@@ -618,6 +633,15 @@ type retryReadFailureStorage struct {
 	*inmemory.Storage
 	failNextRead bool
 	err          error
+}
+
+type failingStartupRecoveryStorage struct {
+	*inmemory.Storage
+	err error
+}
+
+func (store *failingStartupRecoveryStorage) FindRunningTokensAfter(context.Context, int64, int64) ([]runtime.ExecutionToken, error) {
+	return nil, store.err
 }
 
 func (store *retryReadFailureStorage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {

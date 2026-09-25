@@ -8,6 +8,8 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const reconciliationWakeBufferSize = 64
@@ -59,8 +61,12 @@ func (manager *reconciliationManager) wake(processInstanceKey int64) {
 }
 
 func (manager *reconciliationManager) run() {
-	ticker := time.NewTicker(manager.interval)
-	defer ticker.Stop()
+	var ticks <-chan time.Time
+	if manager.interval > 0 {
+		ticker := time.NewTicker(manager.interval)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
 
 	for {
 		select {
@@ -68,16 +74,19 @@ func (manager *reconciliationManager) run() {
 			return
 		case processInstanceKey := <-manager.wakeCh:
 			manager.resume(processInstanceKey)
-		case <-ticker.C:
+		case <-ticks:
 			manager.reconcileNextBatch()
 		}
 	}
 }
 
 func (manager *reconciliationManager) reconcileNextBatch() {
+	started := time.Now()
+	defer func() { manager.engine.recordReconciliationScanDuration(manager.ctx, time.Since(started)) }()
 	runningBefore := time.Now().Add(-manager.gracePeriod)
 	tokens, err := manager.engine.persistence.FindRecoverableRunningTokens(manager.ctx, manager.cursor, runningBefore, manager.batchSize)
 	if err != nil {
+		manager.engine.recordReconciliationFailure(manager.ctx, "scan")
 		manager.engine.logger.Error("failed to scan recoverable running tokens", "afterTokenKey", manager.cursor, "runningBefore", runningBefore, "limit", manager.batchSize, "err", err)
 		return
 	}
@@ -85,6 +94,7 @@ func (manager *reconciliationManager) reconcileNextBatch() {
 		manager.cursor = 0
 		tokens, err = manager.engine.persistence.FindRecoverableRunningTokens(manager.ctx, manager.cursor, runningBefore, manager.batchSize)
 		if err != nil {
+			manager.engine.recordReconciliationFailure(manager.ctx, "scan")
 			manager.engine.logger.Error("failed to restart recoverable running token scan", "runningBefore", runningBefore, "limit", manager.batchSize, "err", err)
 			return
 		}
@@ -106,8 +116,31 @@ func (manager *reconciliationManager) reconcileNextBatch() {
 }
 
 func (manager *reconciliationManager) resume(processInstanceKey int64) {
-	if err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey); err != nil {
+	recovered, err := manager.engine.tryResumeProcessInstanceByKey(manager.ctx, processInstanceKey)
+	if err != nil {
+		manager.engine.recordReconciliationFailure(manager.ctx, "resume")
 		manager.engine.logger.Error("failed to recover running process instance", "processInstance", processInstanceKey, "err", err)
+	} else if recovered {
+		manager.engine.recordReconciliationRecovery(manager.ctx)
+		manager.engine.logger.Info("recovered running process instance", "processInstance", processInstanceKey)
+	}
+}
+
+func (engine *Engine) recordReconciliationRecovery(ctx context.Context) {
+	if engine.metrics != nil && engine.metrics.ReconciliationRecoveries != nil {
+		engine.metrics.ReconciliationRecoveries.Add(ctx, 1)
+	}
+}
+
+func (engine *Engine) recordReconciliationFailure(ctx context.Context, operation string) {
+	if ctx.Err() == nil && engine.metrics != nil && engine.metrics.ReconciliationFailures != nil {
+		engine.metrics.ReconciliationFailures.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", operation)))
+	}
+}
+
+func (engine *Engine) recordReconciliationScanDuration(ctx context.Context, duration time.Duration) {
+	if engine.metrics != nil && engine.metrics.ReconciliationScanDuration != nil {
+		engine.metrics.ReconciliationScanDuration.Record(ctx, float64(duration)/float64(time.Millisecond))
 	}
 }
 
@@ -134,6 +167,7 @@ func (engine *Engine) reconcileRunningTokensAtStartup(ctx context.Context) error
 	for {
 		tokens, err := engine.persistence.FindRunningTokensAfter(ctx, cursor, batchSize)
 		if err != nil {
+			engine.recordReconciliationFailure(ctx, "startup_scan")
 			return fmt.Errorf("failed to load running tokens after key %d: %w", cursor, err)
 		}
 		if len(tokens) == 0 {
@@ -141,8 +175,13 @@ func (engine *Engine) reconcileRunningTokensAtStartup(ctx context.Context) error
 		}
 
 		for _, processInstanceKey := range distinctProcessInstanceKeys(tokens) {
-			if err := engine.resumeProcessInstanceByKey(ctx, processInstanceKey, nil); err != nil {
+			outcome := &runProcessInstanceOutcome{}
+			if err := engine.resumeProcessInstanceByKey(ctx, processInstanceKey, outcome); err != nil {
+				engine.recordReconciliationFailure(ctx, "startup_resume")
 				engine.logger.Error("failed to recover running process instance at startup", "processInstance", processInstanceKey, "err", err)
+			} else if outcome.resumedRunningTokens {
+				engine.recordReconciliationRecovery(ctx)
+				engine.logger.Info("recovered running process instance at startup", "processInstance", processInstanceKey)
 			}
 		}
 		cursor = tokens[len(tokens)-1].Key
@@ -168,12 +207,14 @@ func (engine *Engine) resumeProcessInstanceByKey(ctx context.Context, processIns
 	return engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
 }
 
-func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) error {
+func (engine *Engine) tryResumeProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bool, error) {
 	if !engine.runningInstances.tryLockInstanceOnce(processInstanceKey) {
-		return nil
+		return false, nil
 	}
 	defer engine.runningInstances.unlockInstance(processInstanceKey)
-	return engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, nil)
+	outcome := &runProcessInstanceOutcome{}
+	err := engine.resumeProcessInstanceLockedByKey(ctx, processInstanceKey, outcome)
+	return outcome.resumedRunningTokens, err
 }
 
 func (engine *Engine) resumeProcessInstanceLockedByKey(ctx context.Context, processInstanceKey int64, outcome *runProcessInstanceOutcome) error {
@@ -202,7 +243,13 @@ func (engine *Engine) resumeProcessInstanceLockedByKey(ctx context.Context, proc
 		return nil
 	}
 
-	return engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome)
+	if err := engine.runProcessInstanceLocked(ctx, instance, runningTokens, outcome); err != nil {
+		return err
+	}
+	if outcome != nil {
+		outcome.resumedRunningTokens = true
+	}
+	return nil
 }
 
 func (engine *Engine) continuationContext(ctx context.Context) (context.Context, context.CancelFunc) {

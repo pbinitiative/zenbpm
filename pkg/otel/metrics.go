@@ -46,8 +46,11 @@ type EngineMetrics struct {
 	TimersFired     metric.Int64Counter
 	TimersCancelled metric.Int64Counter
 
-	MessagesCorrelated       metric.Int64Counter
-	MessageCorrelationFailed metric.Int64Counter
+	MessagesCorrelated         metric.Int64Counter
+	MessageCorrelationFailed   metric.Int64Counter
+	ReconciliationRecoveries   metric.Int64Counter
+	ReconciliationFailures     metric.Int64Counter
+	ReconciliationScanDuration metric.Float64Histogram
 }
 
 func NewMetrics(meter metric.Meter) (*EngineMetrics, error) {
@@ -106,22 +109,38 @@ func NewMetrics(meter metric.Meter) (*EngineMetrics, error) {
 	messageCorrelationFailed, err := meter.Int64Counter("message_correlation_failed", metric.WithDescription("Number of failed message correlations"))
 	errJoin = errors.Join(errJoin, err)
 
+	reconciliationRecoveries, err := meter.Int64Counter("reconciliation_recoveries", metric.WithDescription("Number of process instances resumed from durable Running tokens"))
+	errJoin = errors.Join(errJoin, err)
+
+	reconciliationFailures, err := meter.Int64Counter("reconciliation_failures", metric.WithDescription("Number of failed recovery scans or process-instance resumptions"))
+	errJoin = errors.Join(errJoin, err)
+
+	reconciliationScanDuration, err := meter.Float64Histogram("reconciliation_scan_duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of a periodic Running-token recovery scan, milliseconds"),
+		metric.WithExplicitBucketBoundaries(latencyBucketsMs...),
+	)
+	errJoin = errors.Join(errJoin, err)
+
 	metrics := EngineMetrics{
-		ProcessesStarted:         processesStartedTotal,
-		ProcessesEnded:           processesCompletedTotal,
-		ProcessesRunning:         processesRunning,
-		JobsCreated:              jobsCreated,
-		JobsCompleted:            jobsCompleted,
-		JobsFailed:               jobsFailed,
-		IncidentsCreated:         incidentsCreated,
-		IncidentsResolved:        incidentsResolved,
-		ProcessInstanceDuration:  processInstanceDuration,
-		JobLifetime:              jobLifetime,
-		TimersScheduled:          timersScheduled,
-		TimersFired:              timersFired,
-		TimersCancelled:          timersCancelled,
-		MessagesCorrelated:       messagesCorrelated,
-		MessageCorrelationFailed: messageCorrelationFailed,
+		ProcessesStarted:           processesStartedTotal,
+		ProcessesEnded:             processesCompletedTotal,
+		ProcessesRunning:           processesRunning,
+		JobsCreated:                jobsCreated,
+		JobsCompleted:              jobsCompleted,
+		JobsFailed:                 jobsFailed,
+		IncidentsCreated:           incidentsCreated,
+		IncidentsResolved:          incidentsResolved,
+		ProcessInstanceDuration:    processInstanceDuration,
+		JobLifetime:                jobLifetime,
+		TimersScheduled:            timersScheduled,
+		TimersFired:                timersFired,
+		TimersCancelled:            timersCancelled,
+		MessagesCorrelated:         messagesCorrelated,
+		MessageCorrelationFailed:   messageCorrelationFailed,
+		ReconciliationRecoveries:   reconciliationRecoveries,
+		ReconciliationFailures:     reconciliationFailures,
+		ReconciliationScanDuration: reconciliationScanDuration,
 	}
 	return &metrics, errJoin
 }

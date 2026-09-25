@@ -31,20 +31,15 @@ func TestEngineLifecycle(t *testing.T) {
 		require.Error(t, engine.context.Err(), "engine context must be cancelled")
 	})
 
-	t.Run("restart after stop stops the new timer manager", func(t *testing.T) {
+	t.Run("start after stop leaves no managers", func(t *testing.T) {
 		defer goleak.VerifyNone(t, sharedEngineGoleakOptions()...)
 
 		engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
 		engine.Stop()
 
-		// Start creates and starts a new timer manager before touching persistence.
-		_ = engine.Start(t.Context())
-		restartedTimerManager := engine.currentTimerManager()
-		require.NotNil(t, restartedTimerManager)
-
-		engine.Stop()
-
-		require.Error(t, restartedTimerManager.ctx.Err(), "restarted timer manager must be stopped")
+		require.Error(t, engine.Start(t.Context()), "stopped engine resources cannot be restarted")
+		require.Nil(t, engine.currentTimerManager())
+		require.Nil(t, engine.currentReconciliationManager())
 	})
 
 	t.Run("start and repeated stop release managers and owned pools", func(t *testing.T) {

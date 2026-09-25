@@ -21,6 +21,9 @@ import (
 // Start will start the process engine instance.ProcessInstance().
 // Engine will start to pull process instances with execution tokens that need to be processed
 func (engine *Engine) Start(ctx context.Context) error {
+	if err := engine.context.Err(); err != nil {
+		return err
+	}
 	pollTimerDelay := engine.pollTimerDelay
 	if pollTimerDelay == 0 {
 		pollTimerDelaySecondsStr := os.Getenv("POLL_TIMER_DELAY_SECONDS")
@@ -38,6 +41,9 @@ func (engine *Engine) Start(ctx context.Context) error {
 	}
 
 	reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize := engine.reconciliationSettings()
+	if engine.disablePeriodicReconciliation {
+		reconciliationInterval = 0
+	}
 	reconciliationManager := newReconciliationManager(engine, reconciliationInterval, reconciliationGracePeriod, reconciliationBatchSize)
 	timerManager := newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
 
@@ -56,7 +62,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 
 	if err := engine.reconcileRunningTokensAtStartup(engine.context); err != nil {
 		engine.lifecycle.managerMu.Lock()
-		if engine.lifecycle.timerManager.Load() == timerManager {
+		if engine.lifecycle.timerManager.CompareAndSwap(timerManager, nil) {
 			timerManager.stop()
 		}
 		if activeReconciliationManager := engine.detachReconciliationManager(reconciliationManager); activeReconciliationManager != nil {
@@ -127,7 +133,7 @@ func (engine *Engine) Stop() {
 
 	// Manager shutdown and context cancellation are deliberately handled outside stopOnce. They are idempotent
 	// and must always act on the current shared lifecycle because Start may install fresh managers after a prior Stop.
-	if timerManager := engine.lifecycle.timerManager.Load(); timerManager != nil {
+	if timerManager := engine.lifecycle.timerManager.Swap(nil); timerManager != nil {
 		timerManager.stop()
 	}
 	if reconciliationManager := engine.swapReconciliationManager(nil); reconciliationManager != nil {
@@ -164,8 +170,9 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 }
 
 type runProcessInstanceOutcome struct {
-	persistedIncident bool
-	technicalFailure  bool
+	persistedIncident    bool
+	technicalFailure     bool
+	resumedRunningTokens bool
 }
 
 type technicalFailureError struct {

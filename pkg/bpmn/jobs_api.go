@@ -214,6 +214,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 			createdAt:           job.CreatedAt,
 			localVariables:      localVars,
 			outputVariables:     map[string]interface{}{},
+			headers:             job.Headers,
 		}
 		activatedJobs = append(activatedJobs, aj)
 	}

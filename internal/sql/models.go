@@ -96,6 +96,7 @@ type Job struct {
 	Assignee           sql.NullString `json:"assignee"`
 	OutputVariables    sql.NullString `json:"output_variables"`
 	ElementType        string         `json:"element_type"`
+	Headers            string         `json:"headers"`
 }
 
 type MessageSubscription struct {

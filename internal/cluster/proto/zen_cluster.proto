@@ -318,6 +318,7 @@ message Job {
   string assignee = 9;
   bytes output_variables = 10;
   string element_type = 11;
+  map<string, string> headers = 12;
 }
 
 message FlowElement {
@@ -485,6 +486,7 @@ message InternalJob {
   string element_type = 8;
   // Unix milliseconds on the leader's clock at which the lock of this delivery lapses.
   int64 lock_until = 9;
+  map<string, string> headers = 10;
 }
 
 message SetMessageSubscriptionPointerRequest {

@@ -2,6 +2,7 @@ package sql
 
 import (
 	"database/sql"
+	"encoding/json"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
@@ -9,6 +10,22 @@ import (
 // RecoverableRunningTokensQuery exposes the sqlc-generated statement so
 // query-plan tests can inspect the same SQL used by production.
 const RecoverableRunningTokensQuery = getRecoverableRunningTokens
+
+// JobHeadersFromJSON parses the JSON object stored in the job.headers column.
+// Unset/empty objects yield nil; values are never nil when headers exist.
+func JobHeadersFromJSON(raw string) map[string]string {
+	if raw == "" || raw == "{}" {
+		return nil
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
+		return nil
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
+}
 
 func ToNullString[S ~string](p *S) sql.NullString {
 	if p == nil {

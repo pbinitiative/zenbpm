@@ -120,6 +120,8 @@ type Job struct {
 	// LockUntil is the unix millisecond on the leader's clock at which the
 	// lock of this delivery lapses.
 	LockUntil int64
+	// Headers are the static task headers configured on the BPMN element.
+	Headers map[string]string
 }
 
 func New(

@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -293,6 +294,65 @@ func TestUnmarshalZenbpmExtensions_MultiInstanceLoopCharacteristics(t *testing.T
 	assert.Equal(t, "approver", mi.LoopCharacteristics.InputElementName)
 	assert.Equal(t, "results", mi.LoopCharacteristics.OutputCollectionName)
 	assert.Equal(t, "=approver", mi.LoopCharacteristics.OutputElementExpression)
+}
+
+func TestUnmarshalZenbpmExtensions_TaskHeaders(t *testing.T) {
+	// taskHeaders must parse from the canonical zenbpm namespace as well as the
+	// Camunda Modeler / Zeebe namespace (zeebe:taskHeaders), because files
+	// authored in Camunda Modeler are deployed to the engine as-is.
+	tests := []struct {
+		name   string
+		nsAttr string
+		prefix string
+	}{
+		{name: "zenbpm namespace", nsAttr: zenbpmNS, prefix: "zenbpm"},
+		{name: "zeebe namespace", nsAttr: "http://camunda.org/schema/zeebe/1.0", prefix: "zeebe"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.prefix
+			source := `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:` + p + `="` + tt.nsAttr + `">
+  <bpmn:process id="headers" isExecutable="true">
+    <bpmn:serviceTask id="task1" name="t1">
+      <bpmn:extensionElements>
+        <` + p + `:taskDefinition type="http-connector" />
+        <` + p + `:taskHeaders>
+          <` + p + `:header id="h1" key="url" value="https://example.com" />
+          <` + p + `:header id="h2" key="method" value="POST" />
+        </` + p + `:taskHeaders>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="userTask1">
+      <bpmn:extensionElements>
+        <` + p + `:taskHeaders>
+          <` + p + `:header key="priority" value="high" />
+        </` + p + `:taskHeaders>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+  </bpmn:process>
+</bpmn:definitions>`
+
+			var def TDefinitions
+			require.NoError(t, xml.Unmarshal([]byte(source), &def))
+
+			require.Len(t, def.Process.ServiceTasks, 1)
+			serviceHeaders := def.Process.ServiceTasks[0].GetTaskHeaders()
+			require.Len(t, serviceHeaders, 2)
+			assert.Equal(t, "h1", serviceHeaders[0].Id)
+			assert.Equal(t, extensions.THeader{Id: "h1", Key: "url", Value: "https://example.com"}, serviceHeaders[0])
+			assert.Equal(t, map[string]string{"url": "https://example.com", "method": "POST"}, extensions.HeadersToMap(serviceHeaders))
+
+			require.Len(t, def.Process.UserTasks, 1)
+			assert.Equal(t, map[string]string{"priority": "high"}, extensions.HeadersToMap(def.Process.UserTasks[0].GetTaskHeaders()))
+		})
+	}
+}
+
+func TestHeadersToMap_Empty(t *testing.T) {
+	assert.Nil(t, extensions.HeadersToMap(nil))
+	assert.Nil(t, extensions.HeadersToMap([]extensions.THeader{}))
 }
 
 // TestUnmarshalZenbpmExtensions_UserTaskTaskDefinition verifies that a User

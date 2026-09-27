@@ -363,6 +363,7 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      new(lockUntil.UnixMilli()),
+					Headers:        sql.JobHeadersFromJSON(job.Headers),
 				},
 			})
 			if err != nil {

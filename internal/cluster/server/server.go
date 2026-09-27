@@ -1179,6 +1179,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			InputVariables:     []byte(job.InputVariables),
 			OutputVariables:    outputVarsBytes,
 			Assignee:           assignee,
+			Headers:            sql.JobHeadersFromJSON(job.Headers),
 		}
 	}
 	return &proto.GetProcessInstanceJobsResponse{
@@ -1310,6 +1311,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				Assignee:           a,
 				InputVariables:     []byte(job.InputVariables),
 				OutputVariables:    outputVarsBytes,
+				Headers:            sql.JobHeadersFromJSON(job.Headers),
 			}
 		}
 
@@ -1367,6 +1369,7 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 			Assignee:           assignee,
 			InputVariables:     []byte(job.InputVariables),
 			OutputVariables:    outputVarsBytes,
+			Headers:            sql.JobHeadersFromJSON(job.Headers),
 		},
 	}, nil
 

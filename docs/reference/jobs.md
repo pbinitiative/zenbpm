@@ -50,6 +50,34 @@ If there is an error while executing the job logic the client should send `JobFa
 
 If the work takes longer than the lock, the client sends a `JobExtendLockRequest` message before the lock lapses; the engine answers with a `LockExtended` message carrying the new deadline.
 
+### Task headers
+
+A BPMN element can define **static task headers** — key/value pairs handed to the job worker together with the job, unchanged. They are authored with the `taskHeaders` extension element. Both the ZenBPM namespace and the Camunda Modeler / Zeebe namespace (`zeebe:taskHeaders`) are accepted, so a model exported from Modeler deploys as-is:
+
+```xml
+<bpmn:serviceTask id="charge">
+  <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="payment-connector" />
+    <zenbpm:taskHeaders>
+      <zenbpm:header id="h1" key="url" value="https://example.com/charge" />
+      <zenbpm:header id="h2" key="method" value="POST" />
+    </zenbpm:taskHeaders>
+  </bpmn:extensionElements>
+</bpmn:serviceTask>
+```
+
+Each `header` has an optional `id` and a `key`/`value` pair. The values are literal: they are not expression-evaluated, so a header cannot reference process variables. Headers belong to the BPMN element rather than to a single job, so every job the element creates carries the same headers.
+
+Headers are persisted with the job (a JSON object in the `job.headers` column, `'{}'` when the element defines none) and exposed to whoever receives the job:
+
+| Consumer | Field |
+|---|---|
+| gRPC `WaitingJob` | `headers` map, read with `job.GetHeaders()` |
+| REST `getJobs` / `getJob` response | `taskHeaders` object, omitted when the element defines none (`zenclient.Job.TaskHeaders`) |
+| In-engine / inline handlers | `ActivatedJob.Headers()`, `nil` when the element defines none |
+
+Headers are part of the job payload captured at creation, not of the process variables: input mappings do not touch them and they are not written back on completion.
+
 ### Job locks
 
 A job delivered over the stream is reserved for the receiving client for the **lock duration** of the subscription it was delivered under. `StreamSubscriptionRequest` carries two optional settings per job type:

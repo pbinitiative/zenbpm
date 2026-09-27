@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"maps"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -133,7 +134,7 @@ func (aj *activatedJob) GetOutputVariables() map[string]interface{} {
 
 // Headers implements ActivatedJob
 func (aj *activatedJob) Headers() map[string]string {
-	return aj.headers
+	return maps.Clone(aj.headers)
 }
 
 // Fail implements ActivatedJob

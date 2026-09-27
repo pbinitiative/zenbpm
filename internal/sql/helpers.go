@@ -3,6 +3,7 @@ package sql
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
@@ -12,19 +13,20 @@ import (
 const RecoverableRunningTokensQuery = getRecoverableRunningTokens
 
 // JobHeadersFromJSON parses the JSON object stored in the job.headers column.
-// Unset/empty objects yield nil; values are never nil when headers exist.
-func JobHeadersFromJSON(raw string) map[string]string {
+// An unset or empty object yields a nil map. A malformed object returns an
+// error, so a corrupt value is not hidden.
+func JobHeadersFromJSON(raw string) (map[string]string, error) {
 	if raw == "" || raw == "{}" {
-		return nil
+		return nil, nil
 	}
 	var headers map[string]string
 	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to unmarshal job headers: %w", err)
 	}
 	if len(headers) == 0 {
-		return nil
+		return nil, nil
 	}
-	return headers
+	return headers, nil
 }
 
 func ToNullString[S ~string](p *S) sql.NullString {

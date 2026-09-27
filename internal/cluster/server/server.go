@@ -1167,6 +1167,11 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 		if job.OutputVariables.Valid {
 			outputVarsBytes = []byte(job.OutputVariables.String)
 		}
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
+		if err != nil {
+			zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
+			return &proto.GetProcessInstanceJobsResponse{Error: zerr.ToProtoError()}, nil
+		}
 		jobs[i] = &proto.Job{
 			Key:                &job.Key,
 			ElementInstanceKey: &job.ElementInstanceKey,
@@ -1179,7 +1184,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			InputVariables:     []byte(job.InputVariables),
 			OutputVariables:    outputVarsBytes,
 			Assignee:           assignee,
-			Headers:            sql.JobHeadersFromJSON(job.Headers),
+			Headers:            headers,
 		}
 	}
 	return &proto.GetProcessInstanceJobsResponse{
@@ -1299,6 +1304,11 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 			if job.OutputVariables.Valid {
 				outputVarsBytes = []byte(job.OutputVariables.String)
 			}
+			headers, err := sql.JobHeadersFromJSON(job.Headers)
+			if err != nil {
+				zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
+				return &proto.GetJobsResponse{Error: zerr.ToProtoError()}, nil
+			}
 			partitionJobs[i] = &proto.Job{
 				Key:                new(job.Key),
 				ProcessInstanceKey: new(job.ProcessInstanceKey),
@@ -1311,7 +1321,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				Assignee:           a,
 				InputVariables:     []byte(job.InputVariables),
 				OutputVariables:    outputVarsBytes,
-				Headers:            sql.JobHeadersFromJSON(job.Headers),
+				Headers:            headers,
 			}
 		}
 
@@ -1356,6 +1366,11 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 	if job.OutputVariables.Valid {
 		outputVarsBytes = []byte(job.OutputVariables.String)
 	}
+	headers, err := sql.JobHeadersFromJSON(job.Headers)
+	if err != nil {
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
+		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
+	}
 	return &proto.GetJobResponse{
 		Job: &proto.Job{
 			Key:                &job.Key,
@@ -1369,7 +1384,7 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 			Assignee:           assignee,
 			InputVariables:     []byte(job.InputVariables),
 			OutputVariables:    outputVarsBytes,
-			Headers:            sql.JobHeadersFromJSON(job.Headers),
+			Headers:            headers,
 		},
 	}, nil
 

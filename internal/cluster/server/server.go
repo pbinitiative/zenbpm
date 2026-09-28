@@ -1256,7 +1256,12 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 		totalCount := int32(0)
 		for i, row := range dbJobs {
 			if i == 0 {
-				totalCount = int32(row.TotalCount)
+				// a partition's jobs have no bound of their own: a count beyond the page metadata's int32 saturates
+				count := row.TotalCount
+				if count > math.MaxInt32 {
+					count = math.MaxInt32
+				}
+				totalCount = int32(count)
 			}
 			partitionJobs[i] = jobToProto(row.Job)
 		}

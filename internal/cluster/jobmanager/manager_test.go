@@ -286,6 +286,48 @@ func TestServerSkipListContainsOnlyValidJobKeys(t *testing.T) {
 	}
 }
 
+func TestServerExcludesMalformedHeaderJobsFromLaterLoads(t *testing.T) {
+	skipListMu := sync.Mutex{}
+	skipLists := make([][]int64, 0)
+	loader := &testLoader{
+		jobsToSend: []sql.Job{},
+		mu:         &sync.RWMutex{},
+		onLoad: func(_ []string, idsToSkip []int64, _ int64) {
+			skipListMu.Lock()
+			skipLists = append(skipLists, slices.Clone(idsToSkip))
+			skipListMu.Unlock()
+		},
+	}
+	server, stream := newTestJobServer(t, loader, nil)
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{})
+
+	malformed := generateJobs(1)[0]
+	malformed.Headers = "{not valid json"
+	valid := generateJobs(1)[0]
+	// the malformed job is older, so the distribution loop meets it first
+	loader.addJobs(malformed, valid)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	assert.Eventually(t, func() bool {
+		return stream.sentTo("client-1") == 1
+	}, 5*time.Second, 10*time.Millisecond, "a valid job must be delivered even when an older job has malformed headers")
+
+	assert.Eventually(t, func() bool {
+		skipListMu.Lock()
+		defer skipListMu.Unlock()
+		for _, skipList := range skipLists {
+			if slices.Contains(skipList, malformed.Key) {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 10*time.Millisecond, "a job with malformed headers must be skipped in later loads")
+	cancel()
+}
+
 func TestServerHandlesSubscriptionChangesDuringDistribution(t *testing.T) {
 	loadStarted := make(chan struct{})
 	releaseLoad := make(chan struct{})

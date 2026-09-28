@@ -518,6 +518,8 @@ WHERE
     state = 1
     AND type IN (/*SLICE:type*/?)
     AND key NOT IN (/*SLICE:key_skip*/?)
+    AND json_valid(headers)
+    AND json_type(headers) = 'object'
 ORDER BY
     created_at ASC
 LIMIT ?
@@ -529,6 +531,9 @@ type GetWaitingJobsParams struct {
 	Limit   int64    `json:"limit"`
 }
 
+// A row whose headers are not a JSON object cannot be delivered to a worker.
+// The query quarantines such rows here, so they take neither a batch slot nor a
+// SQL parameter and cannot starve later valid jobs.
 func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error) {
 	query := getWaitingJobs
 	var queryParams []interface{}

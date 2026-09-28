@@ -28,10 +28,6 @@ const (
 	MetadataClientID string = "client_id"
 	// counter that puts job loader to sleep for 1 second
 	emptyDistributionCounterSleep int = 100
-	// undeliverableJobTTL is how long a job whose headers cannot be parsed stays
-	// out of the loader's batches. It bounds the size of the exclusion set and
-	// lets a repaired row become deliverable again.
-	undeliverableJobTTL time.Duration = 5 * time.Minute
 )
 
 var (
@@ -160,12 +156,6 @@ type jobServer struct {
 	distributedJobs          map[int64]*distributedJob
 	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
-	// undeliverableJobs holds the jobs the leader could not hand over because
-	// their stored headers do not parse, by job key and the time last seen. The
-	// leader skips these keys in later loads, so a malformed row cannot keep the
-	// oldest batch busy.
-	undeliverableJobs map[int64]time.Time
-	undeliverableMu   *sync.Mutex
 
 	logger hclog.Logger
 }
@@ -182,8 +172,6 @@ func newJobServer(
 		nodeID:             nodeID,
 		distributedJobs:    map[int64]*distributedJob{},
 		distributedJobsMu:  &sync.Mutex{},
-		undeliverableJobs:  map[int64]time.Time{},
-		undeliverableMu:    &sync.Mutex{},
 		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
 		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
 		jobTypes:           map[JobType]jobTypeData{},
@@ -241,11 +229,6 @@ func (s *jobServer) distributeJobs() {
 		settingsVersion := s.settingsVersion
 		s.clientMu.RUnlock()
 
-		// keys the loader must not return: the locked jobs and the jobs whose
-		// headers did not parse, so one malformed row cannot keep the oldest
-		// batch busy round after round
-		skipKeys := s.skipKeys(currentKeys, time.Now())
-
 		jobTypes := make([]string, 0, len(jobTypeClients))
 		for jobType, typeClients := range jobTypeClients {
 			for _, clientID := range typeClients {
@@ -278,15 +261,15 @@ func (s *jobServer) distributeJobs() {
 		// than maxQueryParameters; so a round delivers no more jobs than the
 		// query of the next round can still exclude, whatever the
 		// subscriptions ask for
-		lockBudget := s.maxQueryParameters - 1 - len(jobTypes) - max(1, len(skipKeys))
+		lockBudget := s.maxQueryParameters - 1 - len(jobTypes) - max(1, len(currentKeys))
 		if lockBudget <= 0 {
-			s.logger.Warn("leader holds as many locked and undeliverable jobs as one query can exclude, waiting for locks to lapse or jobs to complete",
-				"skippedJobs", len(skipKeys), "requestedJobTypes", len(jobTypes), "maxQueryParameters", s.maxQueryParameters)
+			s.logger.Warn("leader holds as many locked jobs as one query can exclude, waiting for locks to lapse or jobs to complete",
+				"lockedJobs", len(currentKeys), "requestedJobTypes", len(jobTypes), "maxQueryParameters", s.maxQueryParameters)
 			s.pause(1 * time.Second)
 			continue
 		}
 		jobsToLoad = min(jobsToLoad, int64(lockBudget))
-		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, skipKeys, jobsToLoad)
+		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
 			// give it some time not to overwhelm the node we might not be a leader anymore
@@ -308,8 +291,9 @@ func (s *jobServer) distributeJobs() {
 		for _, job := range jobs {
 			headers, err := sql.JobHeadersFromJSON(job.Headers)
 			if err != nil {
+				// the loader query already quarantines rows whose headers are not a
+				// JSON object; this guards against any other malformed value
 				s.logger.Error("Failed to parse job headers", "jobType", job.Type, "key", job.Key, "err", err)
-				s.markUndeliverable(job.Key, time.Now())
 				continue
 			}
 			s.clientMu.Lock()
@@ -441,36 +425,6 @@ func (s *jobServer) restartLockAfterSend(jobKey int64, clientID ClientID, lockDu
 	if sentUntil.After(locked.lockUntil) {
 		locked.lockUntil = sentUntil
 	}
-}
-
-// markUndeliverable records that the headers of the job could not be parsed, so
-// the leader stops returning it from the loader for undeliverableJobTTL.
-func (s *jobServer) markUndeliverable(jobKey int64, now time.Time) {
-	s.undeliverableMu.Lock()
-	s.undeliverableJobs[jobKey] = now
-	s.undeliverableMu.Unlock()
-}
-
-// skipKeys appends the keys of undeliverable jobs to the given locked keys and
-// drops the entries whose exclusion lapsed, so a repaired row is retried. It
-// returns locked unchanged when no job is undeliverable.
-func (s *jobServer) skipKeys(locked []int64, now time.Time) []int64 {
-	s.undeliverableMu.Lock()
-	defer s.undeliverableMu.Unlock()
-	for key, seen := range s.undeliverableJobs {
-		if now.Sub(seen) >= undeliverableJobTTL {
-			delete(s.undeliverableJobs, key)
-		}
-	}
-	if len(s.undeliverableJobs) == 0 {
-		return locked
-	}
-	skip := make([]int64, 0, len(locked)+len(s.undeliverableJobs))
-	skip = append(skip, locked...)
-	for key := range s.undeliverableJobs {
-		skip = append(skip, key)
-	}
-	return skip
 }
 
 // settingsLocked returns the effective settings of a subscription. The

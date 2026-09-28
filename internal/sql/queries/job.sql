@@ -67,6 +67,9 @@ FROM
 LIMIT @size offset @offset;
 
 -- name: GetWaitingJobs :many
+-- A row whose headers are not a JSON object cannot be delivered to a worker.
+-- The query quarantines such rows here, so they take neither a batch slot nor a
+-- SQL parameter and cannot starve later valid jobs.
 SELECT
     *
 FROM
@@ -75,6 +78,8 @@ WHERE
     state = 1
     AND type IN (sqlc.slice('type'))
     AND key NOT IN (sqlc.slice('key_skip'))
+    AND json_valid(headers)
+    AND json_type(headers) = 'object'
 ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452

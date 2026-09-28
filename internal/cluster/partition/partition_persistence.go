@@ -1818,7 +1818,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 		if job.Assignee.Valid {
 			assignee = new(job.Assignee.String)
 		}
-		headers, err := jobHeadersFromJSON(job.Headers)
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
 		}
@@ -1887,7 +1887,7 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
 			}
 		}
-		headers, err := jobHeadersFromJSON(job.Headers)
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
 		}
@@ -1968,7 +1968,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 		s := job.Assignee.String
 		assignee = &s
 	}
-	headers, err := jobHeadersFromJSON(job.Headers)
+	headers, err := sql.JobHeadersFromJSON(job.Headers)
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal job headers: %w", err)
 	}
@@ -2020,7 +2020,7 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
 			}
 		}
-		headers, err := jobHeadersFromJSON(job.Headers)
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
 		}
@@ -2079,21 +2079,6 @@ func jobHeadersToJSON(headers map[string]string) (string, error) {
 		return "", fmt.Errorf("failed to marshal job headers: %w", err)
 	}
 	return string(raw), nil
-}
-
-// jobHeadersFromJSON parses stored job headers. Missing/empty objects yield nil.
-func jobHeadersFromJSON(raw string) (map[string]string, error) {
-	if raw == "" || raw == "{}" {
-		return nil, nil
-	}
-	var headers map[string]string
-	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job headers: %w", err)
-	}
-	if len(headers) == 0 {
-		return nil, nil
-	}
-	return headers, nil
 }
 
 // SaveJobWith persists job using the supplied sql.Queries handle.

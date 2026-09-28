@@ -2383,6 +2383,13 @@ paths:
       tags:
         - job
       summary: Complete a job
+      description: |
+        Completes the job with the given output variables and moves its token on.
+
+        The request is idempotent: a job which is already completed is answered with `201` again,
+        and its process instance is moved on if an earlier completion left it behind. A job which
+        was terminated (its instance cancelled, an interrupting boundary event) or failed with an
+        incident no longer waits for a worker and is answered with `409`; nothing is changed.
       parameters:
         - name: jobKey
           in: path
@@ -2408,7 +2415,7 @@ paths:
                 processedAt: "2025-08-22T15:15:30Z"
       responses:
         201:
-          description: Job completed
+          description: Job completed, or already completed before
         400:
           description: Bad request
           content:
@@ -2417,6 +2424,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         404:
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: The job no longer waits for a worker (terminated or failed)
           content:
             application/json:
               schema:
@@ -2540,6 +2553,32 @@ paths:
       tags:
         - job
       summary: Fail a job
+      description: |
+        Reports that a worker could not finish the job.
+
+        With an `errorCode` the failure is a BPMN error: a matching error boundary event or error
+        event sub-process takes over, otherwise the job fails with an incident. Retries are neither
+        consulted nor spent, and the `variables` are handed to the catching event.
+
+        Without an `errorCode` one attempt of the job is spent. While retries remain, the job stays
+        `active`, no incident is created, and the job is handed out again once `retryBackoff` has
+        passed (see `retryAt` on the job); the `variables` of such a failure are dropped. When none
+        remain, the job fails, keeps the `variables` as its output variables, and an incident naming
+        the attempts is created.
+
+        `retries` and `retryBackoff` are validated in every request, and a request with an invalid
+        value is refused with `400` even when it carries an `errorCode`, which then ignores them.
+
+        The request is not idempotent: every failure without an `errorCode` the engine receives
+        spends an attempt, also one for a job waiting out its backoff. A client which repeats a
+        request after a timeout may spend two, and one repeated after the first exhausted the
+        retries is answered with `409`, like a failure of a job which was completed or terminated.
+
+        A job delivered over the gRPC job stream stays locked for the stream's client until that
+        client reports it or the lock lapses. A worker which receives jobs over the stream but sends
+        its commands over REST names its stream's `clientId`, as on `extendJobLock`, so that its
+        failure releases the lock and `retryBackoff` is honoured; without `clientId` the lock stands,
+        and the job is handed out again only once the lock has lapsed, whatever `retryBackoff` says.
       parameters:
         - name: jobKey
           in: path
@@ -2555,19 +2594,48 @@ paths:
             schema:
               type: object
               properties:
+                clientId:
+                  type: string
+                  description: The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
                 errorCode:
                   type: string
-                  description: The error code against which an error catch event is matched.
+                  description: The error code against which an error catch event is matched. Absent or empty, the failure spends one of the job's retries.
+                message:
+                  type: string
+                  description: Why the job failed. Kept as `lastFailureMessage` on the job and, once the retries are exhausted, part of the incident message.
+                retries:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                  description: Retries remaining after this failure. Absent means one less than now; a value above `jobs.maxRetries` is capped. Validated but otherwise ignored with an `errorCode`.
+                retryBackoff:
+                  type: string
+                  description: ISO-8601 duration (for example `PT10S`) the job waits before it is handed out again. Absent means the `retryBackoff` of the task definition, else `jobs.defaultRetryBackoff`; `PT0S` means at once. Capped by `jobs.maxRetryBackoff`. Validated but otherwise ignored with an `errorCode`.
+                  example: PT10S
                 variables:
                   type: object
                   nullable: true
-            example:
-              errorCode: "123-456-789"
-              variables:
-                transactionId: "tx-789-xyz"
+            examples:
+              bpmnError:
+                summary: A BPMN error caught by an error event
+                value:
+                  errorCode: "123-456-789"
+                  variables:
+                    transactionId: "tx-789-xyz"
+              retry:
+                summary: A technical failure to retry in ten seconds
+                value:
+                  message: "java.net.ConnectException: payment service unavailable"
+                  retryBackoff: "PT10S"
+              retryOfAStreamDeliveredJob:
+                summary: The same for a job delivered over the gRPC job stream
+                value:
+                  clientId: "order-worker-1"
+                  message: "java.net.ConnectException: payment service unavailable"
+                  retryBackoff: "PT10S"
       responses:
         204:
-          description: The job is failed.
+          description: The job is failed, or left active for another attempt.
         400:
           description: Bad request
           content:
@@ -2576,6 +2644,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         404:
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: The job no longer waits for a worker (completed, terminated or already failed)
           content:
             application/json:
               schema:
@@ -2598,6 +2672,178 @@ paths:
           $ref: "#/components/responses/PayloadTooLarge"
         415:
           $ref: "#/components/responses/UnsupportedMediaType"
+
+  /jobs/{jobKey}/retries:
+    post:
+      operationId: updateJobRetries
+      tags:
+        - job
+      summary: Set the remaining retries of a job
+      description: |
+        Sets the remaining retries of an `active` or `failed` job and when it is handed out next. An
+        absent `retryAt` makes a job waiting out a backoff deliverable at once. The incident of a
+        `failed` job stays open: resolving it then keeps the retries set here instead of restoring
+        the retries of the task definition, and a `retryAt` still ahead keeps the job from its
+        workers until then.
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370540
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - retries
+              properties:
+                retries:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  description: Retries the job has from now on, at most `jobs.maxRetries`.
+                retryAt:
+                  type: string
+                  format: date-time
+                  description: When the job is handed out next. Absent, or in the past, means at once; later than now plus `jobs.maxRetryBackoff` is refused.
+            example:
+              retries: 3
+      responses:
+        204:
+          description: Retries updated
+        400:
+          description: Retries below 1 or above jobs.maxRetries, or a retryAt later than now plus jobs.maxRetryBackoff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: The job no longer waits for a worker or an operator (completed or terminated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /jobs/{jobKey}/failures:
+    get:
+      operationId: getJobFailures
+      tags:
+        - job
+      summary: List the failures of a job
+      description: |
+        Lists the failures without an error code a worker reported for the job, newest first: the
+        attempt, when it failed, why, and when the job was handed out again. The failure which
+        exhausted the retries carries the key of the incident it created. Failures with an error
+        code are BPMN errors and are not listed.
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370540
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 1000
+            default: 10
+          description: Number of items per page (max 1000)
+          example: 10
+      responses:
+        200:
+          description: Failures of the job, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobFailurePage"
+              example:
+                items:
+                  - key: 4503599627370560
+                    jobKey: 4503599627370540
+                    processInstanceKey: 4503599627370501
+                    attempt: 2
+                    failedAt: "2025-08-22T15:11:40Z"
+                    retryAt: "2025-08-22T15:12:40Z"
+                    message: "payment service unavailable"
+                  - key: 4503599627370555
+                    jobKey: 4503599627370540
+                    processInstanceKey: 4503599627370501
+                    attempt: 1
+                    failedAt: "2025-08-22T15:11:20Z"
+                    retryAt: "2025-08-22T15:11:30Z"
+                    message: "payment service unavailable"
+                page: 1
+                size: 10
+                count: 2
+                totalCount: 2
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /messages:
     post:
@@ -3784,7 +4030,73 @@ components:
           description: Assignee (user assigned to this job)
         retries:
           type: integer
-          description: Remaining retries
+          format: int32
+          description: "Attempts left: failures without an error code the job may still report; the one which leaves none creates an incident."
+        attempts:
+          type: integer
+          format: int32
+          description: Failures without an error code since the job was created or its last incident was resolved.
+        retryAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Before this moment an `active` job is not handed out, because it waits out a retry backoff. A job which ended during its backoff keeps the value.
+        lastFailureMessage:
+          type: string
+          nullable: true
+          description: Message of the latest failure without an error code.
+        retryBackoff:
+          type: string
+          nullable: true
+          description: Backoff policy of the task definition, fixed when the job was created (`PT10S,PT1M`); absent means `jobs.defaultRetryBackoff` applies.
+    JobFailurePage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/JobFailure"
+        - $ref: "#/components/schemas/PageMetadata"
+    JobFailure:
+      type: object
+      required:
+        - key
+        - jobKey
+        - processInstanceKey
+        - attempt
+        - failedAt
+        - message
+      properties:
+        key:
+          type: integer
+          format: int64
+        jobKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        attempt:
+          type: integer
+          format: int32
+          description: 1-based number of the failure within the job's series of attempts.
+        failedAt:
+          type: string
+          format: date-time
+        retryAt:
+          type: string
+          format: date-time
+          description: When the job was handed out again; absent when that was at once or this failure exhausted the retries.
+        message:
+          type: string
+        incidentKey:
+          type: integer
+          format: int64
+          description: The incident this failure created because it exhausted the retries.
     JobState:
       type: string
       enum:
@@ -3917,6 +4229,10 @@ components:
         executionToken:
           type: integer
           format: int64
+        jobKey:
+          type: integer
+          format: int64
+          description: The job the incident was created for; absent for incidents without a job.
     Error:
       type: object
       required:

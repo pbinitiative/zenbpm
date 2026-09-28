@@ -81,6 +81,7 @@ type Incident struct {
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
 	IncidentType       string        `json:"incident_type"`
+	JobKey             sql.NullInt64 `json:"job_key"`
 }
 
 type Job struct {
@@ -96,6 +97,23 @@ type Job struct {
 	Assignee           sql.NullString `json:"assignee"`
 	OutputVariables    sql.NullString `json:"output_variables"`
 	ElementType        string         `json:"element_type"`
+	Retries            int64          `json:"retries"`
+	Attempts           int64          `json:"attempts"`
+	RetryAt            sql.NullInt64  `json:"retry_at"`
+	LastFailureMessage sql.NullString `json:"last_failure_message"`
+	RetryBackoff       sql.NullString `json:"retry_backoff"`
+	RetriesUpdatedAt   sql.NullInt64  `json:"retries_updated_at"`
+}
+
+type JobFailure struct {
+	Key                int64         `json:"key"`
+	JobKey             int64         `json:"job_key"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	Attempt            int64         `json:"attempt"`
+	FailedAt           int64         `json:"failed_at"`
+	RetryAt            sql.NullInt64 `json:"retry_at"`
+	Message            string        `json:"message"`
+	IncidentKey        sql.NullInt64 `json:"incident_key"`
 }
 
 type MessageSubscription struct {

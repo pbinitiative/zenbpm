@@ -21,6 +21,7 @@ Top-level configuration object.
 | `tracing`     | `Tracing`    | Tracing and observability configuration     |
 | `cluster`     | `Cluster`    | Cluster and Raft consensus configuration    |
 | `jobManager`  | `JobManager` | Defaults and caps for job stream locks      |
+| `jobs`        | `Jobs`       | Defaults and caps for job retries           |
 
 ---
 
@@ -298,6 +299,28 @@ written in the YAML file or in the environment variable is a violation, not a re
 
 ---
 
+## Jobs Configuration: `Jobs`
+
+What happens to a job a worker fails without an error code: how many attempts it gets when its
+`zenbpm:taskDefinition` names no `retries`, and how long it waits between them when neither the
+failure nor the task definition names a backoff. See [Jobs](jobs.md#failures-and-retries).
+
+| Field                 | Type   | Env Variable                 | Default | Description                                                                                          |
+|-----------------------|--------|------------------------------|---------|------------------------------------------------------------------------------------------------------|
+| `defaultRetries`      | int32  | `JOBS_DEFAULT_RETRIES`       | `1`     | Attempts of a job whose task definition names no `retries`; `1` means the first failure is an incident |
+| `maxRetries`          | int32  | `JOBS_MAX_RETRIES`           | `100`   | Most retries a job may have, whether the definition, a worker or an operator sets them                |
+| `defaultRetryBackoff` | string | `JOBS_DEFAULT_RETRY_BACKOFF` | `PT0S`  | Backoff of a job whose task definition names none: an ISO-8601 duration or a comma-separated list    |
+| `maxRetryBackoff`     | string | `JOBS_MAX_RETRY_BACKOFF`     | `PT24H` | Longest backoff a job waits, an ISO-8601 duration                                                    |
+
+`defaultRetries` and `maxRetries` must be at least `1` and the default must not exceed the maximum;
+both durations must parse, without years or months, `maxRetryBackoff` must be longer than zero and
+no entry of `defaultRetryBackoff` may exceed it. A violation ends the start with a message naming
+the field and its environment variable. As with `jobManager`, a value left out takes the default
+while a value written in the file or the environment is validated as written. Zeebe gives a job
+three attempts by default; set `JOBS_DEFAULT_RETRIES=3` for the same.
+
+---
+
 ## Tracing Configuration: `Tracing`
 
 Distributed tracing settings using OpenTelemetry.
@@ -341,6 +364,11 @@ jobManager:
   maxLockDurationMs: 86400000 #24h
   defaultMaxActiveJobs: 10
   maxActiveJobsCap: 1000
+jobs:
+  defaultRetries: 1
+  maxRetries: 100
+  defaultRetryBackoff: PT0S
+  maxRetryBackoff: PT24H
 cluster:
   addr: localhost:8090
   adv: localhost:8090

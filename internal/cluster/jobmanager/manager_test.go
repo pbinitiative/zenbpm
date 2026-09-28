@@ -791,6 +791,10 @@ type grpcSrv struct {
 	failRequests   []*proto.FailJobRequest
 	// extendLockResponse, when set, is what every ExtendJobLock answers
 	extendLockResponse *proto.ExtendJobLockResponse
+	// failJobResponse, when set, is what every FailJob answers
+	failJobResponse *proto.FailJobResponse
+	// completeJobResponse, when set, is what every CompleteJob answers
+	completeJobResponse *proto.CompleteJobResponse
 }
 
 func (s *grpcSrv) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
@@ -808,11 +812,15 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 	s.failRequestsMu.Lock()
 	s.failRequests = append(s.failRequests, req)
 	s.failRequestsMu.Unlock()
+	if s.failJobResponse != nil {
+		return s.failJobResponse, nil
+	}
 	vars := make(map[string]any)
 	if err := json.Unmarshal(req.Variables, &vars); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
-	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
+	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
+		req.Retries, RetryBackoffFromMillis(req.RetryBackoffMs))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err)
 	}
@@ -830,6 +838,9 @@ func (s *grpcSrv) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJo
 }
 
 func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
+	if s.completeJobResponse != nil {
+		return s.completeJobResponse, nil
+	}
 	md, found := metadata.FromIncomingContext(ctx)
 	clientID := ClientID("")
 	if found {
@@ -867,7 +878,17 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 type testCompleter struct {
 	completedJobs []int64
 	failedJobs    []int64
-	loader        *testLoader
+	// failures records the retry arguments of every JobFailByKey call
+	failures []testJobFailure
+	// retryUpdates records the key of every JobUpdateRetriesByKey call
+	retryUpdates []int64
+	loader       *testLoader
+}
+
+type testJobFailure struct {
+	jobKey       int64
+	retries      *int32
+	retryBackoff *time.Duration
 }
 
 func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[string]any) error {
@@ -882,7 +903,7 @@ func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[
 	return nil
 }
 
-func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any) error {
+func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
@@ -891,6 +912,23 @@ func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, 
 		}
 	}
 	c.failedJobs = append(c.failedJobs, jobKey)
+	c.failures = append(c.failures, testJobFailure{jobKey: jobKey, retries: retries, retryBackoff: retryBackoff})
+	return nil
+}
+
+// JobUpdateRetriesByKey takes the job out of the loader when it is moved into a
+// backoff, the way the database query stops returning it.
+func (c *testCompleter) JobUpdateRetriesByKey(_ context.Context, jobKey int64, _ int32, retryAt *time.Time) error {
+	c.loader.mu.Lock()
+	defer c.loader.mu.Unlock()
+	if retryAt != nil && retryAt.After(time.Now()) {
+		for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
+			if c.loader.jobsToSend[i].Key == jobKey {
+				c.loader.jobsToSend = append(c.loader.jobsToSend[:i], c.loader.jobsToSend[i+1:]...)
+			}
+		}
+	}
+	c.retryUpdates = append(c.retryUpdates, jobKey)
 	return nil
 }
 
@@ -899,6 +937,9 @@ type testLoader struct {
 	mu         *sync.RWMutex
 	// onLoad is an optional hook invoked with the arguments of every LoadJobsToDistribute call
 	onLoad func(jobTypes []string, idsToSkip []int64, count int64)
+	// afterLoad is an optional hook invoked with the jobs a LoadJobsToDistribute
+	// call read, before they are returned, the moment a query result is in hand
+	afterLoad func(jobs []sql.Job)
 }
 
 func (l *testLoader) addJobs(jobs ...sql.Job) {
@@ -933,6 +974,9 @@ func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		}
 	}
 	l.mu.Unlock()
+	if l.afterLoad != nil {
+		l.afterLoad(distributedJobs)
+	}
 	return distributedJobs, nil
 }
 

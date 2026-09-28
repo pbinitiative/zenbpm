@@ -120,6 +120,12 @@ type Job struct {
 	// LockUntil is the unix millisecond on the leader's clock at which the
 	// lock of this delivery lapses.
 	LockUntil int64
+	// Retries is how many attempts the job has left: failures without an error
+	// code it may still report, the one which leaves none creating an incident.
+	Retries int32
+	// Attempt is 1 for the first delivery of a series of attempts and one
+	// more after every failure without an error code.
+	Attempt int32
 }
 
 func New(
@@ -226,17 +232,27 @@ func (m *JobManager) ExtendJobLock(_ context.Context, clientID ClientID, jobKey 
 }
 
 // FailJobReq is called by a client to request job failure
-func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any) error {
-	return m.client.failJob(ctx, clientID, jobKey, message, errorCode, variables)
+func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
+	return m.client.failJob(ctx, clientID, jobKey, message, errorCode, variables, retries, retryBackoff)
 }
 
 // FailJob is called by internal GRPC server to fail job with optional error code which triggers BPMN error execution
-func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
 	server := m.server.Load()
 	if server == nil {
 		return NodeIsNotALeader
 	}
-	return server.failJob(ctx, clientID, jobKey, message, errorCode, variables)
+	return server.failJob(ctx, clientID, jobKey, message, errorCode, variables, retries, retryBackoff)
+}
+
+// UpdateJobRetries is called by internal GRPC server to set the retries of a
+// job of a partition this node leads, and when it is handed out next.
+func (m *JobManager) UpdateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error {
+	server := m.server.Load()
+	if server == nil {
+		return NodeIsNotALeader
+	}
+	return server.updateJobRetries(ctx, jobKey, retries, retryAt)
 }
 
 func (m *JobManager) OnClusterStateChange(_ context.Context) {

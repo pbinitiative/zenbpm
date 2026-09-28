@@ -143,7 +143,8 @@ CREATE TABLE IF NOT EXISTS reporting.incident (
     message TEXT NOT NULL,
     created_at BIGINT NOT NULL,
     resolved_at BIGINT,
-    execution_token BIGINT NOT NULL
+    execution_token BIGINT NOT NULL,
+    job_key BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_incident_process_instance_key
@@ -164,7 +165,13 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     input_variables TEXT NOT NULL,
     execution_token BIGINT NOT NULL,
     assignee TEXT,
-    output_variables TEXT
+    output_variables TEXT,
+    retries BIGINT NOT NULL DEFAULT 1,
+    attempts BIGINT NOT NULL DEFAULT 0,
+    retry_at BIGINT,
+    last_failure_message TEXT,
+    retry_backoff TEXT,
+    retries_updated_at BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key
@@ -176,6 +183,23 @@ CREATE INDEX IF NOT EXISTS idx_job_state_type_created_at
 
 CREATE INDEX IF NOT EXISTS idx_job_execution_token_state
     ON reporting.job (execution_token, state);
+
+CREATE TABLE IF NOT EXISTS reporting.job_failure (
+    key BIGINT PRIMARY KEY,
+    job_key BIGINT NOT NULL,
+    process_instance_key BIGINT NOT NULL,
+    attempt BIGINT NOT NULL,
+    failed_at BIGINT NOT NULL,
+    retry_at BIGINT,
+    message TEXT NOT NULL,
+    incident_key BIGINT
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_failure_job_key
+    ON reporting.job_failure (job_key);
+
+CREATE INDEX IF NOT EXISTS idx_fk_job_failure_process_instance_key
+    ON reporting.job_failure (process_instance_key);
 
 CREATE TABLE IF NOT EXISTS reporting.message_subscription (
     key BIGINT PRIMARY KEY,

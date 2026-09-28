@@ -1,12 +1,18 @@
 -- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
         input_variables = excluded.input_variables,
         output_variables = excluded.output_variables,
-        assignee = excluded.assignee;
+        assignee = excluded.assignee,
+        retries = excluded.retries,
+        attempts = excluded.attempts,
+        retry_at = excluded.retry_at,
+        last_failure_message = excluded.last_failure_message,
+        retries_updated_at = excluded.retries_updated_at;
 
 -- name: DeleteProcessInstancesJobs :exec
 DELETE FROM job
@@ -27,7 +33,8 @@ FROM
     job
 WHERE
     type = @type
-    AND state = 1;
+    AND state = 1
+    AND (retry_at IS NULL OR retry_at <= CAST(@now AS INTEGER));
 
 -- name: FindJobByJobKey :one
 SELECT
@@ -39,7 +46,7 @@ WHERE
 
 -- name: FindProcessInstanceJobs :many
 SELECT
-    *,
+    sqlc.embed(job),
     COUNT(*) OVER () AS total_count
 FROM
     job
@@ -75,6 +82,7 @@ WHERE
     state = 1
     AND type IN (sqlc.slice('type'))
     AND key NOT IN (sqlc.slice('key_skip'))
+    AND (retry_at IS NULL OR retry_at <= CAST(@now AS INTEGER))
 ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452
@@ -99,7 +107,7 @@ WHERE
 
 -- name: FindJobs :many
 SELECT
-  j.*,
+  sqlc.embed(j),
   COUNT(*) OVER() AS total_count
 FROM job AS j
 WHERE

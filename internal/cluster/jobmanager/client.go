@@ -258,6 +258,8 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			ElementType:    resp.Job.GetElementType(),
 			ClientID:       ClientID(resp.GetClientId()),
 			LockUntil:      resp.Job.GetLockUntil(),
+			Retries:        resp.Job.GetRetries(),
+			Attempt:        resp.Job.GetAttempt(),
 		}
 	}
 }
@@ -509,46 +511,90 @@ func leaderOutOfReach(err error) bool {
 	return false
 }
 
+// completeJob reports the completion of the job to the leader of its
+// partition. A refusal and an unavailable leader are told apart the way
+// failJob does it; a completion the leader did not confirm may have been
+// recorded all the same, and repeating it is safe.
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
 	partitionID := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionID, err)
+		return fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for job completion: %w", err)
 	}
-	_, err = lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
+	resp, err := lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
 		Key:       new(jobKey),
 		Variables: vars,
 		ClientId:  new(string(clientID)),
 	})
 	if err != nil {
+		if ctx.Err() == nil && leaderOutOfReach(err) {
+			return fmt.Errorf("%w: the leader of partition %d did not answer the completion of job %d: %w", ErrLeaderUnavailable, partitionID, jobKey, err)
+		}
 		return fmt.Errorf("failed to complete job %d from client: %w", jobKey, err)
+	}
+	if refusal := resp.GetError(); refusal != nil {
+		return refusalError("complete", jobKey, refusal)
 	}
 	return nil
 }
 
-func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
+// refusalError turns the error a leader answered a job request with into the
+// sentinel the caller can act on: ErrInvalidJobRequest, ErrJobNotFound or
+// ErrJobInTerminalState for a request the leader refused, ErrLeaderUnavailable
+// for a leader which no longer leads the partition. Any other answer is a
+// plain error carrying the leader's message.
+func refusalError(action string, jobKey int64, refusal *proto.ErrorResult) error {
+	switch zenerr.ZenErrorCode(refusal.GetCode()) {
+	case zenerr.BadRequestCode:
+		return fmt.Errorf("%w: %s", ErrInvalidJobRequest, refusal.GetMessage())
+	case zenerr.NotFoundCode:
+		return fmt.Errorf("%w: %s", ErrJobNotFound, refusal.GetMessage())
+	case zenerr.ConflictCode:
+		return fmt.Errorf("%w: %s", ErrJobInTerminalState, refusal.GetMessage())
+	case zenerr.ClusterErrorCode:
+		return fmt.Errorf("%w: %s", ErrLeaderUnavailable, refusal.GetMessage())
+	}
+	return fmt.Errorf("failed to %s job %d from client: %s", action, jobKey, refusal.GetMessage())
+}
+
+// failJob reports a failure of the job to the leader of its partition. A
+// refusal comes back as ErrInvalidJobRequest, ErrJobNotFound or
+// ErrJobInTerminalState, and a leader which is not known, out of reach or no
+// longer leading as ErrLeaderUnavailable, so the caller can tell a request
+// which is wrong from a cluster which is changing; in the latter case the
+// failure may have been recorded already.
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionId, err)
+		return fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionId, err)
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for job failure: %w", err)
 	}
-	_, err = lClient.FailJob(ctx, &proto.FailJobRequest{
+	request := &proto.FailJobRequest{
 		Key:       &jobKey,
 		Message:   &message,
 		ErrorCode: errorCode,
 		Variables: vars,
 		ClientId:  new(string(clientID)),
-	})
+		Retries:   retries,
+	}
+	request.RetryBackoffMs = RetryBackoffToMillis(retryBackoff)
+	resp, err := lClient.FailJob(ctx, request)
 	if err != nil {
+		if ctx.Err() == nil && leaderOutOfReach(err) {
+			return fmt.Errorf("%w: the leader of partition %d did not answer the failure of job %d: %w", ErrLeaderUnavailable, partitionId, jobKey, err)
+		}
 		return fmt.Errorf("failed to fail job %d from client: %w", jobKey, err)
+	}
+	if refusal := resp.GetError(); refusal != nil {
+		return refusalError("fail", jobKey, refusal)
 	}
 	return nil
 }

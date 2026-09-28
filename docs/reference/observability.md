@@ -56,7 +56,9 @@ histograms a `_milliseconds` suffix).
 | `processes_completed_total` | counter | `bpmn_process_id` | Process instances ended (completed or failed) |
 | `processes_running` | up/down counter | `bpmn_process_id` | Instances currently being executed |
 | `process_instance_duration_milliseconds` | histogram | `bpmn_process_id`, `state` | Creation → completion/failure duration |
-| `jobs_created_total` / `jobs_completed_total` / `jobs_failed_total` | counter | `type`, `internal` | Job lifecycle counters |
+| `jobs_created_total` / `jobs_completed_total` / `jobs_failed_total` | counter | `type`, `internal` | Job lifecycle counters. `jobs_failed_total` counts jobs which failed for good - with an error code, or with no retries left - not a failure which leaves the job for another attempt |
+| `jobs_retried_total` | counter | `type` | Failures without an error code which left the job `active` for another attempt (see [Failures and retries](./jobs.md#failures-and-retries)) |
+| `job_retry_backoff_milliseconds` | histogram | `type` | Backoff a retried job waits before it is handed out again; `0` for a retry at once. Buckets reach a day, the default `jobs.maxRetryBackoff` |
 | `job_lifetime_milliseconds` | histogram | `type`, `outcome` | Job creation → terminal state duration |
 | `incidents_created_total` / `incidents_resolved_total` | counter | `element_id` | Incident lifecycle counters (recorded only after the write batch is successfully flushed) |
 | `timers_scheduled_total` / `timers_fired_total` / `timers_cancelled_total` | counter | — | Timer lifecycle counters (recorded only after the write batch is successfully flushed; covers instance-level timers as well as definition-level timer start events and their cycle renewals) |

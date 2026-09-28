@@ -1,0 +1,34 @@
+-- Remaining attempts before a failure without an error code becomes an incident. Initialised
+-- from zenbpm:taskDefinition retries (default: the engine's jobs.defaultRetries). Existing rows
+-- get 1, which is the behaviour they had: one failure, one incident.
+ALTER TABLE job ADD COLUMN retries INTEGER NOT NULL DEFAULT 1;
+-- Failures without an error code since the job was created or its incident was resolved.
+ALTER TABLE job ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+-- Unix millis before which a failed-but-retryable job must not be handed out again. NULL = now.
+ALTER TABLE job ADD COLUMN retry_at INTEGER;
+-- The message of the last failure without an error code, for operators reading the job.
+ALTER TABLE job ADD COLUMN last_failure_message TEXT;
+-- The backoff policy of the definition at job creation, normalised ("PT10S,PT1M"); NULL = none,
+-- the engine's jobs.defaultRetryBackoff applies.
+ALTER TABLE job ADD COLUMN retry_backoff TEXT;
+-- Unix millis of the operator update which set retries and retry_at; the resolution of the job's
+-- incident keeps them instead of restoring the definition's retries. NULL once a resolution kept
+-- them or a failure exhausted them.
+ALTER TABLE job ADD COLUMN retries_updated_at INTEGER;
+
+-- One row per failure without an error code; deleted with the instance's jobs.
+CREATE TABLE IF NOT EXISTS job_failure(
+    key INTEGER PRIMARY KEY, -- int64 snowflake id of the failure
+    job_key INTEGER NOT NULL, -- int64 reference to the job which failed
+    process_instance_key INTEGER NOT NULL, -- int64 reference to process instance
+    attempt INTEGER NOT NULL, -- 1-based number of the failure within the job's series
+    failed_at INTEGER NOT NULL, -- unix millis of when the worker reported the failure
+    retry_at INTEGER, -- unix millis before which the job is not handed out again; NULL = at once or no retry
+    message TEXT NOT NULL, -- the failure message the worker sent
+    incident_key INTEGER -- set on the failure which exhausted the retries and created an incident
+);
+CREATE INDEX IF NOT EXISTS idx_job_failure_job_key ON job_failure(job_key);
+CREATE INDEX IF NOT EXISTS idx_fk_job_failure_process_instance_key ON job_failure(process_instance_key);
+
+-- The job an incident was created for; NULL for incidents without a job.
+ALTER TABLE incident ADD COLUMN job_key INTEGER;

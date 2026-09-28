@@ -27,11 +27,13 @@ The task can be routed to its performer with a `zenbpm:assignmentDefinition` ext
 | `assignee`        | no       | The user the task is assigned to.                               |
 | `candidateGroups` | no       | Comma-separated list of groups whose members can claim the task. |
 
-The optional `zenbpm:taskDefinition` element exposes a single attribute:
+The optional `zenbpm:taskDefinition` element exposes these attributes:
 
-| Attribute | Required | Default           | Description                                                                 |
-| --------- | -------- | ----------------- | --------------------------------------------------------------------------- |
-| `type`    | no       | `user-task-type`  | Type stored in `Job.type` and used by job filtering/workers.                |
+| Attribute      | Required | Default                              | Description                                                                 |
+| -------------- | -------- | ------------------------------------ | --------------------------------------------------------------------------- |
+| `type`         | no       | `user-task-type`                     | Type stored in `Job.type` and used by job filtering/workers.                |
+| `retries`      | no       | `jobs.defaultRetries` (`1`)          | How many attempts the job gets; the failure without an error code which uses the last one creates an incident, as for a [Service task](./service-task.md#usage-in-bpmn). |
+| `retryBackoff` | no       | `jobs.defaultRetryBackoff` (`PT0S`)  | Wait after such a failure before the job is handed out again, as for a [Service task](./service-task.md#usage-in-bpmn). |
 
 ## Related documentation
 

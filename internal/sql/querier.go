@@ -19,6 +19,8 @@ type Querier interface {
 	// otherwise prefer). See TestHotPathIndexes.
 	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
+	// Counted apart from the page: a page beyond the last one has no row to carry a window count.
+	CountJobFailures(ctx context.Context, jobKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
@@ -30,12 +32,13 @@ type Querier interface {
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesErrorSubscriptions(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesJobFailures(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesTimers(ctx context.Context, processinstancekeys []sql.NullInt64) error
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
-	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
+	FindActiveJobsByType(ctx context.Context, arg FindActiveJobsByTypeParams) ([]Job, error)
 	FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, arg FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams) ([]ProcessInstance, error)
 	FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
@@ -65,6 +68,8 @@ type Querier interface {
 	FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg FindIncidentsPageByProcessInstanceKeyParams) ([]FindIncidentsPageByProcessInstanceKeyRow, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
+	FindJobFailuresByJobKey(ctx context.Context, jobKey int64) ([]JobFailure, error)
+	FindJobFailuresPage(ctx context.Context, arg FindJobFailuresPageParams) ([]JobFailure, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error)
@@ -169,7 +174,9 @@ type Querier interface {
 	SaveErrorSubscription(ctx context.Context, arg SaveErrorSubscriptionParams) error
 	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
+	// retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
 	SaveJob(ctx context.Context, arg SaveJobParams) error
+	SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error
 	SaveMigration(ctx context.Context, arg SaveMigrationParams) error

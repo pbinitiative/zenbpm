@@ -2,6 +2,7 @@ package zenclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -104,6 +105,67 @@ func TestHandleJob_WorkerErrorWithNilErrFailsJobWithoutPanic(t *testing.T) {
 	require.Len(t, fails, 1, "workerErr should produce exactly one fail request")
 	require.NotNil(t, fails[0].ErrorCode)
 	assert.Equal(t, "BUSINESS_ERROR", *fails[0].ErrorCode)
+}
+
+func TestHandleJob_WorkerErrorCarriesRetriesAndBackoff(t *testing.T) {
+	stream := &fakeStream{}
+	w := &Worker{
+		ctx:      context.Background(),
+		logger:   &captureLogger{},
+		clientID: "test-client",
+		f: func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+			return nil, &WorkerError{Err: errors.New("service down"), Retries: new(int32(2)), RetryBackoff: new(1500 * time.Millisecond)}
+		},
+	}
+
+	w.handleJob(context.Background(), &proto.WaitingJob{Key: new(int64(9))}, stream.record)
+
+	fails := stream.failRequests()
+	require.Len(t, fails, 1)
+	assert.Nil(t, fails[0].ErrorCode, "without an error code the failure spends a retry instead of throwing a BPMN error")
+	assert.Equal(t, int32(2), fails[0].GetRetries())
+	assert.Equal(t, int64(1500), fails[0].GetRetryBackoffMs())
+	assert.Contains(t, fails[0].GetMessage(), "service down")
+}
+
+// TestHandleJob_BackoffJustBelowZeroIsSentNegative shows a backoff computed
+// just below zero does not reach the engine as "at once", which it would
+// accept: it stays negative on the wire, and the engine refuses it.
+func TestHandleJob_BackoffJustBelowZeroIsSentNegative(t *testing.T) {
+	stream := &fakeStream{}
+	w := &Worker{
+		ctx:      context.Background(),
+		logger:   &captureLogger{},
+		clientID: "test-client",
+		f: func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+			return nil, &WorkerError{Err: errors.New("service down"), RetryBackoff: new(-time.Nanosecond)}
+		},
+	}
+
+	w.handleJob(context.Background(), &proto.WaitingJob{Key: new(int64(9))}, stream.record)
+
+	fails := stream.failRequests()
+	require.Len(t, fails, 1)
+	assert.Equal(t, int64(-1), fails[0].GetRetryBackoffMs())
+}
+
+func TestHandleJob_WorkerErrorWithoutRetryDetailsLeavesThemToTheEngine(t *testing.T) {
+	stream := &fakeStream{}
+	w := &Worker{
+		ctx:      context.Background(),
+		logger:   &captureLogger{},
+		clientID: "test-client",
+		f: func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+			return nil, &WorkerError{Err: errors.New("service down")}
+		},
+	}
+
+	w.handleJob(context.Background(), &proto.WaitingJob{Key: new(int64(9))}, stream.record)
+
+	fails := stream.failRequests()
+	require.Len(t, fails, 1)
+	assert.Nil(t, fails[0].Retries, "the engine decrements")
+	assert.Nil(t, fails[0].RetryBackoffMs, "the task definition's policy applies")
 }
 
 func TestHandleJob_NilJobIsSkippedWithoutPanic(t *testing.T) {

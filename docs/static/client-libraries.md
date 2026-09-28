@@ -127,6 +127,17 @@ carries a deadline. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` 
 leader could not be reached or has just changed: retry the call in a moment instead of failing the
 job, and count on the deadline of the last confirmed answer only, the outcome of the failed call is
 unknown. See [Jobs](../reference/jobs.md) for the lock semantics.
+
+A handler which cannot finish a job returns a `*zenclient.WorkerError`. With an `ErrorCode` it
+throws a BPMN error. Without one it spends one of the job's retries: the engine hands the job out
+again after its backoff and creates an incident only when no retries are left. `Retries` and
+`RetryBackoff` override what remains and how long the job waits; left `nil`, the engine decrements
+and applies the task definition's `retryBackoff`. `job.GetAttempt()` and `job.GetRetries()` tell the
+handler which attempt it runs and how many are left:
+```go
+return nil, &zenclient.WorkerError{Err: err, RetryBackoff: new(30 * time.Second)}
+```
+See [Failures and retries](../reference/jobs.md#failures-and-retries).
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

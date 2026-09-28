@@ -30,7 +30,7 @@ You can load the waiting jobs with `getJobs` endpoint with `state=active` and op
 <ApiOperation id="api" pointer="#/paths/~1jobs/get" example={true} />
 
 This endpoint will return a list of partitions and jobs of type `mycooljobtype` that are waiting to be completed. Pagination on this endpoint is applied per partition. This means that page 1 and size 10 will return 20 jobs on fully saturated 2 partition setup.
-To complete the job and move the token to the next element you have to call `completeJob` endpoint.
+To complete the job and move the token to the next element you have to call `completeJob` endpoint. Completing a job completed before answers `201` again; a job terminated or failed meanwhile no longer waits for a worker and answers `409`.
 
 <ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1complete/post" example={true} />
 
@@ -44,9 +44,9 @@ First thing that a client should do is send a `StreamSubscriptionRequest` messag
 
 After the client register itself for job processing the server will start sending jobs that need to be processed to the client. Every delivered job is **locked** for the client it was sent to and will not be distributed to another client until that lock lapses (see [Job locks](#job-locks)).
 
-When client finishes the work that had to be done to complete the job, client must send `JobCompleteRequest` message. This message will complete the job in the engine and move the token to next element.
+When client finishes the work that had to be done to complete the job, client must send `JobCompleteRequest` message. This message will complete the job in the engine and move the token to next element. A completion is idempotent: a job completed before is answered as completed again. A completion the engine did not carry out is answered with an `ErrorResult` next to a `WaitingJob` carrying only the key, and its `code` says why: `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` (6) when the job was terminated or failed meanwhile, `JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND` (5) when its partition has no job with that key, `JOB_STREAM_ERROR_CODE_INVALID_REQUEST` (4) for variables which do not decode, and `JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE` (3) when the leader of the job's partition could not be reached or has just changed - the completion may have been recorded all the same, and repeating it is safe.
 
-If there is an error while executing the job logic the client should send `JobFailRequest` message. This will mark the job as failed and create an incident in the engine.
+If there is an error while executing the job logic the client should send `JobFailRequest` message. With an `error_code` it throws a BPMN error; without one it spends one of the job's retries, and only the failure which leaves no retries creates an incident (see [Failures and retries](#failures-and-retries)).
 
 If the work takes longer than the lock, the client sends a `JobExtendLockRequest` message before the lock lapses; the engine answers with a `LockExtended` message carrying the new deadline.
 
@@ -79,11 +79,178 @@ The cap is enforced by each partition leader for the jobs of its own partitions.
 
 > ⚠️ **Upgrade note:** before locks became configurable, the ten-job cap was counted per client across all job types. A client subscribed to several job types may now receive more jobs in total than before. Set `max_active_jobs` per type to restore the old total.
 
-**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover. Completion and failure are not bound to the lock holder: a job may be completed by anybody who knows its key, including a REST client which never held the lock. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
+**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover. Completion and failure are not bound to the lock holder: a job may be completed or failed by anybody who knows its key, including a REST client which never held the lock. A failure spends the attempt whoever reports it, but releases the lock only when the reporting client holds it: a client whose lock lapsed, and which reports its failure after the job was handed to another client, does not take the job from that client. When the job came back to the same client after its lock lapsed, the job manager cannot tell which of the two deliveries the client's next failure belongs to, so that failure keeps the lock too; the one after it, a completion, or the lapse of the lock releases it, and a retry waits at most one lock duration longer. A completion or failure refused because the job no longer waits releases the lock at once. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
 
 Workers which receive jobs over the stream but send their commands over REST extend a lock with the `extendJobLock` endpoint, passing the client id of their stream:
 
 <ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1extend-lock/post" example={true} />
+
+Such workers pass the client id of their stream to the `failJob` endpoint as well, as `clientId`. A REST failure without it leaves a stream lock standing: the job is handed out again only once the lock has lapsed, whatever `retryBackoff` asks for, although `GET /v1/jobs/{key}` shows no `retryAt`.
+
+## Failures and retries
+
+A worker which cannot finish a job reports a failure: `JobFailRequest` on the stream, the `failJob`
+REST endpoint, or a `zenclient.WorkerError` from a Go worker. What happens depends on whether the
+failure carries an error code.
+
+**With an error code** the failure is a BPMN error. A matching error boundary event or error event
+sub-process takes over and receives the failure's variables; without a match the job fails with an
+incident. Retries are neither consulted nor spent.
+
+**Without an error code** (absent or empty) the failure is technical and spends one attempt of the
+job:
+
+1. Every job starts with the `retries` of its `zenbpm:taskDefinition` - a non-negative integer, or a
+   FEEL expression starting with `=` evaluated when the job is created. Without the attribute it
+   gets `jobs.defaultRetries`, which is `1`: one attempt, so the first failure creates an incident.
+2. A failure sets the remaining retries to what the request names in `retries`, or to one less
+   than now. `retries` may be larger than the current value, a worker may top up, but never above
+   `jobs.maxRetries`; a negative value is refused with `400`. `retries` and the backoff are
+   validated in every request: an invalid value is refused even next to an error code, which
+   otherwise ignores them.
+3. While retries remain, the job stays `active`, no incident is created and the process instance
+   is untouched. The job is not handed out again - neither over the stream nor by the library's
+   `ActivateJobs` - before its `retryAt`, and is afterwards without anybody acting, within the
+   job manager's polling interval of about a second, unless a stream lock still reserves it (see
+   "What a lock is not" above).
+   `GET /v1/jobs?state=active` still lists it; its `retryAt` says why nobody holds it. The
+   failure's variables are dropped, so the next attempt starts from the same input.
+4. The failure which leaves no retries fails the job with an incident whose message names the
+   attempts, `<message> (job <key>: 3 attempts, retries exhausted)`, and whose `jobKey` leads to the
+   job. The failure's variables stay on the job as its output variables.
+5. Resolving that incident starts a fresh series: `attempts` goes back to `0`, `retryAt` is
+   cleared and the retries of the task definition are evaluated again - unless an operator set new
+   retries meanwhile (see below), which are kept together with the `retryAt` the operator chose.
+   Resolving the incident of an error code nothing caught does the same, so leftover retries do not
+   carry over into the new series; retries an operator set before that incident are forgotten with
+   the series they belonged to. An incident the job did not raise itself, such as one of a boundary
+   event of its task, leaves the series alone when it is resolved: attempts, retries and `retryAt`
+   stay as they were.
+
+A fail request is not idempotent: every failure without an error code the engine receives spends
+an attempt, also one reported for a job waiting out its backoff, which nobody holds at that moment.
+A client which repeats a request after a timeout may spend two attempts for one failure. A failure
+reported for a job which no longer waits for a worker - the repeat of a failure which exhausted the
+retries, or a job completed or terminated meanwhile - changes nothing and is refused: `409` on the
+REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` on the stream.
+
+A `JobFailRequest` on the stream which the engine did not record is answered with an `ErrorResult`
+next to a `WaitingJob` carrying only the key. Its `code` says why:
+`JOB_STREAM_ERROR_CODE_INVALID_REQUEST` (4) for negative retries, a negative backoff or variables
+which do not decode, which the REST endpoint answers with `400` - the message names the field and
+the value; `JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND` (5) when the job's partition has no job with that
+key; `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` (6) when the job no longer waits for a worker;
+`JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE` (3) when the leader of the job's partition could not
+be reached or has just changed - the failure may have been recorded all the same, so repeating it
+may spend a second attempt. Any other error carries no code.
+
+A job whose token is terminated during its backoff, by an interrupting boundary event or by
+cancelling the instance, is terminated like any active job.
+
+### Backoff
+
+How long a failed job waits before it is handed out again is decided, most specific first, by:
+
+1. the `retry_backoff_ms` of `JobFailRequest` or the `retryBackoff` of the REST request (an ISO-8601
+   duration such as `PT10S`; `0`/`PT0S` means at once);
+2. the `retryBackoff` of the `zenbpm:taskDefinition`: one ISO-8601 duration (`PT10S`, a fixed
+   delay) or a comma-separated list of them (`PT10S,PT1M,PT10M`), where the n-th failure waits the
+   n-th entry and the last entry repeats - `PT10S,PT20S,PT40S,PT80S` is an exponential backoff. A
+   FEEL expression starting with `=` may produce such a string or a list of duration strings;
+3. `jobs.defaultRetryBackoff`, `PT0S` unless configured.
+
+Every backoff is capped by `jobs.maxRetryBackoff` (`PT24H`). Durations are hours, minutes, seconds,
+days (24 hours) and weeks; years and months have no fixed length and are refused. The policy of the
+task definition is fixed when the job is created, so redeploying the model does not change the
+policy of a running job. A literal `retries` or `retryBackoff` which does not parse is refused when
+the definition is deployed; an expression is checked when the job is created, and one which does
+not evaluate to a valid value creates an incident there. A definition deployed before the engine
+read these attributes is not checked again: it keeps loading whatever its literals say, and a
+literal which does not parse creates an incident when a job is created, like an expression.
+
+```xml
+<zenbpm:taskDefinition type="charge-card" retries="4" retryBackoff="PT10S,PT1M,PT10M" />
+```
+
+### What a job shows
+
+| Field | Meaning |
+|---|---|
+| `retries` | attempts left: failures without an error code the job may still report; the one which leaves none creates an incident |
+| `attempts` | failures without an error code since the job was created or its incident resolved |
+| `retryAt` | before this moment an active job is not handed out; absent when it is deliverable. A job which ended during its backoff keeps the value |
+| `lastFailureMessage` | message of the latest failure without an error code |
+| `retryBackoff` | the policy of the task definition; absent when the engine default applies |
+
+Every delivery over the stream carries `retries` and `attempt`: `1` for the first delivery of a
+series and one more after every failure. Two deliveries of one attempt - a lapsed lock, a leader
+change - carry the same number, a delivery after a failure the next. The Go client exposes them as
+`job.GetRetries()` and `job.GetAttempt()`.
+
+Every failure without an error code is recorded: attempt, time, message, when the job was handed
+out again and, on the failure which exhausted the retries, the incident key. The records are
+deleted together with the process instance by the history cleanup. An unknown job answers `404`, a
+job which never failed an empty page. The page, like the job itself read with `getJob`, is served by
+any node of the job's partition and is eventually consistent: read right after a failure it may not
+show it yet, so a reader acting on it polls until it does.
+
+<ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1failures/get" example={true} />
+
+The engine logs one `WARN` per retried failure (job, type, instance, attempt and next delivery) and
+one `ERROR` when the retries are exhausted. The metric `jobs_retried` counts the retried failures
+and the histogram `job_retry_backoff` (ms) the backoffs applied, both by job `type`;
+`jobs_failed` keeps counting only the failures which failed the job. Once a failure without an
+error code is committed, its span carries `zenbpm.job.failure.outcome` (`retry` or `incident`),
+`zenbpm.job.attempt`, `zenbpm.job.retries` (left after the failure) and, on a retry,
+`zenbpm.job.retry_backoff_ms`; the worker's message is not a span attribute.
+
+### Setting the retries of a job
+
+An operator sets the remaining retries of an `active` or `failed` job, and optionally when it is
+handed out next; without `retryAt` a job waiting out its backoff is deliverable at once. The
+incident of a failed job stays open: resolve it as usual, and the resolution then keeps the retries
+set here and, while it still lies ahead, the `retryAt`. A `completed` or `terminated` job answers
+`409`; a count below `1` or above `jobs.maxRetries`, or a `retryAt` later than now plus
+`jobs.maxRetryBackoff`, `400` - the cap which lowers every backoff refuses a deadline it cannot
+lower.
+
+<ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1retries/post" example={true} />
+
+### What stays the worker's business
+
+The engine cannot undo what a worker did before it failed, and does not try. A job keeps its key
+across attempts and its input variables do not change between them, so an effect which must happen
+once per job is made idempotent on the job key, or on a key of the business operation it performs:
+a worker which charged a card and then failed must find that charge again on its next attempt.
+
+The `attempt` of a delivery is no substitute. It tells a redelivery of the same attempt (a lapsed
+lock, a leader change) from a retry, within one series of attempts. It is not unique over the life
+of a job: resolving an incident starts a new series at `1`. Keying an effect on the job key and the
+attempt would repeat the effect on every retry.
+
+> ⚠️ **Upgrade notes:**
+>
+> - A model whose `zenbpm:taskDefinition` already carries `retries` - the Camunda Modeler writes
+>   the attribute - now gets those retries: its first failure without an error code no longer
+>   creates an incident. Remove the attribute, or set `retries="1"`, to keep the old behaviour.
+> - A failure with an empty error code, which the REST API and the Go client sent when no code was
+>   given, is now a failure without an error code: it spends a retry instead of being caught by a
+>   catch-all error boundary event or error event sub-process. Send an error code to throw a BPMN
+>   error.
+> - Jobs created before the upgrade keep one retry, the default of the new column, even when their
+>   definition carries `retries`; jobs created afterwards get the definition's. Set the retries of a
+>   running job with the endpoint above.
+> - Failing or completing a job which no longer waits for a worker answers `409` instead of `500`,
+>   and the stream answers the completion with a code. A worker using the Go client is not affected:
+>   it only logs the answer. A stream completion the leader refused used to be reported to the
+>   worker as a success; it is now reported as the error it was.
+> - A worker which receives jobs over the stream and fails them over REST passes its stream's
+>   `clientId` with the failure; without it the job still waits for its lock to lapse, whatever
+>   `retryBackoff` asks for.
+> - For applications embedding the engine as a library: `Engine.JobFailByKey` takes the retries
+>   and the backoff of the failure as two more arguments, and a storage implementation has to
+>   provide `FindJobFailures` and `SaveJobFailure` (`storage.JobStorageReader` and
+>   `storage.JobStorageWriter`).
 
 ## Job manager
 

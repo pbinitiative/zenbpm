@@ -98,13 +98,20 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		idGen:  idGen,
 	}
 
+	// checked before anything is bound: a refused configuration must leave
+	// the address free for the corrected one
+	jobRetryLimits, err := controller.JobRetryLimits(conf.Jobs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid jobs configuration: %w", err)
+	}
+
 	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr, network.WithAdvertise(conf.Cluster.Adv))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.Addr, err)
 	}
 
 	node.muxLn = muxLn
-	node.controller, err = controller.NewController(mux, conf.Cluster)
+	node.controller, err = controller.NewController(mux, conf.Cluster, controller.WithJobRetryLimits(jobRetryLimits))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node controller: %w", err)
 	}
@@ -918,7 +925,10 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition := zenflake.GetPartitionId(key)
+	partition, err := node.jobPartition(key)
+	if err != nil {
+		return err
+	}
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
@@ -932,8 +942,7 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 		Variables: vars,
 	})
 	if err != nil {
-		e := fmt.Errorf("client call to complete job %d failed: %w", key, err)
-		return zenerr.TechnicalError(e)
+		return leaderCallFailure(ctx, fmt.Errorf("client call to complete job %d failed: %w", key, err))
 	}
 	if resp.Error != nil {
 		e := fmt.Errorf("client call to complete job %d failed", key)
@@ -1004,35 +1013,117 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 	return nil
 }
 
-func (node *ZenNode) FailJob(ctx context.Context, key int64, errorCode string, variables map[string]any) error {
+// FailJob reports a job failure on the leader of the job's partition. A nil
+// errorCode spends one of the job's retries; retries and retryBackoff, when
+// given, say what remains and how long the job waits (see bpmn.Engine.JobFailByKey).
+// clientID names the job stream the job was delivered to, whose lock the
+// failure then releases; empty, a lock held on the job stands until it lapses.
+func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition := zenflake.GetPartitionId(key)
+	partition, err := node.jobPartition(key)
+	if err != nil {
+		return err
+	}
 	client, err := node.client.PartitionLeader(partition)
-
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
 	}
 	vars, err := json.Marshal(variables)
-
 	if err != nil {
 		return zenerr.BadRequest(fmt.Errorf("failed marshal variables: %w", err))
 	}
 	resp, err := client.FailJob(ctx, &proto.FailJobRequest{
-		Key:       &key,
-		ErrorCode: &errorCode,
-		Variables: vars,
+		Key:            &key,
+		ClientId:       &clientID,
+		Message:        &message,
+		ErrorCode:      errorCode,
+		Variables:      vars,
+		Retries:        retries,
+		RetryBackoffMs: jobmanager.RetryBackoffToMillis(retryBackoff),
 	})
-
 	if err != nil {
-		return zenerr.TechnicalError(fmt.Errorf("client call to fail job failed: %w", err))
+		return leaderCallFailure(ctx, fmt.Errorf("client call to fail job %d failed: %w", key, err))
 	}
 	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to fail job failed"))
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to fail job %d failed", key))
 	}
-
 	return nil
+}
+
+// UpdateJobRetries sets the remaining retries of a job and when it is handed
+// out next (nil: at once) on the leader of the job's partition.
+func (node *ZenNode) UpdateJobRetries(ctx context.Context, key int64, retries int32, retryAt *time.Time) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
+	partition, err := node.jobPartition(key)
+	if err != nil {
+		return err
+	}
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+	}
+	request := &proto.UpdateJobRetriesRequest{
+		Key:     &key,
+		Retries: &retries,
+	}
+	if retryAt != nil {
+		request.RetryAt = new(retryAt.UnixMilli())
+	}
+	resp, err := client.UpdateJobRetries(ctx, request)
+	if err != nil {
+		return leaderCallFailure(ctx, fmt.Errorf("client call to update retries of job %d failed: %w", key, err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to update retries of job %d failed", key))
+	}
+	return nil
+}
+
+// GetJobFailures reads a page of the failures of a job, newest first, from a
+// follower of the job's partition.
+func (node *ZenNode) GetJobFailures(ctx context.Context, jobKey int64, page int32, size int32) (*proto.GetJobFailuresResponse, error) {
+	partitionID, err := node.jobPartition(jobKey)
+	if err != nil {
+		return nil, err
+	}
+	follower, err := node.store.ClusterState().GetPartitionFollower(partitionID)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get failures of job %d: %w", jobKey, err))
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get failures of job %d: %w", jobKey, err))
+	}
+	resp, err := client.GetJobFailures(ctx, &proto.GetJobFailuresRequest{
+		JobKey: &jobKey,
+		Page:   &page,
+		Size:   &size,
+	})
+	if err != nil {
+		return nil, leaderCallFailure(ctx, fmt.Errorf("failed to get failures of job %d from partition %d: %w", jobKey, partitionID, err))
+	}
+	if resp.Error != nil {
+		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to get failures of job %d from partition %d", jobKey, partitionID))
+	}
+	return resp, nil
+}
+
+// jobPartition returns the partition owning a job key. A key naming a
+// partition the cluster does not have (partition 0 is reserved for global
+// resources) can never identify a job, so it is not found rather than a
+// transient cluster failure to retry. While this node knows no partitions at
+// all it cannot tell, and the key is left to the routing to classify.
+func (node *ZenNode) jobPartition(key int64) (uint32, error) {
+	partition := zenflake.GetPartitionId(key)
+	partitions := node.store.ClusterState().Partitions
+	if _, known := partitions[partition]; !known && len(partitions) > 0 {
+		return 0, zenerr.NotFound(fmt.Errorf("job %d not found: its key names partition %d, which the cluster does not have", key, partition))
+	}
+	return partition, nil
 }
 
 func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
@@ -2380,6 +2471,7 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
+			Now:     time.Now().UnixMilli(),
 			Limit:   limit,
 		})
 		if err != nil {
@@ -2423,7 +2515,7 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("engine to complete job was not found on the node")
+		return fmt.Errorf("cannot complete job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
 	}
 	err := engine.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
@@ -2444,20 +2536,34 @@ func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee 
 	return engine.JobAssignByKey(ctx, jobKey, assignee)
 }
 
-func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
 	partitionId := zenflake.GetPartitionId(jobKey)
 	engine := node.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		return fmt.Errorf("engine to fail job was not found on the node")
+		return fmt.Errorf("cannot fail job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
 	}
-	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables)
+	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// JobUpdateRetriesByKey sets the retries of a job on the engine of its
+// partition, which this node leads.
+func (node *ZenNode) JobUpdateRetriesByKey(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error {
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
+	partitionId := zenflake.GetPartitionId(jobKey)
+	engine := node.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		return fmt.Errorf("cannot update retries of job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
+	}
+	return engine.UpdateJobRetries(ctx, jobKey, retries, retryAt)
 }
 
 func sortedPartitionIds(clusterState state.Cluster) []uint32 {

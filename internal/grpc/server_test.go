@@ -3,7 +3,9 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -136,6 +138,55 @@ func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
 	}
 }
 
+// TestRecvClientRequestsLogsAnExpectedRefusalAsAWarning shows a completion or
+// failure the engine refuses with a code, such as one of a job a boundary
+// timer terminated while its worker ran, is no error of the engine's: the log
+// says so at warning level and keeps ERROR for what nobody expected.
+func TestRecvClientRequestsLogsAnExpectedRefusalAsAWarning(t *testing.T) {
+	terminated := fmt.Errorf("job 42: %w", jobmanager.ErrJobInTerminalState)
+	tests := []struct {
+		name      string
+		request   *proto.JobStreamRequest
+		configure func(*jobStreamTestManager)
+		level     string
+	}{
+		{
+			name:      "a completion of a terminated job",
+			request:   completeRequest(nil),
+			configure: func(manager *jobStreamTestManager) { manager.completeErr = terminated },
+			level:     "warn",
+		},
+		{
+			name:      "a failure of a terminated job",
+			request:   failRequest(nil),
+			configure: func(manager *jobStreamTestManager) { manager.failErr = terminated },
+			level:     "warn",
+		},
+		{
+			name:      "a completion nobody expected to fail",
+			request:   completeRequest(nil),
+			configure: func(manager *jobStreamTestManager) { manager.completeErr = errors.New("disk full") },
+			level:     "error",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &jobStreamTestManager{}
+			tt.configure(manager)
+			stream := newJobStreamTestServer(tt.request)
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true})
+			server := &Server{jobManager: manager, logger: logger}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(bytes.SplitN(logOutput.Bytes(), []byte("\n"), 2)[0], &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+		})
+	}
+}
+
 func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) {
 	manager := &jobStreamTestManager{subscribeErr: errors.New("subscription failed")}
 	stream := newJobStreamTestServer(
@@ -227,6 +278,8 @@ type jobStreamTestManager struct {
 	subscribedSettings []jobmanager.SubscriptionSettings
 	extendedKeys       []int64
 	extendedDurations  []time.Duration
+	failedRetries      []*int32
+	failedBackoffs     []*time.Duration
 }
 
 func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
@@ -258,7 +311,9 @@ func (m *jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.Client
 	return m.completeErr
 }
 
-func (m *jobStreamTestManager) FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error {
+func (m *jobStreamTestManager) FailJobReq(_ context.Context, _ jobmanager.ClientID, _ int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration) error {
+	m.failedRetries = append(m.failedRetries, retries)
+	m.failedBackoffs = append(m.failedBackoffs, retryBackoff)
 	return m.failErr
 }
 

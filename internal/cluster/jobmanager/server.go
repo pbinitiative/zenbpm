@@ -17,6 +17,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
@@ -38,11 +40,19 @@ var (
 	// ErrLockHeldByOtherClient is returned by a lock extension for a job which
 	// is currently locked for a different client.
 	ErrLockHeldByOtherClient = errors.New("job lock is held by another client")
-	// ErrLeaderUnavailable is returned by a lock extension which could not
-	// reach the leader of the job's partition, or reached a node which does
-	// not lead it any more: a transient condition of the cluster, the
-	// extension may be retried in a moment.
+	// ErrLeaderUnavailable is returned by a lock extension or a job failure
+	// which could not reach the leader of the job's partition, or reached a
+	// node which does not lead it any more: a transient condition of the
+	// cluster, the request may be retried in a moment.
 	ErrLeaderUnavailable = errors.New("leader of the job's partition is unavailable")
+	// ErrInvalidJobRequest is returned by a job request the leader refused for
+	// what it asks, such as negative retries; repeating it gets the same answer.
+	ErrInvalidJobRequest = errors.New("invalid job request")
+	// ErrJobNotFound is returned by a job request for a key which names no job.
+	ErrJobNotFound = errors.New("job not found")
+	// ErrJobInTerminalState is returned by a job request for a job which no
+	// longer waits for a worker: it was completed, terminated or already failed.
+	ErrJobInTerminalState = errors.New("job no longer waits for a worker")
 )
 
 type JobLoader interface {
@@ -52,7 +62,8 @@ type JobLoader interface {
 
 type JobCompleter interface {
 	JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error
-	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error
+	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error
+	JobUpdateRetriesByKey(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error
 }
 
 // LockLimits are the engine-wide defaults and caps applied to what a client
@@ -97,6 +108,39 @@ func DurationFromMillis(ms int64) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
+// RetryBackoffFromMillis converts the optional backoff of a fail request taken
+// from the wire. Absent stays absent, the request for the task definition's
+// policy; a negative count stays negative, so that the engine refuses it
+// instead of taking it for "at once".
+func RetryBackoffFromMillis(ms *int64) *time.Duration {
+	if ms == nil {
+		return nil
+	}
+	if *ms < 0 {
+		return new(time.Duration(max(*ms, minDurationMillis)) * time.Millisecond)
+	}
+	return new(DurationFromMillis(*ms))
+}
+
+// minDurationMillis is the most negative count of milliseconds a time.Duration
+// holds; a count below it is clamped so that the conversion cannot overflow.
+const minDurationMillis = math.MinInt64 / int64(time.Millisecond)
+
+// RetryBackoffToMillis puts the optional backoff of a fail request on the wire.
+// Milliseconds are truncated towards zero, which would turn a backoff just
+// below zero into "at once"; a negative backoff stays negative instead, so
+// that the engine refuses it as it refuses every other negative one.
+func RetryBackoffToMillis(backoff *time.Duration) *int64 {
+	if backoff == nil {
+		return nil
+	}
+	ms := backoff.Milliseconds()
+	if *backoff < 0 && ms == 0 {
+		ms = -1
+	}
+	return &ms
+}
+
 // distributedJob is a job delivered to a client whose lock has not lapsed.
 type distributedJob struct {
 	client  ClientID
@@ -107,6 +151,36 @@ type distributedJob struct {
 	// lockDuration is the subscription's lock duration at delivery time; an
 	// extension which names no duration uses it.
 	lockDuration time.Duration
+	// afterOwnLapse marks a delivery to the client whose earlier lock on the
+	// job lapsed. The job server cannot tell which of the two deliveries a
+	// failure the client reports belongs to, so the first one keeps this lock:
+	// released for the earlier delivery's late failure, it would let the next
+	// round hand the job out a third time while the client still works on it.
+	afterOwnLapse bool
+}
+
+// lapsedLock remembers the client whose lock on a job lapsed until the job is
+// delivered again, so that a delivery to the same client is marked afterOwnLapse.
+type lapsedLock struct {
+	client   ClientID
+	lapsedAt time.Time
+}
+
+// jobMutations tells the distribution loop which jobs of a loaded batch were
+// changed after the batch was read. A batch is a snapshot of the database: a
+// failure which commits a backoff, or a retry update which postpones a job,
+// between the query and the delivery would otherwise be overtaken by a
+// delivery of the stale snapshot. Every change runs between beginMutation and
+// endMutation, and every event advances seq; a job counts as changed when a
+// change of it is in progress or its last event came after the batch was read.
+type jobMutations struct {
+	seq       uint64
+	inFlight  map[int64]int
+	changedAt map[int64]uint64
+}
+
+func newJobMutations() jobMutations {
+	return jobMutations{inFlight: map[int64]int{}, changedAt: map[int64]uint64{}}
 }
 
 // clientAndType is the granularity at which active jobs are capped.
@@ -153,8 +227,15 @@ type jobServer struct {
 	// distributedJobs are the jobs delivered and still locked, by job key, so
 	// that a renewal, a completion or a failure finds its entry without a
 	// scan of every lock the leader holds.
-	distributedJobs          map[int64]*distributedJob
-	distributedJobsMu        *sync.Mutex
+	distributedJobs   map[int64]*distributedJob
+	distributedJobsMu *sync.Mutex
+	// lapsedLocks are the locks which lapsed on jobs not delivered again
+	// since, guarded by distributedJobsMu. A record older than the longest
+	// lock is dropped: its job was handed to nobody for that long.
+	lapsedLocks map[int64]lapsedLock
+	// mutations tracks the jobs a completion, failure or retry update is
+	// changing, guarded by distributedJobsMu, see beginMutation.
+	mutations                jobMutations
 	emptyDistributionCounter int
 
 	logger hclog.Logger
@@ -172,6 +253,8 @@ func newJobServer(
 		nodeID:             nodeID,
 		distributedJobs:    map[int64]*distributedJob{},
 		distributedJobsMu:  &sync.Mutex{},
+		lapsedLocks:        map[int64]lapsedLock{},
+		mutations:          newJobMutations(),
 		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
 		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
 		jobTypes:           map[JobType]jobTypeData{},
@@ -224,6 +307,11 @@ func (s *jobServer) distributeJobs() {
 			s.logger.Info("Stopping job distribution", "err", s.ctx.Err())
 			return
 		}
+		// no batch is being handed out between two rounds, so the changes
+		// which ended by now concern nobody any more; a leader which loads
+		// no batches, say one whose jobs are finished over REST, would
+		// otherwise remember every job it ever changed
+		s.forgetFinishedChanges()
 		s.clientMu.RLock()
 		capacity, jobTypeClients, currentKeys := s.capacityLocked(time.Now())
 		settingsVersion := s.settingsVersion
@@ -256,12 +344,12 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		// the query loading a batch carries one parameter per requested job
-		// type, one per locked key (a placeholder when nothing is locked) and
-		// one for the limit, and SQLite refuses a query with more parameters
+		// type, one per locked key (a placeholder when nothing is locked), one
+		// for the current time and one for the limit, and SQLite refuses a query with more parameters
 		// than maxQueryParameters; so a round delivers no more jobs than the
 		// query of the next round can still exclude, whatever the
 		// subscriptions ask for
-		lockBudget := s.maxQueryParameters - 1 - len(jobTypes) - max(1, len(currentKeys))
+		lockBudget := s.maxQueryParameters - 2 - len(jobTypes) - max(1, len(currentKeys))
 		if lockBudget <= 0 {
 			s.logger.Warn("leader holds as many locked jobs as one query can exclude, waiting for locks to lapse or jobs to complete",
 				"lockedJobs", len(currentKeys), "requestedJobTypes", len(jobTypes), "maxQueryParameters", s.maxQueryParameters)
@@ -269,6 +357,7 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		jobsToLoad = min(jobsToLoad, int64(lockBudget))
+		loadedAt := s.startLoad()
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, jobsToLoad)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
@@ -331,19 +420,30 @@ func (s *jobServer) distributeJobs() {
 				s.clientMu.Unlock()
 				continue
 			}
-			s.jobTypes[jType] = jobTypeData // set the updated index
 			lockDuration := s.settingsLocked(jType, clientID).LockDuration
 			// the deadline taken here reserves the job while it is being sent
 			// and is what the worker is told; the leader's own deadline is
 			// restarted once the send completed (see restartLockAfterSend)
 			lockUntil := time.Now().Add(lockDuration)
 			s.distributedJobsMu.Lock()
+			if s.changedSinceLocked(job.Key, loadedAt) {
+				// the snapshot is stale; a later round reloads the job if it
+				// is still deliverable, so the client's slot stays free
+				s.distributedJobsMu.Unlock()
+				capacity[clientAndType{client: clientID, jobType: jType}]++
+				s.clientMu.Unlock()
+				continue
+			}
+			s.jobTypes[jType] = jobTypeData // set the updated index
+			lapsed, lapsedBefore := s.lapsedLocks[job.Key]
+			delete(s.lapsedLocks, job.Key)
 			s.distributedJobs[job.Key] = &distributedJob{
-				client:       clientID,
-				jobKey:       job.Key,
-				jobType:      jType,
-				lockUntil:    lockUntil,
-				lockDuration: lockDuration,
+				client:        clientID,
+				jobKey:        job.Key,
+				jobType:       jType,
+				lockUntil:     lockUntil,
+				lockDuration:  lockDuration,
+				afterOwnLapse: lapsedBefore && lapsed.client == clientID,
 			}
 			s.distributedJobsMu.Unlock()
 			s.clientMu.Unlock()
@@ -363,6 +463,8 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      new(lockUntil.UnixMilli()),
+					Retries:        new(int32(job.Retries)),
+					Attempt:        new(int32(job.Attempts + 1)),
 				},
 			})
 			if err != nil {
@@ -447,10 +549,15 @@ func (s *jobServer) capacityLocked(now time.Time) (map[clientAndType]int, map[Jo
 	}
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
+	for key, lapsed := range s.lapsedLocks {
+		if now.Sub(lapsed.lapsedAt) > s.limits.MaxLockDuration {
+			delete(s.lapsedLocks, key)
+		}
+	}
 	currentKeys := make([]int64, 0, len(s.distributedJobs))
 	for key, job := range s.distributedJobs {
 		if job.lockUntil.Before(now) {
-			delete(s.distributedJobs, key)
+			s.lockLapsedLocked(job, now)
 			continue
 		}
 		// only track capacity for clients that are still subscribed,
@@ -710,7 +817,7 @@ func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Du
 	}
 	now := time.Now()
 	if job.lockUntil.Before(now) {
-		delete(s.distributedJobs, jobKey)
+		s.lockLapsedLocked(job, now)
 		return time.Time{}, ErrLockNotHeld
 	}
 	if job.client != clientID {
@@ -724,21 +831,105 @@ func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Du
 	return job.lockUntil, nil
 }
 
+// lockLapsedLocked drops a lock whose deadline passed and remembers its
+// holder, see afterOwnLapse. The caller holds distributedJobsMu.
+func (s *jobServer) lockLapsedLocked(job *distributedJob, now time.Time) {
+	delete(s.distributedJobs, job.jobKey)
+	s.lapsedLocks[job.jobKey] = lapsedLock{client: job.client, lapsedAt: now}
+}
+
+// startLoad returns the position in the sequence of job changes a batch loaded
+// from now on reflects, and forgets the changes which ended before it: the
+// query sees what they committed.
+func (s *jobServer) startLoad() uint64 {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	s.forgetFinishedChangesLocked()
+	return s.mutations.seq
+}
+
+// forgetFinishedChanges drops the record of every change which ended. It is
+// for the moments at which no loaded batch waits to be handed out: nothing
+// then needs to know about a change any more.
+func (s *jobServer) forgetFinishedChanges() {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	s.forgetFinishedChangesLocked()
+}
+
+// forgetFinishedChangesLocked is forgetFinishedChanges for a caller which
+// holds distributedJobsMu.
+func (s *jobServer) forgetFinishedChangesLocked() {
+	for jobKey := range s.mutations.changedAt {
+		if s.mutations.inFlight[jobKey] == 0 {
+			delete(s.mutations.changedAt, jobKey)
+		}
+	}
+}
+
+// changedSinceLocked reports whether the job is being changed or was changed
+// after a batch loaded at loadedAt read it. The caller holds distributedJobsMu.
+func (s *jobServer) changedSinceLocked(jobKey int64, loadedAt uint64) bool {
+	return s.mutations.inFlight[jobKey] > 0 || s.mutations.changedAt[jobKey] > loadedAt
+}
+
+// beginMutation marks the job as being changed until the returned function is
+// called. A delivery reserved before stands; one not yet reserved is skipped.
+func (s *jobServer) beginMutation(jobKey int64) (endMutation func()) {
+	s.distributedJobsMu.Lock()
+	s.mutations.seq++
+	s.mutations.inFlight[jobKey]++
+	s.mutations.changedAt[jobKey] = s.mutations.seq
+	s.distributedJobsMu.Unlock()
+	return func() {
+		s.distributedJobsMu.Lock()
+		defer s.distributedJobsMu.Unlock()
+		s.mutations.seq++
+		s.mutations.changedAt[jobKey] = s.mutations.seq
+		if s.mutations.inFlight[jobKey]--; s.mutations.inFlight[jobKey] <= 0 {
+			delete(s.mutations.inFlight, jobKey)
+		}
+	}
+}
+
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
+	defer s.beginMutation(jobKey)()
 	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
+		s.releaseLockOfEndedJob(jobKey, err)
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
 	s.releaseLock(clientID, jobKey, "completed")
 	return nil
 }
 
-func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
-	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables)
+// failJob fails the job through the engine. A job left active for another
+// attempt is handed out again by the next round once its backoff has passed.
+// Its lock is dropped only when the failing client holds it: a client whose
+// lock lapsed while it was still working reports its failure after the job was
+// handed to another client, and that failure spends an attempt but must not
+// take the job from the client now working on it, or the next round would hand
+// it to a third one alongside. The current holder's own report releases it,
+// unless the job came back to it after its own lock lapsed, see afterOwnLapse.
+func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration) error {
+	defer s.beginMutation(jobKey)()
+	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff)
 	if err != nil {
+		s.releaseLockOfEndedJob(jobKey, err)
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
 	}
-	s.releaseLock(clientID, jobKey, "failed")
+	s.releaseLockHeldBy(clientID, jobKey)
+	return nil
+}
+
+// updateJobRetries sets the retries of a job through the engine. It is a
+// change like a failure: a batch loaded before must not deliver the job,
+// which may have been moved into a backoff. A lock held on the job stands.
+func (s *jobServer) updateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error {
+	defer s.beginMutation(jobKey)()
+	if err := s.completer.JobUpdateRetriesByKey(ctx, jobKey, retries, retryAt); err != nil {
+		return fmt.Errorf("failed to update retries of job %d: %w", jobKey, err)
+	}
 	return nil
 }
 
@@ -749,6 +940,7 @@ func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64
 func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
+	delete(s.lapsedLocks, jobKey)
 	job, ok := s.distributedJobs[jobKey]
 	if !ok {
 		return
@@ -758,6 +950,52 @@ func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string)
 			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
 	}
 	delete(s.distributedJobs, jobKey)
+}
+
+// releaseLockHeldBy drops the distributed entry of a job when clientID holds
+// it. Another client's lock stands, and so does a lock on a job a REST client
+// which named no client id has failed: the job stays reserved for its holder
+// until the holder reports or the lock lapses. A delivery after the client's
+// own lock lapsed keeps its lock for the first report, which may be the
+// earlier delivery's.
+func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	job, ok := s.distributedJobs[jobKey]
+	if !ok {
+		// the client whose lock lapsed reported before the job was handed out
+		// again, so a later delivery to it is no longer ambiguous
+		if lapsed, found := s.lapsedLocks[jobKey]; found && lapsed.client == clientID {
+			delete(s.lapsedLocks, jobKey)
+		}
+		return
+	}
+	if job.client != clientID {
+		s.logger.Debug("job failed by a client other than the lock holder, which keeps its lock",
+			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
+		return
+	}
+	if job.afterOwnLapse {
+		job.afterOwnLapse = false
+		s.logger.Debug("job failed by the lock holder, which got it again after its own lock lapsed and keeps the lock for the delivery the failure may not belong to",
+			"jobKey", jobKey, "client", clientID)
+		return
+	}
+	delete(s.distributedJobs, jobKey)
+}
+
+// releaseLockOfEndedJob drops the distributed entry of a job the engine
+// refused a completion or failure of because the job no longer waits for a
+// worker or no longer exists: nobody works on it any more, and the entry
+// would hold its client's slot until it lapsed.
+func (s *jobServer) releaseLockOfEndedJob(jobKey int64, refusal error) {
+	if !errors.Is(refusal, bpmn.ErrJobInTerminalState) && !errors.Is(refusal, storage.ErrNotFound) {
+		return
+	}
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	delete(s.distributedJobs, jobKey)
+	delete(s.lapsedLocks, jobKey)
 }
 
 func (s *jobServer) onJobRejected(_ context.Context, _ int64) {

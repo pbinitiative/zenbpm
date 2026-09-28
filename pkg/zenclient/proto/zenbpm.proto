@@ -39,11 +39,25 @@ message JobCompleteRequest{
   bytes variables = 2; // json variables 
 }
 
+// Reports that the worker could not finish the job. With an error_code it is a BPMN
+// error: a matching error catch event takes over and receives the variables, retries are
+// not touched. Without one, an attempt is spent: while retries remain the job stays
+// active, the variables are dropped and the job is handed out again after its backoff;
+// at zero the job fails, keeps the variables as its output and an incident is created.
+// retries and retry_backoff_ms are validated in every request: an invalid value is
+// refused even next to an error_code, which then ignores them.
 message JobFailRequest{
   int64 key = 1;
   string message = 2;
   string error_code = 3;
   bytes variables = 4;
+  // Retries remaining after this failure. Absent = one less than now. Must not be
+  // negative; a value above jobs.maxRetries is capped.
+  int32 retries = 5;
+  // How long the job waits before it is handed out again, in milliseconds. Absent =
+  // the retryBackoff of the task definition, else jobs.defaultRetryBackoff; 0 = at once.
+  // A value above jobs.maxRetryBackoff is capped.
+  int64 retry_backoff_ms = 6;
 }
 
 // Moves the lock deadline of a job this client holds to now plus lock_duration_ms.
@@ -77,9 +91,19 @@ enum JobStreamErrorCode {
   // The job is currently locked for a different client id.
   JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT = 2;
   // The leader of the job's partition could not be reached or has just changed. The
-  // outcome is unconfirmed: the deadline may already have moved, and a leader change
-  // forgets the lock. Retry the extension in a moment.
+  // outcome is unconfirmed: an extension may already have moved the deadline, and a
+  // leader change forgets the lock, so retry the extension in a moment; a failure may
+  // already have been recorded, and repeating it spends another attempt.
   JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE = 3;
+  // The request itself is wrong, such as a fail request with negative retries or a
+  // negative backoff; nothing was changed and repeating it gets the same answer.
+  JOB_STREAM_ERROR_CODE_INVALID_REQUEST = 4;
+  // No job has this key: it never existed, or its instance was deleted.
+  JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND = 5;
+  // The job no longer waits for a worker: it was completed, terminated or already
+  // failed, as after a failure repeated once its first report exhausted the retries.
+  // Nothing was changed.
+  JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE = 6;
 }
 
 message WaitingJob {
@@ -96,6 +120,14 @@ message WaitingJob {
   // the end of the send. When the clocks cannot be trusted, count the lock duration
   // of the subscription from the moment of receipt instead of comparing timestamps.
   int64 lock_until = 8;
+  // Attempts left: failures without an error code the job may still report; the one which leaves none creates an incident.
+  int32 retries = 9;
+  // 1 for the first delivery of a series of attempts, one more after every failure without an
+  // error code; two deliveries of one attempt (a lapsed lock) carry the same number. It tells
+  // a redelivery of an attempt from a retry within one series; resolving an incident starts a
+  // new series at 1, so (key, attempt) is not unique over the life of a job. Key an effect
+  // which must happen once per job on the job key, or on a key of the business operation.
+  int32 attempt = 10;
 }
 
 message ErrorResult {

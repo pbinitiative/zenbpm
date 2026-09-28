@@ -67,7 +67,7 @@ func TestRestoreSpoolDirDefaultsUnderTheDataDir(t *testing.T) {
 	t.Setenv("CLUSTER_RAFT_DIR", dataDir)
 
 	// the whole configuration is validated, so the sections without env-defaults start from their defaults
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestRestoreSpoolDirFromEnvIsMadeAbsolute(t *testing.T) {
 	t.Setenv("CLUSTER_RESTORE_SPOOL_DIR", "restore-scratch")
 
 	// the whole configuration is validated, so the sections without env-defaults start from their defaults
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestJobManagerDefaults(t *testing.T) {
 		}
 	}
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestJobManagerOmittedInYAMLKeepsTheDefaults(t *testing.T) {
 	unsetJobManagerEnv(t)
 	configFile := writeConfigFile(t, "httpServer:\n  addr: :8080\n")
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 		t.Fatalf("failed to read YAML config: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestJobManagerFromEnv(t *testing.T) {
 	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
 	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "40")
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestJobManagerFromYAML(t *testing.T) {
 	unsetJobManagerEnv(t)
 	configFile := writeConfigFile(t, "jobManager:\n  defaultLockDurationMs: 7000\n  maxLockDurationMs: 70000\n  defaultMaxActiveJobs: 7\n  maxActiveJobsCap: 70\n")
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 		t.Fatalf("failed to read YAML config: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestJobManagerZeroInYAMLIsAViolation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			configFile := writeConfigFile(t, tt.content)
 
-			c := Config{JobManager: DefaultJobManager()}
+			c := Defaults()
 			if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 				t.Fatalf("failed to read YAML config: %v", err)
 			}
@@ -398,7 +398,7 @@ func TestJobManagerZeroInEnvIsAViolation(t *testing.T) {
 	unsetJobManagerEnv(t)
 	t.Setenv("JOB_MANAGER_MAX_ACTIVE_JOBS_CAP", "0")
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadEnv(&c); err != nil {
 		t.Fatalf("failed to read config from env: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestJobManagerEnvOverridesTheFile(t *testing.T) {
 	t.Setenv("JOB_MANAGER_DEFAULT_MAX_ACTIVE_JOBS", "4")
 	configFile := writeConfigFile(t, "jobManager:\n  defaultMaxActiveJobs: 0\n  maxActiveJobsCap: 70\n")
 
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
 		t.Fatalf("failed to read YAML config: %v", err)
 	}
@@ -427,6 +427,91 @@ func TestJobManagerEnvOverridesTheFile(t *testing.T) {
 	}
 	if err := c.JobManager.Validate(); err != nil {
 		t.Errorf("the overridden configuration must validate, got %v", err)
+	}
+}
+
+func TestJobsDefaultsGiveOneAttemptWithoutBackoff(t *testing.T) {
+	unsetJobsEnv(t)
+
+	c := Defaults()
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	expected := Jobs{DefaultRetries: 1, MaxRetries: 100, DefaultRetryBackoff: "PT0S", MaxRetryBackoff: "PT24H"}
+	if c.Jobs != expected {
+		t.Errorf("expected jobs defaults %+v, got %+v", expected, c.Jobs)
+	}
+	if err := c.Jobs.Validate(); err != nil {
+		t.Errorf("the defaults must validate, got %v", err)
+	}
+}
+
+func TestJobsFromEnv(t *testing.T) {
+	t.Setenv("JOBS_DEFAULT_RETRIES", "3")
+	t.Setenv("JOBS_MAX_RETRIES", "10")
+	t.Setenv("JOBS_DEFAULT_RETRY_BACKOFF", "PT10S,PT1M")
+	t.Setenv("JOBS_MAX_RETRY_BACKOFF", "PT1H")
+
+	c := Defaults()
+	if err := cleanenv.ReadEnv(&c); err != nil {
+		t.Fatalf("failed to read config from env: %v", err)
+	}
+	expected := Jobs{DefaultRetries: 3, MaxRetries: 10, DefaultRetryBackoff: "PT10S,PT1M", MaxRetryBackoff: "PT1H"}
+	if c.Jobs != expected {
+		t.Errorf("expected jobs settings %+v, got %+v", expected, c.Jobs)
+	}
+	policy, err := c.Jobs.DefaultRetryBackoffPolicy()
+	if err != nil {
+		t.Fatalf("failed to parse the default policy: %v", err)
+	}
+	if len(policy) != 2 || policy[0] != 10*time.Second || policy[1] != time.Minute {
+		t.Errorf("expected the policy [10s 1m], got %v", policy)
+	}
+}
+
+func TestJobsFromYAML(t *testing.T) {
+	unsetJobsEnv(t)
+	configFile := writeConfigFile(t, "jobs:\n  defaultRetries: 3\n  maxRetries: 5\n  defaultRetryBackoff: PT5S\n  maxRetryBackoff: PT10M\n")
+
+	c := Defaults()
+	if err := cleanenv.ReadConfig(configFile, &c); err != nil {
+		t.Fatalf("failed to read YAML config: %v", err)
+	}
+	expected := Jobs{DefaultRetries: 3, MaxRetries: 5, DefaultRetryBackoff: "PT5S", MaxRetryBackoff: "PT10M"}
+	if c.Jobs != expected {
+		t.Errorf("expected jobs settings %+v, got %+v", expected, c.Jobs)
+	}
+}
+
+func TestJobsValidationNamesFieldAndEnvVariable(t *testing.T) {
+	tests := []struct {
+		name     string
+		mutate   func(*Jobs)
+		expected []string
+	}{
+		{"no default attempt", func(j *Jobs) { j.DefaultRetries = 0 }, []string{"jobs.defaultRetries", "JOBS_DEFAULT_RETRIES"}},
+		{"no retries allowed", func(j *Jobs) { j.MaxRetries = 0 }, []string{"jobs.maxRetries", "JOBS_MAX_RETRIES"}},
+		{"default above the cap", func(j *Jobs) { j.DefaultRetries = 101 }, []string{"jobs.defaultRetries", "jobs.maxRetries"}},
+		{"unparsable default backoff", func(j *Jobs) { j.DefaultRetryBackoff = "10s" }, []string{"jobs.defaultRetryBackoff", "JOBS_DEFAULT_RETRY_BACKOFF"}},
+		{"default backoff in months", func(j *Jobs) { j.DefaultRetryBackoff = "P1M" }, []string{"jobs.defaultRetryBackoff", "months"}},
+		{"unparsable backoff cap", func(j *Jobs) { j.MaxRetryBackoff = "" }, []string{"jobs.maxRetryBackoff", "JOBS_MAX_RETRY_BACKOFF"}},
+		{"zero backoff cap", func(j *Jobs) { j.MaxRetryBackoff = "PT0S" }, []string{"jobs.maxRetryBackoff", "longer than zero"}},
+		{"default backoff above the cap", func(j *Jobs) { j.DefaultRetryBackoff = "PT1S,PT48H" }, []string{"jobs.defaultRetryBackoff", "jobs.maxRetryBackoff"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobs := DefaultJobs()
+			tt.mutate(&jobs)
+			err := jobs.Validate()
+			if err == nil {
+				t.Fatalf("expected a violation for %+v", jobs)
+			}
+			for _, expected := range tt.expected {
+				if !strings.Contains(err.Error(), expected) {
+					t.Errorf("expected the message to name %s, got %q", expected, err)
+				}
+			}
+		})
 	}
 }
 
@@ -489,5 +574,15 @@ func TestJobManagerValidationNamesFieldAndEnvVariable(t *testing.T) {
 	largest.MaxActiveJobsCap = MaxActiveJobsCapLimit
 	if err := largest.Validate(); err != nil {
 		t.Errorf("the largest representable caps must pass, got %v", err)
+	}
+}
+
+func unsetJobsEnv(t *testing.T) {
+	t.Helper()
+	for _, env := range []string{"JOBS_DEFAULT_RETRIES", "JOBS_MAX_RETRIES", "JOBS_DEFAULT_RETRY_BACKOFF", "JOBS_MAX_RETRY_BACKOFF"} {
+		t.Setenv(env, "")
+		if err := os.Unsetenv(env); err != nil {
+			t.Fatalf("failed to unset %s: %v", env, err)
+		}
 	}
 }

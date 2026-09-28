@@ -83,6 +83,37 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	return nil
 }
 
+// restartJobRetries starts a fresh series of attempts for a job whose own
+// incident is resolved: no attempts, no backoff, and the retries of the task
+// definition re-evaluated, whatever the incident was about. Retries an operator
+// set through UpdateJobRetries since the last series ended are kept instead, and
+// so is the moment the operator chose for the next delivery while it lies
+// ahead; the series which followed an update did not exhaust them, or the
+// update would have been forgotten with the incident.
+func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, job *runtime.Job) error {
+	job.Attempts = 0
+	if job.RetriesUpdatedAt != nil {
+		job.RetriesUpdatedAt = nil
+		if !job.IsWaitingOutBackoff(time.Now()) {
+			job.RetryAt = nil
+		}
+		return nil
+	}
+	job.RetryAt = nil
+	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.ElementId)
+	if task == nil {
+		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
+	}
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	variableHolder.SetLocalVariables(job.InputVariables)
+	retries, err := engine.initialRetries(task, variableHolder.ExecutionScopeSnapshot())
+	if err != nil {
+		return fmt.Errorf("failed to evaluate the retries of job %d: %w", job.Key, err)
+	}
+	job.Retries = retries
+	return nil
+}
+
 func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr error) {
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
@@ -185,6 +216,13 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if job != nil {
 		if err := engine.reevaluateJobInputVariables(ctx, &batch, instance, job); err != nil {
 			return err
+		}
+		// an incident the job did not raise itself, such as a boundary event
+		// which failed to correlate, leaves the job's series and backoff alone
+		if job.State == runtime.ActivityStateFailed {
+			if err := engine.restartJobRetries(instance, job); err != nil {
+				return err
+			}
 		}
 		incident.Token.State = runtime.TokenStateWaiting
 		job.State = runtime.ActivityStateActive

@@ -193,13 +193,21 @@ type JobStorageReader interface {
 
 	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
 
+	// FindActiveJobsByType returns the active jobs of the type which are deliverable now,
+	// leaving out those waiting out a retry backoff.
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
+
+	// FindJobFailures returns the failures without an error code reported for the job, newest first.
+	FindJobFailures(ctx context.Context, jobKey int64) ([]bpmnruntime.JobFailure, error)
 }
 
 type JobStorageWriter interface {
 	// SaveJob persists the Job
 	// and potentially overwrites prior data stored with given JobKey
 	SaveJob(ctx context.Context, job bpmnruntime.Job) error
+
+	// SaveJobFailure records one failure without an error code of a job.
+	SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error
 }
 
 type MessageStorageReader interface {

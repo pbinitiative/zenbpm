@@ -33,6 +33,7 @@ import (
 	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	metricsPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -277,6 +278,7 @@ func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, hist
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobFailures(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
@@ -1799,185 +1801,43 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 	if err != nil {
 		return nil, fmt.Errorf("failed to find pending process instance jobs for execution token key %d: %w", tokenKey, err)
 	}
-	res := make([]bpmnruntime.Job, len(dbJobs))
-	tokensToLoad := make([]int64, len(dbJobs))
-	for i, job := range dbJobs {
-		var inputVariables map[string]interface{}
-		if job.InputVariables != "" {
-			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
-			}
-		}
-		var outputVariables map[string]interface{}
-		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
-			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
-			}
-		}
-		var assignee *string
-		if job.Assignee.Valid {
-			assignee = new(job.Assignee.String)
-		}
-		res[i] = bpmnruntime.Job{
-			ElementId:          job.ElementID,
-			ElementType:        job.ElementType,
-			ElementInstanceKey: job.ElementInstanceKey,
-			ProcessInstanceKey: job.ProcessInstanceKey,
-			Key:                job.Key,
-			Type:               job.Type,
-			State:              bpmnruntime.ActivityState(job.State),
-			CreatedAt:          time.UnixMilli(job.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key: job.ExecutionToken,
-			},
-			InputVariables:  inputVariables,
-			OutputVariables: outputVariables,
-			Assignee:        assignee,
-		}
-		tokensToLoad[i] = job.ExecutionToken
-	}
-	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
-	}
-	for _, token := range loadedTokens {
-		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-			}
-		}
-	}
-	return res, nil
+	return rq.buildJobsWithTokens(ctx, dbJobs)
 }
 
-// FindActiveJobsByType returns all jobs in an active state whose worker-routing Type matches jobType.
+// FindActiveJobsByType returns the jobs in an active state whose worker-routing Type matches jobType
+// and which are not waiting out a retry backoff.
 func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
-	jobs, err := rq.Queries.FindActiveJobsByType(ctx, jobType)
+	jobs, err := rq.Queries.FindActiveJobsByType(ctx, sql.FindActiveJobsByTypeParams{
+		Type: jobType,
+		Now:  time.Now().UnixMilli(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find active jobs for type %s: %w", jobType, err)
 	}
-	res := make([]bpmnruntime.Job, len(jobs))
-	tokensToLoad := make([]int64, len(jobs))
-	for i, job := range jobs {
-		var assignee *string
-		if job.Assignee.Valid {
-			assignee = new(job.Assignee.String)
-		}
-		var inputVariables map[string]interface{}
-		if job.InputVariables != "" {
-			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
-			}
-		}
-		var outputVariables map[string]interface{}
-		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
-			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
-			}
-		}
-		res[i] = bpmnruntime.Job{
-			ElementId:          job.ElementID,
-			ElementType:        job.ElementType,
-			ElementInstanceKey: job.ElementInstanceKey,
-			ProcessInstanceKey: job.ProcessInstanceKey,
-			Type:               job.Type,
-			Key:                job.Key,
-			State:              bpmnruntime.ActivityState(job.State),
-			CreatedAt:          time.UnixMilli(job.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key: job.ExecutionToken,
-			},
-			InputVariables:  inputVariables,
-			OutputVariables: outputVariables,
-			Assignee:        assignee,
-		}
-		tokensToLoad[i] = job.ExecutionToken
-	}
-	tokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
-	if err != nil {
-		return res, fmt.Errorf("failed to find job tokens: %w", err)
-	}
-token:
-	for _, token := range tokens {
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-				continue token
-			}
-		}
-	}
-	return res, nil
+	return rq.buildJobsWithTokens(ctx, jobs)
 }
 
 // FindJobByJobKey returns the job identified by jobKey.
 func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
-	var res bpmnruntime.Job
 	job, err := rq.Queries.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = storage.ErrNotFound
 		}
-		return res, fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
+		return bpmnruntime.Job{}, fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
 	}
 	tokens, err := rq.Queries.GetTokens(ctx, []int64{job.ExecutionToken})
 	if err != nil {
-		return res, fmt.Errorf("failed to find job token %d: %w", job.ExecutionToken, err)
+		return bpmnruntime.Job{}, fmt.Errorf("failed to find job token %d: %w", job.ExecutionToken, err)
 	}
 	if len(tokens) != 1 {
-		return res, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
+		return bpmnruntime.Job{}, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
 	}
-	token := tokens[0]
-
-	var inputVariables map[string]interface{}
-	if job.InputVariables != "" {
-		if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
-			return res, fmt.Errorf("failed to unmarshal job input variables: %w", err)
-		}
+	res, err := buildJob(rq.logger, job)
+	if err != nil {
+		return bpmnruntime.Job{}, err
 	}
-	var outputVariables map[string]interface{}
-	if job.OutputVariables.Valid && job.OutputVariables.String != "" {
-		if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
-			return res, fmt.Errorf("failed to unmarshal job output variables: %w", err)
-		}
-	}
-	var assignee *string
-	if job.Assignee.Valid {
-		s := job.Assignee.String
-		assignee = &s
-	}
-	res = bpmnruntime.Job{
-		ElementId:          job.ElementID,
-		ElementType:        job.ElementType,
-		ElementInstanceKey: job.ElementInstanceKey,
-		ProcessInstanceKey: job.ProcessInstanceKey,
-		Key:                job.Key,
-		Type:               job.Type,
-		State:              bpmnruntime.ActivityState(job.State),
-		CreatedAt:          time.UnixMilli(job.CreatedAt),
-		Token: bpmnruntime.ExecutionToken{
-			Key:                token.Key,
-			ElementInstanceKey: token.ElementInstanceKey,
-			ElementId:          token.ElementID,
-			ProcessInstanceKey: token.ProcessInstanceKey,
-			State:              bpmnruntime.TokenState(token.State),
-		},
-		InputVariables:  inputVariables,
-		OutputVariables: outputVariables,
-		Assignee:        assignee,
-	}
+	res.Token = buildToken(tokens[0])
 	return res, nil
 }
 
@@ -1990,57 +1850,127 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 	if err != nil {
 		return nil, fmt.Errorf("failed to find pending process instance jobs for process instance key %d: %w", processInstanceKey, err)
 	}
+	return rq.buildJobsWithTokens(ctx, dbJobs)
+}
+
+// FindJobFailures returns the failures without an error code reported for the job, newest first.
+func (rq *DB) FindJobFailures(ctx context.Context, jobKey int64) ([]bpmnruntime.JobFailure, error) {
+	failures, err := rq.Queries.FindJobFailuresByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find failures of job %d: %w", jobKey, err)
+	}
+	res := make([]bpmnruntime.JobFailure, len(failures))
+	for i, failure := range failures {
+		res[i] = BuildJobFailure(failure)
+	}
+	return res, nil
+}
+
+// BuildJobFailure maps a persisted job failure row into its runtime representation.
+func BuildJobFailure(failure sql.JobFailure) bpmnruntime.JobFailure {
+	var incidentKey *int64
+	if failure.IncidentKey.Valid {
+		incidentKey = new(failure.IncidentKey.Int64)
+	}
+	return bpmnruntime.JobFailure{
+		Key:                failure.Key,
+		JobKey:             failure.JobKey,
+		ProcessInstanceKey: failure.ProcessInstanceKey,
+		Attempt:            int32(failure.Attempt),
+		FailedAt:           time.UnixMilli(failure.FailedAt),
+		RetryAt:            nullInt64ToTimePtr(failure.RetryAt),
+		Message:            failure.Message,
+		IncidentKey:        incidentKey,
+	}
+}
+
+// buildJobsWithTokens maps job rows and hydrates their execution tokens with a single query. A job
+// whose token could not be loaded keeps a token carrying only its key.
+func (rq *DB) buildJobsWithTokens(ctx context.Context, dbJobs []sql.Job) ([]bpmnruntime.Job, error) {
 	res := make([]bpmnruntime.Job, len(dbJobs))
 	tokensToLoad := make([]int64, len(dbJobs))
-	for i, job := range dbJobs {
-		var inputVariables map[string]interface{}
-		if job.InputVariables != "" {
-			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
-			}
+	for i, dbJob := range dbJobs {
+		job, err := buildJob(rq.logger, dbJob)
+		if err != nil {
+			return nil, err
 		}
-		var outputVariables map[string]interface{}
-		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
-			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
-			}
-		}
-		res[i] = bpmnruntime.Job{
-			ElementId:          job.ElementID,
-			ElementType:        job.ElementType,
-			ElementInstanceKey: job.ElementInstanceKey,
-			ProcessInstanceKey: job.ProcessInstanceKey,
-			Key:                job.Key,
-			Type:               job.Type,
-			State:              bpmnruntime.ActivityState(job.State),
-			CreatedAt:          time.UnixMilli(job.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key: job.ExecutionToken,
-			},
-			InputVariables:  inputVariables,
-			OutputVariables: outputVariables,
-		}
-		tokensToLoad[i] = job.ExecutionToken
+		res[i] = job
+		tokensToLoad[i] = dbJob.ExecutionToken
 	}
-	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
+	tokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+		return nil, fmt.Errorf("failed to find job tokens: %w", err)
 	}
-	for _, token := range loadedTokens {
-		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+	for _, token := range tokens {
+		// several jobs may share a token (event based gateway), so every job is looked at
 		for i := range res {
 			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
+				res[i].Token = buildToken(token)
 			}
 		}
 	}
 	return res, nil
+}
+
+// buildJob maps a persisted job row into its runtime representation; the token
+// carries only its key. A stored backoff policy which no longer parses, as
+// after a change of its format, is logged and read as none, so that the
+// engine's default applies: the reads which terminate or cancel an instance
+// go through here too, and one unreadable row must not keep them from every
+// job of the instance.
+func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
+	var inputVariables map[string]interface{}
+	if job.InputVariables != "" {
+		if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
+			return bpmnruntime.Job{}, fmt.Errorf("failed to unmarshal input variables of job %d: %w", job.Key, err)
+		}
+	}
+	var outputVariables map[string]interface{}
+	if job.OutputVariables.Valid && job.OutputVariables.String != "" {
+		if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
+			return bpmnruntime.Job{}, fmt.Errorf("failed to unmarshal output variables of job %d: %w", job.Key, err)
+		}
+	}
+	var retryBackoff []time.Duration
+	if job.RetryBackoff.Valid && job.RetryBackoff.String != "" {
+		policy, err := extensions.ParseRetryBackoff(job.RetryBackoff.String)
+		if err != nil {
+			logger.Warn("stored retry backoff of job cannot be read, the engine default applies", "jobKey", job.Key, "retryBackoff", job.RetryBackoff.String, "err", err)
+		}
+		retryBackoff = policy
+	}
+	return bpmnruntime.Job{
+		ElementId:          job.ElementID,
+		ElementType:        job.ElementType,
+		ElementInstanceKey: job.ElementInstanceKey,
+		ProcessInstanceKey: job.ProcessInstanceKey,
+		Key:                job.Key,
+		Type:               job.Type,
+		State:              bpmnruntime.ActivityState(job.State),
+		CreatedAt:          time.UnixMilli(job.CreatedAt),
+		Token: bpmnruntime.ExecutionToken{
+			Key: job.ExecutionToken,
+		},
+		InputVariables:     inputVariables,
+		OutputVariables:    outputVariables,
+		Assignee:           sql.FromNullString(job.Assignee),
+		Retries:            int32(job.Retries),
+		Attempts:           int32(job.Attempts),
+		RetryAt:            nullInt64ToTimePtr(job.RetryAt),
+		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
+		RetryBackoff:       retryBackoff,
+		RetriesUpdatedAt:   nullInt64ToTimePtr(job.RetriesUpdatedAt),
+	}, nil
+}
+
+func buildToken(token sql.ExecutionToken) bpmnruntime.ExecutionToken {
+	return bpmnruntime.ExecutionToken{
+		Key:                token.Key,
+		ElementInstanceKey: token.ElementInstanceKey,
+		ElementId:          token.ElementID,
+		ProcessInstanceKey: token.ProcessInstanceKey,
+		State:              bpmnruntime.TokenState(token.State),
+	}
 }
 
 var _ storage.JobStorageWriter = &DB{}
@@ -2079,9 +2009,37 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		OutputVariables:    outputVariables,
 		ExecutionToken:     job.Token.Key,
 		Assignee:           sql.ToNullString(job.Assignee),
+		Retries:            int64(job.Retries),
+		Attempts:           int64(job.Attempts),
+		RetryAt:            timePtrToNullInt64(job.RetryAt),
+		LastFailureMessage: sql.ToNullString(job.LastFailureMessage),
+		RetryBackoff:       ssql.NullString{String: extensions.FormatRetryBackoff(job.RetryBackoff), Valid: len(job.RetryBackoff) > 0},
+		RetriesUpdatedAt:   timePtrToNullInt64(job.RetriesUpdatedAt),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
+	}
+	return nil
+}
+
+func (rq *DB) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
+	return SaveJobFailureWith(ctx, rq.Queries, failure)
+}
+
+// SaveJobFailureWith persists a job failure using the supplied sql.Queries handle.
+func SaveJobFailureWith(ctx context.Context, db *sql.Queries, failure bpmnruntime.JobFailure) error {
+	err := db.SaveJobFailure(ctx, sql.SaveJobFailureParams{
+		Key:                failure.Key,
+		JobKey:             failure.JobKey,
+		ProcessInstanceKey: failure.ProcessInstanceKey,
+		Attempt:            int64(failure.Attempt),
+		FailedAt:           failure.FailedAt.UnixMilli(),
+		RetryAt:            timePtrToNullInt64(failure.RetryAt),
+		Message:            failure.Message,
+		IncidentKey:        sql.ToNullInt64(failure.IncidentKey),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save failure %d of job %d: %w", failure.Attempt, failure.JobKey, err)
 	}
 	return nil
 }
@@ -2896,6 +2854,7 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 		Message:            incident.Message,
 		CreatedAt:          time.UnixMilli(incident.CreatedAt),
 		ResolvedAt:         nullInt64ToTimePtr(incident.ResolvedAt),
+		JobKey:             sql.FromNullInt64(incident.JobKey),
 		Token: bpmnruntime.ExecutionToken{
 			Key:                tokenKey,
 			ElementInstanceKey: tokenElementInstanceKey,
@@ -3011,6 +2970,7 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 		CreatedAt:          incident.CreatedAt.UnixMilli(),
 		ResolvedAt:         timePtrToNullInt64(incident.ResolvedAt),
 		ExecutionToken:     incident.Token.Key,
+		JobKey:             sql.ToNullInt64(incident.JobKey),
 	})
 }
 
@@ -3294,6 +3254,10 @@ var _ storage.JobStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, b.queries, job)
+}
+
+func (b *DBBatch) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
+	return SaveJobFailureWith(ctx, b.queries, failure)
 }
 
 var _ storage.MessageStorageWriter = &DBBatch{}

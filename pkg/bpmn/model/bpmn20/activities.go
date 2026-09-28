@@ -30,6 +30,9 @@ type InternalTask interface {
 	GetId() string
 	GetType() ElementType
 	GetTaskType() string
+	// GetTaskDefinition returns the zenbpm:taskDefinition of the element; the
+	// zero value when the element has none.
+	GetTaskDefinition() extensions.TTaskDefinition
 	GetInputMapping() []extensions.TIoMapping
 	GetOutputMapping() []extensions.TIoMapping
 }
@@ -77,6 +80,10 @@ func (sendTask TExternallyProcessedTask) GetTaskType() string {
 	return sendTask.TaskDefinition.TypeName
 }
 
+func (sendTask TExternallyProcessedTask) GetTaskDefinition() extensions.TTaskDefinition {
+	return sendTask.TaskDefinition
+}
+
 type TServiceTask struct {
 	TExternallyProcessedTask
 	OperationRef   string `xml:"operationRef,attr"`
@@ -96,6 +103,15 @@ func (businessRuleTask *TBusinessRuleTask) GetType() ElementType { return Elemen
 
 func (businessRuleTask *TBusinessRuleTask) GetTaskType() string {
 	return businessRuleTask.Implementation.(*TBusinessRuleTaskExternal).TaskDefinition.TypeName
+}
+
+// GetTaskDefinition returns the task definition of an externally implemented
+// business rule task; a task calling a local decision has none.
+func (businessRuleTask *TBusinessRuleTask) GetTaskDefinition() extensions.TTaskDefinition {
+	if external, ok := businessRuleTask.Implementation.(*TBusinessRuleTaskExternal); ok {
+		return external.TaskDefinition
+	}
+	return extensions.TTaskDefinition{}
 }
 
 // TODO: implement data quality checks
@@ -172,6 +188,9 @@ func (userTask TUserTask) GetTaskType() string {
 		return "user-task-type"
 	}
 	return userTask.TaskDefinition.TypeName
+}
+func (userTask TUserTask) GetTaskDefinition() extensions.TTaskDefinition {
+	return userTask.TaskDefinition
 }
 func (userTask TUserTask) GetAssignmentAssignee() string {
 	return userTask.AssignmentDefinition.Assignee

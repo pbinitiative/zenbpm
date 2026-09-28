@@ -99,6 +99,7 @@ To the engine, a throwing message event **is simply a job** — its execution is
 | ----------------------------------------------------- | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bpmn:messageEventDefinition`                         | `messageRef`       | yes      | Marks the event as a message event and documents which message it represents. The engine does not evaluate the referenced message — it only matters to the modeler and the worker. |
 | `zenbpm:taskDefinition`                               | `type`             | yes      | The job type. The engine creates a job of this type when the token arrives; workers subscribe to this type to receive the job.                     |
+| `zenbpm:taskDefinition`                               | `retries`, `retryBackoff` | no | Attempts and backoff of the job when its worker fails it without an error code, as for a [Service task](../activities/tasks/service-task.md#usage-in-bpmn). |
 | `zenbpm:ioMapping` → `zenbpm:input` / `zenbpm:output` | `source`, `target` | no       | Maps variables into the job and the job's result back to the process, following the same rules as activities. See [Variables](../../variable-mapping.md). |
 
 Execution flow:

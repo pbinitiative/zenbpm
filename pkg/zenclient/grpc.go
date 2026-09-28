@@ -96,10 +96,23 @@ func WithJobType(jobType string, subOpts ...SubscriptionOption) WorkerOption {
 	}
 }
 
+// WorkerError is what a WorkerFunc returns for a job it could not finish.
+//
+// With an ErrorCode the failure is a BPMN error, caught by a matching error
+// event, and Variables are handed to it. Without one, the engine spends one of
+// the job's retries: while some remain it hands the job out again after the
+// backoff, at zero it creates an incident. Retries and RetryBackoff, when set,
+// override what remains (default: one less than now) and how long the job
+// waits (default: the task definition's retryBackoff, else the engine's).
+// The attempt a delivery belongs to is WaitingJob.GetAttempt(); it counts
+// within one series of attempts and starts again at 1 when an incident of the
+// job is resolved.
 type WorkerError struct {
-	Err       error
-	ErrorCode string
-	Variables map[string]any
+	Err          error
+	ErrorCode    string
+	Variables    map[string]any
+	Retries      *int32
+	RetryBackoff *time.Duration
 }
 
 func (e *WorkerError) Error() string {
@@ -466,15 +479,20 @@ func (w *Worker) failWorkerJob(job *proto.WaitingJob, workerErr *WorkerError, se
 		w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
 	}
 
+	fail := &proto.JobFailRequest{
+		Key:       job.Key,
+		Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
+		Variables: errVars,
+		Retries:   workerErr.Retries,
+	}
+	if workerErr.ErrorCode != "" {
+		fail.ErrorCode = &workerErr.ErrorCode
+	}
+	if workerErr.RetryBackoff != nil {
+		fail.RetryBackoffMs = new(backoffMillis(*workerErr.RetryBackoff))
+	}
 	if err = send(&proto.JobStreamRequest{
-		Request: &proto.JobStreamRequest_Fail{
-			Fail: &proto.JobFailRequest{
-				Key:       job.Key,
-				Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
-				ErrorCode: &workerErr.ErrorCode,
-				Variables: errVars,
-			},
-		},
+		Request: &proto.JobStreamRequest_Fail{Fail: fail},
 	}); err != nil {
 		w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
 	}
@@ -723,4 +741,16 @@ func activeJobsForWire(count int) int32 {
 		return 0
 	}
 	return int32(count)
+}
+
+// backoffMillis puts a backoff on the wire. Milliseconds are truncated towards
+// zero, which would turn a backoff just below zero into "at once"; a negative
+// backoff stays negative instead, so that the engine refuses it as it refuses
+// every other negative one.
+func backoffMillis(backoff time.Duration) int64 {
+	ms := backoff.Milliseconds()
+	if backoff < 0 && ms == 0 {
+		return -1
+	}
+	return ms
 }

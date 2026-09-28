@@ -43,6 +43,11 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestTimerStorageReader,
 		st.TestJobStorageWriter,
 		st.TestJobStorageReader,
+		st.TestJobRetryStateRoundTrips,
+		st.TestActiveJobsLeaveOutJobsWaitingOutABackoff,
+		st.TestJobFailuresAreListedNewestFirst,
+		st.TestJobFailuresOfTheSameMomentAreListedByKey,
+		st.TestIncidentNamesItsJob,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
 		st.TestTokenStorageReader,
@@ -631,6 +636,178 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, _ *testing.T) f
 		assert.Equal(t, job, storeJobs[0])
 		assert.NotEmpty(t, storeJobs[0].Type)
 	}
+}
+
+func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		job := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Retries = 2
+			job.Attempts = 1
+			job.RetryAt = new(time.Now().Add(time.Minute).Truncate(time.Millisecond))
+			job.LastFailureMessage = new("payment service unavailable")
+			job.RetryBackoff = []time.Duration{time.Second, 3 * time.Second}
+			job.RetriesUpdatedAt = new(time.Now().Truncate(time.Millisecond))
+		})
+
+		stored, err := s.FindJobByJobKey(t.Context(), job.Key)
+		require.NoError(t, err)
+		assert.Equal(t, job, stored)
+
+		job.Retries = 0
+		job.RetryAt = nil
+		job.RetriesUpdatedAt = nil
+		job.State = bpmnruntime.ActivityStateFailed
+		require.NoError(t, s.SaveJob(t.Context(), job))
+		stored, err = s.FindJobByJobKey(t.Context(), job.Key)
+		require.NoError(t, err)
+		assert.Zero(t, stored.Retries)
+		assert.Nil(t, stored.RetryAt)
+		assert.Nil(t, stored.RetriesUpdatedAt)
+		assert.Equal(t, bpmnruntime.ActivityStateFailed, stored.State)
+		assert.Equal(t, int32(1), stored.Attempts)
+	}
+}
+
+func (st *StorageTester) TestActiveJobsLeaveOutJobsWaitingOutABackoff(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		jobType := fmt.Sprintf("backoff-test-%d", s.GenerateId())
+		inBackoff := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Type = jobType
+			job.RetryAt = new(time.Now().Add(time.Hour).Truncate(time.Millisecond))
+		})
+		backoffPassed := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Type = jobType
+			job.RetryAt = new(time.Now().Add(-time.Second).Truncate(time.Millisecond))
+		})
+		neverFailed := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Type = jobType
+		})
+
+		jobs, err := s.FindActiveJobsByType(t.Context(), jobType)
+		require.NoError(t, err)
+		keys := make([]int64, len(jobs))
+		for i, job := range jobs {
+			keys[i] = job.Key
+		}
+		assert.ElementsMatch(t, []int64{backoffPassed.Key, neverFailed.Key}, keys)
+		assert.NotContains(t, keys, inBackoff.Key)
+	}
+}
+
+func (st *StorageTester) TestJobFailuresAreListedNewestFirst(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		job := st.saveJobWithToken(t, s, nil)
+		failedAt := time.Now().Truncate(time.Millisecond)
+		first := bpmnruntime.JobFailure{
+			Key:                s.GenerateId(),
+			JobKey:             job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Attempt:            1,
+			FailedAt:           failedAt.Add(-time.Minute),
+			RetryAt:            new(failedAt.Add(-50 * time.Second)),
+			Message:            "first",
+		}
+		second := bpmnruntime.JobFailure{
+			Key:                s.GenerateId(),
+			JobKey:             job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Attempt:            2,
+			FailedAt:           failedAt,
+			Message:            "second",
+			IncidentKey:        new(s.GenerateId()),
+		}
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveJobFailure(t.Context(), first))
+		require.NoError(t, batch.SaveJobFailure(t.Context(), second))
+		require.NoError(t, batch.Flush(t.Context()))
+
+		failures, err := s.FindJobFailures(t.Context(), job.Key)
+		require.NoError(t, err)
+		assert.Equal(t, []bpmnruntime.JobFailure{second, first}, failures)
+
+		failures, err = s.FindJobFailures(t.Context(), s.GenerateId())
+		require.NoError(t, err)
+		assert.Empty(t, failures)
+	}
+}
+
+// TestJobFailuresOfTheSameMomentAreListedByKey shows failures recorded within
+// one tick of a coarse clock are listed by key, the order they were recorded
+// in, and not by attempt: after a resolution the attempts start again at 1,
+// so the newest failure may carry the lowest attempt.
+func (st *StorageTester) TestJobFailuresOfTheSameMomentAreListedByKey(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		job := st.saveJobWithToken(t, s, nil)
+		failedAt := time.Now().Truncate(time.Millisecond)
+		// the engine's keys grow with time; a storage's own ids need not
+		firstKey := s.GenerateId()
+		exhausting := bpmnruntime.JobFailure{
+			Key:                firstKey,
+			JobKey:             job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Attempt:            3,
+			FailedAt:           failedAt,
+			Message:            "the last of the first series",
+			IncidentKey:        new(s.GenerateId()),
+		}
+		afterResolution := bpmnruntime.JobFailure{
+			Key:                firstKey + 1,
+			JobKey:             job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Attempt:            1,
+			FailedAt:           failedAt,
+			Message:            "the first of the next series",
+		}
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveJobFailure(t.Context(), exhausting))
+		require.NoError(t, batch.SaveJobFailure(t.Context(), afterResolution))
+		require.NoError(t, batch.Flush(t.Context()))
+
+		failures, err := s.FindJobFailures(t.Context(), job.Key)
+		require.NoError(t, err)
+		assert.Equal(t, []bpmnruntime.JobFailure{afterResolution, exhausting}, failures)
+	}
+}
+
+func (st *StorageTester) TestIncidentNamesItsJob(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		job := st.saveJobWithToken(t, s, nil)
+		incident := bpmnruntime.Incident{
+			Key:                s.GenerateId(),
+			ElementInstanceKey: job.ElementInstanceKey,
+			ElementId:          job.ElementId,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Message:            "down (job: 3 attempts, retries exhausted)",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			Token:              job.Token,
+			JobKey:             &job.Key,
+		}
+		require.NoError(t, s.SaveIncident(t.Context(), incident))
+
+		stored, err := s.FindIncidentByKey(t.Context(), incident.Key)
+		require.NoError(t, err)
+		assert.Equal(t, &job.Key, stored.JobKey)
+	}
+}
+
+// saveJobWithToken saves an active job of the tester's process instance, with
+// its own waiting token, after adjust changed it.
+func (st *StorageTester) saveJobWithToken(t *testing.T, s storage.Storage, adjust func(*bpmnruntime.Job)) bpmnruntime.Job {
+	t.Helper()
+	r := s.GenerateId()
+	token := bpmnruntime.ExecutionToken{
+		Key:                r,
+		ElementInstanceKey: r,
+		ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+		State:              bpmnruntime.TokenStateWaiting,
+	}
+	require.NoError(t, s.SaveToken(t.Context(), token))
+	job := getJob(r, st.processInstance.ProcessInstance().Key, token)
+	if adjust != nil {
+		adjust(&job)
+	}
+	require.NoError(t, s.SaveJob(t.Context(), job))
+	return job
 }
 
 func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.MessageSubscription {

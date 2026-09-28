@@ -463,8 +463,8 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      new(lockUntil.UnixMilli()),
-					Retries:        new(int32(job.Retries)),
-					Attempt:        new(int32(job.Attempts + 1)),
+					Retries:        new(int32(job.Retries)),      // #nosec G115 -- the engine writes this column from an int32 field
+					Attempt:        new(int32(job.Attempts) + 1), // #nosec G115 -- the engine writes this column from an int32 field
 				},
 			})
 			if err != nil {

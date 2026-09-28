@@ -132,7 +132,11 @@ func retriesFromExpressionResult(result any) (int32, error) {
 	if retries < 0 {
 		return 0, fmt.Errorf("evaluated to %d, which is negative", retries)
 	}
-	return int32(min(retries, math.MaxInt32)), nil
+	// the caller caps at jobs.maxRetries; this cap only keeps the conversion in range
+	if retries > math.MaxInt32 {
+		return math.MaxInt32, nil
+	}
+	return int32(retries), nil
 }
 
 // retryBackoffPolicy evaluates the retryBackoff attribute of the element's

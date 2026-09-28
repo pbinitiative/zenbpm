@@ -353,7 +353,7 @@ func jobStreamError(code proto.JobStreamErrorCode, message string) *proto.ErrorR
 	if code == proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED {
 		return &proto.ErrorResult{Message: &message}
 	}
-	return &proto.ErrorResult{Code: new(uint32(code)), Message: &message}
+	return &proto.ErrorResult{Code: new(uint32(code)), Message: &message} // #nosec G115 -- the codes are the proto enum's small non-negative values
 }
 
 // completeJobError tells the worker by code why its completion was not

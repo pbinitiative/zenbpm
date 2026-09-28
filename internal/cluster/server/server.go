@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -1313,8 +1314,8 @@ func jobToProto(job sql.Job) *proto.Job {
 		Assignee:           sql.FromNullString(job.Assignee),
 		InputVariables:     []byte(job.InputVariables),
 		OutputVariables:    outputVariables,
-		Retries:            new(int32(job.Retries)),
-		Attempts:           new(int32(job.Attempts)),
+		Retries:            new(int32(job.Retries)),  // #nosec G115 -- the engine writes this column from an int32 field
+		Attempts:           new(int32(job.Attempts)), // #nosec G115 -- the engine writes this column from an int32 field
 		RetryAt:            sql.FromNullInt64(job.RetryAt),
 		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:       sql.FromNullString(job.RetryBackoff),
@@ -1381,6 +1382,11 @@ func (s *Server) GetJobFailures(ctx context.Context, req *proto.GetJobFailuresRe
 			return &proto.GetJobFailuresResponse{Error: zerr.ToProtoError()}, nil
 		}
 	}
+	// the failures of every series of attempts are kept, so their number has no
+	// bound of its own: a count beyond the page metadata's int32 saturates
+	if count > math.MaxInt32 {
+		count = math.MaxInt32
+	}
 	totalCount := int32(count)
 	failures := make([]*proto.JobFailure, len(rows))
 	for i, row := range rows {
@@ -1388,7 +1394,7 @@ func (s *Server) GetJobFailures(ctx context.Context, req *proto.GetJobFailuresRe
 			Key:                new(row.Key),
 			JobKey:             new(row.JobKey),
 			ProcessInstanceKey: new(row.ProcessInstanceKey),
-			Attempt:            new(int32(row.Attempt)),
+			Attempt:            new(int32(row.Attempt)), // #nosec G115 -- the engine writes this column from an int32 field
 			FailedAt:           new(row.FailedAt),
 			RetryAt:            sql.FromNullInt64(row.RetryAt),
 			Message:            new(row.Message),

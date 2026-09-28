@@ -2558,10 +2558,10 @@ func (node *ZenNode) JobUpdateRetriesByKey(ctx context.Context, jobKey int64, re
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partitionId := zenflake.GetPartitionId(jobKey)
-	engine := node.controller.PartitionEngine(ctx, partitionId)
+	partitionID := zenflake.GetPartitionId(jobKey)
+	engine := node.controller.PartitionEngine(ctx, partitionID)
 	if engine == nil {
-		return fmt.Errorf("cannot update retries of job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
+		return fmt.Errorf("cannot update retries of job %d on partition %d: %w", jobKey, partitionID, jobmanager.NodeIsNotALeader)
 	}
 	return engine.UpdateJobRetries(ctx, jobKey, retries, retryAt)
 }

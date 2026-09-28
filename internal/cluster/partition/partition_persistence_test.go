@@ -985,7 +985,7 @@ func TestAStoredDefinitionWithARetriesValueTheEngineNeverReadIsStillRead(t *test
 	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-stored-definition-unread-retries-db")
 
 	definitionKey := db.GenerateId()
-	processId := fmt.Sprintf("unread-retries-%d", definitionKey)
+	processID := fmt.Sprintf("unread-retries-%d", definitionKey)
 	data := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_%s">
   <bpmn:process id="%s" isExecutable="true">
@@ -996,9 +996,9 @@ func TestAStoredDefinitionWithARetriesValueTheEngineNeverReadIsStillRead(t *test
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="to-task" sourceRef="start" targetRef="task" />
   </bpmn:process>
-</bpmn:definitions>`, processId, processId)
+</bpmn:definitions>`, processID, processID)
 	require.NoError(t, db.SaveProcessDefinition(t.Context(), runtime.ProcessDefinition{
-		BpmnProcessId: processId,
+		BpmnProcessId: processID,
 		Version:       1,
 		Key:           definitionKey,
 		BpmnData:      data,
@@ -1008,10 +1008,10 @@ func TestAStoredDefinitionWithARetriesValueTheEngineNeverReadIsStillRead(t *test
 	byKey, err := db.FindProcessDefinitionByKey(t.Context(), definitionKey)
 	require.NoError(t, err, "the definition an older engine stored must load")
 	assert.Equal(t, "${retries}", byKey.Definitions.Process.GetInternalTaskById("task").GetTaskDefinition().Retries)
-	byId, err := db.FindProcessDefinitionsById(t.Context(), processId)
+	byID, err := db.FindProcessDefinitionsById(t.Context(), processID)
 	require.NoError(t, err, "every version of the process must load, or a corrected one cannot be deployed")
-	require.Len(t, byId, 1)
-	assert.Equal(t, definitionKey, byId[0].Key)
+	require.Len(t, byID, 1)
+	assert.Equal(t, definitionKey, byID[0].Key)
 }
 
 // TestAJobWhoseStoredBackoffCannotBeReadIsStillRead shows a retry backoff

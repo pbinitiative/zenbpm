@@ -1876,7 +1876,7 @@ func BuildJobFailure(failure sql.JobFailure) bpmnruntime.JobFailure {
 		Key:                failure.Key,
 		JobKey:             failure.JobKey,
 		ProcessInstanceKey: failure.ProcessInstanceKey,
-		Attempt:            int32(failure.Attempt),
+		Attempt:            int32(failure.Attempt), // #nosec G115 -- the engine writes this column from an int32 field
 		FailedAt:           time.UnixMilli(failure.FailedAt),
 		RetryAt:            nullInt64ToTimePtr(failure.RetryAt),
 		Message:            failure.Message,
@@ -1954,8 +1954,8 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 		InputVariables:     inputVariables,
 		OutputVariables:    outputVariables,
 		Assignee:           sql.FromNullString(job.Assignee),
-		Retries:            int32(job.Retries),
-		Attempts:           int32(job.Attempts),
+		Retries:            int32(job.Retries),  // #nosec G115 -- the engine writes this column from an int32 field
+		Attempts:           int32(job.Attempts), // #nosec G115 -- the engine writes this column from an int32 field
 		RetryAt:            nullInt64ToTimePtr(job.RetryAt),
 		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:       retryBackoff,

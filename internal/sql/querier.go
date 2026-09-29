@@ -153,9 +153,10 @@ type Querier interface {
 	// causing a partition-wide scan for one process instance's tokens.
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
-	// A row whose headers are not a JSON object cannot be delivered to a worker.
-	// The query quarantines such rows here, so they take neither a batch slot nor a
-	// SQL parameter and cannot starve later valid jobs.
+	// A row whose headers cannot be decoded into a string map is undeliverable. The
+	// query quarantines a malformed value and an object with any non-string value
+	// here, so such a row takes neither a batch slot nor a SQL parameter and cannot
+	// starve later valid jobs.
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)
 	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	// Lists the versions of process definitions, ordered by process id and

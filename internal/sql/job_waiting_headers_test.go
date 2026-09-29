@@ -11,8 +11,8 @@ import (
 )
 
 // TestGetWaitingJobsQuarantinesMalformedHeaders pins the quarantine: a waiting
-// job whose headers are not a JSON object is never returned, so it cannot take a
-// batch slot or a SQL parameter and cannot starve later valid jobs.
+// job whose headers cannot be decoded into a string map is never returned, so it
+// cannot take a batch slot or a SQL parameter and cannot starve later valid jobs.
 func TestGetWaitingJobsQuarantinesMalformedHeaders(t *testing.T) {
 	db, err := stdsql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
@@ -38,8 +38,9 @@ func TestGetWaitingJobsQuarantinesMalformedHeaders(t *testing.T) {
 		INSERT INTO job (key, element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, element_type, headers) VALUES
 			(1, 1, 'e', 1, 'test-job', 1, 1, '{}', 1, 'serviceTask', '{not valid json'),
 			(2, 1, 'e', 1, 'test-job', 1, 2, '{}', 1, 'serviceTask', '"a string"'),
-			(3, 1, 'e', 1, 'test-job', 1, 3, '{}', 1, 'serviceTask', '{}'),
-			(4, 1, 'e', 1, 'test-job', 1, 4, '{}', 1, 'serviceTask', '{"url":"https://example.com"}');
+			(3, 1, 'e', 1, 'test-job', 1, 3, '{}', 1, 'serviceTask', '{"retry":3}'),
+			(4, 1, 'e', 1, 'test-job', 1, 4, '{}', 1, 'serviceTask', '{}'),
+			(5, 1, 'e', 1, 'test-job', 1, 5, '{}', 1, 'serviceTask', '{"url":"https://example.com"}');
 	`)
 	require.NoError(t, err)
 
@@ -71,5 +72,5 @@ func TestGetWaitingJobsQuarantinesMalformedHeaders(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 
-	assert.Equal(t, []int64{3, 4}, keys, "only rows whose headers are a JSON object are returned, oldest first")
+	assert.Equal(t, []int64{4, 5}, keys, "only rows whose headers decode into a string map are returned, oldest first")
 }

@@ -92,7 +92,7 @@ histograms a `_milliseconds` suffix).
 
 | Metric | Type | Attributes | Description |
 | ------ | ---- | ---------- | ----------- |
-| `jobs_waiting` | gauge | `partition` | Jobs waiting to be worked on. Exported by **every replica** of a partition — deduplicate with `max by(partition)` before aggregating |
+| `jobs_waiting` | gauge | `partition` | Active jobs not completed yet: the backlog, jobs waiting out a retry backoff included, not only those deliverable at the moment. Exported by **every replica** of a partition — deduplicate with `max by(partition)` before aggregating |
 | `process_instances_active` | gauge | `partition` | Active process instances. Exported by every replica — deduplicate with `max by(partition)` |
 | `partition_raft_has_leader` | gauge 0/1 | `partition` | Partition raft group has a leader (local raft view; see `partition_has_leader` for the replicated cluster-state view) |
 | `partition_node_is_leader` | gauge 0/1 | `partition` | This node leads the partition raft group |

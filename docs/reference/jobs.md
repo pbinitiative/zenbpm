@@ -79,7 +79,7 @@ The cap is enforced by each partition leader for the jobs of its own partitions.
 
 > ⚠️ **Upgrade note:** before locks became configurable, the ten-job cap was counted per client across all job types. A client subscribed to several job types may now receive more jobs in total than before. Set `max_active_jobs` per type to restore the old total.
 
-**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover. Completion and failure are not bound to the lock holder: a job may be completed or failed by anybody who knows its key, including a REST client which never held the lock. A failure spends the attempt whoever reports it, but releases the lock only when the reporting client holds it: a client whose lock lapsed, and which reports its failure after the job was handed to another client, does not take the job from that client. When the job came back to the same client after its lock lapsed, the job manager cannot tell which of the two deliveries the client's next failure belongs to, so that failure keeps the lock too; the one after it, a completion, or the lapse of the lock releases it, and a retry waits at most one lock duration longer. A completion or failure refused because the job no longer waits releases the lock at once. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
+**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover. Completion and failure are not bound to the lock holder: a job may be completed or failed by anybody who knows its key, including a REST client which never held the lock. A failure spends the attempt whoever reports it - once within its series of attempts, when it names the attempt it belongs to and carries no error code (see [Failures and retries](#failures-and-retries)) - but releases the lock only when the reporting client holds it: a client whose lock lapsed, and which reports its failure after the job was handed to another client, does not take the job from that client. Nor does the holder's own failure when it names an attempt before the one the lock was handed out for: that is the repeat or the late report of an earlier delivery, and the holder keeps working on the attempt it has. When the job came back to the same client after its lock lapsed, the job manager cannot tell which of the two deliveries the client's next failure belongs to, so that failure keeps the lock too; the one after it, a completion, or the lapse of the lock releases it, and a retry waits at most one lock duration longer. A completion or failure refused because the job no longer waits releases the lock at once. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
 
 Workers which receive jobs over the stream but send their commands over REST extend a lock with the `extendJobLock` endpoint, passing the client id of their stream:
 
@@ -121,18 +121,40 @@ job:
 5. Resolving that incident starts a fresh series: `attempts` goes back to `0`, `retryAt` is
    cleared and the retries of the task definition are evaluated again - unless an operator set new
    retries meanwhile (see below), which are kept together with the `retryAt` the operator chose.
+   A `retries` expression which no longer evaluates refuses the resolution with `409` and changes
+   nothing; the message names the error and the way out: correct the variables the expression
+   reads, or set the job's retries, then resolve again.
    Resolving the incident of an error code nothing caught does the same, so leftover retries do not
    carry over into the new series; retries an operator set before that incident are forgotten with
    the series they belonged to. An incident the job did not raise itself, such as one of a boundary
    event of its task, leaves the series alone when it is resolved: attempts, retries and `retryAt`
    stay as they were.
 
-A fail request is not idempotent: every failure without an error code the engine receives spends
-an attempt, also one reported for a job waiting out its backoff, which nobody holds at that moment.
-A client which repeats a request after a timeout may spend two attempts for one failure. A failure
-reported for a job which no longer waits for a worker - the repeat of a failure which exhausted the
-retries, or a job completed or terminated meanwhile - changes nothing and is refused: `409` on the
-REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` on the stream.
+A fail request without an error code which names the `attempt` it belongs to - the `attempt` of
+its delivery over the stream, or the job's `attempts` plus one as read over REST - is recorded once
+within a series of attempts. A request for an attempt whose failure the job recorded already
+changes nothing and is answered as recorded, also once the failure it repeats exhausted the retries
+and also when the instance ended meanwhile. That is the repeat after a timeout, and the late
+report of a delivery whose attempt another delivery failed meanwhile: neither spends the attempt a
+later delivery is working on, creates the incident while that delivery runs, or releases its lock.
+An `attempt` below `1` or beyond the one the job waits for is refused like any other invalid value.
+The Go client names the attempt of every failure it sends.
+
+The attempt does not tell two deliveries of one attempt apart. After a lapsed lock or a leader
+change the job is delivered again with the same attempt, and the first of the two failures to
+arrive spends it: a worker which works past its lock and then fails can still exhaust the retries,
+and create the incident, while the second delivery runs. A worker which needs longer than its lock
+extends it (see [Job locks](#job-locks)). Attempts also start again at `1` once an incident of the
+job is resolved, so a report from before the incident which arrives after the resolution is taken
+for the new series: it spends the attempt when it names the one the job now waits for, and is
+refused when it names a later one.
+
+A fail request without `attempt` is not idempotent: every failure without an error code the engine
+receives spends an attempt, also one reported for a job waiting out its backoff, which nobody holds
+at that moment. A client which repeats such a request after a timeout may spend two attempts for one
+failure. A failure reported for a job which no longer waits for a worker - the repeat of a failure
+which exhausted the retries, or a job completed or terminated meanwhile - changes nothing and is
+refused: `409` on the REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` on the stream.
 
 A `JobFailRequest` on the stream which the engine did not record is answered with an `ErrorResult`
 next to a `WaitingJob` carrying only the key. Its `code` says why:
@@ -141,8 +163,11 @@ which do not decode, which the REST endpoint answers with `400` - the message na
 the value; `JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND` (5) when the job's partition has no job with that
 key; `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` (6) when the job no longer waits for a worker;
 `JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE` (3) when the leader of the job's partition could not
-be reached or has just changed - the failure may have been recorded all the same, so repeating it
-may spend a second attempt. Any other error carries no code.
+be reached or has just changed - the failure may have been recorded all the same. Repeating a
+failure without an error code spends nothing more when it names its attempt, unless an incident of
+the job was resolved meanwhile; repeating one without `attempt` spends a second attempt, and one
+with an error code is refused with code 6 once the first was recorded. Any other error carries no
+code.
 
 A job whose token is terminated during its backoff, by an interrupting boundary event or by
 cancelling the instance, is terminated like any active job.

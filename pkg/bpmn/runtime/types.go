@@ -501,11 +501,11 @@ type Job struct {
 	// job was created: the n-th failure waits the n-th entry, the last entry
 	// repeats. Empty means the engine's default policy applies.
 	RetryBackoff []time.Duration
-	// RetriesUpdatedAt is when an operator set Retries and RetryAt; resolving
-	// the job's incident keeps them instead of restoring the definition's
-	// retries. It is nil once a resolution kept them or a failure exhausted
-	// them.
-	RetriesUpdatedAt *time.Time
+	// RetriesSetByOperator marks Retries and RetryAt as set by an operator:
+	// resolving the job's incident keeps them instead of restoring the
+	// definition's retries. It is cleared once a resolution kept them or an
+	// incident ended the series they belonged to.
+	RetriesSetByOperator bool
 }
 
 // IsWaitingOutBackoff reports whether the job must not be handed out before RetryAt.

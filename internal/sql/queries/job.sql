@@ -1,6 +1,6 @@
 -- name: SaveJob :exec
 -- retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at)
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
@@ -12,7 +12,7 @@ ON CONFLICT
         attempts = excluded.attempts,
         retry_at = excluded.retry_at,
         last_failure_message = excluded.last_failure_message,
-        retries_updated_at = excluded.retries_updated_at;
+        retries_set_by_operator = excluded.retries_set_by_operator;
 
 -- name: DeleteProcessInstancesJobs :exec
 DELETE FROM job

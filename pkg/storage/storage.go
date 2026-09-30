@@ -186,7 +186,10 @@ type TimerStorageWriter interface {
 }
 
 type JobStorageReader interface {
-	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
+	// FindPendingProcessInstanceJobs returns the jobs of the process instance which are Active,
+	// Completing or Failed, and none in another state. A Failed job waits for the resolution of its
+	// incident, which finds the job here to hand it out again; one left out would leave the incident
+	// resolved and the job failed for good.
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
 	GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error)

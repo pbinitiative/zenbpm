@@ -2569,10 +2569,16 @@ paths:
         `retries` and `retryBackoff` are validated in every request, and a request with an invalid
         value is refused with `400` even when it carries an `errorCode`, which then ignores them.
 
-        The request is not idempotent: every failure without an `errorCode` the engine receives
-        spends an attempt, also one for a job waiting out its backoff. A client which repeats a
-        request after a timeout may spend two, and one repeated after the first exhausted the
-        retries is answered with `409`, like a failure of a job which was completed or terminated.
+        A request without an `errorCode` naming the `attempt` it belongs to is recorded once within a
+        series of attempts: repeated after a timeout, or arriving after a later attempt failed, it
+        changes nothing and is answered with `204` like the first. Attempts start again at `1` when
+        an incident of the job is resolved, so a report from before the resolution counts for the new
+        series; two deliveries of one attempt, before and after a lapsed lock, share it, so the first
+        of their failures spends it. Without `attempt` the request is
+        not idempotent: every failure without an `errorCode` the engine receives spends an attempt,
+        also one for a job waiting out its backoff; a client which repeats a request after a timeout
+        may spend two, and one repeated after the first exhausted the retries is answered with
+        `409`, like a failure of a job which was completed or terminated.
 
         A job delivered over the gRPC job stream stays locked for the stream's client until that
         client reports it or the lock lapses. A worker which receives jobs over the stream but sends
@@ -2594,6 +2600,11 @@ paths:
             schema:
               type: object
               properties:
+                attempt:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  description: The attempt the failure belongs to - the `attempt` of a delivery over the job stream, or the job's `attempts` plus one as read. A failure of an attempt the current series recorded before changes nothing; one beyond the attempt the job waits for is refused with `400`. Absent, every failure without an `errorCode` spends an attempt. Validated but otherwise ignored with an `errorCode`.
                 clientId:
                   type: string
                   description: The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
@@ -2946,6 +2957,16 @@ paths:
                 $ref: "#/components/schemas/Error"
         404:
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: >-
+            The incident cannot be resolved as things stand: the `retries` expression of the job it
+            leaves waiting no longer evaluates. The message names the error and the way out: correct
+            the variables the expression reads, or set the job's retries with
+            `POST /v1/jobs/{jobKey}/retries`; then repeat the resolution. Nothing is changed.
           content:
             application/json:
               schema:

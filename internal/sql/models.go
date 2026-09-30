@@ -85,24 +85,24 @@ type Incident struct {
 }
 
 type Job struct {
-	Key                int64          `json:"key"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ElementID          string         `json:"element_id"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ElementType        string         `json:"element_type"`
-	Retries            int64          `json:"retries"`
-	Attempts           int64          `json:"attempts"`
-	RetryAt            sql.NullInt64  `json:"retry_at"`
-	LastFailureMessage sql.NullString `json:"last_failure_message"`
-	RetryBackoff       sql.NullString `json:"retry_backoff"`
-	RetriesUpdatedAt   sql.NullInt64  `json:"retries_updated_at"`
+	Key                  int64          `json:"key"`
+	ElementInstanceKey   int64          `json:"element_instance_key"`
+	ElementID            string         `json:"element_id"`
+	ProcessInstanceKey   int64          `json:"process_instance_key"`
+	Type                 string         `json:"type"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	InputVariables       string         `json:"input_variables"`
+	ExecutionToken       int64          `json:"execution_token"`
+	Assignee             sql.NullString `json:"assignee"`
+	OutputVariables      sql.NullString `json:"output_variables"`
+	ElementType          string         `json:"element_type"`
+	Retries              int64          `json:"retries"`
+	Attempts             int64          `json:"attempts"`
+	RetryAt              sql.NullInt64  `json:"retry_at"`
+	LastFailureMessage   sql.NullString `json:"last_failure_message"`
+	RetryBackoff         sql.NullString `json:"retry_backoff"`
+	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
 }
 
 type JobFailure struct {

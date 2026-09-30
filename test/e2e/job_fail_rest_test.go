@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -103,4 +104,58 @@ func TestRestJobFailOfAStreamDeliveredJobHonoursTheBackoff(t *testing.T) {
 		return deliveries.Load() >= 2
 	}, 10*time.Second, 50*time.Millisecond, "the job comes back at once, not when the lock of a minute lapses")
 	waitForProcessInstanceJobByElementId(t, instance.Key, "retried-task", public.JobStateCompleted)
+}
+
+// TestARepeatedFailureOfAnEarlierAttemptLeavesTheNextDeliveryWithItsWorker
+// shows a worker which repeats the failure of an attempt the engine recorded
+// already, as it does after an answer which did not confirm it, keeps the job
+// it got back for the next attempt meanwhile: the repeat spends nothing, the
+// worker still holds the lock, and the job is not handed out alongside.
+func TestARepeatedFailureOfAnEarlierAttemptLeavesTheNextDeliveryWithItsWorker(t *testing.T) {
+	jobType := fmt.Sprintf("repeated-failure-%d", rand.Int63())
+	clientID := jobType + "-worker"
+	zenClient := newLockTestGrpcClient(t)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var deliveries atomic.Int32
+	var secondAttemptKey atomic.Int64
+	_, err := zenClient.RegisterWorkerWithOptions(t.Context(), clientID,
+		func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+			if deliveries.Add(1) == 1 {
+				return nil, &zenclient.WorkerError{Err: errors.New("payment service unavailable"), RetryBackoff: new(time.Duration(0))}
+			}
+			// the second attempt is still being worked on when the repeat arrives
+			secondAttemptKey.Store(job.GetKey())
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return nil, nil
+		}, zenclient.WithJobType(jobType, zenclient.WithLockDuration(time.Minute)))
+	require.NoError(t, err)
+	definition, err := deployDefinitionWithJobType(t, "job_retries/service-task-retries.bpmn", jobType, map[string]string{"charge-card": jobType})
+	require.NoError(t, err)
+	instance, err := createProcessInstance(t, &definition.ProcessDefinitionKey, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupOwnedProcessInstance(t, instance.Key)
+	})
+	require.Eventually(t, func() bool {
+		return secondAttemptKey.Load() != 0
+	}, 10*time.Second, 50*time.Millisecond, "the worker must receive the second attempt")
+	jobKey := secondAttemptKey.Load()
+
+	failJobWithRetryRequest(t, jobKey, zenclient.FailJobJSONRequestBody{
+		ClientId: new(clientID),
+		Message:  new("payment service unavailable"),
+		Attempt:  new(int32(1)),
+	})
+
+	require.Equal(t, new(int32(1)), getJob(t, jobKey).Attempts, "the repeat spends nothing")
+	extended, err := app.restClient.ExtendJobLockWithResponse(t.Context(), jobKey, zenclient.ExtendJobLockJSONRequestBody{ClientId: clientID})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, extended.StatusCode(), "the worker still holds the lock of the second attempt, body: %s", string(extended.Body))
+	require.Never(t, func() bool {
+		return deliveries.Load() > 2
+	}, 500*time.Millisecond, 20*time.Millisecond, "the second attempt is not handed out alongside")
 }

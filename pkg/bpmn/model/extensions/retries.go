@@ -66,6 +66,14 @@ func ParseBackoffDuration(value string) (time.Duration, error) {
 	if parsed.Y != 0 || parsed.M != 0 {
 		return 0, fmt.Errorf("%q uses years or months, whose length depends on the date: use weeks, days, hours, minutes or seconds", value)
 	}
+	return FixedLengthOf(parsed), nil
+}
+
+// FixedLengthOf converts the weeks, days, hours, minutes and seconds of an
+// ISO-8601 duration into a time.Duration, a week counting seven days and a day
+// 24 hours, saturating at the maximum instead of wrapping. Years and months,
+// whose length depends on the date, are left out.
+func FixedLengthOf(parsed duration.Duration) time.Duration {
 	const maxSeconds = math.MaxInt64 / int64(time.Second)
 	seconds := int64(0)
 	for _, part := range []struct{ count, secondsPerUnit int64 }{
@@ -76,11 +84,11 @@ func ParseBackoffDuration(value string) (time.Duration, error) {
 		{int64(parsed.TS), 1},
 	} {
 		if part.count > (maxSeconds-seconds)/part.secondsPerUnit {
-			return time.Duration(math.MaxInt64), nil
+			return time.Duration(math.MaxInt64)
 		}
 		seconds += part.count * part.secondsPerUnit
 	}
-	return time.Duration(seconds) * time.Second, nil
+	return time.Duration(seconds) * time.Second
 }
 
 // FormatRetryBackoff writes a backoff policy the way ParseRetryBackoff reads

@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 func (engine *Engine) createInternalTask(
@@ -34,7 +35,12 @@ func (engine *Engine) createInternalTask(
 	var retries int32
 	var retryBackoff []time.Duration
 	if handler == nil {
-		jobScope := jobVarHolder.ExecutionScopeSnapshot()
+		// only an expression reads the variables, so literals spare the copy of every scope
+		var jobScope map[string]any
+		definition := element.GetTaskDefinition()
+		if extensions.IsExpression(definition.Retries) || extensions.IsExpression(definition.RetryBackoff) {
+			jobScope = jobVarHolder.ExecutionScopeSnapshot()
+		}
 		var err error
 		if retries, err = engine.initialRetries(element, jobScope); err != nil {
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to create job: %w", err)

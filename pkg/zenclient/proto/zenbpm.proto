@@ -58,6 +58,14 @@ message JobFailRequest{
   // the retryBackoff of the task definition, else jobs.defaultRetryBackoff; 0 = at once.
   // A value above jobs.maxRetryBackoff is capped.
   int64 retry_backoff_ms = 6;
+  // The attempt of the delivery the failure belongs to, WaitingJob.attempt. With it a failure
+  // without an error code is recorded once within a series of attempts: repeated, or reported after
+  // a later attempt of the job failed, it changes nothing and is answered as recorded. Attempts
+  // start again at 1 when an incident of the job is resolved, and two deliveries of one attempt,
+  // such as the ones before and after a lapsed lock, share it. It must lie between 1 and the attempt
+  // the job waits for; a larger one is refused with JOB_STREAM_ERROR_CODE_INVALID_REQUEST. Absent =
+  // every report spends an attempt. Ignored, once validated, with an error code.
+  int32 attempt = 7;
 }
 
 // Moves the lock deadline of a job this client holds to now plus lock_duration_ms.
@@ -93,7 +101,9 @@ enum JobStreamErrorCode {
   // The leader of the job's partition could not be reached or has just changed. The
   // outcome is unconfirmed: an extension may already have moved the deadline, and a
   // leader change forgets the lock, so retry the extension in a moment; a failure may
-  // already have been recorded, and repeating it spends another attempt.
+  // already have been recorded: repeating one without an error code which names its attempt
+  // spends nothing more unless an incident of the job was resolved meanwhile, one without an
+  // attempt spends another, and one with an error code is refused once the first was recorded.
   JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE = 3;
   // The request itself is wrong, such as a fail request with negative retries or a
   // negative backoff; nothing was changed and repeating it gets the same answer.

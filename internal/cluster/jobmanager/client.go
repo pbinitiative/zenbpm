@@ -550,7 +550,7 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 func refusalError(action string, jobKey int64, refusal *proto.ErrorResult) error {
 	switch zenerr.ZenErrorCode(refusal.GetCode()) {
 	case zenerr.BadRequestCode:
-		return fmt.Errorf("%w: %s", ErrInvalidJobRequest, refusal.GetMessage())
+		return &InvalidJobRequestError{Reason: refusal.GetMessage()}
 	case zenerr.NotFoundCode:
 		return fmt.Errorf("%w: %s", ErrJobNotFound, refusal.GetMessage())
 	case zenerr.ConflictCode:
@@ -567,7 +567,7 @@ func refusalError(action string, jobKey int64, refusal *proto.ErrorResult) error
 // longer leading as ErrLeaderUnavailable, so the caller can tell a request
 // which is wrong from a cluster which is changing; in the latter case the
 // failure may have been recorded already.
-func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration) error {
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {
@@ -584,6 +584,7 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 		Variables: vars,
 		ClientId:  new(string(clientID)),
 		Retries:   retries,
+		Attempt:   attempt,
 	}
 	request.RetryBackoffMs = RetryBackoffToMillis(retryBackoff)
 	resp, err := lClient.FailJob(ctx, request)

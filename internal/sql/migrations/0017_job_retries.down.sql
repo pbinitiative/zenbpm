@@ -2,7 +2,7 @@ ALTER TABLE incident DROP COLUMN job_key;
 DROP INDEX IF EXISTS idx_fk_job_failure_process_instance_key;
 DROP INDEX IF EXISTS idx_job_failure_job_key;
 DROP TABLE IF EXISTS job_failure;
-ALTER TABLE job DROP COLUMN retries_updated_at;
+ALTER TABLE job DROP COLUMN retries_set_by_operator;
 ALTER TABLE job DROP COLUMN retry_backoff;
 ALTER TABLE job DROP COLUMN last_failure_message;
 ALTER TABLE job DROP COLUMN retry_at;

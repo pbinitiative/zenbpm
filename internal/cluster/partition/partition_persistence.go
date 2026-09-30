@@ -1951,15 +1951,15 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 		Token: bpmnruntime.ExecutionToken{
 			Key: job.ExecutionToken,
 		},
-		InputVariables:     inputVariables,
-		OutputVariables:    outputVariables,
-		Assignee:           sql.FromNullString(job.Assignee),
-		Retries:            int32(job.Retries),  // #nosec G115 -- the engine writes this column from an int32 field
-		Attempts:           int32(job.Attempts), // #nosec G115 -- the engine writes this column from an int32 field
-		RetryAt:            nullInt64ToTimePtr(job.RetryAt),
-		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
-		RetryBackoff:       retryBackoff,
-		RetriesUpdatedAt:   nullInt64ToTimePtr(job.RetriesUpdatedAt),
+		InputVariables:       inputVariables,
+		OutputVariables:      outputVariables,
+		Assignee:             sql.FromNullString(job.Assignee),
+		Retries:              int32(job.Retries),  // #nosec G115 -- the engine writes this column from an int32 field
+		Attempts:             int32(job.Attempts), // #nosec G115 -- the engine writes this column from an int32 field
+		RetryAt:              nullInt64ToTimePtr(job.RetryAt),
+		LastFailureMessage:   sql.FromNullString(job.LastFailureMessage),
+		RetryBackoff:         retryBackoff,
+		RetriesSetByOperator: job.RetriesSetByOperator != 0,
 	}, nil
 }
 
@@ -1997,24 +1997,24 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		outputVariables = ssql.NullString{String: string(outputVariableBytes), Valid: true}
 	}
 	err = db.SaveJob(ctx, sql.SaveJobParams{
-		Key:                job.GetKey(),
-		ElementID:          job.ElementId,
-		ElementType:        job.ElementType,
-		ElementInstanceKey: job.ElementInstanceKey,
-		ProcessInstanceKey: job.ProcessInstanceKey,
-		Type:               job.Type,
-		State:              int64(job.GetState()),
-		CreatedAt:          job.CreatedAt.UnixMilli(),
-		InputVariables:     string(inputVariableBytes),
-		OutputVariables:    outputVariables,
-		ExecutionToken:     job.Token.Key,
-		Assignee:           sql.ToNullString(job.Assignee),
-		Retries:            int64(job.Retries),
-		Attempts:           int64(job.Attempts),
-		RetryAt:            timePtrToNullInt64(job.RetryAt),
-		LastFailureMessage: sql.ToNullString(job.LastFailureMessage),
-		RetryBackoff:       ssql.NullString{String: extensions.FormatRetryBackoff(job.RetryBackoff), Valid: len(job.RetryBackoff) > 0},
-		RetriesUpdatedAt:   timePtrToNullInt64(job.RetriesUpdatedAt),
+		Key:                  job.GetKey(),
+		ElementID:            job.ElementId,
+		ElementType:          job.ElementType,
+		ElementInstanceKey:   job.ElementInstanceKey,
+		ProcessInstanceKey:   job.ProcessInstanceKey,
+		Type:                 job.Type,
+		State:                int64(job.GetState()),
+		CreatedAt:            job.CreatedAt.UnixMilli(),
+		InputVariables:       string(inputVariableBytes),
+		OutputVariables:      outputVariables,
+		ExecutionToken:       job.Token.Key,
+		Assignee:             sql.ToNullString(job.Assignee),
+		Retries:              int64(job.Retries),
+		Attempts:             int64(job.Attempts),
+		RetryAt:              timePtrToNullInt64(job.RetryAt),
+		LastFailureMessage:   sql.ToNullString(job.LastFailureMessage),
+		RetryBackoff:         ssql.NullString{String: extensions.FormatRetryBackoff(job.RetryBackoff), Valid: len(job.RetryBackoff) > 0},
+		RetriesSetByOperator: boolToInt64(job.RetriesSetByOperator),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
@@ -2825,6 +2825,14 @@ func timePtrToNullInt64(t *time.Time) ssql.NullInt64 {
 		Int64: t.UnixMilli(),
 		Valid: true,
 	}
+}
+
+// boolToInt64 writes a flag into an INTEGER column, SQLite having no boolean type.
+func boolToInt64(flag bool) int64 {
+	if flag {
+		return 1
+	}
+	return 0
 }
 
 var _ storage.IncidentStorageReader = &DB{}

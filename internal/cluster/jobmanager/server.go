@@ -55,6 +55,21 @@ var (
 	ErrJobInTerminalState = errors.New("job no longer waits for a worker")
 )
 
+// InvalidJobRequestError is ErrInvalidJobRequest together with the reason the
+// leader gave, which names the field and the value and is what the worker is
+// told.
+type InvalidJobRequestError struct {
+	Reason string
+}
+
+func (e *InvalidJobRequestError) Error() string {
+	return ErrInvalidJobRequest.Error() + ": " + e.Reason
+}
+
+func (e *InvalidJobRequestError) Unwrap() error {
+	return ErrInvalidJobRequest
+}
+
 type JobLoader interface {
 	// LoadJobsToDistribute loads at most count jobs, sorted from oldest, across all partitions led by the node.
 	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error)
@@ -62,7 +77,7 @@ type JobLoader interface {
 
 type JobCompleter interface {
 	JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error
-	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error
+	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error
 	JobUpdateRetriesByKey(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error
 }
 
@@ -151,6 +166,10 @@ type distributedJob struct {
 	// lockDuration is the subscription's lock duration at delivery time; an
 	// extension which names no duration uses it.
 	lockDuration time.Duration
+	// attempt is the attempt of the job the delivery was handed out for, which
+	// the worker names in the failure it reports. A failure naming an earlier
+	// one belongs to an earlier delivery and leaves this lock alone.
+	attempt int32
 	// afterOwnLapse marks a delivery to the client whose earlier lock on the
 	// job lapsed. The job server cannot tell which of the two deliveries a
 	// failure the client reports belongs to, so the first one keeps this lock:
@@ -159,10 +178,12 @@ type distributedJob struct {
 	afterOwnLapse bool
 }
 
-// lapsedLock remembers the client whose lock on a job lapsed until the job is
-// delivered again, so that a delivery to the same client is marked afterOwnLapse.
+// lapsedLock remembers the client whose lock on a job lapsed, and the attempt
+// the lapsed delivery was handed out for, until the job is delivered again, so
+// that a delivery to the same client is marked afterOwnLapse.
 type lapsedLock struct {
 	client   ClientID
+	attempt  int32
 	lapsedAt time.Time
 }
 
@@ -376,120 +397,11 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		s.emptyDistributionCounter = 0
+		round := &distributionRound{capacity: capacity, settingsVersion: settingsVersion, loadedAt: loadedAt}
 		assignedJobs := 0
 		for _, job := range jobs {
-			s.clientMu.Lock()
-			if s.settingsVersion != settingsVersion {
-				// a subscription changed since the snapshot: a lowered cap
-				// must bind the deliveries of this batch, not the next one
-				capacity, _, _ = s.capacityLocked(time.Now())
-				settingsVersion = s.settingsVersion
-			}
-			jType := JobType(job.Type)
-			jobTypeData := s.jobTypes[jType]
-			// check if there are any clients able to process
-			if len(jobTypeData.clients) == 0 {
-				s.clientMu.Unlock()
-				continue
-			}
-			// round robin: starting from the client after the last used index,
-			// pick the first client that still has remaining capacity
-			numClients := len(jobTypeData.clients)
-			var clientID ClientID
-			var nodeStream *nodeSub
-			for offset := 1; offset <= numClients; offset++ {
-				idx := (jobTypeData.index + offset) % numClients
-				candidateID := jobTypeData.clients[idx]
-				slot := clientAndType{client: candidateID, jobType: jType}
-				if capacity[slot] <= 0 {
-					continue
-				}
-				candidateStream, ok := s.subscriptions[jType][candidateID]
-				if !ok {
-					continue
-				}
-				jobTypeData.index = idx
-				clientID = candidateID
-				nodeStream = candidateStream
-				capacity[slot]--
-				break
-			}
-			if nodeStream == nil {
-				// every client for this job type is saturated, the job stays
-				// in the database and will be picked up in a later round
-				s.clientMu.Unlock()
-				continue
-			}
-			lockDuration := s.settingsLocked(jType, clientID).LockDuration
-			// the deadline taken here reserves the job while it is being sent
-			// and is what the worker is told; the leader's own deadline is
-			// restarted once the send completed (see restartLockAfterSend)
-			lockUntil := time.Now().Add(lockDuration)
-			s.distributedJobsMu.Lock()
-			if s.changedSinceLocked(job.Key, loadedAt) {
-				// the snapshot is stale; a later round reloads the job if it
-				// is still deliverable, so the client's slot stays free
-				s.distributedJobsMu.Unlock()
-				capacity[clientAndType{client: clientID, jobType: jType}]++
-				s.clientMu.Unlock()
-				continue
-			}
-			s.jobTypes[jType] = jobTypeData // set the updated index
-			lapsed, lapsedBefore := s.lapsedLocks[job.Key]
-			delete(s.lapsedLocks, job.Key)
-			s.distributedJobs[job.Key] = &distributedJob{
-				client:        clientID,
-				jobKey:        job.Key,
-				jobType:       jType,
-				lockUntil:     lockUntil,
-				lockDuration:  lockDuration,
-				afterOwnLapse: lapsedBefore && lapsed.client == clientID,
-			}
-			s.distributedJobsMu.Unlock()
-			s.clientMu.Unlock()
-			// this might be bottleneck for now...in the future we might want
-			// to have something that will allow us to send jobs to clients on
-			// non blocked stream or use a pool of GRPC connections to handle jobs
-			err := nodeStream.stream.Send(&proto.SubscribeJobResponse{
-				JobType:  &job.Type,
-				ClientId: new(string(clientID)),
-				Job: &proto.InternalJob{
-					Key:            &job.Key,
-					InstanceKey:    &job.ProcessInstanceKey,
-					InputVariables: []byte(job.InputVariables),
-					Type:           &job.Type,
-					State:          &job.State,
-					ElementId:      &job.ElementID,
-					CreatedAt:      &job.CreatedAt,
-					ElementType:    &job.ElementType,
-					LockUntil:      new(lockUntil.UnixMilli()),
-					Retries:        new(int32(job.Retries)),      // #nosec G115 -- the engine writes this column from an int32 field
-					Attempt:        new(int32(job.Attempts) + 1), // #nosec G115 -- the engine writes this column from an int32 field
-				},
-			})
-			if err != nil {
-				s.distributedJobsMu.Lock()
-				if locked, ok := s.distributedJobs[job.Key]; ok && locked.client == clientID {
-					delete(s.distributedJobs, job.Key)
-				}
-				s.distributedJobsMu.Unlock()
-				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
-				continue
-			}
-			s.restartLockAfterSend(job.Key, clientID, lockDuration)
-			assignedJobs++
-			JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
-				attribute.String("type", job.Type),
-				attribute.String("client", string(clientID)),
-			))
-			if JobActivationLatency != nil && job.CreatedAt > 0 {
-				latencyMs := float64(time.Now().UnixMilli() - job.CreatedAt)
-				if latencyMs < 0 {
-					latencyMs = 0
-				}
-				JobActivationLatency.Record(s.ctx, latencyMs, metric.WithAttributes(
-					attribute.String("type", job.Type),
-				))
+			if delivery, reserved := s.reserveDelivery(round, job); reserved && s.sendReservedJob(job, delivery) {
+				assignedJobs++
 			}
 		}
 		if assignedJobs == 0 {
@@ -498,6 +410,150 @@ func (s *jobServer) distributeJobs() {
 			s.pause(100 * time.Millisecond)
 		}
 	}
+}
+
+// distributionRound is what one round of the distribution loop knows while it
+// hands out the batch it loaded: the free slots of every client and job type,
+// the subscription changes they reflect, and the position in the sequence of
+// job changes the batch reflects (see startLoad).
+type distributionRound struct {
+	capacity        map[clientAndType]int
+	settingsVersion uint64
+	loadedAt        uint64
+}
+
+// reservedDelivery is a job reserved for a client and not yet sent to it.
+type reservedDelivery struct {
+	client       ClientID
+	stream       *nodeSub
+	lockUntil    time.Time
+	lockDuration time.Duration
+}
+
+// reserveDelivery picks the client a job of the round's batch goes to, round
+// robin among the clients of its type with a free slot, and locks the job for
+// it. It takes clientMu and distributedJobsMu and releases both before it
+// returns, so that no lock is held while the job is sent. A job is not
+// reserved when no client of its type has a free slot, or when it changed
+// after the batch was read: a later round reloads it if it is still
+// deliverable.
+func (s *jobServer) reserveDelivery(round *distributionRound, job sql.Job) (reservedDelivery, bool) {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	if s.settingsVersion != round.settingsVersion {
+		// a subscription changed since the snapshot: a lowered cap
+		// must bind the deliveries of this batch, not the next one
+		round.capacity, _, _ = s.capacityLocked(time.Now())
+		round.settingsVersion = s.settingsVersion
+	}
+	jType := JobType(job.Type)
+	jobTypeData := s.jobTypes[jType]
+	// round robin: starting from the client after the last used index,
+	// pick the first client that still has remaining capacity
+	numClients := len(jobTypeData.clients)
+	var delivery reservedDelivery
+	for offset := 1; offset <= numClients; offset++ {
+		idx := (jobTypeData.index + offset) % numClients
+		candidateID := jobTypeData.clients[idx]
+		if round.capacity[clientAndType{client: candidateID, jobType: jType}] <= 0 {
+			continue
+		}
+		candidateStream, ok := s.subscriptions[jType][candidateID]
+		if !ok {
+			continue
+		}
+		jobTypeData.index = idx
+		delivery.client = candidateID
+		delivery.stream = candidateStream
+		break
+	}
+	if delivery.stream == nil {
+		// no client for this job type, or every one is saturated: the job
+		// stays in the database and will be picked up in a later round
+		return reservedDelivery{}, false
+	}
+	delivery.lockDuration = s.settingsLocked(jType, delivery.client).LockDuration
+	// the deadline taken here reserves the job while it is being sent
+	// and is what the worker is told; the leader's own deadline is
+	// restarted once the send completed (see restartLockAfterSend)
+	delivery.lockUntil = time.Now().Add(delivery.lockDuration)
+
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	if s.changedSinceLocked(job.Key, round.loadedAt) {
+		// the snapshot is stale, and the client's slot stays free
+		return reservedDelivery{}, false
+	}
+	round.capacity[clientAndType{client: delivery.client, jobType: jType}]--
+	s.jobTypes[jType] = jobTypeData // set the updated index
+	lapsed, lapsedBefore := s.lapsedLocks[job.Key]
+	delete(s.lapsedLocks, job.Key)
+	s.distributedJobs[job.Key] = &distributedJob{
+		client:        delivery.client,
+		jobKey:        job.Key,
+		jobType:       jType,
+		lockUntil:     delivery.lockUntil,
+		lockDuration:  delivery.lockDuration,
+		attempt:       attemptOfNextDelivery(job),
+		afterOwnLapse: lapsedBefore && lapsed.client == delivery.client,
+	}
+	return delivery, true
+}
+
+// sendReservedJob sends a reserved job to its client, holding no lock while
+// the stream may block, and reports whether it was sent. A job which could not
+// be sent loses its reservation, so that a later round hands it out again.
+func (s *jobServer) sendReservedJob(job sql.Job, delivery reservedDelivery) bool {
+	// this might be bottleneck for now...in the future we might want
+	// to have something that will allow us to send jobs to clients on
+	// non blocked stream or use a pool of GRPC connections to handle jobs
+	err := delivery.stream.stream.Send(&proto.SubscribeJobResponse{
+		JobType:  &job.Type,
+		ClientId: new(string(delivery.client)),
+		Job: &proto.InternalJob{
+			Key:            &job.Key,
+			InstanceKey:    &job.ProcessInstanceKey,
+			InputVariables: []byte(job.InputVariables),
+			Type:           &job.Type,
+			State:          &job.State,
+			ElementId:      &job.ElementID,
+			CreatedAt:      &job.CreatedAt,
+			ElementType:    &job.ElementType,
+			LockUntil:      new(delivery.lockUntil.UnixMilli()),
+			Retries:        new(int32(job.Retries)), // #nosec G115 -- the engine writes this column from an int32 field
+			Attempt:        new(attemptOfNextDelivery(job)),
+		},
+	})
+	if err != nil {
+		s.distributedJobsMu.Lock()
+		if locked, ok := s.distributedJobs[job.Key]; ok && locked.client == delivery.client {
+			delete(s.distributedJobs, job.Key)
+		}
+		s.distributedJobsMu.Unlock()
+		s.logger.Error("Failed to send job to node", "jobType", job.Type, "key", job.Key, "err", err)
+		return false
+	}
+	s.restartLockAfterSend(job.Key, delivery.client, delivery.lockDuration)
+	JobsDistributed.Add(s.ctx, 1, metric.WithAttributes(
+		attribute.String("type", job.Type),
+		attribute.String("client", string(delivery.client)),
+	))
+	if JobActivationLatency != nil && job.CreatedAt > 0 {
+		latencyMs := float64(time.Now().UnixMilli() - job.CreatedAt)
+		if latencyMs < 0 {
+			latencyMs = 0
+		}
+		JobActivationLatency.Record(s.ctx, latencyMs, metric.WithAttributes(
+			attribute.String("type", job.Type),
+		))
+	}
+	return true
+}
+
+// attemptOfNextDelivery is the attempt a job is handed out for: the one after
+// the attempts whose failure the job recorded.
+func attemptOfNextDelivery(job sql.Job) int32 {
+	return int32(job.Attempts) + 1 // #nosec G115 -- the engine writes this column from an int32 field
 }
 
 // restartLockAfterSend moves the deadline of a just delivered job to now plus
@@ -835,7 +891,7 @@ func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Du
 // holder, see afterOwnLapse. The caller holds distributedJobsMu.
 func (s *jobServer) lockLapsedLocked(job *distributedJob, now time.Time) {
 	delete(s.distributedJobs, job.jobKey)
-	s.lapsedLocks[job.jobKey] = lapsedLock{client: job.client, lapsedAt: now}
+	s.lapsedLocks[job.jobKey] = lapsedLock{client: job.client, attempt: job.attempt, lapsedAt: now}
 }
 
 // startLoad returns the position in the sequence of job changes a batch loaded
@@ -910,15 +966,23 @@ func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey i
 // handed to another client, and that failure spends an attempt but must not
 // take the job from the client now working on it, or the next round would hand
 // it to a third one alongside. The current holder's own report releases it,
-// unless the job came back to it after its own lock lapsed, see afterOwnLapse.
-func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration) error {
+// unless the job came back to it after its own lock lapsed, see afterOwnLapse,
+// or the report names an attempt before the one the lock was handed out for:
+// the engine answered that one as recorded already, and it says nothing about
+// the delivery the holder is working on.
+func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	defer s.beginMutation(jobKey)()
-	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff)
+	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, attempt)
 	if err != nil {
 		s.releaseLockOfEndedJob(jobKey, err)
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
 	}
-	s.releaseLockHeldBy(clientID, jobKey)
+	reportedAttempt := attempt
+	if errorCode != nil && *errorCode != "" {
+		// a BPMN error ends the job or leaves it failed whatever attempt it names
+		reportedAttempt = nil
+	}
+	s.releaseLockHeldBy(clientID, jobKey, reportedAttempt)
 	return nil
 }
 
@@ -957,15 +1021,18 @@ func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string)
 // which named no client id has failed: the job stays reserved for its holder
 // until the holder reports or the lock lapses. A delivery after the client's
 // own lock lapsed keeps its lock for the first report, which may be the
-// earlier delivery's.
-func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64) {
+// earlier delivery's. reportedAttempt is the attempt the failure names, nil
+// when it names none: a report of an attempt before the one the lock was
+// handed out for is the repeat or the late report of an earlier delivery, which
+// the engine answered as recorded, and releases nothing.
+func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64, reportedAttempt *int32) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
 	job, ok := s.distributedJobs[jobKey]
 	if !ok {
 		// the client whose lock lapsed reported before the job was handed out
 		// again, so a later delivery to it is no longer ambiguous
-		if lapsed, found := s.lapsedLocks[jobKey]; found && lapsed.client == clientID {
+		if lapsed, found := s.lapsedLocks[jobKey]; found && lapsed.client == clientID && (reportedAttempt == nil || !namesEarlierAttempt(*reportedAttempt, lapsed.attempt)) {
 			delete(s.lapsedLocks, jobKey)
 		}
 		return
@@ -975,6 +1042,11 @@ func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64) {
 			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
 		return
 	}
+	if reportedAttempt != nil && namesEarlierAttempt(*reportedAttempt, job.attempt) {
+		s.logger.Debug("failure of an earlier attempt reported by the lock holder, which keeps the lock of the attempt it works on",
+			"jobKey", jobKey, "client", clientID, "reportedAttempt", *reportedAttempt, "lockedAttempt", job.attempt)
+		return
+	}
 	if job.afterOwnLapse {
 		job.afterOwnLapse = false
 		s.logger.Debug("job failed by the lock holder, which got it again after its own lock lapsed and keeps the lock for the delivery the failure may not belong to",
@@ -982,6 +1054,13 @@ func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64) {
 		return
 	}
 	delete(s.distributedJobs, jobKey)
+}
+
+// namesEarlierAttempt reports whether a failure names an attempt before the one a
+// delivery was handed out for. A failure which names none may belong to any, so
+// callers ask only when it names one.
+func namesEarlierAttempt(reportedAttempt int32, deliveredAttempt int32) bool {
+	return reportedAttempt < deliveredAttempt
 }
 
 // releaseLockOfEndedJob drops the distributed entry of a job the engine

@@ -470,6 +470,9 @@ message FailJobRequest {
   int32 retries = 6;
   // how long the job waits before it is handed out again; absent = the policy of the task definition
   int64 retry_backoff_ms = 7;
+  // the attempt of the delivery the failure belongs to; a failure without an error code of an attempt
+  // the current series recorded before changes nothing; absent = every report spends an attempt
+  int32 attempt = 8;
 }
 
 message FailJobResponse {

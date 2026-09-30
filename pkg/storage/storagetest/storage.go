@@ -43,6 +43,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestTimerStorageReader,
 		st.TestJobStorageWriter,
 		st.TestJobStorageReader,
+		st.TestPendingJobsAreTheActiveCompletingAndFailedOnes,
 		st.TestJobRetryStateRoundTrips,
 		st.TestActiveJobsLeaveOutJobsWaitingOutABackoff,
 		st.TestJobFailuresAreListedNewestFirst,
@@ -638,6 +639,35 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, _ *testing.T) f
 	}
 }
 
+func (st *StorageTester) TestPendingJobsAreTheActiveCompletingAndFailedOnes(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		keysByState := map[bpmnruntime.ActivityState]int64{}
+		for _, state := range []bpmnruntime.ActivityState{
+			bpmnruntime.ActivityStateActive,
+			bpmnruntime.ActivityStateCompleting,
+			bpmnruntime.ActivityStateFailed,
+			bpmnruntime.ActivityStateCompleted,
+			bpmnruntime.ActivityStateTerminated,
+		} {
+			keysByState[state] = st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+				job.State = state
+			}).Key
+		}
+
+		jobs, err := s.FindPendingProcessInstanceJobs(t.Context(), st.processInstance.ProcessInstance().Key)
+		require.NoError(t, err)
+		pendingKeys := make([]int64, len(jobs))
+		for i, job := range jobs {
+			pendingKeys[i] = job.Key
+		}
+		assert.Contains(t, pendingKeys, keysByState[bpmnruntime.ActivityStateActive])
+		assert.Contains(t, pendingKeys, keysByState[bpmnruntime.ActivityStateCompleting])
+		assert.Contains(t, pendingKeys, keysByState[bpmnruntime.ActivityStateFailed], "the resolution of an incident finds its failed job here")
+		assert.NotContains(t, pendingKeys, keysByState[bpmnruntime.ActivityStateCompleted])
+		assert.NotContains(t, pendingKeys, keysByState[bpmnruntime.ActivityStateTerminated])
+	}
+}
+
 func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		job := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
@@ -646,7 +676,7 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 			job.RetryAt = new(time.Now().Add(time.Minute).Truncate(time.Millisecond))
 			job.LastFailureMessage = new("payment service unavailable")
 			job.RetryBackoff = []time.Duration{time.Second, 3 * time.Second}
-			job.RetriesUpdatedAt = new(time.Now().Truncate(time.Millisecond))
+			job.RetriesSetByOperator = true
 		})
 
 		stored, err := s.FindJobByJobKey(t.Context(), job.Key)
@@ -655,14 +685,14 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 
 		job.Retries = 0
 		job.RetryAt = nil
-		job.RetriesUpdatedAt = nil
+		job.RetriesSetByOperator = false
 		job.State = bpmnruntime.ActivityStateFailed
 		require.NoError(t, s.SaveJob(t.Context(), job))
 		stored, err = s.FindJobByJobKey(t.Context(), job.Key)
 		require.NoError(t, err)
 		assert.Zero(t, stored.Retries)
 		assert.Nil(t, stored.RetryAt)
-		assert.Nil(t, stored.RetriesUpdatedAt)
+		assert.False(t, stored.RetriesSetByOperator)
 		assert.Equal(t, bpmnruntime.ActivityStateFailed, stored.State)
 		assert.Equal(t, int32(1), stored.Attempts)
 	}

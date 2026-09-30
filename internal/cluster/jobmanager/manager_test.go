@@ -820,7 +820,7 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 		return nil, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
-		req.Retries, RetryBackoffFromMillis(req.RetryBackoffMs))
+		req.Retries, RetryBackoffFromMillis(req.RetryBackoffMs), req.Attempt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err)
 	}
@@ -889,6 +889,7 @@ type testJobFailure struct {
 	jobKey       int64
 	retries      *int32
 	retryBackoff *time.Duration
+	attempt      *int32
 }
 
 func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[string]any) error {
@@ -903,7 +904,7 @@ func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[
 	return nil
 }
 
-func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration) error {
+func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
@@ -912,7 +913,7 @@ func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, 
 		}
 	}
 	c.failedJobs = append(c.failedJobs, jobKey)
-	c.failures = append(c.failures, testJobFailure{jobKey: jobKey, retries: retries, retryBackoff: retryBackoff})
+	c.failures = append(c.failures, testJobFailure{jobKey: jobKey, retries: retries, retryBackoff: retryBackoff, attempt: attempt})
 	return nil
 }
 

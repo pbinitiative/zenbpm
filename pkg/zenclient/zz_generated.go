@@ -1416,6 +1416,9 @@ type ExtendJobLockJSONBody struct {
 
 // FailJobJSONBody defines parameters for FailJob.
 type FailJobJSONBody struct {
+	// Attempt The attempt the failure belongs to - the `attempt` of a delivery over the job stream, or the job's `attempts` plus one as read. A failure of an attempt the current series recorded before changes nothing; one beyond the attempt the job waits for is refused with `400`. Absent, every failure without an `errorCode` spends an attempt. Validated but otherwise ignored with an `errorCode`.
+	Attempt *int32 `json:"attempt,omitempty"`
+
 	// ClientId The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
 	ClientId *string `json:"clientId,omitempty"`
 
@@ -5502,6 +5505,7 @@ type ResolveIncidentResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -7508,6 +7512,13 @@ func ParseResolveIncidentResponse(rsp *http.Response) (*ResolveIncidentResponse,
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

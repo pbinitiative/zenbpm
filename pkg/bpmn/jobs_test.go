@@ -805,7 +805,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	}
 	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
 
-	err = bpmnEngine.JobFailByKey(t.Context(), foundServiceJob.Key, "testing fail job", nil, nil, nil, nil)
+	err = bpmnEngine.JobFailByKey(t.Context(), foundServiceJob.Key, "testing fail job", nil, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	for _, job := range engineStorage.Jobs {

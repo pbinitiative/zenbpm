@@ -54,3 +54,29 @@ func TestJobRequestErrorClassifiesWhatTheCallerCanActOn(t *testing.T) {
 		})
 	}
 }
+
+// TestAnIncidentWhichCannotBeResolvedAsThingsStandIsAConflict shows a
+// resolution the engine refuses because of the state of the instance reaches
+// the operator as a conflict carrying the way out, not as an internal error.
+func TestAnIncidentWhichCannotBeResolvedAsThingsStandIsAConflict(t *testing.T) {
+	refusal := fmt.Errorf("%w: the retries of job 7 no longer evaluate; set the job's retries (POST /v1/jobs/7/retries)", bpmn.ErrIncidentNotResolvable)
+
+	answer := resolveIncidentError(42, refusal)
+
+	assert.Equal(t, zenerr.ConflictCode, answer.Code)
+	assert.Contains(t, answer.Error(), "POST /v1/jobs/7/retries")
+	assert.Equal(t, zenerr.NotFoundCode, resolveIncidentError(42, fmt.Errorf("incident: %w", storage.ErrNotFound)).Code)
+	assert.Equal(t, zenerr.TechnicalErrorCode, resolveIncidentError(42, fmt.Errorf("disk full")).Code)
+}
+
+// TestARefusedJobRequestCarriesTheEngineReasonAlone shows the leader answers a
+// request the engine refused with the engine's reason only, which names the
+// field and the value, and not with the wrapping of the layers in between.
+func TestARefusedJobRequestCarriesTheEngineReasonAlone(t *testing.T) {
+	refusal := fmt.Errorf("failed to fail job 42: %w", &bpmn.InvalidJobRequestError{Reason: "retries of job 42 must not be negative, got -1"})
+
+	answer := jobRequestError(42, "fail", refusal)
+
+	assert.Equal(t, zenerr.BadRequestCode, answer.Code)
+	assert.Equal(t, "retries of job 42 must not be negative, got -1", answer.Error())
+}

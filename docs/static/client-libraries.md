@@ -137,7 +137,10 @@ handler which attempt it runs and how many are left:
 ```go
 return nil, &zenclient.WorkerError{Err: err, RetryBackoff: new(30 * time.Second)}
 ```
-See [Failures and retries](../reference/jobs.md#failures-and-retries).
+The failure names the attempt of its delivery, so a failure without an error code spends that
+attempt once, however often it reaches the engine within the series of attempts. Two deliveries of
+the same attempt, before and after a lapsed lock, are not told apart, and attempts start again at 1
+once an incident of the job is resolved. See [Failures and retries](../reference/jobs.md#failures-and-retries).
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

@@ -380,7 +380,7 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 	}
 
 	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
-		req.Retries, jobmanager.RetryBackoffFromMillis(req.RetryBackoffMs))
+		req.Retries, jobmanager.RetryBackoffFromMillis(req.RetryBackoffMs), req.Attempt)
 	if err != nil {
 		return &proto.FailJobResponse{Error: jobRequestError(req.GetKey(), "fail", err).ToProtoError()}, nil
 	}
@@ -1419,6 +1419,11 @@ func jobRequestError(jobKey int64, action string, err error) *zenerr.ZenError {
 	case errors.Is(err, jobmanager.NodeIsNotALeader):
 		return zenerr.ClusterError(fmt.Errorf("cannot %s job %d: this node does not lead its partition", action, jobKey))
 	case errors.Is(err, bpmn.ErrInvalidJobRequest):
+		// the reason travels alone, so that the requester is told it as it is
+		var invalid *bpmn.InvalidJobRequestError
+		if errors.As(err, &invalid) {
+			return zenerr.BadRequest(errors.New(invalid.Reason))
+		}
 		return zenerr.BadRequest(err)
 	case errors.Is(err, bpmn.ErrJobInTerminalState):
 		return zenerr.Conflict(err)
@@ -2013,17 +2018,23 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
 	}
-	err := engine.ResolveIncident(ctx, req.GetIncidentKey())
-	if err != nil {
-		var zerr *zenerr.ZenError
-		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(err)
-		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", req.GetIncidentKey(), err))
-		}
-		return &proto.ResolveIncidentResponse{Error: zerr.ToProtoError()}, nil
+	if err := engine.ResolveIncident(ctx, req.GetIncidentKey()); err != nil {
+		return &proto.ResolveIncidentResponse{Error: resolveIncidentError(req.GetIncidentKey(), err).ToProtoError()}, nil
 	}
 	return &proto.ResolveIncidentResponse{}, nil
+}
+
+// resolveIncidentError classifies the error of a resolution: an unknown
+// incident, one the state of its instance does not let be resolved as things
+// stand, whose message names the way out, or a technical failure.
+func resolveIncidentError(incidentKey int64, err error) *zenerr.ZenError {
+	switch {
+	case isErrNotFound(err):
+		return zenerr.NotFound(err)
+	case errors.Is(err, bpmn.ErrIncidentNotResolvable):
+		return zenerr.Conflict(err)
+	}
+	return zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", incidentKey, err))
 }
 
 func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {

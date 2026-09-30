@@ -280,6 +280,7 @@ type jobStreamTestManager struct {
 	extendedDurations  []time.Duration
 	failedRetries      []*int32
 	failedBackoffs     []*time.Duration
+	failedAttempts     []*int32
 }
 
 func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
@@ -311,9 +312,10 @@ func (m *jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.Client
 	return m.completeErr
 }
 
-func (m *jobStreamTestManager) FailJobReq(_ context.Context, _ jobmanager.ClientID, _ int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration) error {
+func (m *jobStreamTestManager) FailJobReq(_ context.Context, _ jobmanager.ClientID, _ int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	m.failedRetries = append(m.failedRetries, retries)
 	m.failedBackoffs = append(m.failedBackoffs, retryBackoff)
+	m.failedAttempts = append(m.failedAttempts, attempt)
 	return m.failErr
 }
 

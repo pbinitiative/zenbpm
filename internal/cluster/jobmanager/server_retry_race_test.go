@@ -18,7 +18,7 @@ import (
 func TestLoadedJobIsNotDeliveredAfterAFailureWasCommitted(t *testing.T) {
 	server, stream, loader, job, release := startServerHoldingALoadedBatch(t)
 
-	require.NoError(t, server.failJob(t.Context(), "rest-client", job.Key, "down", nil, nil, nil, new(time.Hour)))
+	require.NoError(t, server.failJob(t.Context(), "rest-client", job.Key, "down", nil, nil, nil, new(time.Hour), nil))
 	release()
 
 	assert.Never(t, func() bool {
@@ -57,7 +57,7 @@ func TestAJobFailedWhileAnotherSendBlocksIsNotDelivered(t *testing.T) {
 		return stream.sendAttempts() == 1
 	}, 5*time.Second, 10*time.Millisecond, "the first send must be in progress")
 
-	require.NoError(t, server.failJob(t.Context(), "rest-client", jobs[1].Key, "down", nil, nil, nil, new(time.Hour)))
+	require.NoError(t, server.failJob(t.Context(), "rest-client", jobs[1].Key, "down", nil, nil, nil, new(time.Hour), nil))
 	close(stream.sendGate)
 
 	require.Eventually(t, func() bool {
@@ -83,7 +83,7 @@ func TestAJobSkippedForAMutationIsDeliveredByALaterRound(t *testing.T) {
 	server.startServer(ctx)
 	awaitLoad(t, loaded)
 
-	require.NoError(t, server.failJob(t.Context(), "rest-client", job.Key, "down", nil, nil, nil, new(time.Duration(0))))
+	require.NoError(t, server.failJob(t.Context(), "rest-client", job.Key, "down", nil, nil, nil, new(time.Duration(0)), nil))
 	release()
 
 	assert.Eventually(t, func() bool {
@@ -190,7 +190,7 @@ func (retryAtOnceCompleter) JobCompleteByKey(context.Context, int64, map[string]
 	return nil
 }
 
-func (retryAtOnceCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration) error {
+func (retryAtOnceCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration, *int32) error {
 	return nil
 }
 

@@ -106,7 +106,10 @@ func WithJobType(jobType string, subOpts ...SubscriptionOption) WorkerOption {
 // waits (default: the task definition's retryBackoff, else the engine's).
 // The attempt a delivery belongs to is WaitingJob.GetAttempt(); it counts
 // within one series of attempts and starts again at 1 when an incident of the
-// job is resolved.
+// job is resolved. The worker names it in the failure it sends, so that a
+// failure without an error code spends that attempt once, however often it
+// reaches the engine within the series. It does not tell two deliveries of the
+// same attempt apart, such as the one before and the one after a lapsed lock.
 type WorkerError struct {
 	Err          error
 	ErrorCode    string
@@ -466,6 +469,7 @@ func (w *Worker) failPanickedJob(job *proto.WaitingJob, recovered any, send func
 			Fail: &proto.JobFailRequest{
 				Key:     job.Key,
 				Message: new(fmt.Sprintf("handler panicked: %v", recovered)),
+				Attempt: job.Attempt,
 			},
 		},
 	}); err != nil {
@@ -484,6 +488,7 @@ func (w *Worker) failWorkerJob(job *proto.WaitingJob, workerErr *WorkerError, se
 		Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
 		Variables: errVars,
 		Retries:   workerErr.Retries,
+		Attempt:   job.Attempt,
 	}
 	if workerErr.ErrorCode != "" {
 		fail.ErrorCode = &workerErr.ErrorCode

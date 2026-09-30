@@ -37,14 +37,14 @@ func TestALateFailureFromAClientWhoseLockLapsedLeavesTheNewHoldersLock(t *testin
 	defer cancel()
 	server.startServer(ctx)
 
-	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late", nil, nil, nil, nil, nil))
 
 	assert.Equal(t, ClientID("client-b"), lockHolder(server, job.Key), "the holder keeps its lock")
 	assert.Never(t, func() bool {
 		return stream.totalSent() > 0
 	}, 500*time.Millisecond, 10*time.Millisecond, "the job stays reserved for its holder")
 
-	require.NoError(t, server.failJob(t.Context(), "client-b", job.Key, "down", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "client-b", job.Key, "down", nil, nil, nil, nil, nil))
 
 	assert.Eventually(t, func() bool {
 		return stream.sentTo("client-c") >= 1
@@ -61,7 +61,7 @@ func TestAFailureOverRESTLeavesAStreamClientsLock(t *testing.T) {
 	server.distributedJobs[job.Key] = &distributedJob{client: "client-b", jobKey: job.Key, jobType: "test-job", lockUntil: time.Now().Add(time.Minute)}
 	server.distributedJobsMu.Unlock()
 
-	require.NoError(t, server.failJob(t.Context(), "", job.Key, "down", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "", job.Key, "down", nil, nil, nil, nil, nil))
 
 	assert.Equal(t, ClientID("client-b"), lockHolder(server, job.Key))
 }
@@ -91,14 +91,14 @@ func TestALateFailureFromTheSameClientLeavesItsLockAfterItsOwnLapse(t *testing.T
 		return stream.sentTo("client-a") >= 2
 	}, 5*time.Second, 10*time.Millisecond, "the job comes back once the first lock lapsed")
 
-	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late, from the first delivery", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late, from the first delivery", nil, nil, nil, nil, nil))
 
 	assert.Equal(t, ClientID("client-a"), lockHolder(server, job.Key), "the second delivery keeps its lock")
 	assert.Never(t, func() bool {
 		return stream.sentTo("client-a") > 2
 	}, 500*time.Millisecond, 10*time.Millisecond, "no third delivery while the second is locked")
 
-	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "from the second delivery", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "from the second delivery", nil, nil, nil, nil, nil))
 
 	assert.Eventually(t, func() bool {
 		return stream.sentTo("client-a") >= 3
@@ -116,11 +116,95 @@ func TestAFailureBeforeTheJobCameBackReleasesTheNextDeliveryAsUsual(t *testing.T
 	server.lockLapsedLocked(&distributedJob{client: "client-a", jobKey: job.Key, jobType: "test-job"}, time.Now())
 	server.distributedJobsMu.Unlock()
 
-	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late", nil, nil, nil, nil))
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "late", nil, nil, nil, nil, nil))
 
 	server.distributedJobsMu.Lock()
 	defer server.distributedJobsMu.Unlock()
 	assert.NotContains(t, server.lapsedLocks, job.Key)
+}
+
+// TestAFailureOfAnEarlierAttemptLeavesTheLockOfTheAttemptNowRunning shows the
+// repeat of a failure the engine recorded already, sent by the client which
+// meanwhile works on the next attempt, does not take that attempt from it:
+// released, the job would be handed out again alongside. Only the failure of
+// the attempt the lock was handed out for releases it.
+func TestAFailureOfAnEarlierAttemptLeavesTheLockOfTheAttemptNowRunning(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &retryAtOnceCompleter{})
+	server.subscribeClient("node-2", "client-a", "test-job", SubscriptionSettings{LockDuration: time.Minute})
+	job := generateJobs(1)[0]
+	job.Attempts = 1
+	loader.addJobs(job)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+	require.Eventually(t, func() bool {
+		return stream.sentTo("client-a") >= 1
+	}, 5*time.Second, 10*time.Millisecond, "the delivery of the second attempt")
+
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "repeated, of the first attempt", nil, nil, nil, nil, new(int32(1))))
+
+	assert.Equal(t, ClientID("client-a"), lockHolder(server, job.Key), "the second attempt keeps its lock")
+	assert.Never(t, func() bool {
+		return stream.sentTo("client-a") > 1
+	}, 500*time.Millisecond, 10*time.Millisecond, "no delivery alongside the second attempt")
+
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "of the second attempt", nil, nil, nil, nil, new(int32(2))))
+
+	assert.Eventually(t, func() bool {
+		return stream.sentTo("client-a") >= 2
+	}, 5*time.Second, 10*time.Millisecond, "the failure of the attempt the lock was handed out for releases the job")
+}
+
+// TestAFailureOfTheLockHolderReleasesItsLockUnlessItNamesAnEarlierAttempt shows
+// which failures of the client holding a job end its delivery: every one but
+// the failure without an error code of an attempt before the delivery's. An
+// error code ends the job or leaves it failed whatever attempt it names.
+func TestAFailureOfTheLockHolderReleasesItsLockUnlessItNamesAnEarlierAttempt(t *testing.T) {
+	tests := []struct {
+		name      string
+		errorCode *string
+		attempt   *int32
+		holder    ClientID
+	}{
+		{"an earlier attempt", nil, new(int32(2)), "client-a"},
+		{"an earlier attempt with the empty error code of an old client", new(""), new(int32(2)), "client-a"},
+		{"the attempt of the delivery", nil, new(int32(3)), ""},
+		{"no attempt", nil, nil, ""},
+		{"an earlier attempt with an error code", new("PAYMENT_REFUSED"), new(int32(2)), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, _ := newTestJobServer(t, &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}, &retryAtOnceCompleter{})
+			job := generateJobs(1)[0]
+			server.distributedJobsMu.Lock()
+			server.distributedJobs[job.Key] = &distributedJob{client: "client-a", jobKey: job.Key, jobType: "test-job", lockUntil: time.Now().Add(time.Minute), attempt: 3}
+			server.distributedJobsMu.Unlock()
+
+			require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "down", tt.errorCode, nil, nil, nil, tt.attempt))
+
+			assert.Equal(t, tt.holder, lockHolder(server, job.Key))
+		})
+	}
+}
+
+// TestAFailureOfAnEarlierAttemptBeforeTheJobCameBackKeepsTheLapseInMind shows
+// the report of an earlier attempt is not taken for the late report of the
+// delivery whose lock lapsed: that one is still to come, so the next delivery
+// to the client stays ambiguous.
+func TestAFailureOfAnEarlierAttemptBeforeTheJobCameBackKeepsTheLapseInMind(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, _ := newTestJobServer(t, loader, &retryAtOnceCompleter{})
+	job := generateJobs(1)[0]
+	server.distributedJobsMu.Lock()
+	server.lockLapsedLocked(&distributedJob{client: "client-a", jobKey: job.Key, jobType: "test-job", attempt: 2}, time.Now())
+	server.distributedJobsMu.Unlock()
+
+	require.NoError(t, server.failJob(t.Context(), "client-a", job.Key, "repeated, of the first attempt", nil, nil, nil, nil, new(int32(1))))
+
+	server.distributedJobsMu.Lock()
+	defer server.distributedJobsMu.Unlock()
+	assert.Contains(t, server.lapsedLocks, job.Key)
 }
 
 // TestARefusedReportOfAJobWhichNoLongerWaitsReleasesTheLock shows a completion
@@ -137,7 +221,7 @@ func TestARefusedReportOfAJobWhichNoLongerWaitsReleasesTheLock(t *testing.T) {
 			return server.completeJob(t.Context(), "client-a", jobKey, nil)
 		},
 		"failure": func(server *jobServer, jobKey int64) error {
-			return server.failJob(t.Context(), "client-a", jobKey, "down", nil, nil, nil, nil)
+			return server.failJob(t.Context(), "client-a", jobKey, "down", nil, nil, nil, nil, nil)
 		},
 	}
 	for refusalName, refusal := range refusals {
@@ -163,7 +247,7 @@ func TestARefusedReportOfAJobWhichNoLongerWaitsReleasesTheLock(t *testing.T) {
 		server.distributedJobs[job.Key] = &distributedJob{client: "client-a", jobKey: job.Key, jobType: "test-job", lockUntil: time.Now().Add(time.Minute)}
 		server.distributedJobsMu.Unlock()
 
-		require.ErrorIs(t, server.failJob(t.Context(), "client-a", job.Key, "down", nil, nil, new(int32(-1)), nil), refusal)
+		require.ErrorIs(t, server.failJob(t.Context(), "client-a", job.Key, "down", nil, nil, new(int32(-1)), nil, nil), refusal)
 
 		assert.Equal(t, ClientID("client-a"), lockHolder(server, job.Key))
 	})
@@ -187,7 +271,7 @@ func (c refusingCompleter) JobCompleteByKey(context.Context, int64, map[string]a
 	return c.refusal
 }
 
-func (c refusingCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration) error {
+func (c refusingCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration, *int32) error {
 	return c.refusal
 }
 

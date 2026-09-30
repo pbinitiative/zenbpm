@@ -13,6 +13,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
+// ErrIncidentNotResolvable is wrapped into the error of a resolution which the
+// state of the process instance does not allow as it stands; the message names
+// what to change before the resolution is repeated.
+var ErrIncidentNotResolvable = errors.New("incident cannot be resolved as things stand")
+
 func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine *Engine) runtime.Incident {
 	return runtime.Incident{
 		Key:                engine.generateKey(),
@@ -89,11 +94,13 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 // set through UpdateJobRetries since the last series ended are kept instead, and
 // so is the moment the operator chose for the next delivery while it lies
 // ahead; the series which followed an update did not exhaust them, or the
-// update would have been forgotten with the incident.
+// update would have been forgotten with the incident. Retries which no longer
+// evaluate refuse the resolution with ErrIncidentNotResolvable: the job would
+// otherwise wait without the retries its definition asks for.
 func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, job *runtime.Job) error {
 	job.Attempts = 0
-	if job.RetriesUpdatedAt != nil {
-		job.RetriesUpdatedAt = nil
+	if job.RetriesSetByOperator {
+		job.RetriesSetByOperator = false
 		if !job.IsWaitingOutBackoff(time.Now()) {
 			job.RetryAt = nil
 		}
@@ -108,7 +115,9 @@ func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, job *r
 	variableHolder.SetLocalVariables(job.InputVariables)
 	retries, err := engine.initialRetries(task, variableHolder.ExecutionScopeSnapshot())
 	if err != nil {
-		return fmt.Errorf("failed to evaluate the retries of job %d: %w", job.Key, err)
+		return fmt.Errorf("%w: the retries of job %d no longer evaluate (%w); correct the variables they read, "+
+			"or set the job's retries (POST /v1/jobs/%d/retries), then resolve the incident again",
+			ErrIncidentNotResolvable, job.Key, err, job.Key)
 	}
 	job.Retries = retries
 	return nil
@@ -187,6 +196,11 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if err != nil {
 		return newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key)
 	}
+	// Checking for linked jobs as these need to be resolved as well
+	job, err := jobOfIncident(jobs, incident)
+	if err != nil {
+		return err
+	}
 
 	incident.ResolvedAt = new(time.Now())
 	err = batch.SaveIncident(ctx, incident)
@@ -200,15 +214,6 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if incident.Type == runtime.IncidentTypeMaxProcessInstanceFlowNodeCountExceeded {
 		if err := batch.ResetProcessInstanceFlowNodeCount(ctx, incident.ProcessInstanceKey); err != nil {
 			return fmt.Errorf("failed to reset flow node count of process instance %d: %w", incident.ProcessInstanceKey, err)
-		}
-	}
-
-	// Checking for linked jobs as these need to be resolved as well
-	var job *runtime.Job
-	for _, j := range jobs {
-		if j.Token.Key == incident.Token.Key {
-			job = &j
-			break
 		}
 	}
 
@@ -261,6 +266,35 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
+}
+
+// jobOfIncident is the pending job the resolution of an incident leaves
+// waiting: the job the incident names, or, for an incident which names none,
+// the job on its token, if any. Several jobs may share a token, so a job the
+// incident names is never guessed from the token. A named job which does not
+// wait, or waits on another token, is refused: resolving the incident without
+// it would continue the token past a job nobody hands out again.
+func jobOfIncident(jobs []runtime.Job, incident runtime.Incident) (*runtime.Job, error) {
+	if incident.JobKey == nil {
+		for i := range jobs {
+			if jobs[i].Token.Key == incident.Token.Key {
+				return &jobs[i], nil
+			}
+		}
+		return nil, nil
+	}
+	for i := range jobs {
+		if jobs[i].Key != *incident.JobKey {
+			continue
+		}
+		if jobs[i].Token.Key != incident.Token.Key {
+			return nil, fmt.Errorf("incident %d names job %d, which waits on token %d instead of the incident's token %d",
+				incident.Key, jobs[i].Key, jobs[i].Token.Key, incident.Token.Key)
+		}
+		return &jobs[i], nil
+	}
+	return nil, fmt.Errorf("incident %d names job %d, which is not a pending job of process instance %d",
+		incident.Key, *incident.JobKey, incident.ProcessInstanceKey)
 }
 
 func (engine *Engine) resolveIncidentsForToken(ctx context.Context, batch *EngineBatch, tokenKey int64) error {

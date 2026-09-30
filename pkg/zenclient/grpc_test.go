@@ -128,6 +128,32 @@ func TestHandleJob_WorkerErrorCarriesRetriesAndBackoff(t *testing.T) {
 	assert.Contains(t, fails[0].GetMessage(), "service down")
 }
 
+// TestHandleJob_FailureNamesTheAttemptOfItsDelivery shows the worker names
+// the attempt it was handed in its failure, also the failure of a handler
+// which panicked, so that the engine spends that attempt once however often
+// the failure reaches it.
+func TestHandleJob_FailureNamesTheAttemptOfItsDelivery(t *testing.T) {
+	for name, handler := range map[string]func(context.Context, *proto.WaitingJob) (map[string]any, *WorkerError){
+		"a worker error": func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+			return nil, &WorkerError{Err: errors.New("service down")}
+		},
+		"a panic": func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+			panic("handler boom")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stream := &fakeStream{}
+			w := &Worker{ctx: context.Background(), logger: &captureLogger{}, clientID: "test-client", f: handler}
+
+			w.handleJob(context.Background(), &proto.WaitingJob{Key: new(int64(9)), Attempt: new(int32(3))}, stream.record)
+
+			fails := stream.failRequests()
+			require.Len(t, fails, 1)
+			assert.Equal(t, int32(3), fails[0].GetAttempt())
+		})
+	}
+}
+
 // TestHandleJob_BackoffJustBelowZeroIsSentNegative shows a backoff computed
 // just below zero does not reach the engine as "at once", which it would
 // accept: it stays negative on the wire, and the engine refuses it.

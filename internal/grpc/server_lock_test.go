@@ -134,15 +134,16 @@ func TestSendClientJobsCarriesRetriesAndAttempt(t *testing.T) {
 	assert.Equal(t, int32(3), stream.sent[0].Job.GetAttempt())
 }
 
-// TestRecvClientRequestsPassesRetriesAndBackoffOn shows a failure's retries and
-// backoff reach the job manager as sent, and stay absent when a client, such as
-// one built before retries existed, sends none.
+// TestRecvClientRequestsPassesRetriesAndBackoffOn shows a failure's retries,
+// backoff and attempt reach the job manager as sent, and stay absent when a
+// client, such as one built before retries existed, sends none.
 func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	key := int64(42)
 	withRetries := &proto.JobStreamRequest{Request: &proto.JobStreamRequest_Fail{Fail: &proto.JobFailRequest{
 		Key:            &key,
 		Retries:        new(int32(3)),
 		RetryBackoffMs: new(int64(2500)),
+		Attempt:        new(int32(2)),
 	}}}
 	manager := &jobStreamTestManager{}
 	stream := newJobStreamTestServer(withRetries, failRequest(nil))
@@ -153,8 +154,10 @@ func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	require.Len(t, manager.failedRetries, 2)
 	assert.Equal(t, new(int32(3)), manager.failedRetries[0])
 	assert.Equal(t, new(2500*time.Millisecond), manager.failedBackoffs[0])
+	assert.Equal(t, new(int32(2)), manager.failedAttempts[0])
 	assert.Nil(t, manager.failedRetries[1])
 	assert.Nil(t, manager.failedBackoffs[1])
+	assert.Nil(t, manager.failedAttempts[1])
 }
 
 func TestRecvClientRequestsReportsWhyAFailureWasNotRecordedByCode(t *testing.T) {
@@ -199,7 +202,7 @@ func TestRecvClientRequestsReportsWhyACompletionWasNotRecordedByCode(t *testing.
 		{"job no longer waits", fmt.Errorf("%w: job 42 is already terminated", jobmanager.ErrJobInTerminalState), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE, "The job no longer waits for a worker: it was terminated or failed"},
 		{"unknown job", fmt.Errorf("%w: job 42 not found", jobmanager.ErrJobNotFound), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND, "Job not found"},
 		{"leader unavailable", fmt.Errorf("%w: node-42 at 10.0.0.1 does not lead the partition", jobmanager.ErrLeaderUnavailable), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE, "The leader of the job's partition is unavailable at the moment; the completion may have been recorded, and repeating it is safe"},
-		{"invalid request", fmt.Errorf("%w: variables of job 42 exceed the limit", jobmanager.ErrInvalidJobRequest), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST, "Invalid job completion request: variables of job 42 exceed the limit"},
+		{"invalid request", &jobmanager.InvalidJobRequestError{Reason: "variables of job 42 exceed the limit"}, proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST, "Invalid job completion request: variables of job 42 exceed the limit"},
 		{"anything else", errors.New("node-42 at 10.0.0.1 refused the request"), proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED, "Failed to complete job"},
 	}
 	for _, tt := range tests {
@@ -236,9 +239,10 @@ func TestRecvClientRequestsCodesUndecodableCompletionVariablesAsAnInvalidRequest
 // worker is told what was wrong with its request, not a fixed sentence which
 // fits only one of the refusals.
 func TestRecvClientRequestsPassesTheEngineReasonOfAnInvalidRequestOn(t *testing.T) {
-	// the leader wraps the engine's error, and the client wraps the leader's answer
-	refusal := fmt.Errorf("%w: failed to fail job 42: %w: retry backoff of job 42 must not be negative, got -1s",
-		jobmanager.ErrInvalidJobRequest, jobmanager.ErrInvalidJobRequest)
+	// the layers on the way wrap the refusal, and the reason itself may read like a wrapping
+	refusal := fmt.Errorf("failed to fail job 42: %w", &jobmanager.InvalidJobRequestError{
+		Reason: "retry backoff of job 42 must not be negative: invalid job request: got -1s",
+	})
 	manager := &jobStreamTestManager{failErr: refusal}
 	stream := newJobStreamTestServer(failRequest(nil))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
@@ -246,7 +250,7 @@ func TestRecvClientRequestsPassesTheEngineReasonOfAnInvalidRequestOn(t *testing.
 	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
 
 	require.Len(t, stream.sent, 1)
-	assert.Equal(t, "Invalid job failure request: retry backoff of job 42 must not be negative, got -1s", stream.sent[0].Error.GetMessage())
+	assert.Equal(t, "Invalid job failure request: retry backoff of job 42 must not be negative: invalid job request: got -1s", stream.sent[0].Error.GetMessage())
 }
 
 // TestRecvClientRequestsCodesUndecodableFailureVariablesAsAnInvalidRequest

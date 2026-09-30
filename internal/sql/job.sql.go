@@ -49,7 +49,7 @@ func (q *Queries) DeleteProcessInstancesJobs(ctx context.Context, keys []int64) 
 
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 WHERE
@@ -90,7 +90,7 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, arg FindActiveJobsBy
 			&i.RetryAt,
 			&i.LastFailureMessage,
 			&i.RetryBackoff,
-			&i.RetriesUpdatedAt,
+			&i.RetriesSetByOperator,
 		); err != nil {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, arg FindActiveJobsBy
 
 const findAllJobs = `-- name: FindAllJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 LIMIT ?2 offset ?1
@@ -145,7 +145,7 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 			&i.RetryAt,
 			&i.LastFailureMessage,
 			&i.RetryBackoff,
-			&i.RetriesUpdatedAt,
+			&i.RetriesSetByOperator,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +162,7 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 
 const findJobByJobKey = `-- name: FindJobByJobKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 WHERE
@@ -190,14 +190,14 @@ func (q *Queries) FindJobByJobKey(ctx context.Context, key int64) (Job, error) {
 		&i.RetryAt,
 		&i.LastFailureMessage,
 		&i.RetryBackoff,
-		&i.RetriesUpdatedAt,
+		&i.RetriesSetByOperator,
 	)
 	return i, err
 }
 
 const findJobByKey = `-- name: FindJobByKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 WHERE
@@ -225,14 +225,14 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 		&i.RetryAt,
 		&i.LastFailureMessage,
 		&i.RetryBackoff,
-		&i.RetriesUpdatedAt,
+		&i.RetriesSetByOperator,
 	)
 	return i, err
 }
 
 const findJobs = `-- name: FindJobs :many
 SELECT
-  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.input_variables, j.execution_token, j.assignee, j.output_variables, j.element_type, j.retries, j.attempts, j.retry_at, j.last_failure_message, j.retry_backoff, j.retries_updated_at,
+  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.input_variables, j.execution_token, j.assignee, j.output_variables, j.element_type, j.retries, j.attempts, j.retry_at, j.last_failure_message, j.retry_backoff, j.retries_set_by_operator,
   COUNT(*) OVER() AS total_count
 FROM job AS j
 WHERE
@@ -309,7 +309,7 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 			&i.Job.RetryAt,
 			&i.Job.LastFailureMessage,
 			&i.Job.RetryBackoff,
-			&i.Job.RetriesUpdatedAt,
+			&i.Job.RetriesSetByOperator,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -327,7 +327,7 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
 SELECT
-    job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.input_variables, job.execution_token, job.assignee, job.output_variables, job.element_type, job.retries, job.attempts, job.retry_at, job.last_failure_message, job.retry_backoff, job.retries_updated_at,
+    job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.input_variables, job.execution_token, job.assignee, job.output_variables, job.element_type, job.retries, job.attempts, job.retry_at, job.last_failure_message, job.retry_backoff, job.retries_set_by_operator,
     COUNT(*) OVER () AS total_count
 FROM
     job
@@ -374,7 +374,7 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 			&i.Job.RetryAt,
 			&i.Job.LastFailureMessage,
 			&i.Job.RetryBackoff,
-			&i.Job.RetriesUpdatedAt,
+			&i.Job.RetriesSetByOperator,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -392,7 +392,7 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 
 const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job INDEXED BY idx_fk_job_process_instance_key
 WHERE
@@ -446,7 +446,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 			&i.RetryAt,
 			&i.LastFailureMessage,
 			&i.RetryBackoff,
-			&i.RetriesUpdatedAt,
+			&i.RetriesSetByOperator,
 		); err != nil {
 			return nil, err
 		}
@@ -464,7 +464,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 const getJobsInStateByTokenKey = `-- name: GetJobsInStateByTokenKey :many
 
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 WHERE
@@ -516,7 +516,7 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 			&i.RetryAt,
 			&i.LastFailureMessage,
 			&i.RetryBackoff,
-			&i.RetriesUpdatedAt,
+			&i.RetriesSetByOperator,
 		); err != nil {
 			return nil, err
 		}
@@ -533,7 +533,7 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 
 const getWaitingJobs = `-- name: GetWaitingJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator
 FROM
     job
 WHERE
@@ -600,7 +600,7 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 			&i.RetryAt,
 			&i.LastFailureMessage,
 			&i.RetryBackoff,
-			&i.RetriesUpdatedAt,
+			&i.RetriesSetByOperator,
 		); err != nil {
 			return nil, err
 		}
@@ -616,7 +616,7 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 }
 
 const saveJob = `-- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_updated_at)
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
@@ -628,28 +628,28 @@ ON CONFLICT
         attempts = excluded.attempts,
         retry_at = excluded.retry_at,
         last_failure_message = excluded.last_failure_message,
-        retries_updated_at = excluded.retries_updated_at
+        retries_set_by_operator = excluded.retries_set_by_operator
 `
 
 type SaveJobParams struct {
-	Key                int64          `json:"key"`
-	ElementID          string         `json:"element_id"`
-	ElementType        string         `json:"element_type"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	Retries            int64          `json:"retries"`
-	Attempts           int64          `json:"attempts"`
-	RetryAt            sql.NullInt64  `json:"retry_at"`
-	LastFailureMessage sql.NullString `json:"last_failure_message"`
-	RetryBackoff       sql.NullString `json:"retry_backoff"`
-	RetriesUpdatedAt   sql.NullInt64  `json:"retries_updated_at"`
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ElementType          string         `json:"element_type"`
+	ElementInstanceKey   int64          `json:"element_instance_key"`
+	ProcessInstanceKey   int64          `json:"process_instance_key"`
+	Type                 string         `json:"type"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	InputVariables       string         `json:"input_variables"`
+	OutputVariables      sql.NullString `json:"output_variables"`
+	ExecutionToken       int64          `json:"execution_token"`
+	Assignee             sql.NullString `json:"assignee"`
+	Retries              int64          `json:"retries"`
+	Attempts             int64          `json:"attempts"`
+	RetryAt              sql.NullInt64  `json:"retry_at"`
+	LastFailureMessage   sql.NullString `json:"last_failure_message"`
+	RetryBackoff         sql.NullString `json:"retry_backoff"`
+	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
 }
 
 // retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
@@ -672,7 +672,7 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.RetryAt,
 		arg.LastFailureMessage,
 		arg.RetryBackoff,
-		arg.RetriesUpdatedAt,
+		arg.RetriesSetByOperator,
 	)
 	return err
 }

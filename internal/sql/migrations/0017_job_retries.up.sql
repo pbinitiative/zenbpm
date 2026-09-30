@@ -11,10 +11,10 @@ ALTER TABLE job ADD COLUMN last_failure_message TEXT;
 -- The backoff policy of the definition at job creation, normalised ("PT10S,PT1M"); NULL = none,
 -- the engine's jobs.defaultRetryBackoff applies.
 ALTER TABLE job ADD COLUMN retry_backoff TEXT;
--- Unix millis of the operator update which set retries and retry_at; the resolution of the job's
--- incident keeps them instead of restoring the definition's retries. NULL once a resolution kept
--- them or a failure exhausted them.
-ALTER TABLE job ADD COLUMN retries_updated_at INTEGER;
+-- 1 while retries and retry_at are an operator's, set through the retries endpoint: the resolution of
+-- the job's incident keeps them instead of restoring the definition's retries. 0 once a resolution
+-- kept them or an incident ended the series they belonged to.
+ALTER TABLE job ADD COLUMN retries_set_by_operator INTEGER NOT NULL DEFAULT 0;
 
 -- One row per failure without an error code; deleted with the instance's jobs.
 CREATE TABLE IF NOT EXISTS job_failure(

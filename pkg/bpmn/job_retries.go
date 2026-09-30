@@ -23,6 +23,26 @@ import (
 // The request is wrong, not the engine: repeating it gives the same answer.
 var ErrInvalidJobRequest = errors.New("invalid job request")
 
+// InvalidJobRequestError is the error of a job request the engine refuses for
+// what it asks. It wraps ErrInvalidJobRequest; Reason names the field and the
+// value, and is what the requester is told, without the wrapping of the layers
+// the error passes on its way.
+type InvalidJobRequestError struct {
+	Reason string
+}
+
+func (e *InvalidJobRequestError) Error() string {
+	return ErrInvalidJobRequest.Error() + ": " + e.Reason
+}
+
+func (e *InvalidJobRequestError) Unwrap() error {
+	return ErrInvalidJobRequest
+}
+
+func invalidJobRequestf(format string, args ...any) error {
+	return &InvalidJobRequestError{Reason: fmt.Sprintf(format, args...)}
+}
+
 // ErrJobInTerminalState is wrapped into the error of a request which needs a
 // job that is still waiting for a worker or for an operator, but finds it
 // completing, completed or terminated.
@@ -305,12 +325,12 @@ func attemptsPhrase(attempts int32) string {
 // here instead of restoring the definition's retries.
 func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) (retErr error) {
 	if retries < 1 || retries > engine.jobRetryLimits.MaxRetries {
-		return fmt.Errorf("%w: retries of job %d must be between 1 and %d (jobs.maxRetries), got %d",
-			ErrInvalidJobRequest, jobKey, engine.jobRetryLimits.MaxRetries, retries)
+		return invalidJobRequestf("retries of job %d must be between 1 and %d (jobs.maxRetries), got %d",
+			jobKey, engine.jobRetryLimits.MaxRetries, retries)
 	}
 	if latest := time.Now().Add(engine.jobRetryLimits.MaxRetryBackoff); retryAt != nil && retryAt.After(latest) {
-		return fmt.Errorf("%w: retryAt of job %d must not be later than %s from now (jobs.maxRetryBackoff), got %s",
-			ErrInvalidJobRequest, jobKey, engine.jobRetryLimits.MaxRetryBackoff, retryAt.Format(time.RFC3339))
+		return invalidJobRequestf("retryAt of job %d must not be later than %s from now (jobs.maxRetryBackoff), got %s",
+			jobKey, engine.jobRetryLimits.MaxRetryBackoff, retryAt.Format(time.RFC3339))
 	}
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
@@ -319,22 +339,9 @@ func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retrie
 		}
 		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
 	}
-	// checked before the batch as well: the instance of a completed job may be
-	// completed itself, and a batch cannot be opened for it
-	if err := jobRetriesAreUpdatable(job); err != nil {
+	job, _, batch, err := engine.lockInstanceOfJob(ctx, job, "update the retries of", ensureJobRetriesAreUpdatable)
+	if err != nil {
 		return err
-	}
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
-	if err != nil {
-		return newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey)
-	}
-	batch, err := engine.NewEngineBatch(ctx, instance)
-	if err != nil {
-		if errors.Is(err, ErrInstanceAlreadyTerminal) {
-			// the job ended with its instance between the check above and the lock
-			return fmt.Errorf("%w: cannot update the retries of job %d: %w", ErrJobInTerminalState, jobKey, err)
-		}
-		return fmt.Errorf("failed to create engine batch for job %d: %w", jobKey, err)
 	}
 	defer func() {
 		if retErr != nil {
@@ -342,21 +349,13 @@ func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retrie
 		}
 	}()
 
-	// refresh: the batch holds the instance, so nothing changes the job from here on
-	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
-	if err != nil {
-		return fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
-	}
-	if err := jobRetriesAreUpdatable(job); err != nil {
-		return err
-	}
 	now := time.Now()
 	job.Retries = retries
 	job.RetryAt = nil
 	if retryAt != nil && retryAt.After(now) {
 		job.RetryAt = retryAt
 	}
-	job.RetriesUpdatedAt = &now
+	job.RetriesSetByOperator = true
 	if err := batch.SaveJob(ctx, job); err != nil {
 		return err
 	}
@@ -366,8 +365,8 @@ func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retrie
 	return nil
 }
 
-// jobRetriesAreUpdatable refuses a job which no longer waits for a worker or an operator.
-func jobRetriesAreUpdatable(job runtime.Job) error {
+// ensureJobRetriesAreUpdatable refuses a job which no longer waits for a worker or an operator.
+func ensureJobRetriesAreUpdatable(job runtime.Job) error {
 	if job.State != runtime.ActivityStateActive && job.State != runtime.ActivityStateFailed {
 		return fmt.Errorf("%w: cannot update the retries of job %d in state %s", ErrJobInTerminalState, job.Key, job.State)
 	}

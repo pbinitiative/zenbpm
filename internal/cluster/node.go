@@ -1018,7 +1018,7 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 // given, say what remains and how long the job waits (see bpmn.Engine.JobFailByKey).
 // clientID names the job stream the job was delivered to, whose lock the
 // failure then releases; empty, a lock held on the job stands until it lapses.
-func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
+func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
@@ -1042,6 +1042,7 @@ func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, me
 		Variables:      vars,
 		Retries:        retries,
 		RetryBackoffMs: jobmanager.RetryBackoffToMillis(retryBackoff),
+		Attempt:        attempt,
 	})
 	if err != nil {
 		return leaderCallFailure(ctx, fmt.Errorf("client call to fail job %d failed: %w", key, err))
@@ -2536,7 +2537,7 @@ func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee 
 	return engine.JobAssignByKey(ctx, jobKey, assignee)
 }
 
-func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration) error {
+func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
@@ -2545,7 +2546,7 @@ func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message str
 	if engine == nil {
 		return fmt.Errorf("cannot fail job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
 	}
-	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff)
+	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, attempt)
 	if err != nil {
 		return err
 	}

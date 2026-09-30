@@ -32,7 +32,7 @@ func TestClientFailJobNamesTheFailingClient(t *testing.T) {
 	completer.loader.addJobs(generateJobs(1)...)
 	job := <-clientJobs
 
-	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", job.Key, "boom", nil, nil, nil, nil))
+	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", job.Key, "boom", nil, nil, nil, nil, nil))
 
 	requests := leaderGRPC.receivedFailRequests()
 	require.Len(t, requests, 1)
@@ -42,9 +42,10 @@ func TestClientFailJobNamesTheFailingClient(t *testing.T) {
 }
 
 // TestClientFailJobCarriesRetriesAndBackoff shows what a worker says about the
-// next attempt, the retries left and the backoff, reaches the engine unchanged,
-// and that a failure which says nothing leaves both absent, so that the engine
-// decrements and applies the task definition's policy.
+// next attempt, the retries left and the backoff, and the attempt its failure
+// belongs to reach the engine unchanged, and that a failure which says nothing
+// leaves them absent, so that the engine decrements, applies the task
+// definition's policy and spends an attempt.
 func TestClientFailJobCarriesRetriesAndBackoff(t *testing.T) {
 	mux, nodeListener, err := network.NewNodeMux("")
 	require.NoError(t, err)
@@ -62,18 +63,21 @@ func TestClientFailJobCarriesRetriesAndBackoff(t *testing.T) {
 	retried := <-clientJobs
 	defaulted := <-clientJobs
 
-	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", retried.Key, "down", nil, nil, new(int32(4)), new(1500*time.Millisecond)))
-	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", defaulted.Key, "down", nil, nil, nil, nil))
+	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", retried.Key, "down", nil, nil, new(int32(4)), new(1500*time.Millisecond), new(int32(1))))
+	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", defaulted.Key, "down", nil, nil, nil, nil, nil))
 
 	requests := leaderGRPC.receivedFailRequests()
 	require.Len(t, requests, 2)
 	assert.Equal(t, int32(4), requests[0].GetRetries())
 	assert.Equal(t, int64(1500), requests[0].GetRetryBackoffMs())
+	assert.Equal(t, int32(1), requests[0].GetAttempt())
+	assert.Nil(t, requests[1].Attempt, "no attempt named, every failure spends one")
 	assert.Nil(t, requests[1].Retries, "no retries named, the engine decrements")
 	assert.Nil(t, requests[1].RetryBackoffMs, "no backoff named, the task definition's policy applies")
 	require.Len(t, completer.failures, 2)
 	assert.Equal(t, new(int32(4)), completer.failures[0].retries)
 	assert.Equal(t, new(1500*time.Millisecond), completer.failures[0].retryBackoff)
+	assert.Equal(t, new(int32(1)), completer.failures[0].attempt)
 	assert.Nil(t, completer.failures[1].retries)
 	assert.Nil(t, completer.failures[1].retryBackoff)
 }
@@ -106,16 +110,26 @@ func TestClientFailJobTellsARefusalFromAnUnavailableLeader(t *testing.T) {
 			leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: tt.refusal.ToProtoError()}
 			defer func() { leaderGRPC.failJobResponse = nil }()
 
-			err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, new(int32(-1)), nil)
+			err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, new(int32(-1)), nil, nil)
 
 			assert.ErrorIs(t, err, tt.expected)
 		})
 	}
+	t.Run("a refused request keeps the leader's reason", func(t *testing.T) {
+		leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: zenerr.BadRequest(errors.New("retries of job must not be negative, got -1")).ToProtoError()}
+		defer func() { leaderGRPC.failJobResponse = nil }()
+
+		err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, new(int32(-1)), nil, nil)
+
+		var invalid *InvalidJobRequestError
+		require.ErrorAs(t, err, &invalid)
+		assert.Equal(t, "retries of job must not be negative, got -1", invalid.Reason)
+	})
 	t.Run("any other answer is none of them", func(t *testing.T) {
 		leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: zenerr.TechnicalError(errors.New("disk full")).ToProtoError()}
 		defer func() { leaderGRPC.failJobResponse = nil }()
 
-		err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, nil, nil)
+		err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, nil, nil, nil)
 
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrInvalidJobRequest)

@@ -2007,19 +2007,7 @@ func calendarPartOf(parsed duration.Duration, now time.Time) time.Duration {
 // timePartOf converts the hours, minutes and seconds of an ISO-8601 duration
 // into a time.Duration, saturating at the maximum instead of wrapping.
 func timePartOf(parsed duration.Duration) time.Duration {
-	const maxSeconds = math.MaxInt64 / int64(time.Second)
-	seconds := int64(0)
-	for _, part := range []struct{ count, secondsPerUnit int64 }{
-		{int64(parsed.TH), 60 * 60},
-		{int64(parsed.TM), 60},
-		{int64(parsed.TS), 1},
-	} {
-		if part.count > (maxSeconds-seconds)/part.secondsPerUnit {
-			return time.Duration(math.MaxInt64)
-		}
-		seconds += part.count * part.secondsPerUnit
-	}
-	return time.Duration(seconds) * time.Second
+	return extensions.FixedLengthOf(duration.Duration{TH: parsed.TH, TM: parsed.TM, TS: parsed.TS})
 }
 
 // saturatingSum adds two non-negative durations, saturating at the maximum.
@@ -2047,7 +2035,7 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 		errorCode = &code
 	}
 	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ClientId, ""), ptr.Deref(request.Body.Message, ""), errorCode,
-		ptr.Deref(request.Body.Variables, map[string]any{}), request.Body.Retries, retryBackoff)
+		ptr.Deref(request.Body.Variables, map[string]any{}), request.Body.Retries, retryBackoff, request.Body.Attempt)
 
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -2409,6 +2397,8 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 				return public.ResolveIncident502JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.ResolveIncident404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.ResolveIncident409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.ResolveIncident500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}

@@ -67,10 +67,6 @@ FROM
 LIMIT @size offset @offset;
 
 -- name: GetWaitingJobs :many
--- A row whose headers cannot be decoded into a string map is undeliverable. The
--- query quarantines a malformed value and an object with any non-string value
--- here, so such a row takes neither a batch slot nor a SQL parameter and cannot
--- starve later valid jobs.
 SELECT
     *
 FROM
@@ -79,11 +75,6 @@ WHERE
     state = 1
     AND type IN (sqlc.slice('type'))
     AND key NOT IN (sqlc.slice('key_skip'))
-    AND json_valid(headers)
-    AND json_type(headers) = 'object'
-    AND NOT EXISTS (
-        SELECT 1 FROM json_each(job.headers) WHERE json_each.type <> 'text'
-    )
 ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452

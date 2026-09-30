@@ -291,8 +291,8 @@ func (s *jobServer) distributeJobs() {
 		for _, job := range jobs {
 			headers, err := sql.JobHeadersFromJSON(job.Headers)
 			if err != nil {
-				// the loader query already quarantines rows whose headers are not a
-				// JSON object; this guards against any other malformed value
+				// SaveJobWith always stores headers as a JSON object, so a parse
+				// failure means a corrupt value: log it and skip the job
 				s.logger.Error("Failed to parse job headers", "jobType", job.Type, "key", job.Key, "err", err)
 				continue
 			}

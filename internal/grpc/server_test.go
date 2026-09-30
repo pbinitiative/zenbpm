@@ -278,9 +278,10 @@ type jobStreamTestManager struct {
 	subscribedSettings []jobmanager.SubscriptionSettings
 	extendedKeys       []int64
 	extendedDurations  []time.Duration
+	extendedDeliveries []*int64
 	failedRetries      []*int32
 	failedBackoffs     []*time.Duration
-	failedAttempts     []*int32
+	failedDeliveries   []*int64
 }
 
 func (*jobStreamTestManager) AddClient(context.Context, jobmanager.ClientID, chan jobmanager.Job) error {
@@ -297,8 +298,9 @@ func (m *jobStreamTestManager) AddClientJobSub(_ context.Context, _ jobmanager.C
 	return m.subscribeErr
 }
 
-func (m *jobStreamTestManager) ExtendJobLockReq(_ context.Context, _ jobmanager.ClientID, key int64, duration time.Duration) (time.Time, error) {
+func (m *jobStreamTestManager) ExtendJobLockReq(_ context.Context, _ jobmanager.ClientID, key int64, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	m.extendedKeys = append(m.extendedKeys, key)
+	m.extendedDeliveries = append(m.extendedDeliveries, deliveryToken)
 	m.extendedDurations = append(m.extendedDurations, duration)
 	return m.extendLockUntil, m.extendErr
 }
@@ -312,10 +314,10 @@ func (m *jobStreamTestManager) CompleteJobReq(context.Context, jobmanager.Client
 	return m.completeErr
 }
 
-func (m *jobStreamTestManager) FailJobReq(_ context.Context, _ jobmanager.ClientID, _ int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
+func (m *jobStreamTestManager) FailJobReq(_ context.Context, _ jobmanager.ClientID, _ int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	m.failedRetries = append(m.failedRetries, retries)
 	m.failedBackoffs = append(m.failedBackoffs, retryBackoff)
-	m.failedAttempts = append(m.failedAttempts, attempt)
+	m.failedDeliveries = append(m.failedDeliveries, deliveryToken)
 	return m.failErr
 }
 

@@ -44,8 +44,8 @@ type jobManager interface {
 	AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType, jobmanager.SubscriptionSettings) error
 	RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
 	CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error
-	FailJobReq(ctx context.Context, clientID jobmanager.ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error
-	ExtendJobLockReq(context.Context, jobmanager.ClientID, int64, time.Duration) (time.Time, error)
+	FailJobReq(ctx context.Context, clientID jobmanager.ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error
+	ExtendJobLockReq(ctx context.Context, clientID jobmanager.ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error)
 }
 
 // NewServer returns a new instance of ZenBpm GRPC server
@@ -181,7 +181,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars,
-				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), req.Fail.Attempt)
+				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), req.Fail.DeliveryToken)
 			if err != nil {
 				s.logJobRequestError(err, "failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
@@ -273,6 +273,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					LockUntil:      &job.LockUntil,
 					Retries:        &job.Retries,
 					Attempt:        &job.Attempt,
+					DeliveryToken:  &job.DeliveryToken,
 				},
 			})
 			if err != nil {
@@ -287,7 +288,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 // whose code tells a lapsed lock from one held by somebody else. Either answer
 // names the job key so the client can match it to its request.
 func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, req *proto.JobExtendLockRequest) *proto.JobStreamResponse {
-	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
 	if err == nil {
 		return &proto.JobStreamResponse{
 			LockExtended: &proto.LockExtended{Key: req.Key, LockUntil: new(lockUntil.UnixMilli())},
@@ -378,11 +379,10 @@ func completeJobError(err error) *proto.ErrorResult {
 
 // failJobError tells the worker by code why its failure was not recorded: a
 // request the engine refuses for what it asks, an unknown job, a job which no
-// longer waits, or a leader which could not be reached, in which case the
-// failure may have been recorded. Repeating a failure without an error code
-// which names its attempt then spends nothing more, unless an incident of the
-// job was resolved meanwhile and its attempts started again; one without an
-// attempt spends another, and one with an error code is refused as the job no
+// longer waits for this delivery, or a leader which could not be reached, in
+// which case the failure may have been recorded. Repeating a failure which
+// names its delivery token then changes nothing more; one without a token
+// spends another attempt, or, with an error code, is refused as the job no
 // longer waits once the first was recorded.
 func failJobError(err error) *proto.ErrorResult {
 	code := jobStreamErrorCode(err)
@@ -393,9 +393,9 @@ func failJobError(err error) *proto.ErrorResult {
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND:
 		message = "Job not found"
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE:
-		message = "The job no longer waits for a worker: it was completed, terminated or already failed"
+		message = "The job no longer waits for this delivery: it was completed, terminated or already failed, or handed out again after it"
 	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE:
-		message = "The leader of the job's partition is unavailable at the moment; the failure may have been recorded. Repeating it spends nothing more when it names its attempt and carries no error code, unless an incident of the job was resolved meanwhile"
+		message = "The leader of the job's partition is unavailable at the moment; the failure may have been recorded. Repeating it changes nothing more when it names its delivery token"
 	}
 	return jobStreamError(code, message)
 }

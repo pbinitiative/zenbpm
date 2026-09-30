@@ -677,6 +677,8 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 			job.LastFailureMessage = new("payment service unavailable")
 			job.RetryBackoff = []time.Duration{time.Second, 3 * time.Second}
 			job.RetriesSetByOperator = true
+			job.DeliveryToken = 3
+			job.FailedDeliveryToken = 2
 		})
 
 		stored, err := s.FindJobByJobKey(t.Context(), job.Key)
@@ -687,6 +689,9 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 		job.RetryAt = nil
 		job.RetriesSetByOperator = false
 		job.State = bpmnruntime.ActivityStateFailed
+		job.FailedDeliveryToken = 3
+		// a copy read before a delivery was recorded carries the token before it
+		job.DeliveryToken = 2
 		require.NoError(t, s.SaveJob(t.Context(), job))
 		stored, err = s.FindJobByJobKey(t.Context(), job.Key)
 		require.NoError(t, err)
@@ -695,6 +700,8 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 		assert.False(t, stored.RetriesSetByOperator)
 		assert.Equal(t, bpmnruntime.ActivityStateFailed, stored.State)
 		assert.Equal(t, int32(1), stored.Attempts)
+		assert.Equal(t, int64(3), stored.FailedDeliveryToken)
+		assert.Equal(t, int64(3), stored.DeliveryToken, "saving a job never takes its delivery token back")
 	}
 }
 
@@ -745,6 +752,7 @@ func (st *StorageTester) TestJobFailuresAreListedNewestFirst(s storage.Storage, 
 			FailedAt:           failedAt,
 			Message:            "second",
 			IncidentKey:        new(s.GenerateId()),
+			DeliveryToken:      new(int64(2)),
 		}
 		batch := s.NewBatch()
 		require.NoError(t, batch.SaveJobFailure(t.Context(), first))

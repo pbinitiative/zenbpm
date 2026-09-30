@@ -1,7 +1,9 @@
 -- name: SaveJob :exec
 -- retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
+-- before a delivery was recorded does not take the token back when it is saved.
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
@@ -12,7 +14,26 @@ ON CONFLICT
         attempts = excluded.attempts,
         retry_at = excluded.retry_at,
         last_failure_message = excluded.last_failure_message,
-        retries_set_by_operator = excluded.retries_set_by_operator;
+        retries_set_by_operator = excluded.retries_set_by_operator,
+        failed_delivery_token = excluded.failed_delivery_token;
+
+-- name: RecordJobDelivery :execrows
+-- Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
+-- and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+UPDATE job
+SET delivery_token = @delivery_token
+WHERE key = @key
+    AND state = 1
+    AND delivery_token = @loaded_delivery_token;
+
+-- name: WithdrawJobDelivery :execrows
+-- Takes back the token of a delivery the job manager recorded but never sent, so that the delivery
+-- before it counts again. Only while no other delivery was recorded since; the token was never handed
+-- out, so issuing it again later is harmless.
+UPDATE job
+SET delivery_token = @previous_delivery_token
+WHERE key = @key
+    AND delivery_token = @delivery_token;
 
 -- name: DeleteProcessInstancesJobs :exec
 DELETE FROM job

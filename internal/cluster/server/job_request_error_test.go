@@ -44,6 +44,10 @@ func TestJobRequestErrorClassifiesWhatTheCallerCanActOn(t *testing.T) {
 			err:      fmt.Errorf("job 42: %w", bpmn.ErrJobInTerminalState),
 			expected: zenerr.ConflictCode,
 		},
+		"a failure of a delivery the job was handed out again after": {
+			err:      fmt.Errorf("job 42: %w", bpmn.ErrDeliverySuperseded),
+			expected: zenerr.ConflictCode,
+		},
 		"anything else": {
 			err:      fmt.Errorf("disk full"),
 			expected: zenerr.TechnicalErrorCode,

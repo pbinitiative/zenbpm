@@ -94,6 +94,7 @@ func TestJobCarriesItsRetryState(t *testing.T) {
 		RetryAt:            new(retryAt.UnixMilli()),
 		LastFailureMessage: new("payment service unavailable"),
 		RetryBackoff:       new("PT10S,PT1M"),
+		DeliveryToken:      new(int64(3)),
 	})
 
 	require.NoError(t, err)
@@ -103,6 +104,7 @@ func TestJobCarriesItsRetryState(t *testing.T) {
 	assert.True(t, retryAt.Equal(*job.RetryAt))
 	assert.Equal(t, new("payment service unavailable"), job.LastFailureMessage)
 	assert.Equal(t, new("PT10S,PT1M"), job.RetryBackoff)
+	assert.Equal(t, new(int64(3)), job.DeliveryToken, "a REST client names it in its failure")
 
 	deliverable, err := (&Server{}).mapProtoJob(&proto.Job{State: new(int64(runtime.ActivityStateActive))})
 	require.NoError(t, err)

@@ -690,51 +690,131 @@ func TestResolveIncidentWhoseRetriesNoLongerEvaluateNamesTheWayOut(t *testing.T)
 	assert.Equal(t, int32(2), resolved.Retries, "the operator's retries are kept")
 }
 
-// TestAFailureNamingItsAttemptSpendsItOnce shows a failure repeated after a
-// timeout, or reported late for an attempt which failed already, changes
-// nothing once it names its attempt: neither the retries nor the history move,
-// and a late report does not create the incident of the attempt now running.
-func TestAFailureNamingItsAttemptSpendsItOnce(t *testing.T) {
+// TestAFailureNamingItsDeliveryCountsOnce shows a failure repeated after a
+// timeout changes nothing once it names its delivery, whatever it carries and
+// whenever it arrives: neither the retries nor the history move, and a repeat
+// of the failure which ended the job is not a conflict. The one exception is
+// TestARepeatedBpmnErrorIsRefusedOnceItsResolvedIncidentWasFailedAgain.
+func TestAFailureNamingItsDeliveryCountsOnce(t *testing.T) {
 	t.Run("a repeated failure", func(t *testing.T) {
 		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, new(int32(1))))
+		delivery := deliver(t, store, job.Key)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &delivery))
 
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, new(int32(1))))
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &delivery))
 
 		repeated := reloadJob(t, store, job.Key)
 		assert.Equal(t, int32(1), repeated.Attempts)
 		assert.Equal(t, int32(2), repeated.Retries)
 		failures, err := store.FindJobFailures(t.Context(), job.Key)
 		require.NoError(t, err)
-		assert.Len(t, failures, 1)
+		require.Len(t, failures, 1)
+		assert.Equal(t, &delivery, failures[0].DeliveryToken, "the history names the delivery")
 	})
-	t.Run("a late failure of an earlier attempt while the last one runs", func(t *testing.T) {
+	t.Run("a repeated failure arriving after the job was handed out again", func(t *testing.T) {
 		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, new(int32(1))))
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, new(int32(2))))
+		first := deliver(t, store, job.Key)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &first))
+		second := deliver(t, store, job.Key)
 
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "late", nil, nil, nil, nil, new(int32(1))))
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &first), "answered as recorded")
 
 		running := reloadJob(t, store, job.Key)
-		assert.Equal(t, runtime.ActivityStateActive, running.State, "the last attempt is not taken from its worker")
-		assert.Equal(t, int32(1), running.Retries)
-		assertNoIncidents(t, store, job.ProcessInstanceKey)
+		assert.Equal(t, int32(1), running.Attempts, "the next delivery keeps its attempt")
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down again", nil, nil, nil, nil, &second))
+		assert.Equal(t, int32(2), reloadJob(t, store, job.Key).Attempts, "the failure of the next delivery counts")
+
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &first),
+			"still answered as recorded once a later failure was recorded")
+		assert.Equal(t, int32(2), reloadJob(t, store, job.Key).Attempts)
 	})
 	t.Run("a repeat of the failure which exhausted the retries", func(t *testing.T) {
 		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, new(int32(1))))
+		delivery := deliver(t, store, job.Key)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, &delivery))
 
-		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, new(int32(1))),
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, &delivery),
 			"answered as recorded, not as a conflict")
 		singleIncident(t, store, job.ProcessInstanceKey)
 	})
-	t.Run("without an attempt every failure spends one", func(t *testing.T) {
+	t.Run("a repeated BPMN error", func(t *testing.T) {
 		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		delivery := deliver(t, store, job.Key)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "declined", new("CARD_DECLINED"), nil, nil, nil, &delivery))
+
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "declined", new("CARD_DECLINED"), nil, nil, nil, &delivery),
+			"answered as recorded, not as a conflict")
+		assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, job.Key).State)
+		singleIncident(t, store, job.ProcessInstanceKey)
+	})
+	t.Run("without a delivery token every failure counts", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		deliver(t, store, job.Key)
 		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, nil))
 		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, nil))
 
 		assert.Equal(t, int32(2), reloadJob(t, store, job.Key).Attempts)
 	})
+}
+
+// TestARepeatedBpmnErrorIsRefusedOnceItsResolvedIncidentWasFailedAgain shows
+// the one repeat which is not answered as recorded: a BPMN error leaves no
+// entry in the failure history, so once its incident was resolved and a later
+// delivery's failure was recorded, nothing names its token any more and its
+// repeat is refused like a failure of a superseded delivery.
+func TestARepeatedBpmnErrorIsRefusedOnceItsResolvedIncidentWasFailedAgain(t *testing.T) {
+	engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+	first := deliver(t, store, job.Key)
+	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "declined", new("CARD_DECLINED"), nil, nil, nil, &first))
+	require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key))
+	second := deliver(t, store, job.Key)
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "declined", new("CARD_DECLINED"), nil, nil, nil, &first),
+		"answered as recorded while no later failure was recorded")
+	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &second))
+
+	err := engine.JobFailByKey(t.Context(), job.Key, "declined", new("CARD_DECLINED"), nil, nil, nil, &first)
+
+	require.ErrorIs(t, err, ErrDeliverySuperseded)
+	unchanged := reloadJob(t, store, job.Key)
+	assert.Equal(t, runtime.ActivityStateActive, unchanged.State, "the later delivery's failure decides")
+	assert.Equal(t, int32(1), unchanged.Attempts)
+}
+
+// TestAFailureOfASupersededDeliveryChangesNothing shows the late failure of a
+// delivery whose lock lapsed, reported after the job was handed out again,
+// neither spends an attempt of the delivery now running nor creates an
+// incident or ends the job while that delivery runs: the newer delivery decides.
+func TestAFailureOfASupersededDeliveryChangesNothing(t *testing.T) {
+	late := []struct {
+		name      string
+		errorCode *string
+	}{
+		{name: "a failure without an error code which would exhaust the retries"},
+		{name: "a BPMN error", errorCode: new("CARD_DECLINED")},
+	}
+	for _, tt := range late {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+			lapsed := deliver(t, store, job.Key)
+			running := deliver(t, store, job.Key)
+
+			err := engine.JobFailByKey(t.Context(), job.Key, "late", tt.errorCode, nil, new(int32(0)), nil, &lapsed)
+
+			require.ErrorIs(t, err, ErrDeliverySuperseded)
+			untouched := reloadJob(t, store, job.Key)
+			assert.Equal(t, runtime.ActivityStateActive, untouched.State, "the running delivery keeps the job")
+			assert.Zero(t, untouched.Attempts)
+			assert.Equal(t, int32(3), untouched.Retries)
+			assertNoIncidents(t, store, job.ProcessInstanceKey)
+			failures, err := store.FindJobFailures(t.Context(), job.Key)
+			require.NoError(t, err)
+			assert.Empty(t, failures)
+
+			require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &running))
+			assert.Equal(t, int32(1), reloadJob(t, store, job.Key).Attempts, "the running delivery decides")
+		})
+	}
 }
 
 // TestARepeatedExhaustingFailureRacingTheFirstIsAnsweredAsRecorded shows a
@@ -752,14 +832,15 @@ func TestARepeatedExhaustingFailureRacingTheFirstIsAnsweredAsRecorded(t *testing
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
 	jobKey := jobs[0].Key
+	delivery := deliver(t, store.Storage, jobKey)
 
 	paused, resume := store.pauseNextJobRead(t)
 	repeated := make(chan error, 1)
 	go func() {
-		repeated <- engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, new(int32(0)), nil, new(int32(1)))
+		repeated <- engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, new(int32(0)), nil, &delivery)
 	}()
 	awaitPausedRead(t, paused)
-	require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, new(int32(0)), nil, new(int32(1))))
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, new(int32(0)), nil, &delivery))
 	resume()
 
 	require.NoError(t, <-repeated)
@@ -772,33 +853,43 @@ func TestARepeatedExhaustingFailureRacingTheFirstIsAnsweredAsRecorded(t *testing
 // TestAFailureRacingTheEndOfTheInstance shows a failure which read an active
 // job before its instance ended is told apart once it finds the instance
 // ended: the repeat of a failure recorded before the end is answered as
-// recorded, as it is when it arrives after the end, and a failure the job
-// never recorded is a conflict.
+// recorded, as it is when it arrives after the end, a failure of a delivery
+// another one superseded is refused as such, and a failure of the latest
+// delivery the job never recorded is a conflict.
 func TestAFailureRacingTheEndOfTheInstance(t *testing.T) {
 	ends := []struct {
 		name     string
-		end      func(t *testing.T, engine *Engine, jobKey int64, instanceKey int64)
+		end      func(t *testing.T, engine *Engine, store *inmemory.Storage, jobKey int64, instanceKey int64, delivery int64)
 		expected error
 	}{
 		{
-			name: "the failure was recorded, then the next attempt completed the instance",
-			end: func(t *testing.T, engine *Engine, jobKey int64, _ int64) {
-				require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, new(int32(1))))
+			name: "the failure was recorded, then the next delivery completed the instance",
+			end: func(t *testing.T, engine *Engine, store *inmemory.Storage, jobKey int64, _ int64, delivery int64) {
+				require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, &delivery))
+				deliver(t, store, jobKey)
 				require.NoError(t, engine.JobCompleteByKey(t.Context(), jobKey, nil))
 			},
 			expected: nil,
 		},
 		{
 			name: "the failure was recorded, then the instance was cancelled",
-			end: func(t *testing.T, engine *Engine, jobKey int64, instanceKey int64) {
-				require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, new(int32(1))))
+			end: func(t *testing.T, engine *Engine, _ *inmemory.Storage, jobKey int64, instanceKey int64, delivery int64) {
+				require.NoError(t, engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, &delivery))
 				require.NoError(t, engine.CancelInstanceByKey(t.Context(), instanceKey))
 			},
 			expected: nil,
 		},
 		{
+			name: "the job was handed out again, and that delivery completed the instance",
+			end: func(t *testing.T, engine *Engine, store *inmemory.Storage, jobKey int64, _ int64, _ int64) {
+				deliver(t, store, jobKey)
+				require.NoError(t, engine.JobCompleteByKey(t.Context(), jobKey, nil))
+			},
+			expected: ErrDeliverySuperseded,
+		},
+		{
 			name: "the job completed the instance without the failure",
-			end: func(t *testing.T, engine *Engine, jobKey int64, _ int64) {
+			end: func(t *testing.T, engine *Engine, _ *inmemory.Storage, jobKey int64, _ int64, _ int64) {
 				require.NoError(t, engine.JobCompleteByKey(t.Context(), jobKey, nil))
 			},
 			expected: ErrJobInTerminalState,
@@ -817,14 +908,15 @@ func TestAFailureRacingTheEndOfTheInstance(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, jobs, 1)
 			jobKey := jobs[0].Key
+			delivery := deliver(t, store.Storage, jobKey)
 
 			paused, resume := store.pauseNextJobRead(t)
 			failed := make(chan error, 1)
 			go func() {
-				failed <- engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, new(int32(1)))
+				failed <- engine.JobFailByKey(t.Context(), jobKey, "down", nil, nil, nil, nil, &delivery)
 			}()
 			awaitPausedRead(t, paused)
-			tt.end(t, &engine, jobKey, instance.ProcessInstance().Key)
+			tt.end(t, &engine, store.Storage, jobKey, instance.ProcessInstance().Key, delivery)
 			resume()
 
 			err = <-failed
@@ -840,21 +932,24 @@ func TestAFailureRacingTheEndOfTheInstance(t *testing.T) {
 	}
 }
 
-// TestAFailureNamingAnAttemptNeverHandedOutIsRefused shows an attempt below 1,
-// or beyond the one the job waits for, is refused and changes nothing, with an
-// error code as well.
-func TestAFailureNamingAnAttemptNeverHandedOutIsRefused(t *testing.T) {
+// TestAFailureNamingADeliveryNeverHandedOutIsRefused shows a delivery token
+// below 1, or beyond the latest delivery of the job, is refused and changes
+// nothing, with an error code as well.
+func TestAFailureNamingADeliveryNeverHandedOutIsRefused(t *testing.T) {
 	engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+	delivery := deliver(t, store, job.Key)
 
-	for _, attempt := range []int32{0, 2} {
-		err := engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, new(attempt))
+	for _, token := range []int64{0, delivery + 1} {
+		err := engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, nil, &token)
 
 		var invalid *InvalidJobRequestError
-		require.ErrorAs(t, err, &invalid, "attempt %d", attempt)
-		assert.Contains(t, invalid.Reason, "attempt")
+		require.ErrorAs(t, err, &invalid, "token %d", token)
+		assert.Contains(t, invalid.Reason, "delivery token")
 	}
-	require.ErrorIs(t, engine.JobFailByKey(t.Context(), job.Key, "down", new("CODE"), nil, nil, nil, new(int32(0))), ErrInvalidJobRequest)
-	assert.Zero(t, reloadJob(t, store, job.Key).Attempts)
+	require.ErrorIs(t, engine.JobFailByKey(t.Context(), job.Key, "down", new("CODE"), nil, nil, nil, new(delivery+1)), ErrInvalidJobRequest)
+	unchanged := reloadJob(t, store, job.Key)
+	assert.Zero(t, unchanged.Attempts)
+	assert.Equal(t, runtime.ActivityStateActive, unchanged.State)
 }
 
 func TestRetriesExpressionResultIsCappedBeforeConversion(t *testing.T) {
@@ -1531,6 +1626,15 @@ func raiseIncidentOnTheTokenOf(t *testing.T, engine *Engine, store *inmemory.Sto
 	require.NoError(t, err)
 	require.NoError(t, batch.WriteTokenIncident(t.Context(), token, instance, errors.New("boundary message correlation failed")))
 	require.NoError(t, batch.Flush(t.Context()))
+}
+
+// deliver hands the job out as the job manager of a cluster does and returns
+// the token of the delivery.
+func deliver(t *testing.T, store *inmemory.Storage, jobKey int64) int64 {
+	t.Helper()
+	token, err := store.RecordJobDelivery(jobKey)
+	require.NoError(t, err)
+	return token
 }
 
 func reloadJob(t *testing.T, store *inmemory.Storage, jobKey int64) runtime.Job {

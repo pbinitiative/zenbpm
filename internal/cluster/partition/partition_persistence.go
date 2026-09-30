@@ -1881,6 +1881,7 @@ func BuildJobFailure(failure sql.JobFailure) bpmnruntime.JobFailure {
 		RetryAt:            nullInt64ToTimePtr(failure.RetryAt),
 		Message:            failure.Message,
 		IncidentKey:        incidentKey,
+		DeliveryToken:      sql.FromNullInt64(failure.DeliveryToken),
 	}
 }
 
@@ -1960,6 +1961,8 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 		LastFailureMessage:   sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:         retryBackoff,
 		RetriesSetByOperator: job.RetriesSetByOperator != 0,
+		DeliveryToken:        job.DeliveryToken,
+		FailedDeliveryToken:  job.FailedDeliveryToken,
 	}, nil
 }
 
@@ -2015,11 +2018,74 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		LastFailureMessage:   sql.ToNullString(job.LastFailureMessage),
 		RetryBackoff:         ssql.NullString{String: extensions.FormatRetryBackoff(job.RetryBackoff), Valid: len(job.RetryBackoff) > 0},
 		RetriesSetByOperator: boolToInt64(job.RetriesSetByOperator),
+		DeliveryToken:        job.DeliveryToken,
+		FailedDeliveryToken:  job.FailedDeliveryToken,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
 	}
 	return nil
+}
+
+// RecordJobDeliveries raises the delivery token of every job the job manager
+// is about to hand out, in one write, and returns the jobs it recorded a
+// delivery for, each carrying the token of its delivery. A job which no longer
+// waits for a worker, or for which another delivery was recorded since it was
+// loaded, is left out and must not be handed out.
+func (rq *DB) RecordJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.Job, error) {
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+	batch := &DBBatch{db: rq}
+	queries := sql.New(batch)
+	for _, job := range jobs {
+		if _, err := queries.RecordJobDelivery(ctx, sql.RecordJobDeliveryParams{
+			Key:                 job.Key,
+			DeliveryToken:       job.DeliveryToken + 1,
+			LoadedDeliveryToken: job.DeliveryToken,
+		}); err != nil {
+			return nil, fmt.Errorf("failed to prepare the delivery of job %d: %w", job.Key, err)
+		}
+	}
+	results, err := rq.ExecuteStatements(ctx, batch.stmtToRun)
+	if err != nil {
+		return nil, fmt.Errorf("failed to record the delivery of %d jobs on partition %d: %w", len(jobs), rq.Partition, err)
+	}
+	recorded := make([]sql.Job, 0, len(jobs))
+	for i, result := range results {
+		if result.GetError() != "" {
+			// the statements run in one transaction, so none of them was applied
+			return nil, fmt.Errorf("failed to record the delivery of job %d on partition %d: %s", jobs[i].Key, rq.Partition, result.GetError())
+		}
+		if result.GetE().GetRowsAffected() == 1 {
+			delivered := jobs[i]
+			delivered.DeliveryToken++
+			recorded = append(recorded, delivered)
+		}
+	}
+	return recorded, nil
+}
+
+// WithdrawJobDelivery takes back the token of a delivery which was recorded but
+// never sent, so that the delivery before it counts again, and reports whether
+// it did: a delivery recorded since is left alone.
+func (rq *DB) WithdrawJobDelivery(ctx context.Context, jobKey int64, deliveryToken int64) (bool, error) {
+	batch := &DBBatch{db: rq}
+	if _, err := sql.New(batch).WithdrawJobDelivery(ctx, sql.WithdrawJobDeliveryParams{
+		Key:                   jobKey,
+		DeliveryToken:         deliveryToken,
+		PreviousDeliveryToken: deliveryToken - 1,
+	}); err != nil {
+		return false, fmt.Errorf("failed to prepare the withdrawal of delivery %d of job %d: %w", deliveryToken, jobKey, err)
+	}
+	results, err := rq.ExecuteStatements(ctx, batch.stmtToRun)
+	if err != nil {
+		return false, fmt.Errorf("failed to withdraw delivery %d of job %d: %w", deliveryToken, jobKey, err)
+	}
+	if results[0].GetError() != "" {
+		return false, fmt.Errorf("failed to withdraw delivery %d of job %d: %s", deliveryToken, jobKey, results[0].GetError())
+	}
+	return results[0].GetE().GetRowsAffected() == 1, nil
 }
 
 func (rq *DB) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
@@ -2037,6 +2103,7 @@ func SaveJobFailureWith(ctx context.Context, db *sql.Queries, failure bpmnruntim
 		RetryAt:            timePtrToNullInt64(failure.RetryAt),
 		Message:            failure.Message,
 		IncidentKey:        sql.ToNullInt64(failure.IncidentKey),
+		DeliveryToken:      sql.ToNullInt64(failure.DeliveryToken),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save failure %d of job %d: %w", failure.Attempt, failure.JobKey, err)

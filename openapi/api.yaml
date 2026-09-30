@@ -2464,9 +2464,11 @@ paths:
         subscription the job was delivered under, capped by `jobManager.maxLockDurationMs`) and answers
         the new deadline. `clientId` is the client id of the job stream the job was delivered to; a job
         which is not locked at the moment (the lock lapsed, the job was completed or failed) or which is
-        locked for a different client answers 409, and the job itself is left untouched. It exists for
-        workers which receive jobs over the stream but send their commands over REST. Jobs fetched through
-        `GET /jobs` hold no lock and cannot extend one.
+        locked for a different client answers 409, and the job itself is left untouched. With
+        `deliveryToken` only the lock of that delivery is extended: a lock the job holds for another
+        delivery, as after this delivery's lock lapsed and the job came back to the same client, answers
+        409 too. It exists for workers which receive jobs over the stream but send their commands over
+        REST. Jobs fetched through `GET /jobs` hold no lock and cannot extend one.
       parameters:
         - name: jobKey
           in: path
@@ -2487,6 +2489,11 @@ paths:
                 clientId:
                   type: string
                   description: The client id of the job stream the job was delivered to.
+                deliveryToken:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  description: The `delivery_token` of the delivery whose lock to extend. Absent, the lock the client holds on the job is extended, whichever delivery it belongs to.
                 lockDuration:
                   type: string
                   description: ISO-8601 duration to lock the job for, counted from now. Absent means the subscription's lock duration.
@@ -2569,16 +2576,18 @@ paths:
         `retries` and `retryBackoff` are validated in every request, and a request with an invalid
         value is refused with `400` even when it carries an `errorCode`, which then ignores them.
 
-        A request without an `errorCode` naming the `attempt` it belongs to is recorded once within a
-        series of attempts: repeated after a timeout, or arriving after a later attempt failed, it
-        changes nothing and is answered with `204` like the first. Attempts start again at `1` when
-        an incident of the job is resolved, so a report from before the resolution counts for the new
-        series; two deliveries of one attempt, before and after a lapsed lock, share it, so the first
-        of their failures spends it. Without `attempt` the request is
-        not idempotent: every failure without an `errorCode` the engine receives spends an attempt,
-        also one for a job waiting out its backoff; a client which repeats a request after a timeout
-        may spend two, and one repeated after the first exhausted the retries is answered with
-        `409`, like a failure of a job which was completed or terminated.
+        A request naming the `deliveryToken` it belongs to is recorded once: repeated after a
+        timeout, or arriving after the job was handed out again, it changes nothing and is answered
+        with `204` like the first, whatever it carries. One exception: a failure with an `errorCode`
+        which raised an incident leaves no entry in the failure history, so once that incident was
+        resolved and the failure of a later delivery was recorded, its repeat is refused with `409`.
+        A request for a delivery which another delivery superseded before its failure was recorded -
+        its lock lapsed or the leader changed, and the job was handed out again - changes nothing
+        and is refused with `409`: the newer delivery decides. A token which was never handed out is refused with `400`. Without
+        `deliveryToken` the request is not idempotent: every failure without an `errorCode` the engine
+        receives spends an attempt, also one for a job waiting out its backoff; a client which repeats
+        a request after a timeout may spend two, and one repeated after the first exhausted the
+        retries is answered with `409`, like a failure of a job which was completed or terminated.
 
         A job delivered over the gRPC job stream stays locked for the stream's client until that
         client reports it or the lock lapses. A worker which receives jobs over the stream but sends
@@ -2600,14 +2609,14 @@ paths:
             schema:
               type: object
               properties:
-                attempt:
-                  type: integer
-                  format: int32
-                  minimum: 1
-                  description: The attempt the failure belongs to - the `attempt` of a delivery over the job stream, or the job's `attempts` plus one as read. A failure of an attempt the current series recorded before changes nothing; one beyond the attempt the job waits for is refused with `400`. Absent, every failure without an `errorCode` spends an attempt. Validated but otherwise ignored with an `errorCode`.
                 clientId:
                   type: string
                   description: The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
+                deliveryToken:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  description: The delivery the failure belongs to - the `delivery_token` of the delivery over the job stream, taken from that delivery. A repeat of a recorded failure changes nothing, a failure of a superseded delivery is refused with `409`, and a token never handed out with `400`. Absent, every failure counts; a worker which never received the job over the stream sends none.
                 errorCode:
                   type: string
                   description: The error code against which an error catch event is matched. Absent or empty, the failure spends one of the job's retries.
@@ -2660,7 +2669,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         409:
-          description: The job no longer waits for a worker (completed, terminated or already failed)
+          description: The job no longer waits for a worker (completed, terminated or already failed), or no longer for the delivery `deliveryToken` names, because it was handed out again after it
           content:
             application/json:
               schema:
@@ -4070,6 +4079,10 @@ components:
           type: string
           nullable: true
           description: Backoff policy of the task definition, fixed when the job was created (`PT10S,PT1M`); absent means `jobs.defaultRetryBackoff` applies.
+        deliveryToken:
+          type: integer
+          format: int64
+          description: Token of the latest delivery of the job over the job stream, raised with every delivery; `0` while it was never handed out. For inspection, the read may lag behind; a worker takes the token of its failure from its delivery.
     JobFailurePage:
       type: object
       allOf:

@@ -1072,6 +1072,94 @@ func TestAJobWhoseStoredBackoffCannotBeReadIsStillRead(t *testing.T) {
 	assert.Nil(t, pending[0].RetryBackoff)
 }
 
+// TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded shows the write
+// which records the deliveries of a round raises the token of a job only while
+// the job still waits for a worker and nobody recorded another delivery of it
+// since it was loaded; the others are left out, so that they are not handed out.
+// A delivery withdrawn before it was sent gives its token back only while it is
+// still the job's latest.
+func TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-record-job-deliveries-db")
+
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("record-deliveries-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="p" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{5},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+	saveJob := func(state runtime.ActivityState, deliveryToken int64) sql.Job {
+		key := db.GenerateId()
+		token := runtime.ExecutionToken{Key: key, ElementInstanceKey: key, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
+		require.NoError(t, db.SaveToken(t.Context(), token))
+		require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+			ElementId:          "task",
+			ElementInstanceKey: key,
+			ProcessInstanceKey: instance.Key,
+			Key:                key,
+			Type:               "charge-card",
+			State:              state,
+			CreatedAt:          time.Now(),
+			Token:              token,
+			Retries:            1,
+			DeliveryToken:      deliveryToken,
+		}))
+		return sql.Job{Key: key, DeliveryToken: deliveryToken}
+	}
+	waiting := saveJob(runtime.ActivityStateActive, 4)
+	deliveredSinceLoaded := saveJob(runtime.ActivityStateActive, 1)
+	deliveredSinceLoaded.DeliveryToken = 0
+	completed := saveJob(runtime.ActivityStateCompleted, 0)
+
+	recorded, err := db.RecordJobDeliveries(t.Context(), []sql.Job{waiting, deliveredSinceLoaded, completed})
+	require.NoError(t, err)
+
+	require.Len(t, recorded, 1)
+	assert.Equal(t, waiting.Key, recorded[0].Key)
+	assert.Equal(t, int64(5), recorded[0].DeliveryToken)
+	storedTokens := map[int64]int64{}
+	for _, job := range []sql.Job{waiting, deliveredSinceLoaded, completed} {
+		stored, err := db.FindJobByJobKey(t.Context(), job.Key)
+		require.NoError(t, err)
+		storedTokens[job.Key] = stored.DeliveryToken
+	}
+	assert.Equal(t, map[int64]int64{waiting.Key: 5, deliveredSinceLoaded.Key: 1, completed.Key: 0}, storedTokens)
+
+	recorded, err = db.RecordJobDeliveries(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, recorded, "a round which reserved nothing writes nothing")
+
+	withdrawn, err := db.WithdrawJobDelivery(t.Context(), waiting.Key, 5)
+	require.NoError(t, err)
+	assert.True(t, withdrawn, "a delivery never sent gives its token back")
+	stored, err := db.FindJobByJobKey(t.Context(), waiting.Key)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), stored.DeliveryToken)
+	withdrawn, err = db.WithdrawJobDelivery(t.Context(), deliveredSinceLoaded.Key, 5)
+	require.NoError(t, err)
+	assert.False(t, withdrawn, "a token which is not the job's latest is left alone")
+	stored, err = db.FindJobByJobKey(t.Context(), deliveredSinceLoaded.Key)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stored.DeliveryToken)
+}
+
 func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer func() {

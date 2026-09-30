@@ -892,10 +892,13 @@ type Job struct {
 	Assignee *string `json:"assignee,omitempty"`
 
 	// Attempts Failures without an error code since the job was created or its last incident was resolved.
-	Attempts           *int32    `json:"attempts,omitempty"`
-	CreatedAt          time.Time `json:"createdAt"`
-	ElementId          string    `json:"elementId"`
-	ElementInstanceKey int64     `json:"elementInstanceKey"`
+	Attempts  *int32    `json:"attempts,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeliveryToken Token of the latest delivery of the job over the job stream, raised with every delivery; `0` while it was never handed out. For inspection, the read may lag behind; a worker takes the token of its failure from its delivery.
+	DeliveryToken      *int64 `json:"deliveryToken,omitempty"`
+	ElementId          string `json:"elementId"`
+	ElementInstanceKey int64  `json:"elementInstanceKey"`
 
 	// ElementType BPMN element type that created the job
 	ElementType string `json:"elementType"`
@@ -1410,17 +1413,20 @@ type ExtendJobLockJSONBody struct {
 	// ClientId The client id of the job stream the job was delivered to.
 	ClientId string `json:"clientId"`
 
+	// DeliveryToken The `delivery_token` of the delivery whose lock to extend. Absent, the lock the client holds on the job is extended, whichever delivery it belongs to.
+	DeliveryToken *int64 `json:"deliveryToken,omitempty"`
+
 	// LockDuration ISO-8601 duration to lock the job for, counted from now. Absent means the subscription's lock duration.
 	LockDuration *string `json:"lockDuration,omitempty"`
 }
 
 // FailJobJSONBody defines parameters for FailJob.
 type FailJobJSONBody struct {
-	// Attempt The attempt the failure belongs to - the `attempt` of a delivery over the job stream, or the job's `attempts` plus one as read. A failure of an attempt the current series recorded before changes nothing; one beyond the attempt the job waits for is refused with `400`. Absent, every failure without an `errorCode` spends an attempt. Validated but otherwise ignored with an `errorCode`.
-	Attempt *int32 `json:"attempt,omitempty"`
-
 	// ClientId The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
 	ClientId *string `json:"clientId,omitempty"`
+
+	// DeliveryToken The delivery the failure belongs to - the `delivery_token` of the delivery over the job stream, taken from that delivery. A repeat of a recorded failure changes nothing, a failure of a superseded delivery is refused with `409`, and a token never handed out with `400`. Absent, every failure counts; a worker which never received the job over the stream sends none.
+	DeliveryToken *int64 `json:"deliveryToken,omitempty"`
 
 	// ErrorCode The error code against which an error catch event is matched. Absent or empty, the failure spends one of the job's retries.
 	ErrorCode *string `json:"errorCode,omitempty"`

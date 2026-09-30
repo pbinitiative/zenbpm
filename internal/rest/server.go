@@ -1947,7 +1947,7 @@ func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLock
 	if err != nil {
 		return public.ExtendJobLock400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
 	}
-	lockUntil, err := s.node.ExtendJobLock(ctx, request.JobKey, request.Body.ClientId, lockDuration)
+	lockUntil, err := s.node.ExtendJobLock(ctx, request.JobKey, request.Body.ClientId, lockDuration, request.Body.DeliveryToken)
 	if err == nil {
 		return public.ExtendJobLock200JSONResponse{LockUntil: lockUntil}, nil
 	}
@@ -2035,7 +2035,7 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 		errorCode = &code
 	}
 	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ClientId, ""), ptr.Deref(request.Body.Message, ""), errorCode,
-		ptr.Deref(request.Body.Variables, map[string]any{}), request.Body.Retries, retryBackoff, request.Body.Attempt)
+		ptr.Deref(request.Body.Variables, map[string]any{}), request.Body.Retries, retryBackoff, request.Body.DeliveryToken)
 
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -2189,6 +2189,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		RetryAt:            unixMilliPtrToTime(job.RetryAt),
 		LastFailureMessage: job.LastFailureMessage,
 		RetryBackoff:       job.RetryBackoff,
+		DeliveryToken:      job.DeliveryToken,
 	}, nil
 }
 

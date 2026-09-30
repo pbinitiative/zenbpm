@@ -58,15 +58,23 @@ func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee
 // active, no incident is created and the variables are dropped; at zero the
 // job fails with an incident and keeps the variables as its output.
 //
-// attempt, when given, is the attempt of the delivery the failure belongs to,
-// and makes a failure without an error code count once: a failure of an
-// attempt the job recorded already, repeated after a timeout or reported late
-// by a worker whose lock lapsed, changes nothing and returns nil, whatever
-// state the job is in now. An attempt beyond the one the job waits for is
-// refused with ErrInvalidJobRequest. Without attempt every failure spends one.
+// deliveryToken, when given, names the delivery the failure belongs to, and
+// makes the failure count once, whatever it carries: a repeat of a failure the
+// job recorded changes nothing and returns nil, whatever state the job is in
+// now. Only the repeat of an error-coded failure which raised an incident is
+// refused with ErrDeliverySuperseded once that incident was resolved and a
+// later delivery's failure was recorded: the failure history, which the
+// engine asks for earlier deliveries, keeps no entry for it. A failure of a
+// delivery which another one superseded before its failure was recorded - the
+// job was handed out again after the lock lapsed or the leader changed -
+// changes nothing either and is refused with
+// ErrDeliverySuperseded: the newer delivery decides. A token which was never
+// handed out is refused with ErrInvalidJobRequest. Without deliveryToken every
+// failure counts.
 //
-// retries, retryBackoff and attempt are validated first, whatever the error
-// code: an invalid value is refused with ErrInvalidJobRequest and changes nothing.
+// retries, retryBackoff and deliveryToken are validated first, whatever the
+// error code: an invalid value is refused with ErrInvalidJobRequest and changes
+// nothing.
 func (engine *Engine) JobFailByKey(
 	ctx context.Context,
 	jobKey int64,
@@ -75,10 +83,10 @@ func (engine *Engine) JobFailByKey(
 	variables map[string]interface{},
 	retries *int32,
 	retryBackoff *time.Duration,
-	attempt *int32,
+	deliveryToken *int64,
 ) (retErr error) {
-	if attempt != nil && *attempt < 1 {
-		return invalidJobRequestf("attempt of job %d must be at least 1, got %d", jobKey, *attempt)
+	if deliveryToken != nil && *deliveryToken < 1 {
+		return invalidJobRequestf("delivery token of job %d must be at least 1, got %d", jobKey, *deliveryToken)
 	}
 	if retries != nil && *retries < 0 {
 		return invalidJobRequestf("retries of job %d must not be negative, got %d", jobKey, *retries)
@@ -97,9 +105,10 @@ func (engine *Engine) JobFailByKey(
 		}
 		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
 	}
-	if errorCode == nil && attempt != nil && failureAlreadyRecorded(job, *attempt) {
-		engine.logger.Debug("failure of an attempt the job recorded already, nothing changes", "job", job.Key, "attempt", *attempt, "attempts", job.Attempts)
-		return nil
+	if deliveryToken != nil {
+		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
+			return err
+		}
 	}
 
 	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
@@ -113,18 +122,19 @@ func (engine *Engine) JobFailByKey(
 		failJobSpan.End()
 	}()
 
-	// a failure of the same attempt which committed meanwhile, even the one
-	// which exhausted the retries, answers this one as recorded below
+	// a failure of the same delivery which committed meanwhile, even the one
+	// which ended the job, or a delivery recorded meanwhile, answers this one
+	// below instead
 	ensureJobTakesTheFailure := func(job runtime.Job) error {
-		if errorCode == nil && attempt != nil && failureAlreadyRecorded(job, *attempt) {
+		if deliveryToken != nil && !recordsFailureOf(job, *deliveryToken) {
 			return nil
 		}
 		return ensureJobStillWaits(job)
 	}
 	job, instance, batch, err := engine.lockInstanceOfJob(ctx, job, "fail", ensureJobTakesTheFailure)
 	if err != nil {
-		if errorCode == nil && attempt != nil && errors.Is(err, ErrInstanceAlreadyTerminal) {
-			return engine.failureRacedTheEndOfTheInstance(ctx, jobKey, *attempt, err)
+		if deliveryToken != nil && errors.Is(err, ErrInstanceAlreadyTerminal) {
+			return engine.failureRacedTheEndOfTheInstance(ctx, jobKey, *deliveryToken, err)
 		}
 		return err
 	}
@@ -133,14 +143,12 @@ func (engine *Engine) JobFailByKey(
 			batch.Clear(ctx)
 		}
 	}()
-	if errorCode == nil {
-		if attempt != nil && failureAlreadyRecorded(job, *attempt) {
+	if deliveryToken != nil {
+		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
 			batch.Clear(ctx)
-			return nil
+			return err
 		}
-		if attempt != nil && *attempt > job.Attempts+1 {
-			return invalidJobRequestf("attempt %d of job %d was never handed out: the job waits for attempt %d", *attempt, jobKey, job.Attempts+1)
-		}
+		job.FailedDeliveryToken = *deliveryToken
 	}
 
 	failJobSpan.SetAttributes(
@@ -161,7 +169,7 @@ func (engine *Engine) JobFailByKey(
 	}()
 
 	if errorCode == nil {
-		retried, err = engine.failJobWithoutErrorCode(ctx, &batch, job, message, variables, retries, retryBackoff)
+		retried, err = engine.failJobWithoutErrorCode(ctx, &batch, job, message, variables, retries, retryBackoff, deliveryToken)
 		if err != nil {
 			return fmt.Errorf("failed to fail job %d: %w", job.Key, err)
 		}
@@ -540,19 +548,18 @@ func (engine *Engine) completionRacedTheEndOfTheInstance(ctx context.Context, jo
 	return fmt.Errorf("%w: cannot complete job %d: %w", ErrJobInTerminalState, jobKey, batchErr)
 }
 
-// failureRacedTheEndOfTheInstance classifies a failure naming its attempt which
-// read an active job and then found its instance ended: the repeat of a
-// failure the job recorded before the end is answered as recorded, as it is
-// when it arrives after the end, everything else is a conflict.
-func (engine *Engine) failureRacedTheEndOfTheInstance(ctx context.Context, jobKey int64, attempt int32, batchErr error) error {
+// failureRacedTheEndOfTheInstance classifies a failure naming its delivery
+// which read an active job and then found its instance ended. It is answered
+// as it would be after the end: the repeat of a failure the job recorded as
+// recorded, a failure of a delivery another one superseded as superseded, and
+// a failure the job would have recorded as a conflict.
+func (engine *Engine) failureRacedTheEndOfTheInstance(ctx context.Context, jobKey int64, deliveryToken int64, batchErr error) error {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return fmt.Errorf("failed to refresh job with key %d after its instance ended: %w", jobKey, err)
 	}
-	if failureAlreadyRecorded(job, attempt) {
-		engine.logger.Debug("failure of an attempt the job recorded before its process instance ended, nothing changes",
-			"job", job.Key, "attempt", attempt, "attempts", job.Attempts, "processInstance", job.ProcessInstanceKey)
-		return nil
+	if answered, err := engine.answerFailureNotToRecord(ctx, job, deliveryToken); answered {
+		return err
 	}
 	return batchErr
 }
@@ -598,10 +605,43 @@ func (engine *Engine) lockInstanceOfJob(
 	return refreshed, instance, batch, nil
 }
 
-// failureAlreadyRecorded reports whether a failure without an error code
-// names an attempt whose failure the job recorded already.
-func failureAlreadyRecorded(job runtime.Job, attempt int32) bool {
-	return attempt <= job.Attempts
+// recordsFailureOf reports whether the job records a failure naming the
+// delivery token: only one of its latest delivery, and only the first.
+func recordsFailureOf(job runtime.Job, deliveryToken int64) bool {
+	return deliveryToken == job.DeliveryToken && deliveryToken != job.FailedDeliveryToken
+}
+
+// answerFailureNotToRecord answers a failure naming a delivery token the job
+// does not record a failure of, and reports whether it did: the repeat of a
+// failure the job recorded is answered as recorded, a failure of a delivery
+// another one superseded with ErrDeliverySuperseded, and a token never handed
+// out with ErrInvalidJobRequest. A failure of the job's latest delivery, the
+// first one reported for it, is left to the caller to record.
+func (engine *Engine) answerFailureNotToRecord(ctx context.Context, job runtime.Job, deliveryToken int64) (bool, error) {
+	switch {
+	case deliveryToken > job.DeliveryToken:
+		return true, invalidJobRequestf("delivery token %d of job %d was never handed out: its latest delivery has token %d",
+			deliveryToken, job.Key, job.DeliveryToken)
+	case deliveryToken == job.FailedDeliveryToken:
+		engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
+		return true, nil
+	case deliveryToken == job.DeliveryToken:
+		return false, nil
+	}
+	// an earlier delivery: its failure was recorded before the job was handed
+	// out again, or it arrived after the job had been handed out again
+	failures, err := engine.persistence.FindJobFailures(ctx, job.Key)
+	if err != nil {
+		return true, fmt.Errorf("failed to find the failures of job %d: %w", job.Key, err)
+	}
+	for _, failure := range failures {
+		if failure.DeliveryToken != nil && *failure.DeliveryToken == deliveryToken {
+			engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
+			return true, nil
+		}
+	}
+	return true, fmt.Errorf("%w: job %d was handed out again after delivery %d, its latest delivery has token %d",
+		ErrDeliverySuperseded, job.Key, deliveryToken, job.DeliveryToken)
 }
 
 // ensureJobStillWaits refuses a job which is completed, terminated or failed

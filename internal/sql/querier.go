@@ -167,6 +167,9 @@ type Querier interface {
 	// latest_and_tagged_only (1/0) keeps only the latest version of every
 	// process and the versions carrying a version tag.
 	ListProcessDefinitionVersions(ctx context.Context, arg ListProcessDefinitionVersionsParams) ([]ListProcessDefinitionVersionsRow, error)
+	// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
+	// and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+	RecordJobDelivery(ctx context.Context, arg RecordJobDeliveryParams) (int64, error)
 	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
@@ -175,6 +178,8 @@ type Querier interface {
 	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
 	// retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
+	// delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
+	// before a delivery was recorded does not take the token back when it is saved.
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
@@ -186,6 +191,10 @@ type Querier interface {
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 	SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error
 	UpdateOutputFlowElementInstance(ctx context.Context, arg UpdateOutputFlowElementInstanceParams) error
+	// Takes back the token of a delivery the job manager recorded but never sent, so that the delivery
+	// before it counts again. Only while no other delivery was recorded since; the token was never handed
+	// out, so issuing it again later is harmless.
+	WithdrawJobDelivery(ctx context.Context, arg WithdrawJobDeliveryParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

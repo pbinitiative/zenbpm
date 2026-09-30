@@ -103,6 +103,8 @@ type Job struct {
 	LastFailureMessage   sql.NullString `json:"last_failure_message"`
 	RetryBackoff         sql.NullString `json:"retry_backoff"`
 	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
+	DeliveryToken        int64          `json:"delivery_token"`
+	FailedDeliveryToken  int64          `json:"failed_delivery_token"`
 }
 
 type JobFailure struct {
@@ -114,6 +116,7 @@ type JobFailure struct {
 	RetryAt            sql.NullInt64 `json:"retry_at"`
 	Message            string        `json:"message"`
 	IncidentKey        sql.NullInt64 `json:"incident_key"`
+	DeliveryToken      sql.NullInt64 `json:"delivery_token"`
 }
 
 type MessageSubscription struct {

@@ -122,8 +122,10 @@ worker, err := zen.RegisterWorkerWithOptions(context.Background(), "my-client-id
 ```
 The engine caps both values at its configured maximum and reports the effective deadline in
 `job.GetLockUntil()`. The worker does not renew locks by itself: a handler which needs longer than
-its lock calls `worker.ExtendLock(ctx, job.GetKey(), 0)` before the deadline, with a `ctx` that
-carries a deadline. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
+its lock calls `worker.ExtendDeliveryLock(ctx, job, 0)` before the deadline, with a `ctx` that
+carries a deadline. It extends the lock of the handler's own delivery only, and answers
+`zenclient.ErrLockNotHeld` once the job was handed out again, even to this worker;
+`worker.ExtendLock(ctx, job.GetKey(), 0)` extends whatever lock the worker holds on the job. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
 leader could not be reached or has just changed: retry the call in a moment instead of failing the
 job, and count on the deadline of the last confirmed answer only, the outcome of the failed call is
 unknown. See [Jobs](../reference/jobs.md) for the lock semantics.
@@ -137,10 +139,10 @@ handler which attempt it runs and how many are left:
 ```go
 return nil, &zenclient.WorkerError{Err: err, RetryBackoff: new(30 * time.Second)}
 ```
-The failure names the attempt of its delivery, so a failure without an error code spends that
-attempt once, however often it reaches the engine within the series of attempts. Two deliveries of
-the same attempt, before and after a lapsed lock, are not told apart, and attempts start again at 1
-once an incident of the job is resolved. See [Failures and retries](../reference/jobs.md#failures-and-retries).
+The failure names the delivery token of its delivery, `job.GetDeliveryToken()`, so it counts once
+however often it reaches the engine, and not at all once the job was handed out again, as after the
+lock of the delivery lapsed while the handler still worked: the newer delivery decides. See
+[Delivery tokens](../reference/jobs.md#delivery-tokens).
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

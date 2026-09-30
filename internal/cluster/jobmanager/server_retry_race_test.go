@@ -190,7 +190,7 @@ func (retryAtOnceCompleter) JobCompleteByKey(context.Context, int64, map[string]
 	return nil
 }
 
-func (retryAtOnceCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration, *int32) error {
+func (retryAtOnceCompleter) JobFailByKey(context.Context, int64, string, *string, map[string]any, *int32, *time.Duration, *int64) error {
 	return nil
 }
 

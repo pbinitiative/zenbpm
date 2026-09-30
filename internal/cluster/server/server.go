@@ -325,7 +325,7 @@ func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequ
 		return &proto.ExtendJobLockResponse{Error: zerr.ToProtoError(), Refusal: proto.LockRefusal_LOCK_REFUSAL_NONE.Enum()}, nil
 	}
 	lockUntil, err := s.jobManager.ExtendJobLock(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(),
-		jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+		jobmanager.DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
 	if err != nil {
 		refusal := proto.LockRefusal_LOCK_REFUSAL_NONE
 		var zerr *zenerr.ZenError
@@ -380,7 +380,7 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 	}
 
 	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
-		req.Retries, jobmanager.RetryBackoffFromMillis(req.RetryBackoffMs), req.Attempt)
+		req.Retries, jobmanager.RetryBackoffFromMillis(req.RetryBackoffMs), req.DeliveryToken)
 	if err != nil {
 		return &proto.FailJobResponse{Error: jobRequestError(req.GetKey(), "fail", err).ToProtoError()}, nil
 	}
@@ -1324,6 +1324,7 @@ func jobToProto(job sql.Job) *proto.Job {
 		RetryAt:            sql.FromNullInt64(job.RetryAt),
 		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:       sql.FromNullString(job.RetryBackoff),
+		DeliveryToken:      new(job.DeliveryToken),
 	}
 }
 
@@ -1425,7 +1426,7 @@ func jobRequestError(jobKey int64, action string, err error) *zenerr.ZenError {
 			return zenerr.BadRequest(errors.New(invalid.Reason))
 		}
 		return zenerr.BadRequest(err)
-	case errors.Is(err, bpmn.ErrJobInTerminalState):
+	case errors.Is(err, bpmn.ErrJobInTerminalState), errors.Is(err, bpmn.ErrDeliverySuperseded):
 		return zenerr.Conflict(err)
 	}
 	// a node which refuses a mutation while the cluster is restored says so itself

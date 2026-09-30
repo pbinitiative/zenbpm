@@ -15,6 +15,14 @@ ALTER TABLE job ADD COLUMN retry_backoff TEXT;
 -- the job's incident keeps them instead of restoring the definition's retries. 0 once a resolution
 -- kept them or an incident ended the series they belonged to.
 ALTER TABLE job ADD COLUMN retries_set_by_operator INTEGER NOT NULL DEFAULT 0;
+-- Token of the latest delivery of the job to a worker: the job manager raises it by one with every
+-- delivery it hands out, before it sends it, and lowers it only to take back a delivery it never
+-- sent; not even the resolution of an incident resets it. A failure naming an earlier token belongs
+-- to a delivery which was superseded. 0 = never delivered.
+ALTER TABLE job ADD COLUMN delivery_token INTEGER NOT NULL DEFAULT 0;
+-- Token of the delivery whose failure the job recorded last, so that a repeat of that failure
+-- changes nothing. 0 = none recorded for a named delivery.
+ALTER TABLE job ADD COLUMN failed_delivery_token INTEGER NOT NULL DEFAULT 0;
 
 -- One row per failure without an error code; deleted with the instance's jobs.
 CREATE TABLE IF NOT EXISTS job_failure(
@@ -25,7 +33,8 @@ CREATE TABLE IF NOT EXISTS job_failure(
     failed_at INTEGER NOT NULL, -- unix millis of when the worker reported the failure
     retry_at INTEGER, -- unix millis before which the job is not handed out again; NULL = at once or no retry
     message TEXT NOT NULL, -- the failure message the worker sent
-    incident_key INTEGER -- set on the failure which exhausted the retries and created an incident
+    incident_key INTEGER, -- set on the failure which exhausted the retries and created an incident
+    delivery_token INTEGER -- the delivery the failure was reported for; NULL when the request named none
 );
 CREATE INDEX IF NOT EXISTS idx_job_failure_job_key ON job_failure(job_key);
 CREATE INDEX IF NOT EXISTS idx_fk_job_failure_process_instance_key ON job_failure(process_instance_key);

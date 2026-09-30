@@ -57,6 +57,24 @@ func TestRecvClientRequestsSaturatesUnrepresentableDurations(t *testing.T) {
 	assert.Equal(t, time.Duration(math.MaxInt64), manager.extendedDurations[0])
 }
 
+// TestRecvClientRequestsPassesTheDeliveryOfALockExtensionOn shows the delivery
+// an extension names reaches the job manager, and stays absent when it names none.
+func TestRecvClientRequestsPassesTheDeliveryOfALockExtensionOn(t *testing.T) {
+	manager := &jobStreamTestManager{}
+	named := &proto.JobStreamRequest{Request: &proto.JobStreamRequest_ExtendLock{ExtendLock: &proto.JobExtendLockRequest{
+		Key:           new(int64(7)),
+		DeliveryToken: new(int64(3)),
+	}}}
+	stream := newJobStreamTestServer(named, extendLockRequest(7, 0))
+	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+	require.Len(t, manager.extendedDeliveries, 2)
+	assert.Equal(t, new(int64(3)), manager.extendedDeliveries[0])
+	assert.Nil(t, manager.extendedDeliveries[1])
+}
+
 func TestRecvClientRequestsAnswersLockExtensionWithTheDeadline(t *testing.T) {
 	lockUntil := time.Now().Add(42 * time.Second).Truncate(time.Millisecond)
 	manager := &jobStreamTestManager{extendLockUntil: lockUntil}
@@ -119,12 +137,12 @@ func TestSendClientJobsCarriesLockUntil(t *testing.T) {
 	assert.Equal(t, int64(1234567), stream.sent[0].Job.GetLockUntil())
 }
 
-func TestSendClientJobsCarriesRetriesAndAttempt(t *testing.T) {
+func TestSendClientJobsCarriesRetriesAttemptAndDeliveryToken(t *testing.T) {
 	stream := newJobStreamTestServer()
 	server := &Server{ctx: t.Context(), logger: hclog.NewNullLogger()}
 	clientCh := make(chan jobmanager.Job, 1)
 	recvDone := make(chan struct{})
-	clientCh <- jobmanager.Job{Key: 7, Type: "job-a", Retries: 2, Attempt: 3}
+	clientCh <- jobmanager.Job{Key: 7, Type: "job-a", Retries: 2, Attempt: 3, DeliveryToken: 5}
 	close(clientCh)
 
 	server.sendClientJobs(stream, clientCh, recvDone, &sync.Mutex{})
@@ -132,10 +150,11 @@ func TestSendClientJobsCarriesRetriesAndAttempt(t *testing.T) {
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, int32(2), stream.sent[0].Job.GetRetries())
 	assert.Equal(t, int32(3), stream.sent[0].Job.GetAttempt())
+	assert.Equal(t, int64(5), stream.sent[0].Job.GetDeliveryToken())
 }
 
 // TestRecvClientRequestsPassesRetriesAndBackoffOn shows a failure's retries,
-// backoff and attempt reach the job manager as sent, and stay absent when a
+// backoff and delivery token reach the job manager as sent, and stay absent when a
 // client, such as one built before retries existed, sends none.
 func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	key := int64(42)
@@ -143,7 +162,7 @@ func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 		Key:            &key,
 		Retries:        new(int32(3)),
 		RetryBackoffMs: new(int64(2500)),
-		Attempt:        new(int32(2)),
+		DeliveryToken:  new(int64(2)),
 	}}}
 	manager := &jobStreamTestManager{}
 	stream := newJobStreamTestServer(withRetries, failRequest(nil))
@@ -154,10 +173,10 @@ func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	require.Len(t, manager.failedRetries, 2)
 	assert.Equal(t, new(int32(3)), manager.failedRetries[0])
 	assert.Equal(t, new(2500*time.Millisecond), manager.failedBackoffs[0])
-	assert.Equal(t, new(int32(2)), manager.failedAttempts[0])
+	assert.Equal(t, new(int64(2)), manager.failedDeliveries[0])
 	assert.Nil(t, manager.failedRetries[1])
 	assert.Nil(t, manager.failedBackoffs[1])
-	assert.Nil(t, manager.failedAttempts[1])
+	assert.Nil(t, manager.failedDeliveries[1])
 }
 
 func TestRecvClientRequestsReportsWhyAFailureWasNotRecordedByCode(t *testing.T) {

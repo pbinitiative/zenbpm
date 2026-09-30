@@ -80,20 +80,20 @@ func TestServerExtendLockMovesTheDeadline(t *testing.T) {
 	})
 
 	before := time.Now()
-	lockUntil, err := server.extendLock("client-1", jobKey, 5*time.Second)
+	lockUntil, err := server.extendLock("client-1", jobKey, 5*time.Second, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(5*time.Second), time.Now().Add(5*time.Second),
 		"the deadline is now plus the requested duration, whatever it was before")
 	assert.Equal(t, lockUntil, theLockedJob(t, server).lockUntil, "the answer is what the entry holds")
 
 	before = time.Now()
-	lockUntil, err = server.extendLock("client-1", jobKey, 0)
+	lockUntil, err = server.extendLock("client-1", jobKey, 0, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(2*time.Second), time.Now().Add(2*time.Second),
 		"no duration means the lock duration the job was delivered with")
 
 	before = time.Now()
-	lockUntil, err = server.extendLock("client-1", jobKey, time.Hour)
+	lockUntil, err = server.extendLock("client-1", jobKey, time.Hour, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(10*time.Second), time.Now().Add(10*time.Second),
 		"a duration above the cap is capped")
@@ -105,14 +105,42 @@ func TestServerExtendLockOfUnknownOrForeignJob(t *testing.T) {
 	deadline := time.Now().Add(time.Minute)
 	lockJobs(server, distributedJob{client: "client-1", jobKey: heldKey, jobType: "test-job", lockUntil: deadline})
 
-	_, err := server.extendLock("client-1", gen.Generate().Int64(), time.Second)
+	_, err := server.extendLock("client-1", gen.Generate().Int64(), time.Second, nil)
 	assert.ErrorIs(t, err, ErrLockNotHeld)
 
-	_, err = server.extendLock("client-2", heldKey, time.Second)
+	_, err = server.extendLock("client-2", heldKey, time.Second, nil)
 	assert.ErrorIs(t, err, ErrLockHeldByOtherClient)
 
 	assert.Equal(t, deadline, theLockedJob(t, server).lockUntil, "a refused extension leaves the lock untouched")
 	assert.Len(t, server.distributedJobs, 1)
+}
+
+// TestServerExtendLockNamingADeliveryExtendsOnlyThatDelivery shows an extension
+// which names its delivery is refused as not held for the lock of another
+// delivery of the job to the same client, as after the named delivery's lock
+// lapsed and the job came back, and for a delivery still being written; an
+// extension naming none extends whatever the client holds.
+func TestServerExtendLockNamingADeliveryExtendsOnlyThatDelivery(t *testing.T) {
+	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
+	key := gen.Generate().Int64()
+	deadline := time.Now().Add(time.Minute)
+	lockJobs(server, distributedJob{client: "client-1", jobKey: key, jobType: "test-job", lockUntil: deadline, lockDuration: time.Minute, deliveryToken: 3})
+
+	for _, token := range []int64{2, 0, -1} {
+		_, err := server.extendLock("client-1", key, time.Hour, new(token))
+		assert.ErrorIs(t, err, ErrLockNotHeld, "token %d", token)
+	}
+	assert.Equal(t, deadline, theLockedJob(t, server).lockUntil, "a refused extension leaves the lock untouched")
+
+	_, err := server.extendLock("client-1", key, time.Hour, new(int64(3)))
+	require.NoError(t, err)
+	_, err = server.extendLock("client-1", key, time.Hour, nil)
+	require.NoError(t, err)
+
+	being := gen.Generate().Int64()
+	lockJobs(server, distributedJob{client: "client-1", jobKey: being, jobType: "test-job", lockUntil: deadline})
+	_, err = server.extendLock("client-1", being, time.Hour, new(int64(1)))
+	assert.ErrorIs(t, err, ErrLockNotHeld, "a delivery whose token is still being written reached nobody yet")
 }
 
 func TestServerExtendLockOfLapsedEntryIsRefused(t *testing.T) {
@@ -120,13 +148,13 @@ func TestServerExtendLockOfLapsedEntryIsRefused(t *testing.T) {
 	lapsedKey := gen.Generate().Int64()
 	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
 
-	_, err := server.extendLock("client-1", lapsedKey, time.Minute)
+	_, err := server.extendLock("client-1", lapsedKey, time.Minute, nil)
 
 	assert.ErrorIs(t, err, ErrLockNotHeld, "the published deadline decides, not the next cleanup round")
 	assert.Empty(t, server.distributedJobs, "a lapsed entry is dropped so the job is loadable again")
 
 	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
-	_, err = server.extendLock("client-2", lapsedKey, time.Minute)
+	_, err = server.extendLock("client-2", lapsedKey, time.Minute, nil)
 	assert.ErrorIs(t, err, ErrLockNotHeld, "a lapsed lock is held by nobody, not by another client")
 }
 

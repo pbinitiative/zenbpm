@@ -50,7 +50,7 @@ func (q *Queries) DeleteProcessInstancesJobFailures(ctx context.Context, keys []
 
 const findJobFailuresByJobKey = `-- name: FindJobFailuresByJobKey :many
 SELECT
-    "key", job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key
+    "key", job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key, delivery_token
 FROM
     job_failure
 WHERE
@@ -78,6 +78,7 @@ func (q *Queries) FindJobFailuresByJobKey(ctx context.Context, jobKey int64) ([]
 			&i.RetryAt,
 			&i.Message,
 			&i.IncidentKey,
+			&i.DeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -94,7 +95,7 @@ func (q *Queries) FindJobFailuresByJobKey(ctx context.Context, jobKey int64) ([]
 
 const findJobFailuresPage = `-- name: FindJobFailuresPage :many
 SELECT
-    "key", job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key
+    "key", job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key, delivery_token
 FROM
     job_failure
 WHERE
@@ -129,6 +130,7 @@ func (q *Queries) FindJobFailuresPage(ctx context.Context, arg FindJobFailuresPa
 			&i.RetryAt,
 			&i.Message,
 			&i.IncidentKey,
+			&i.DeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -144,8 +146,8 @@ func (q *Queries) FindJobFailuresPage(ctx context.Context, arg FindJobFailuresPa
 }
 
 const saveJobFailure = `-- name: SaveJobFailure :exec
-INSERT INTO job_failure(key, job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job_failure(key, job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key, delivery_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveJobFailureParams struct {
@@ -157,6 +159,7 @@ type SaveJobFailureParams struct {
 	RetryAt            sql.NullInt64 `json:"retry_at"`
 	Message            string        `json:"message"`
 	IncidentKey        sql.NullInt64 `json:"incident_key"`
+	DeliveryToken      sql.NullInt64 `json:"delivery_token"`
 }
 
 func (q *Queries) SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) error {
@@ -169,6 +172,7 @@ func (q *Queries) SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) 
 		arg.RetryAt,
 		arg.Message,
 		arg.IncidentKey,
+		arg.DeliveryToken,
 	)
 	return err
 }

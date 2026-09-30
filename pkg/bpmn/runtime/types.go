@@ -506,6 +506,19 @@ type Job struct {
 	// definition's retries. It is cleared once a resolution kept them or an
 	// incident ended the series they belonged to.
 	RetriesSetByOperator bool
+	// DeliveryToken identifies the latest delivery of the job to a worker. The
+	// job manager raises it before it sends a delivery and lowers it only to
+	// take back a delivery it never sent, so a failure naming an earlier token
+	// belongs to a delivery another one superseded. 0 means the job was never
+	// handed out. The engine never changes it, and an update of a stored job
+	// leaves the token alone: a job read before a delivery was recorded must
+	// not take the token back. Inserting a new job writes it, 0 for every job
+	// the engine creates.
+	DeliveryToken int64
+	// FailedDeliveryToken is the token of the delivery whose failure the job
+	// recorded last, so that a repeat of that failure changes nothing. 0 means
+	// no failure naming its delivery was recorded.
+	FailedDeliveryToken int64
 }
 
 // IsWaitingOutBackoff reports whether the job must not be handed out before RetryAt.
@@ -527,6 +540,9 @@ type JobFailure struct {
 	Message string
 	// IncidentKey is set on the failure which exhausted the retries.
 	IncidentKey *int64
+	// DeliveryToken is the delivery the failure was reported for; nil when the
+	// request named none.
+	DeliveryToken *int64
 }
 
 func (j Job) GetKey() int64 {

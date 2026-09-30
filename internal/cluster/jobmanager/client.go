@@ -260,6 +260,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			LockUntil:      resp.Job.GetLockUntil(),
 			Retries:        resp.Job.GetRetries(),
 			Attempt:        resp.Job.GetAttempt(),
+			DeliveryToken:  resp.Job.GetDeliveryToken(),
 		}
 	}
 }
@@ -465,7 +466,7 @@ func activeJobsForWire(count int) int32 {
 // from a failure which does not; any other answer of the transport, such as a
 // node without this call, is such a failure. When the caller's own context
 // ended, that is what the error says, not the cluster.
-func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
 	}
@@ -478,6 +479,7 @@ func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey in
 		Key:            new(jobKey),
 		ClientId:       new(string(clientID)),
 		LockDurationMs: new(duration.Milliseconds()),
+		DeliveryToken:  deliveryToken,
 	})
 	if err != nil {
 		if ctx.Err() == nil && leaderOutOfReach(err) {
@@ -567,7 +569,7 @@ func refusalError(action string, jobKey int64, refusal *proto.ErrorResult) error
 // longer leading as ErrLeaderUnavailable, so the caller can tell a request
 // which is wrong from a cluster which is changing; in the latter case the
 // failure may have been recorded already.
-func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {
@@ -578,13 +580,13 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 		return fmt.Errorf("failed to marshal variables for job failure: %w", err)
 	}
 	request := &proto.FailJobRequest{
-		Key:       &jobKey,
-		Message:   &message,
-		ErrorCode: errorCode,
-		Variables: vars,
-		ClientId:  new(string(clientID)),
-		Retries:   retries,
-		Attempt:   attempt,
+		Key:           &jobKey,
+		Message:       &message,
+		ErrorCode:     errorCode,
+		Variables:     vars,
+		ClientId:      new(string(clientID)),
+		Retries:       retries,
+		DeliveryToken: deliveryToken,
 	}
 	request.RetryBackoffMs = RetryBackoffToMillis(retryBackoff)
 	resp, err := lClient.FailJob(ctx, request)

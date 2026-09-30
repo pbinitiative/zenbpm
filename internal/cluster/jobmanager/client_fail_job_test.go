@@ -42,10 +42,10 @@ func TestClientFailJobNamesTheFailingClient(t *testing.T) {
 }
 
 // TestClientFailJobCarriesRetriesAndBackoff shows what a worker says about the
-// next attempt, the retries left and the backoff, and the attempt its failure
+// next attempt, the retries left and the backoff, and the delivery its failure
 // belongs to reach the engine unchanged, and that a failure which says nothing
 // leaves them absent, so that the engine decrements, applies the task
-// definition's policy and spends an attempt.
+// definition's policy and counts every failure.
 func TestClientFailJobCarriesRetriesAndBackoff(t *testing.T) {
 	mux, nodeListener, err := network.NewNodeMux("")
 	require.NoError(t, err)
@@ -63,21 +63,21 @@ func TestClientFailJobCarriesRetriesAndBackoff(t *testing.T) {
 	retried := <-clientJobs
 	defaulted := <-clientJobs
 
-	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", retried.Key, "down", nil, nil, new(int32(4)), new(1500*time.Millisecond), new(int32(1))))
+	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", retried.Key, "down", nil, nil, new(int32(4)), new(1500*time.Millisecond), &retried.DeliveryToken))
 	require.NoError(t, clientManager.FailJobReq(t.Context(), "client-1", defaulted.Key, "down", nil, nil, nil, nil, nil))
 
 	requests := leaderGRPC.receivedFailRequests()
 	require.Len(t, requests, 2)
 	assert.Equal(t, int32(4), requests[0].GetRetries())
 	assert.Equal(t, int64(1500), requests[0].GetRetryBackoffMs())
-	assert.Equal(t, int32(1), requests[0].GetAttempt())
-	assert.Nil(t, requests[1].Attempt, "no attempt named, every failure spends one")
+	assert.Equal(t, retried.DeliveryToken, requests[0].GetDeliveryToken())
+	assert.Nil(t, requests[1].DeliveryToken, "no delivery named, every failure counts")
 	assert.Nil(t, requests[1].Retries, "no retries named, the engine decrements")
 	assert.Nil(t, requests[1].RetryBackoffMs, "no backoff named, the task definition's policy applies")
 	require.Len(t, completer.failures, 2)
 	assert.Equal(t, new(int32(4)), completer.failures[0].retries)
 	assert.Equal(t, new(1500*time.Millisecond), completer.failures[0].retryBackoff)
-	assert.Equal(t, new(int32(1)), completer.failures[0].attempt)
+	assert.Equal(t, &retried.DeliveryToken, completer.failures[0].deliveryToken)
 	assert.Nil(t, completer.failures[1].retries)
 	assert.Nil(t, completer.failures[1].retryBackoff)
 }
@@ -185,9 +185,10 @@ func TestClientCompleteJobTellsARefusalFromAnUnavailableLeader(t *testing.T) {
 	})
 }
 
-// TestDeliveryCarriesRetriesAndAttempt shows a delivery tells the worker how
-// many retries the job has left and which attempt it is.
-func TestDeliveryCarriesRetriesAndAttempt(t *testing.T) {
+// TestDeliveryCarriesRetriesAttemptAndToken shows a delivery tells the worker
+// how many retries the job has left, which attempt it is, and the token of the
+// delivery, one above the token of the job's delivery before.
+func TestDeliveryCarriesRetriesAttemptAndToken(t *testing.T) {
 	mux, nodeListener, err := network.NewNodeMux("")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, nodeListener.Close()) }()
@@ -203,11 +204,13 @@ func TestDeliveryCarriesRetriesAndAttempt(t *testing.T) {
 	job := generateJobs(1)[0]
 	job.Retries = 2
 	job.Attempts = 1
+	job.DeliveryToken = 4
 	completer.loader.addJobs(job)
 
 	delivered := <-clientJobs
 	assert.Equal(t, int32(2), delivered.Retries)
 	assert.Equal(t, int32(2), delivered.Attempt, "one failure so far, so this is the second attempt")
+	assert.Equal(t, int64(5), delivered.DeliveryToken)
 }
 
 func TestRetryBackoffToMillisKeepsANegativeBackoffNegative(t *testing.T) {

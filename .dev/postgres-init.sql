@@ -171,7 +171,9 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     retry_at BIGINT,
     last_failure_message TEXT,
     retry_backoff TEXT,
-    retries_set_by_operator BIGINT NOT NULL DEFAULT 0
+    retries_set_by_operator BIGINT NOT NULL DEFAULT 0,
+    delivery_token BIGINT NOT NULL DEFAULT 0,
+    failed_delivery_token BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key
@@ -192,7 +194,8 @@ CREATE TABLE IF NOT EXISTS reporting.job_failure (
     failed_at BIGINT NOT NULL,
     retry_at BIGINT,
     message TEXT NOT NULL,
-    incident_key BIGINT
+    incident_key BIGINT,
+    delivery_token BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_job_failure_job_key

@@ -48,6 +48,12 @@ func invalidJobRequestf(format string, args ...any) error {
 // completing, completed or terminated.
 var ErrJobInTerminalState = errors.New("job no longer waits for a worker or an operator")
 
+// ErrDeliverySuperseded is wrapped into the error of a failure naming a
+// delivery of the job which another delivery superseded before the failure was
+// recorded: the job was handed out again after the lock of the named delivery
+// lapsed or its leader changed, and the newer delivery decides. Nothing changes.
+var ErrDeliverySuperseded = errors.New("job was handed out again after the delivery the request names")
+
 // JobRetryLimits are the engine-wide defaults and caps of the retries of jobs.
 type JobRetryLimits struct {
 	// DefaultRetries initialises the retries of a job whose task definition names none.
@@ -221,8 +227,9 @@ func (engine *Engine) backoffForAttempt(job runtime.Job, attempt int32, requeste
 // job stays active and is handed out again after its backoff, and the variables
 // are dropped: the next attempt starts from the same input. Without retries the
 // job fails with an incident naming the attempts and keeps the variables as its
-// output, as a failed job always did. Either way the failure is recorded. It
-// reports whether the job was left for another attempt.
+// output, as a failed job always did. Either way the failure is recorded,
+// with the delivery it names, if any. It reports whether the job was left for
+// another attempt.
 func (engine *Engine) failJobWithoutErrorCode(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -231,6 +238,7 @@ func (engine *Engine) failJobWithoutErrorCode(
 	variables map[string]interface{},
 	retries *int32,
 	retryBackoff *time.Duration,
+	deliveryToken *int64,
 ) (retried bool, err error) {
 	remaining := max(job.Retries-1, 0)
 	if retries != nil {
@@ -247,6 +255,7 @@ func (engine *Engine) failJobWithoutErrorCode(
 		Attempt:            job.Attempts,
 		FailedAt:           now,
 		Message:            message,
+		DeliveryToken:      deliveryToken,
 	}
 	if remaining == 0 {
 		job.RetryAt = nil

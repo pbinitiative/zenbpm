@@ -63,7 +63,7 @@ A value of `0` means the engine's default; a value above the cap is lowered to t
 
 **Lock deadline.** Every `WaitingJob` carries `lock_until`, the unix millisecond on the clock of the partition leader at which its lock lapses. `lock_until - now` on the client is an *estimate* of the remaining time: it is exact only as far as the two clocks agree, and it does not see the time the delivery spent in transit. It is also conservative: the leader counts the lock from the moment the delivery left it, while the reported deadline was taken just before, so the real deadline is never earlier than the reported one. Keep the clocks synchronised (NTP), and renew with a safety margin, at the latest at half the remaining time, rather than just before the deadline. When the clocks cannot be trusted, count from the moment of receipt with the lock duration you subscribed with, which needs no clock comparison at all. The Go client exposes the deadline as `job.GetLockUntil()`.
 
-**Lock extension.** `JobExtendLockRequest{key, lock_duration_ms}` moves the deadline to *now plus the duration* (`0` = the subscription's lock duration; capped by `jobManager.maxLockDurationMs`). The new deadline is relative to now, not added to the previous one, so a worker renewing every half lock duration keeps a stable lead. The engine answers on the same stream:
+**Lock extension.** `JobExtendLockRequest{key, lock_duration_ms}` moves the deadline to *now plus the duration* (`0` = the subscription's lock duration; capped by `jobManager.maxLockDurationMs`). The new deadline is relative to now, not added to the previous one, so a worker renewing every half lock duration keeps a stable lead. With `delivery_token` the request extends only the lock of that delivery: once the job was handed out again, as after the delivery's lock lapsed, it is refused as not held even when the next delivery went to the same client, so that a handler still at work on the lapsed delivery learns it lost the job instead of keeping the next delivery locked. Without it the request extends whatever lock the client holds on the job. The engine answers on the same stream:
 
 - `LockExtended{key, lock_until}` on success;
 - `ErrorResult` with `code` = `JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD` (1) when the lock lapsed, the job was completed or failed, or it was never delivered to this client, or `JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT` (2) when another client holds it. A refused extension leaves the job untouched. The `LockExtended` next to the error carries only the key.
@@ -79,7 +79,7 @@ The cap is enforced by each partition leader for the jobs of its own partitions.
 
 > ⚠️ **Upgrade note:** before locks became configurable, the ten-job cap was counted per client across all job types. A client subscribed to several job types may now receive more jobs in total than before. Set `max_active_jobs` per type to restore the old total.
 
-**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover. Completion and failure are not bound to the lock holder: a job may be completed or failed by anybody who knows its key, including a REST client which never held the lock. A failure spends the attempt whoever reports it - once within its series of attempts, when it names the attempt it belongs to and carries no error code (see [Failures and retries](#failures-and-retries)) - but releases the lock only when the reporting client holds it: a client whose lock lapsed, and which reports its failure after the job was handed to another client, does not take the job from that client. Nor does the holder's own failure when it names an attempt before the one the lock was handed out for: that is the repeat or the late report of an earlier delivery, and the holder keeps working on the attempt it has. When the job came back to the same client after its lock lapsed, the job manager cannot tell which of the two deliveries the client's next failure belongs to, so that failure keeps the lock too; the one after it, a completion, or the lapse of the lock releases it, and a retry waits at most one lock duration longer. A completion or failure refused because the job no longer waits releases the lock at once. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
+**What a lock is not.** The lock lives in memory on the partition leader. A leader change forgets every lock and the new leader redelivers the open jobs at once, so a handler must tolerate a second delivery of a job it is still working on after a failover; the failure of the earlier delivery no longer counts then (see [Delivery tokens](#delivery-tokens)). Completion and failure are not bound to the lock holder: a job may be completed or failed by anybody who knows its key, including a REST client which never held the lock. A failure which names its delivery token releases the lock of that delivery, whoever reports it, and never the lock of another delivery: the late or repeated failure of an earlier delivery leaves the worker of the current one working, and the job is not handed out alongside. A failure without a token releases the lock only when the reporting client holds it: a client whose lock lapsed, and which reports its failure after the job was handed to another client, does not take the job from that client. A completion or failure refused because the job no longer waits releases the lock at once. Jobs fetched through the REST `getJobs` endpoint hold no lock at all.
 
 Workers which receive jobs over the stream but send their commands over REST extend a lock with the `extendJobLock` endpoint, passing the client id of their stream:
 
@@ -130,44 +130,62 @@ job:
    event of its task, leaves the series alone when it is resolved: attempts, retries and `retryAt`
    stay as they were.
 
-A fail request without an error code which names the `attempt` it belongs to - the `attempt` of
-its delivery over the stream, or the job's `attempts` plus one as read over REST - is recorded once
-within a series of attempts. A request for an attempt whose failure the job recorded already
-changes nothing and is answered as recorded, also once the failure it repeats exhausted the retries
-and also when the instance ended meanwhile. That is the repeat after a timeout, and the late
-report of a delivery whose attempt another delivery failed meanwhile: neither spends the attempt a
-later delivery is working on, creates the incident while that delivery runs, or releases its lock.
-An `attempt` below `1` or beyond the one the job waits for is refused like any other invalid value.
-The Go client names the attempt of every failure it sends.
+### Delivery tokens
 
-The attempt does not tell two deliveries of one attempt apart. After a lapsed lock or a leader
-change the job is delivered again with the same attempt, and the first of the two failures to
-arrive spends it: a worker which works past its lock and then fails can still exhaust the retries,
-and create the incident, while the second delivery runs. A worker which needs longer than its lock
-extends it (see [Job locks](#job-locks)). Attempts also start again at `1` once an incident of the
-job is resolved, so a report from before the incident which arrives after the resolution is taken
-for the new series: it spends the attempt when it names the one the job now waits for, and is
-refused when it names a later one.
+Every delivery over the stream carries a `delivery_token`. The job manager writes it before it
+hands the job out and raises it with every delivery, a redelivery after a lapsed lock or a leader
+change included, and it never goes back for a delivery which reached a worker, not even when an
+incident of the job is resolved. A delivery which a completion, failure or retry update of its job
+overtakes after its token was written but before it was sent is not sent, and its token is taken
+back, so that the failure of the delivery before it is judged against the delivery which really
+reached a worker. A fail request names the token of the delivery it belongs to -
+`JobFailRequest.delivery_token` on the stream, `deliveryToken` on the REST endpoint - and takes it
+from that delivery. `GET /v1/jobs/{key}` shows the token of the job's latest delivery for
+inspection, but it is served by any node and may lag behind, so it is no source for a failure; a
+worker which never received the job over the stream sends no token. The Go client names it in every
+failure it sends. With it a failure counts once, whatever it carries:
 
-A fail request without `attempt` is not idempotent: every failure without an error code the engine
+- The first failure of the job's latest delivery is recorded as described above.
+- A repeat of a failure the job recorded changes nothing and is answered like the first: `204`, or
+  success on the stream. That holds after the job was handed out again, once the failure exhausted
+  the retries or raised the incident of a BPMN error, and when the instance ended meanwhile.
+  One exception: a BPMN error leaves no entry in the failure history, so once the incident it
+  raised was resolved and the failure of a later delivery was recorded, its repeat is refused like
+  the failure of a superseded delivery below.
+- A failure of a delivery which another delivery superseded before its failure was recorded - the
+  worker worked past its lock, or the leader changed, and the job was handed out again - changes
+  nothing and is refused: `409` on the REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE`
+  on the stream. It neither spends the attempt the newer delivery is working on nor creates an
+  incident, triggers an error event or releases a lock while that delivery runs: the newer delivery
+  decides.
+- A token below `1`, or one never handed out, is refused with `400` /
+  `JOB_STREAM_ERROR_CODE_INVALID_REQUEST`.
+
+A fail request without a token is not idempotent: every failure without an error code the engine
 receives spends an attempt, also one reported for a job waiting out its backoff, which nobody holds
-at that moment. A client which repeats such a request after a timeout may spend two attempts for one
-failure. A failure reported for a job which no longer waits for a worker - the repeat of a failure
-which exhausted the retries, or a job completed or terminated meanwhile - changes nothing and is
-refused: `409` on the REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` on the stream.
+at that moment, and a failure the worker of a lapsed lock reports late counts as well. A client
+which repeats such a request after a timeout may spend two attempts for one failure. A failure
+reported for a job which no longer waits for a worker - the repeat of a failure which exhausted the
+retries, or a job completed or terminated meanwhile - changes nothing and is refused: `409` on the
+REST endpoint, `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` on the stream. A failure without a
+token counts for no delivery, so the worker of the delivery which runs at that moment can still
+report its own failure.
+
+Completions are not bound to a delivery: a worker whose lock lapsed may still complete the job, and
+the first completion ends it, as before.
 
 A `JobFailRequest` on the stream which the engine did not record is answered with an `ErrorResult`
 next to a `WaitingJob` carrying only the key. Its `code` says why:
-`JOB_STREAM_ERROR_CODE_INVALID_REQUEST` (4) for negative retries, a negative backoff or variables
-which do not decode, which the REST endpoint answers with `400` - the message names the field and
-the value; `JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND` (5) when the job's partition has no job with that
-key; `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` (6) when the job no longer waits for a worker;
+`JOB_STREAM_ERROR_CODE_INVALID_REQUEST` (4) for negative retries, a negative backoff, a delivery
+token never handed out or variables which do not decode, which the REST endpoint answers with
+`400` - the message names the field and the value; `JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND` (5) when
+the job's partition has no job with that key; `JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE` (6)
+when the job no longer waits for a worker, or no longer for the delivery the failure names;
 `JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE` (3) when the leader of the job's partition could not
 be reached or has just changed - the failure may have been recorded all the same. Repeating a
-failure without an error code spends nothing more when it names its attempt, unless an incident of
-the job was resolved meanwhile; repeating one without `attempt` spends a second attempt, and one
-with an error code is refused with code 6 once the first was recorded. Any other error carries no
-code.
+failure which names its delivery token changes nothing more; repeating one without a token spends a
+second attempt, or, with an error code, is refused with code 6 once the first was recorded. Any
+other error carries no code.
 
 A job whose token is terminated during its backoff, by an interrupting boundary event or by
 cancelling the instance, is terminated like any active job.
@@ -206,14 +224,18 @@ literal which does not parse creates an incident when a job is created, like an 
 | `retryAt` | before this moment an active job is not handed out; absent when it is deliverable. A job which ended during its backoff keeps the value |
 | `lastFailureMessage` | message of the latest failure without an error code |
 | `retryBackoff` | the policy of the task definition; absent when the engine default applies |
+| `deliveryToken` | token of the latest delivery over the stream, `0` while the job was never handed out; for inspection, a worker takes the token of its failure from its delivery |
 
-Every delivery over the stream carries `retries` and `attempt`: `1` for the first delivery of a
-series and one more after every failure. Two deliveries of one attempt - a lapsed lock, a leader
-change - carry the same number, a delivery after a failure the next. The Go client exposes them as
-`job.GetRetries()` and `job.GetAttempt()`.
+Every delivery over the stream carries `retries`, `attempt` - `1` for the first delivery of a
+series and one more after every failure; two deliveries of one attempt, a lapsed lock or a leader
+change, carry the same number - and its `delivery_token`, which differs for every delivery (see
+[Delivery tokens](#delivery-tokens)). The Go client exposes them as `job.GetRetries()`,
+`job.GetAttempt()` and `job.GetDeliveryToken()`.
 
 Every failure without an error code is recorded: attempt, time, message, when the job was handed
-out again and, on the failure which exhausted the retries, the incident key. The records are
+out again and, on the failure which exhausted the retries, the incident key. The record keeps the
+delivery token the failure named as well, which is how a repeat arriving after the job was handed
+out again is told from a failure of a delivery another one superseded. The records are
 deleted together with the process instance by the history cleanup. An unknown job answers `404`, a
 job which never failed an empty page. The page, like the job itself read with `getJob`, is served by
 any node of the job's partition and is eventually consistent: read right after a failure it may not
@@ -248,10 +270,11 @@ across attempts and its input variables do not change between them, so an effect
 once per job is made idempotent on the job key, or on a key of the business operation it performs:
 a worker which charged a card and then failed must find that charge again on its next attempt.
 
-The `attempt` of a delivery is no substitute. It tells a redelivery of the same attempt (a lapsed
-lock, a leader change) from a retry, within one series of attempts. It is not unique over the life
-of a job: resolving an incident starts a new series at `1`. Keying an effect on the job key and the
-attempt would repeat the effect on every retry.
+Neither the `attempt` nor the `delivery_token` of a delivery is a substitute. The attempt tells a
+redelivery of the same attempt (a lapsed lock, a leader change) from a retry, within one series of
+attempts; it is not unique over the life of a job, since resolving an incident starts a new series
+at `1`. The delivery token differs for every delivery, so keying an effect on it, or on the job key
+and the attempt, would repeat the effect on every retry.
 
 > ⚠️ **Upgrade notes:**
 >
@@ -273,9 +296,11 @@ attempt would repeat the effect on every retry.
 >   `clientId` with the failure; without it the job still waits for its lock to lapse, whatever
 >   `retryBackoff` asks for.
 > - For applications embedding the engine as a library: `Engine.JobFailByKey` takes the retries
->   and the backoff of the failure as two more arguments, and a storage implementation has to
->   provide `FindJobFailures` and `SaveJobFailure` (`storage.JobStorageReader` and
->   `storage.JobStorageWriter`).
+>   and the backoff of the failure and the delivery token it names as three more arguments, and a
+>   storage implementation has to provide `FindJobFailures` and `SaveJobFailure`
+>   (`storage.JobStorageReader` and `storage.JobStorageWriter`), write `Job.DeliveryToken` when it
+>   inserts a job but keep the stored one when it saves a job it stored before, and keep
+>   `JobFailure.DeliveryToken`.
 
 ## Job manager
 

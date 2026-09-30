@@ -953,9 +953,10 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 
 // ExtendJobLock moves the lock deadline of a job delivered over the job stream
 // to clientID to now plus duration (zero: the lock duration of the
-// subscription). A lock which is not held or is held by another client answers
-// a conflict; the job itself is untouched either way.
-func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID string, duration time.Duration) (time.Time, error) {
+// subscription), only the lock of that delivery when deliveryToken names one. A
+// lock which is not held or is held by another client answers a conflict; the
+// job itself is untouched either way.
+func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID string, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	if err := node.rejectIfRestoring(); err != nil {
 		return time.Time{}, err
 	}
@@ -968,6 +969,7 @@ func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID stri
 		Key:            &key,
 		ClientId:       &clientID,
 		LockDurationMs: new(duration.Milliseconds()),
+		DeliveryToken:  deliveryToken,
 	})
 	if err != nil {
 		return time.Time{}, leaderCallFailure(ctx, fmt.Errorf("client call to extend lock of job %d failed: %w", key, err))
@@ -1018,7 +1020,9 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 // given, say what remains and how long the job waits (see bpmn.Engine.JobFailByKey).
 // clientID names the job stream the job was delivered to, whose lock the
 // failure then releases; empty, a lock held on the job stands until it lapses.
-func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
+// deliveryToken, when given, names the delivery the failure belongs to, whose
+// lock it releases whoever reports it.
+func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
@@ -1042,7 +1046,7 @@ func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, me
 		Variables:      vars,
 		Retries:        retries,
 		RetryBackoffMs: jobmanager.RetryBackoffToMillis(retryBackoff),
-		Attempt:        attempt,
+		DeliveryToken:  deliveryToken,
 	})
 	if err != nil {
 		return leaderCallFailure(ctx, fmt.Errorf("client call to fail job %d failed: %w", key, err))
@@ -2482,6 +2486,62 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 	})
 }
 
+// deliveryWriteTimeout bounds a write of the job manager's distribution loop.
+// The loop waits for it, and every change of the jobs it hands out waits for
+// the loop, so a write which hangs, as when the partition lost its quorum while
+// this node still takes itself for the leader, must end.
+const deliveryWriteTimeout = 10 * time.Second
+
+// RecordDeliveries records a delivery of every job, one write per partition
+// this node leads, and returns the jobs whose delivery was recorded, each
+// carrying the token of its delivery. A partition which is not led here any
+// more, or whose write fails, records none of its jobs; the error names it, and
+// the jobs of the other partitions are returned all the same.
+func (node *ZenNode) RecordDeliveries(jobs []sql.Job) ([]sql.Job, error) {
+	jobsByPartition := make(map[uint32][]sql.Job)
+	for _, job := range jobs {
+		partitionID := zenflake.GetPartitionId(job.Key)
+		jobsByPartition[partitionID] = append(jobsByPartition[partitionID], job)
+	}
+	recorded := make([]sql.Job, 0, len(jobs))
+	var errs []error
+	for _, db := range node.controller.AllPartitionLeaderDBs(node.ctx) {
+		partitionJobs, ok := jobsByPartition[db.Partition]
+		if !ok {
+			continue
+		}
+		delete(jobsByPartition, db.Partition)
+		writeCtx, cancel := context.WithTimeout(node.ctx, deliveryWriteTimeout)
+		delivered, err := db.RecordJobDeliveries(writeCtx, partitionJobs)
+		cancel()
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		recorded = append(recorded, delivered...)
+	}
+	for partitionID, partitionJobs := range jobsByPartition {
+		errs = append(errs, fmt.Errorf("cannot record the delivery of %d jobs on partition %d: %w", len(partitionJobs), partitionID, jobmanager.NodeIsNotALeader))
+	}
+	return recorded, errors.Join(errs...)
+}
+
+// WithdrawDelivery takes back the token of a delivery the job manager recorded
+// but never sent, on the partition of the job, which this node leads.
+func (node *ZenNode) WithdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) error {
+	partitionID := zenflake.GetPartitionId(jobKey)
+	for _, db := range node.controller.AllPartitionLeaderDBs(node.ctx) {
+		if db.Partition != partitionID {
+			continue
+		}
+		writeCtx, cancel := context.WithTimeout(ctx, deliveryWriteTimeout)
+		defer cancel()
+		_, err := db.WithdrawJobDelivery(writeCtx, jobKey, deliveryToken)
+		return err
+	}
+	return fmt.Errorf("cannot withdraw delivery %d of job %d on partition %d: %w", deliveryToken, jobKey, partitionID, jobmanager.NodeIsNotALeader)
+}
+
 func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {
 	jobsAcc := make([]sql.Job, 0)
 	if count <= 0 {
@@ -2537,7 +2597,7 @@ func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee 
 	return engine.JobAssignByKey(ctx, jobKey, assignee)
 }
 
-func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
+func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
@@ -2546,7 +2606,7 @@ func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message str
 	if engine == nil {
 		return fmt.Errorf("cannot fail job %d on partition %d: %w", jobKey, partitionId, jobmanager.NodeIsNotALeader)
 	}
-	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, attempt)
+	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, deliveryToken)
 	if err != nil {
 		return err
 	}

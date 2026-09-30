@@ -58,14 +58,16 @@ message JobFailRequest{
   // the retryBackoff of the task definition, else jobs.defaultRetryBackoff; 0 = at once.
   // A value above jobs.maxRetryBackoff is capped.
   int64 retry_backoff_ms = 6;
-  // The attempt of the delivery the failure belongs to, WaitingJob.attempt. With it a failure
-  // without an error code is recorded once within a series of attempts: repeated, or reported after
-  // a later attempt of the job failed, it changes nothing and is answered as recorded. Attempts
-  // start again at 1 when an incident of the job is resolved, and two deliveries of one attempt,
-  // such as the ones before and after a lapsed lock, share it. It must lie between 1 and the attempt
-  // the job waits for; a larger one is refused with JOB_STREAM_ERROR_CODE_INVALID_REQUEST. Absent =
-  // every report spends an attempt. Ignored, once validated, with an error code.
-  int32 attempt = 7;
+  // The delivery the failure belongs to, WaitingJob.delivery_token. With it the failure is recorded
+  // once: repeated, whatever it carries, it changes nothing and is answered as recorded. Only the
+  // repeat of an error-coded failure which raised an incident is refused like a superseded one below
+  // once that incident was resolved and a later delivery's failure was recorded: the failure history
+  // keeps no entry naming its token. A failure of a delivery which was superseded, because the job
+  // was handed out again after its lock lapsed or its leader changed, changes nothing either and is
+  // refused with JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE: the newer delivery decides. A token
+  // never handed out is refused with JOB_STREAM_ERROR_CODE_INVALID_REQUEST. Absent = every report
+  // counts, and one without an error code spends an attempt.
+  int64 delivery_token = 7;
 }
 
 // Moves the lock deadline of a job this client holds to now plus lock_duration_ms.
@@ -76,6 +78,11 @@ message JobExtendLockRequest{
   // 0 = extend by the lock_duration_ms of the subscription the job was delivered under.
   // A value above jobManager.maxLockDurationMs is capped.
   int64 lock_duration_ms = 2;
+  // The delivery whose lock to extend, WaitingJob.delivery_token. The lock of another
+  // delivery of the job, such as the next one after this delivery's lock lapsed and the
+  // job came back to this client, is not extended: JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD.
+  // Absent = whatever delivery of the job this client holds.
+  int64 delivery_token = 3;
 }
 
 message JobStreamResponse {
@@ -101,18 +108,18 @@ enum JobStreamErrorCode {
   // The leader of the job's partition could not be reached or has just changed. The
   // outcome is unconfirmed: an extension may already have moved the deadline, and a
   // leader change forgets the lock, so retry the extension in a moment; a failure may
-  // already have been recorded: repeating one without an error code which names its attempt
-  // spends nothing more unless an incident of the job was resolved meanwhile, one without an
-  // attempt spends another, and one with an error code is refused once the first was recorded.
+  // already have been recorded: repeating one which names its delivery token changes nothing
+  // more, and one without a token spends another attempt, or, with an error code, is refused
+  // once the first was recorded.
   JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE = 3;
   // The request itself is wrong, such as a fail request with negative retries or a
   // negative backoff; nothing was changed and repeating it gets the same answer.
   JOB_STREAM_ERROR_CODE_INVALID_REQUEST = 4;
   // No job has this key: it never existed, or its instance was deleted.
   JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND = 5;
-  // The job no longer waits for a worker: it was completed, terminated or already
-  // failed, as after a failure repeated once its first report exhausted the retries.
-  // Nothing was changed.
+  // The job no longer waits for this delivery: it was completed, terminated or already
+  // failed, or, for a failure naming its delivery token, it was handed out again after
+  // that delivery. Nothing was changed.
   JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE = 6;
 }
 
@@ -138,6 +145,10 @@ message WaitingJob {
   // new series at 1, so (key, attempt) is not unique over the life of a job. Key an effect
   // which must happen once per job on the job key, or on a key of the business operation.
   int32 attempt = 10;
+  // Identifies this delivery: every delivery of the job carries a higher token than the one
+  // before, a redelivery of the same attempt after a lapsed lock or a leader change included.
+  // Send it back as JobFailRequest.delivery_token.
+  int64 delivery_token = 11;
 }
 
 message ErrorResult {

@@ -142,15 +142,17 @@ func TestLapsedLockRedeliveryKeepsTheAttempt(t *testing.T) {
 	assert.Equal(t, int32(1), deliveries.get(0).attempt)
 	assert.Equal(t, int32(1), deliveries.get(1).attempt, "a lapsed lock is a redelivery of the same attempt, not a retry")
 	assert.Equal(t, int32(3), deliveries.get(1).retries, "a lapsed lock spends no retry")
+	assert.Greater(t, deliveries.get(1).deliveryToken, deliveries.get(0).deliveryToken, "but it is another delivery, whose failure alone counts")
 	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
 	require.NoError(t, completeJob(t, job.Key, nil))
 	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 }
 
 type retryDelivery struct {
-	at      time.Time
-	attempt int32
-	retries int32
+	at            time.Time
+	attempt       int32
+	retries       int32
+	deliveryToken int64
 }
 
 // retryDeliveries records every delivery of a job to a retry worker.
@@ -162,7 +164,7 @@ type retryDeliveries struct {
 func (d *retryDeliveries) add(job *proto.WaitingJob) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.items = append(d.items, retryDelivery{at: time.Now(), attempt: job.GetAttempt(), retries: job.GetRetries()})
+	d.items = append(d.items, retryDelivery{at: time.Now(), attempt: job.GetAttempt(), retries: job.GetRetries(), deliveryToken: job.GetDeliveryToken()})
 }
 
 func (d *retryDeliveries) count() int {

@@ -740,11 +740,34 @@ func (mem *Storage) FindPendingProcessInstanceJobs(_ context.Context, processIns
 
 var _ storage.JobStorageWriter = &Storage{}
 
+// SaveJob stores the job. The delivery token of a job stored before stays: only
+// a delivery raises it, see RecordJobDelivery.
 func (mem *Storage) SaveJob(_ context.Context, job bpmnruntime.Job) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	if stored, ok := mem.Jobs[job.GetKey()]; ok {
+		job.DeliveryToken = stored.DeliveryToken
+	}
 	mem.Jobs[job.GetKey()] = job
 	return nil
+}
+
+// RecordJobDelivery hands the job out as the job manager of a cluster does: it
+// raises the job's delivery token and returns the token of this delivery. A
+// job which no longer waits for a worker is not handed out.
+func (mem *Storage) RecordJobDelivery(jobKey int64) (int64, error) {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	job, ok := mem.Jobs[jobKey]
+	if !ok {
+		return 0, fmt.Errorf("job %d: %w", jobKey, storage.ErrNotFound)
+	}
+	if job.State != bpmnruntime.ActivityStateActive {
+		return 0, fmt.Errorf("job %d in state %s is not handed out", jobKey, job.State)
+	}
+	job.DeliveryToken++
+	mem.Jobs[jobKey] = job
+	return job.DeliveryToken, nil
 }
 
 func (mem *Storage) SaveJobFailure(_ context.Context, failure bpmnruntime.JobFailure) error {

@@ -1,6 +1,6 @@
 -- name: SaveJobFailure :exec
-INSERT INTO job_failure(key, job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO job_failure(key, job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key, delivery_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: FindJobFailuresByJobKey :many
 SELECT

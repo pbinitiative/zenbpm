@@ -41,28 +41,21 @@ func TestServiceTaskRetriesBeforeIncident(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("payment service down for good (job %d: 3 attempts, retries exhausted)", job.Key), incidents[0].Message)
 }
 
-// TestAFailureNamingItsAttemptIsRecordedOnce shows a failure over REST which
-// names its attempt spends it once: repeated after a timeout, or arriving late
-// for an attempt which failed already, it is answered like the first and
-// changes nothing, and an attempt never handed out is refused.
-func TestAFailureNamingItsAttemptIsRecordedOnce(t *testing.T) {
+// TestAFailureOverRESTNamingADeliveryNeverHandedOutIsRefused shows a job nobody
+// received carries no delivery token, and a failure naming one is refused with
+// 400 and changes nothing.
+func TestAFailureOverRESTNamingADeliveryNeverHandedOutIsRefused(t *testing.T) {
 	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries.bpmn", nil)
 	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
-	firstAttempt := zenclient.FailJobJSONRequestBody{Message: new("payment service unavailable"), Attempt: new(int32(1)), RetryBackoff: new("PT0S")}
+	require.Equal(t, new(int64(0)), getJob(t, job.Key).DeliveryToken, "no worker subscribes to the type")
 
-	failJobWithRetryRequest(t, job.Key, firstAttempt)
-	failJobWithRetryRequest(t, job.Key, firstAttempt)
+	response, err := app.restClient.FailJobWithResponse(t.Context(), job.Key, zenclient.FailJobJSONRequestBody{DeliveryToken: new(int64(1))})
 
-	afterRepeat := getJob(t, job.Key)
-	assert.Equal(t, new(int32(1)), afterRepeat.Attempts)
-	assert.Equal(t, new(int32(2)), afterRepeat.Retries)
-
-	response, err := app.restClient.FailJobWithResponse(t.Context(), job.Key, zenclient.FailJobJSONRequestBody{Attempt: new(int32(5))})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode(), "body: %s", string(response.Body))
 	require.NotNil(t, response.JSON400)
-	assert.Contains(t, response.JSON400.Message, "attempt 5")
-	assert.Equal(t, new(int32(1)), getJob(t, job.Key).Attempts)
+	assert.Contains(t, response.JSON400.Message, "never handed out")
+	assert.Equal(t, new(int32(0)), getJob(t, job.Key).Attempts)
 	assertProcessInstanceIncidentsLength(t, instance.Key, 0)
 }
 

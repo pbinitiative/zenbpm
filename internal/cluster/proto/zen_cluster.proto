@@ -331,6 +331,8 @@ message Job {
   int32 attempts = 15;
   // backoff policy of the task definition ("PT10S,PT1M"); absent = the engine default
   string retry_backoff = 16;
+  // token of the latest delivery of the job to a worker; 0 = never handed out
+  int64 delivery_token = 17;
 }
 
 message JobFailure {
@@ -470,9 +472,9 @@ message FailJobRequest {
   int32 retries = 6;
   // how long the job waits before it is handed out again; absent = the policy of the task definition
   int64 retry_backoff_ms = 7;
-  // the attempt of the delivery the failure belongs to; a failure without an error code of an attempt
-  // the current series recorded before changes nothing; absent = every report spends an attempt
-  int32 attempt = 8;
+  // the delivery the failure belongs to; a repeat of a recorded failure and a failure of a superseded
+  // delivery change nothing; absent = every report counts
+  int64 delivery_token = 8;
 }
 
 message FailJobResponse {
@@ -484,6 +486,8 @@ message ExtendJobLockRequest {
   string client_id = 2;
   // 0 = the lock duration of the subscription the job was delivered under.
   int64 lock_duration_ms = 3;
+  // the delivery whose lock to extend; the lock of another delivery is not held for it; absent = any
+  int64 delivery_token = 4;
 }
 
 message ExtendJobLockResponse {
@@ -524,6 +528,8 @@ message InternalJob {
   int32 retries = 10;
   // 1 for the first delivery of a series, one more after every failure without an error code
   int32 attempt = 11;
+  // token of this delivery, higher than that of every delivery of the job before
+  int64 delivery_token = 12;
 }
 
 message SetMessageSubscriptionPointerRequest {

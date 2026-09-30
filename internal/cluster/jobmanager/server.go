@@ -51,7 +51,8 @@ var (
 	// ErrJobNotFound is returned by a job request for a key which names no job.
 	ErrJobNotFound = errors.New("job not found")
 	// ErrJobInTerminalState is returned by a job request for a job which no
-	// longer waits for a worker: it was completed, terminated or already failed.
+	// longer waits for a worker: it was completed, terminated or already failed,
+	// or, for a failure naming its delivery, it was handed out again after it.
 	ErrJobInTerminalState = errors.New("job no longer waits for a worker")
 )
 
@@ -73,11 +74,22 @@ func (e *InvalidJobRequestError) Unwrap() error {
 type JobLoader interface {
 	// LoadJobsToDistribute loads at most count jobs, sorted from oldest, across all partitions led by the node.
 	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error)
+	// RecordDeliveries persists a delivery of every loaded job, one write per
+	// partition, and returns the jobs whose delivery it recorded, each carrying
+	// the token of its delivery. A job which no longer waits for a worker, or
+	// for which another delivery was recorded since it was loaded, is left
+	// out, and so are the jobs of a partition whose write failed, which the
+	// error names.
+	RecordDeliveries(jobs []sql.Job) ([]sql.Job, error)
+	// WithdrawDelivery takes back the token of a delivery which was recorded
+	// but never sent, so that the delivery before it counts again. A delivery
+	// recorded since is left alone.
+	WithdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) error
 }
 
 type JobCompleter interface {
 	JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error
-	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, attempt *int32) error
+	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error
 	JobUpdateRetriesByKey(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error
 }
 
@@ -166,25 +178,11 @@ type distributedJob struct {
 	// lockDuration is the subscription's lock duration at delivery time; an
 	// extension which names no duration uses it.
 	lockDuration time.Duration
-	// attempt is the attempt of the job the delivery was handed out for, which
-	// the worker names in the failure it reports. A failure naming an earlier
-	// one belongs to an earlier delivery and leaves this lock alone.
-	attempt int32
-	// afterOwnLapse marks a delivery to the client whose earlier lock on the
-	// job lapsed. The job server cannot tell which of the two deliveries a
-	// failure the client reports belongs to, so the first one keeps this lock:
-	// released for the earlier delivery's late failure, it would let the next
-	// round hand the job out a third time while the client still works on it.
-	afterOwnLapse bool
-}
-
-// lapsedLock remembers the client whose lock on a job lapsed, and the attempt
-// the lapsed delivery was handed out for, until the job is delivered again, so
-// that a delivery to the same client is marked afterOwnLapse.
-type lapsedLock struct {
-	client   ClientID
-	attempt  int32
-	lapsedAt time.Time
+	// deliveryToken is the persisted token of the delivery, which the worker
+	// names in the failure it reports; 0 while the delivery is being recorded.
+	// A failure naming another token belongs to another delivery and leaves
+	// this lock alone.
+	deliveryToken int64
 }
 
 // jobMutations tells the distribution loop which jobs of a loaded batch were
@@ -250,10 +248,9 @@ type jobServer struct {
 	// scan of every lock the leader holds.
 	distributedJobs   map[int64]*distributedJob
 	distributedJobsMu *sync.Mutex
-	// lapsedLocks are the locks which lapsed on jobs not delivered again
-	// since, guarded by distributedJobsMu. A record older than the longest
-	// lock is dropped: its job was handed to nobody for that long.
-	lapsedLocks map[int64]lapsedLock
+	// handingOut are the deliveries reserved and not yet sent, by job key,
+	// guarded by distributedJobsMu, see handOut and beginMutation.
+	handingOut map[int64]*handOut
 	// mutations tracks the jobs a completion, failure or retry update is
 	// changing, guarded by distributedJobsMu, see beginMutation.
 	mutations                jobMutations
@@ -274,8 +271,8 @@ func newJobServer(
 		nodeID:             nodeID,
 		distributedJobs:    map[int64]*distributedJob{},
 		distributedJobsMu:  &sync.Mutex{},
-		lapsedLocks:        map[int64]lapsedLock{},
 		mutations:          newJobMutations(),
+		handingOut:         map[int64]*handOut{},
 		subscriptions:      map[JobType]map[ClientID]*nodeSub{},
 		settings:           map[JobType]map[ClientID]SubscriptionSettings{},
 		jobTypes:           map[JobType]jobTypeData{},
@@ -397,14 +394,25 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		s.emptyDistributionCounter = 0
-		round := &distributionRound{capacity: capacity, settingsVersion: settingsVersion, loadedAt: loadedAt}
-		assignedJobs := 0
+		round := &distributionRound{capacity: capacity, settingsVersion: settingsVersion, loadedAt: loadedAt, recorded: make(chan struct{})}
+		reserved := make([]reservedDelivery, 0, len(jobs))
 		for _, job := range jobs {
-			if delivery, reserved := s.reserveDelivery(round, job); reserved && s.sendReservedJob(job, delivery) {
+			if delivery, ok := s.reserveDelivery(round, job); ok {
+				reserved = append(reserved, delivery)
+			}
+		}
+		recorded, err := s.recordDeliveries(round, reserved)
+		s.logRecordingError(err)
+		assignedJobs := 0
+		for _, delivery := range recorded {
+			if s.sendRecordedDelivery(delivery) {
 				assignedJobs++
 			}
 		}
-		if assignedJobs == 0 {
+		if err != nil && len(recorded) == 0 {
+			// give it some time not to overwhelm the node we might not be a leader anymore
+			s.pause(1 * time.Second)
+		} else if assignedJobs == 0 {
 			// every loaded job was skipped (saturated or unavailable clients),
 			// back off to avoid a tight database-query loop until capacity changes
 			s.pause(100 * time.Millisecond)
@@ -414,16 +422,21 @@ func (s *jobServer) distributeJobs() {
 
 // distributionRound is what one round of the distribution loop knows while it
 // hands out the batch it loaded: the free slots of every client and job type,
-// the subscription changes they reflect, and the position in the sequence of
-// job changes the batch reflects (see startLoad).
+// the subscription changes they reflect, the position in the sequence of job
+// changes the batch reflects (see startLoad), and the channel it closes once the
+// delivery tokens of its reservations are written or failed to be.
 type distributionRound struct {
 	capacity        map[clientAndType]int
 	settingsVersion uint64
 	loadedAt        uint64
+	recorded        chan struct{}
 }
 
-// reservedDelivery is a job reserved for a client and not yet sent to it.
+// reservedDelivery is a job reserved for a client and not yet sent to it. Its
+// job carries the token of the delivery once the delivery is recorded.
 type reservedDelivery struct {
+	job          sql.Job
+	handOut      *handOut
 	client       ClientID
 	stream       *nodeSub
 	lockUntil    time.Time
@@ -436,7 +449,8 @@ type reservedDelivery struct {
 // returns, so that no lock is held while the job is sent. A job is not
 // reserved when no client of its type has a free slot, or when it changed
 // after the batch was read: a later round reloads it if it is still
-// deliverable.
+// deliverable. A reserved job counts as being recorded until the round wrote
+// the delivery tokens of its reservations, see recordDeliveries.
 func (s *jobServer) reserveDelivery(round *distributionRound, job sql.Job) (reservedDelivery, bool) {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
@@ -451,7 +465,7 @@ func (s *jobServer) reserveDelivery(round *distributionRound, job sql.Job) (rese
 	// round robin: starting from the client after the last used index,
 	// pick the first client that still has remaining capacity
 	numClients := len(jobTypeData.clients)
-	var delivery reservedDelivery
+	delivery := reservedDelivery{job: job, handOut: &handOut{round: round, sent: make(chan struct{})}}
 	for offset := 1; offset <= numClients; offset++ {
 		idx := (jobTypeData.index + offset) % numClients
 		candidateID := jobTypeData.clients[idx]
@@ -486,24 +500,147 @@ func (s *jobServer) reserveDelivery(round *distributionRound, job sql.Job) (rese
 	}
 	round.capacity[clientAndType{client: delivery.client, jobType: jType}]--
 	s.jobTypes[jType] = jobTypeData // set the updated index
-	lapsed, lapsedBefore := s.lapsedLocks[job.Key]
-	delete(s.lapsedLocks, job.Key)
 	s.distributedJobs[job.Key] = &distributedJob{
-		client:        delivery.client,
-		jobKey:        job.Key,
-		jobType:       jType,
-		lockUntil:     delivery.lockUntil,
-		lockDuration:  delivery.lockDuration,
-		attempt:       attemptOfNextDelivery(job),
-		afterOwnLapse: lapsedBefore && lapsed.client == delivery.client,
+		client:       delivery.client,
+		jobKey:       job.Key,
+		jobType:      jType,
+		lockUntil:    delivery.lockUntil,
+		lockDuration: delivery.lockDuration,
 	}
+	s.handingOut[job.Key] = delivery.handOut
 	return delivery, true
+}
+
+// handOutStage is how far a reserved delivery got on its way to the worker.
+type handOutStage int
+
+const (
+	// deliveryBeingRecorded: its round writes the token; a change of the job
+	// waits for the write
+	deliveryBeingRecorded handOutStage = iota
+	// deliveryRecorded: the token is written and the send has not begun; a
+	// change of the job withdraws the delivery instead of waiting for it
+	deliveryRecorded
+	// deliveryBeingSent: a change of the job waits for the send
+	deliveryBeingSent
+)
+
+// handOut follows a reserved delivery from its reservation until it is sent,
+// dropped or withdrawn, so that a change of its job neither overtakes the write
+// of its token nor finds a token which never reached a worker. A failure the
+// engine checks against the job's token must see the token of a delivery which
+// was sent: the failure of the delivery before it is then superseded for good
+// reason. Guarded by distributedJobsMu.
+type handOut struct {
+	round   *distributionRound
+	stage   handOutStage
+	written int64
+	// sent is closed once the delivery left this server, or will not
+	sent chan struct{}
+}
+
+// endHandOutLocked forgets a delivery which was sent, dropped or withdrawn and
+// lets the changes waiting for it go on. It does nothing for a delivery ended
+// before, so that each is ended once. The caller holds distributedJobsMu.
+func (s *jobServer) endHandOutLocked(key int64, delivery *handOut) {
+	if s.handingOut[key] != delivery {
+		return
+	}
+	delete(s.handingOut, key)
+	close(delivery.sent)
+}
+
+// dropReservationLocked releases the lock a reservation took, unless the lock
+// meanwhile belongs to another client. The caller holds distributedJobsMu.
+func (s *jobServer) dropReservationLocked(delivery reservedDelivery) {
+	if locked, ok := s.distributedJobs[delivery.job.Key]; ok && locked.client == delivery.client {
+		delete(s.distributedJobs, delivery.job.Key)
+	}
+}
+
+// recordDeliveries persists the token of every reserved delivery of the round,
+// in one write per partition, and returns the deliveries it recorded, each job
+// carrying its token. A reservation which was not recorded is dropped: its job
+// changed since it was loaded, or the write failed, and a later round hands the
+// job out if it still waits. The changes of the reserved jobs which waited for
+// the write go on once it is done, even when the write panicked.
+func (s *jobServer) recordDeliveries(round *distributionRound, reserved []reservedDelivery) (recorded []reservedDelivery, err error) {
+	var tokens map[int64]int64
+	defer func() {
+		s.distributedJobsMu.Lock()
+		defer s.distributedJobsMu.Unlock()
+		recorded = make([]reservedDelivery, 0, len(tokens))
+		for _, delivery := range reserved {
+			key := delivery.job.Key
+			token, ok := tokens[key]
+			if !ok {
+				s.dropReservationLocked(delivery)
+				s.endHandOutLocked(key, delivery.handOut)
+				continue
+			}
+			if locked, ok := s.distributedJobs[key]; ok && locked.client == delivery.client {
+				locked.deliveryToken = token
+			}
+			delivery.handOut.stage = deliveryRecorded
+			delivery.handOut.written = token
+			delivery.job.DeliveryToken = token
+			recorded = append(recorded, delivery)
+		}
+		close(round.recorded)
+	}()
+	if len(reserved) == 0 {
+		return nil, nil
+	}
+	jobs := make([]sql.Job, len(reserved))
+	for i, delivery := range reserved {
+		jobs[i] = delivery.job
+	}
+	recordedJobs, err := s.loader.RecordDeliveries(jobs)
+	tokens = make(map[int64]int64, len(recordedJobs))
+	for _, job := range recordedJobs {
+		tokens[job.Key] = job.DeliveryToken
+	}
+	return nil, err
+}
+
+// logRecordingError reports a write of delivery tokens which failed. A
+// partition which is not led here any more is expected during a leader change
+// and only warned about; the jobs of both are handed out by a later round.
+func (s *jobServer) logRecordingError(err error) {
+	switch {
+	case err == nil:
+	case errors.Is(err, NodeIsNotALeader):
+		s.logger.Warn("Could not record the delivery of jobs of a partition this node no longer leads", "err", err)
+	default:
+		s.logger.Error("Failed to record the delivery of jobs, a later round hands them out", "err", err)
+	}
+}
+
+// sendRecordedDelivery sends a recorded delivery unless a change of its job
+// withdrew it meanwhile, see beginMutation, and reports whether it was sent.
+// The changes of the job which arrive during the send wait for it.
+func (s *jobServer) sendRecordedDelivery(delivery reservedDelivery) bool {
+	key := delivery.job.Key
+	s.distributedJobsMu.Lock()
+	if s.handingOut[key] != delivery.handOut {
+		s.distributedJobsMu.Unlock()
+		return false
+	}
+	delivery.handOut.stage = deliveryBeingSent
+	s.distributedJobsMu.Unlock()
+	defer func() {
+		s.distributedJobsMu.Lock()
+		defer s.distributedJobsMu.Unlock()
+		s.endHandOutLocked(key, delivery.handOut)
+	}()
+	return s.sendReservedJob(delivery)
 }
 
 // sendReservedJob sends a reserved job to its client, holding no lock while
 // the stream may block, and reports whether it was sent. A job which could not
 // be sent loses its reservation, so that a later round hands it out again.
-func (s *jobServer) sendReservedJob(job sql.Job, delivery reservedDelivery) bool {
+func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
+	job := delivery.job
 	// this might be bottleneck for now...in the future we might want
 	// to have something that will allow us to send jobs to clients on
 	// non blocked stream or use a pool of GRPC connections to handle jobs
@@ -521,7 +658,8 @@ func (s *jobServer) sendReservedJob(job sql.Job, delivery reservedDelivery) bool
 			ElementType:    &job.ElementType,
 			LockUntil:      new(delivery.lockUntil.UnixMilli()),
 			Retries:        new(int32(job.Retries)), // #nosec G115 -- the engine writes this column from an int32 field
-			Attempt:        new(attemptOfNextDelivery(job)),
+			Attempt:        new(attemptOfDelivery(job)),
+			DeliveryToken:  &job.DeliveryToken,
 		},
 	})
 	if err != nil {
@@ -550,9 +688,9 @@ func (s *jobServer) sendReservedJob(job sql.Job, delivery reservedDelivery) bool
 	return true
 }
 
-// attemptOfNextDelivery is the attempt a job is handed out for: the one after
-// the attempts whose failure the job recorded.
-func attemptOfNextDelivery(job sql.Job) int32 {
+// attemptOfDelivery is the attempt a job is handed out for: the one after the
+// attempts whose failure the job recorded.
+func attemptOfDelivery(job sql.Job) int32 {
 	return int32(job.Attempts) + 1 // #nosec G115 -- the engine writes this column from an int32 field
 }
 
@@ -605,15 +743,10 @@ func (s *jobServer) capacityLocked(now time.Time) (map[clientAndType]int, map[Jo
 	}
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
-	for key, lapsed := range s.lapsedLocks {
-		if now.Sub(lapsed.lapsedAt) > s.limits.MaxLockDuration {
-			delete(s.lapsedLocks, key)
-		}
-	}
 	currentKeys := make([]int64, 0, len(s.distributedJobs))
 	for key, job := range s.distributedJobs {
 		if job.lockUntil.Before(now) {
-			s.lockLapsedLocked(job, now)
+			delete(s.distributedJobs, key)
 			continue
 		}
 		// only track capacity for clients that are still subscribed,
@@ -863,8 +996,11 @@ func (s *jobServer) removeClient(clientID ClientID) {
 // The deadline is relative to now rather than to the previous deadline, so a
 // client renewing periodically keeps a stable lead instead of accumulating one.
 // A lock whose deadline passed is gone even if no distribution round has
-// dropped the entry yet: the published deadline decides, not the cleanup.
-func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+// dropped the entry yet: the published deadline decides, not the cleanup. An
+// extension which names its delivery extends only the lock of that delivery:
+// the worker still at work on a delivery whose lock lapsed learns that it lost
+// the job, instead of keeping the next delivery to its client locked.
+func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
 	job, ok := s.distributedJobs[jobKey]
@@ -873,11 +1009,14 @@ func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Du
 	}
 	now := time.Now()
 	if job.lockUntil.Before(now) {
-		s.lockLapsedLocked(job, now)
+		delete(s.distributedJobs, jobKey)
 		return time.Time{}, ErrLockNotHeld
 	}
 	if job.client != clientID {
 		return time.Time{}, ErrLockHeldByOtherClient
+	}
+	if deliveryToken != nil && (*deliveryToken < 1 || *deliveryToken != job.deliveryToken) {
+		return time.Time{}, ErrLockNotHeld
 	}
 	if duration <= 0 {
 		duration = job.lockDuration
@@ -885,13 +1024,6 @@ func (s *jobServer) extendLock(clientID ClientID, jobKey int64, duration time.Du
 	duration = min(duration, s.limits.MaxLockDuration)
 	job.lockUntil = now.Add(duration)
 	return job.lockUntil, nil
-}
-
-// lockLapsedLocked drops a lock whose deadline passed and remembers its
-// holder, see afterOwnLapse. The caller holds distributedJobsMu.
-func (s *jobServer) lockLapsedLocked(job *distributedJob, now time.Time) {
-	delete(s.distributedJobs, job.jobKey)
-	s.lapsedLocks[job.jobKey] = lapsedLock{client: job.client, attempt: job.attempt, lapsedAt: now}
 }
 
 // startLoad returns the position in the sequence of job changes a batch loaded
@@ -930,13 +1062,46 @@ func (s *jobServer) changedSinceLocked(jobKey int64, loadedAt uint64) bool {
 }
 
 // beginMutation marks the job as being changed until the returned function is
-// called. A delivery reserved before stands; one not yet reserved is skipped.
-func (s *jobServer) beginMutation(jobKey int64) (endMutation func()) {
-	s.distributedJobsMu.Lock()
+// called. A delivery reserved before stands, unless it is still to be sent; one
+// not yet reserved is skipped. A failure the engine checks against the job's
+// delivery token must see the token of a delivery which reached a worker, so a
+// change waits while the token of a delivery of the job is being written or the
+// delivery is being sent, and withdraws a delivery which is written but not yet
+// sent: the job is not sent, and its token is taken back.
+func (s *jobServer) beginMutation(ctx context.Context, jobKey int64) (endMutation func(), err error) {
+	var withdrawn *handOut
+	for {
+		s.distributedJobsMu.Lock()
+		delivery, handingOut := s.handingOut[jobKey]
+		if !handingOut {
+			break
+		}
+		if delivery.stage == deliveryRecorded {
+			withdrawn = delivery
+			if locked, ok := s.distributedJobs[jobKey]; ok && locked.deliveryToken == delivery.written {
+				delete(s.distributedJobs, jobKey)
+			}
+			s.endHandOutLocked(jobKey, delivery)
+			break
+		}
+		progress := delivery.sent
+		if delivery.stage == deliveryBeingRecorded {
+			progress = delivery.round.recorded
+		}
+		s.distributedJobsMu.Unlock()
+		select {
+		case <-progress:
+		case <-ctx.Done():
+			return nil, fmt.Errorf("job %d is being handed out: %w", jobKey, ctx.Err())
+		}
+	}
 	s.mutations.seq++
 	s.mutations.inFlight[jobKey]++
 	s.mutations.changedAt[jobKey] = s.mutations.seq
 	s.distributedJobsMu.Unlock()
+	if withdrawn != nil {
+		s.withdrawDelivery(ctx, jobKey, withdrawn.written)
+	}
 	return func() {
 		s.distributedJobsMu.Lock()
 		defer s.distributedJobsMu.Unlock()
@@ -945,12 +1110,27 @@ func (s *jobServer) beginMutation(jobKey int64) (endMutation func()) {
 		if s.mutations.inFlight[jobKey]--; s.mutations.inFlight[jobKey] <= 0 {
 			delete(s.mutations.inFlight, jobKey)
 		}
+	}, nil
+}
+
+// withdrawDelivery takes back the token of a delivery a change withdrew before
+// it was sent, see beginMutation. When that fails the job keeps the token, and
+// a failure of the delivery before it is refused as superseded although the
+// job reached nobody since; the job is handed out again all the same.
+func (s *jobServer) withdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) {
+	if err := s.loader.WithdrawDelivery(ctx, jobKey, deliveryToken); err != nil {
+		s.logger.Warn("Failed to take back the token of a delivery which was never sent",
+			"jobKey", jobKey, "deliveryToken", deliveryToken, "err", err)
 	}
 }
 
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
-	defer s.beginMutation(jobKey)()
-	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
+	endMutation, err := s.beginMutation(ctx, jobKey)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
+	}
+	defer endMutation()
+	err = s.completer.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
 		s.releaseLockOfEndedJob(jobKey, err)
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
@@ -961,28 +1141,21 @@ func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey i
 
 // failJob fails the job through the engine. A job left active for another
 // attempt is handed out again by the next round once its backoff has passed.
-// Its lock is dropped only when the failing client holds it: a client whose
-// lock lapsed while it was still working reports its failure after the job was
-// handed to another client, and that failure spends an attempt but must not
-// take the job from the client now working on it, or the next round would hand
-// it to a third one alongside. The current holder's own report releases it,
-// unless the job came back to it after its own lock lapsed, see afterOwnLapse,
-// or the report names an attempt before the one the lock was handed out for:
-// the engine answered that one as recorded already, and it says nothing about
-// the delivery the holder is working on.
-func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, attempt *int32) error {
-	defer s.beginMutation(jobKey)()
-	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, attempt)
+// A failure naming its delivery releases the lock of that delivery, whoever
+// reports it, and leaves the lock of any other delivery alone, see
+// releaseLockOfFailedDelivery.
+func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
+	endMutation, err := s.beginMutation(ctx, jobKey)
+	if err != nil {
+		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
+	}
+	defer endMutation()
+	err = s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables, retries, retryBackoff, deliveryToken)
 	if err != nil {
 		s.releaseLockOfEndedJob(jobKey, err)
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
 	}
-	reportedAttempt := attempt
-	if errorCode != nil && *errorCode != "" {
-		// a BPMN error ends the job or leaves it failed whatever attempt it names
-		reportedAttempt = nil
-	}
-	s.releaseLockHeldBy(clientID, jobKey, reportedAttempt)
+	s.releaseLockOfFailedDelivery(clientID, jobKey, deliveryToken)
 	return nil
 }
 
@@ -990,7 +1163,11 @@ func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64
 // change like a failure: a batch loaded before must not deliver the job,
 // which may have been moved into a backoff. A lock held on the job stands.
 func (s *jobServer) updateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error {
-	defer s.beginMutation(jobKey)()
+	endMutation, err := s.beginMutation(ctx, jobKey)
+	if err != nil {
+		return fmt.Errorf("failed to update retries of job %d: %w", jobKey, err)
+	}
+	defer endMutation()
 	if err := s.completer.JobUpdateRetriesByKey(ctx, jobKey, retries, retryAt); err != nil {
 		return fmt.Errorf("failed to update retries of job %d: %w", jobKey, err)
 	}
@@ -1004,7 +1181,6 @@ func (s *jobServer) updateJobRetries(ctx context.Context, jobKey int64, retries 
 func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
-	delete(s.lapsedLocks, jobKey)
 	job, ok := s.distributedJobs[jobKey]
 	if !ok {
 		return
@@ -1016,51 +1192,32 @@ func (s *jobServer) releaseLock(clientID ClientID, jobKey int64, outcome string)
 	delete(s.distributedJobs, jobKey)
 }
 
-// releaseLockHeldBy drops the distributed entry of a job when clientID holds
-// it. Another client's lock stands, and so does a lock on a job a REST client
-// which named no client id has failed: the job stays reserved for its holder
-// until the holder reports or the lock lapses. A delivery after the client's
-// own lock lapsed keeps its lock for the first report, which may be the
-// earlier delivery's. reportedAttempt is the attempt the failure names, nil
-// when it names none: a report of an attempt before the one the lock was
-// handed out for is the repeat or the late report of an earlier delivery, which
-// the engine answered as recorded, and releases nothing.
-func (s *jobServer) releaseLockHeldBy(clientID ClientID, jobKey int64, reportedAttempt *int32) {
+// releaseLockOfFailedDelivery drops the lock a failure the engine accepted
+// ended. A failure naming its delivery ends that delivery, whoever reports it,
+// and leaves the lock of any other delivery alone: the engine answered it as
+// the repeat of a failure it recorded before, which says nothing about the
+// delivery now running. A failure naming none releases the lock only when the
+// reporting client holds it: another client's lock stands, and so does a lock
+// on a job a REST client which named no client id failed, until the holder
+// reports or the lock lapses.
+func (s *jobServer) releaseLockOfFailedDelivery(clientID ClientID, jobKey int64, deliveryToken *int64) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
 	job, ok := s.distributedJobs[jobKey]
 	if !ok {
-		// the client whose lock lapsed reported before the job was handed out
-		// again, so a later delivery to it is no longer ambiguous
-		if lapsed, found := s.lapsedLocks[jobKey]; found && lapsed.client == clientID && (reportedAttempt == nil || !namesEarlierAttempt(*reportedAttempt, lapsed.attempt)) {
-			delete(s.lapsedLocks, jobKey)
-		}
 		return
 	}
-	if job.client != clientID {
+	if deliveryToken != nil && job.deliveryToken != *deliveryToken {
+		s.logger.Debug("failure of another delivery than the locked one, which keeps its lock",
+			"jobKey", jobKey, "lockHolder", job.client, "client", clientID, "deliveryToken", *deliveryToken, "lockedDeliveryToken", job.deliveryToken)
+		return
+	}
+	if deliveryToken == nil && job.client != clientID {
 		s.logger.Debug("job failed by a client other than the lock holder, which keeps its lock",
 			"jobKey", jobKey, "lockHolder", job.client, "client", clientID)
 		return
 	}
-	if reportedAttempt != nil && namesEarlierAttempt(*reportedAttempt, job.attempt) {
-		s.logger.Debug("failure of an earlier attempt reported by the lock holder, which keeps the lock of the attempt it works on",
-			"jobKey", jobKey, "client", clientID, "reportedAttempt", *reportedAttempt, "lockedAttempt", job.attempt)
-		return
-	}
-	if job.afterOwnLapse {
-		job.afterOwnLapse = false
-		s.logger.Debug("job failed by the lock holder, which got it again after its own lock lapsed and keeps the lock for the delivery the failure may not belong to",
-			"jobKey", jobKey, "client", clientID)
-		return
-	}
 	delete(s.distributedJobs, jobKey)
-}
-
-// namesEarlierAttempt reports whether a failure names an attempt before the one a
-// delivery was handed out for. A failure which names none may belong to any, so
-// callers ask only when it names one.
-func namesEarlierAttempt(reportedAttempt int32, deliveredAttempt int32) bool {
-	return reportedAttempt < deliveredAttempt
 }
 
 // releaseLockOfEndedJob drops the distributed entry of a job the engine
@@ -1074,7 +1231,6 @@ func (s *jobServer) releaseLockOfEndedJob(jobKey int64, refusal error) {
 	s.distributedJobsMu.Lock()
 	defer s.distributedJobsMu.Unlock()
 	delete(s.distributedJobs, jobKey)
-	delete(s.lapsedLocks, jobKey)
 }
 
 func (s *jobServer) onJobRejected(_ context.Context, _ int64) {

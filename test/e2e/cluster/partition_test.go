@@ -17,7 +17,7 @@ import (
 // leader election within partitions, and engine lifecycle.
 
 func TestPartitionCreation(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see .specs/cluster/cluster-implementation-plan.md")
 	tc := NewTestCluster(t, 3, WithPartitions(3))
 	defer tc.Teardown(t)
 
@@ -31,7 +31,7 @@ func TestPartitionCreation(t *testing.T) {
 }
 
 func TestPartitionAssignment(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see .specs/cluster/cluster-implementation-plan.md")
 	tc := NewTestCluster(t, 3, WithPartitions(3))
 	defer tc.Teardown(t)
 
@@ -139,7 +139,7 @@ func TestPartitionEngineLifecycle(t *testing.T) {
 }
 
 func TestMultiplePartitionsPerNode(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see .specs/cluster/cluster-implementation-plan.md")
 	// 4 partitions on 2 nodes — each node hosts 2 partitions
 	tc := NewTestCluster(t, 2, WithPartitions(4))
 	defer tc.Teardown(t)
@@ -157,7 +157,7 @@ func TestMultiplePartitionsPerNode(t *testing.T) {
 }
 
 func TestMaxPartitions(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see .specs/cluster/cluster-implementation-plan.md")
 	skipIfShort(t)
 	// Attempt to create partitions near the 122 limit (network mux byte constraint)
 	// This is a stress test for the partition numbering scheme

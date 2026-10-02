@@ -1,7 +1,7 @@
 @node=node-1
 @host=http://localhost:8080
 @definition_key=1991421078827696128
-@instance_key=1991466343932629000
+@instance_key=2105940749211144192
 ### GetProcessDefinitions
 GET {{host}}/v1/process-definitions
 Accept: application/json

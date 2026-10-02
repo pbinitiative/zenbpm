@@ -211,7 +211,7 @@ func TestGrpcStreamUnderLatency(t *testing.T) {
 }
 
 func TestConcurrentStreamsMultiplePartitions(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see .specs/cluster/cluster-implementation-plan.md")
 	skipIfShort(t)
 
 	// With multiple partitions, killing one partition leader should only

@@ -2394,8 +2394,18 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	}, nil
 }
 
+// ResolveIncident resolves an incident, giving the job it leaves waiting the
+// retries of the optional body in the same transaction.
 func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveIncidentRequestObject) (public.ResolveIncidentResponseObject, error) {
-	err := s.node.ResolveIncident(ctx, request.IncidentKey)
+	var retries *int32
+	var retryAt *time.Time
+	if request.Body != nil {
+		retries, retryAt = request.Body.Retries, request.Body.RetryAt
+	}
+	if retryAt != nil && retries == nil {
+		return public.ResolveIncident400JSONResponse(zenerr.BadRequest(errors.New("retryAt can only be given together with retries")).ToApiError()), nil
+	}
+	err := s.node.ResolveIncident(ctx, request.IncidentKey, retries, retryAt)
 
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -2403,6 +2413,8 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.ResolveIncident502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.ResolveIncident400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.ResolveIncident404JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ConflictCode:

@@ -818,6 +818,12 @@ message GetJobsResponse {
 
 message ResolveIncidentRequest {
   int64 incident_key = 1;
+  // retries of the job the incident leaves waiting, set together with the
+  // resolution; absent = the resolution restores them as usual
+  int32 retries = 2;
+  // unix millis before which that job is not handed out; only with retries,
+  // absent = at once
+  int64 retry_at = 3;
 }
 
 message ResolveIncidentResponse {

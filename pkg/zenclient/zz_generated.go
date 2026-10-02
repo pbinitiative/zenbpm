@@ -1368,6 +1368,15 @@ type GetDmnResourceDefinitionsParamsSortBy string
 // GetDmnResourceDefinitionsParamsSortOrder defines parameters for GetDmnResourceDefinitions.
 type GetDmnResourceDefinitionsParamsSortOrder string
 
+// ResolveIncidentJSONBody defines parameters for ResolveIncident.
+type ResolveIncidentJSONBody struct {
+	// Retries Retries the job the incident leaves waiting has from now on, at most `jobs.maxRetries`. Absent, the resolution restores them from the task definition, unless retries were set for the job since its last series ended.
+	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryAt When that job is handed out next; only together with `retries`. Absent, or in the past, means at once; later than now plus `jobs.maxRetryBackoff` is refused.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+}
+
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
 	// ProcessInstanceKey Filter by process instance
@@ -1725,6 +1734,9 @@ type UpdateProcessInstanceVariablesJSONBody struct {
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
+// ResolveIncidentJSONRequestBody defines body for ResolveIncident for application/json ContentType.
+type ResolveIncidentJSONRequestBody ResolveIncidentJSONBody
+
 // AssignJobJSONRequestBody defines body for AssignJob for application/json ContentType.
 type AssignJobJSONRequestBody AssignJobJSONBody
 
@@ -1848,8 +1860,10 @@ type ClientInterface interface {
 	// GetDmnResourceDefinition request
 	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ResolveIncident request
-	ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// ResolveIncidentWithBody request with any body
+	ResolveIncidentWithBody(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ResolveIncident(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetJobs request
 	GetJobs(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2052,8 +2066,20 @@ func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefini
 	return c.Client.Do(req)
 }
 
-func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewResolveIncidentRequest(c.Server, incidentKey)
+func (c *Client) ResolveIncidentWithBody(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveIncidentRequestWithBody(c.Server, incidentKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveIncidentRequest(c.Server, incidentKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3000,8 +3026,19 @@ func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey 
 	return req, nil
 }
 
-// NewResolveIncidentRequest generates requests for ResolveIncident
-func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request, error) {
+// NewResolveIncidentRequest calls the generic ResolveIncident builder with application/json body
+func NewResolveIncidentRequest(server string, incidentKey int64, body ResolveIncidentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResolveIncidentRequestWithBody(server, incidentKey, "application/json", bodyReader)
+}
+
+// NewResolveIncidentRequestWithBody generates requests for ResolveIncident with any type of body
+func NewResolveIncidentRequestWithBody(server string, incidentKey int64, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -3026,10 +3063,12 @@ func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request,
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5173,8 +5212,10 @@ type ClientWithResponsesInterface interface {
 	// GetDmnResourceDefinitionWithResponse request
 	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
 
-	// ResolveIncidentWithResponse request
-	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+	// ResolveIncidentWithBodyWithResponse request with any body
+	ResolveIncidentWithBodyWithResponse(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+
+	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
 
 	// GetJobsWithResponse request
 	GetJobsWithResponse(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*GetJobsResponse, error)
@@ -5515,6 +5556,8 @@ type ResolveIncidentResponse struct {
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
 	JSON409      *Error
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -6733,9 +6776,17 @@ func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.C
 	return ParseGetDmnResourceDefinitionResponse(rsp)
 }
 
-// ResolveIncidentWithResponse request returning *ResolveIncidentResponse
-func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
-	rsp, err := c.ResolveIncident(ctx, incidentKey, reqEditors...)
+// ResolveIncidentWithBodyWithResponse request with arbitrary body returning *ResolveIncidentResponse
+func (c *ClientWithResponses) ResolveIncidentWithBodyWithResponse(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+	rsp, err := c.ResolveIncidentWithBody(ctx, incidentKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveIncidentResponse(rsp)
+}
+
+func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+	rsp, err := c.ResolveIncident(ctx, incidentKey, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -7528,6 +7579,20 @@ func ParseResolveIncidentResponse(rsp *http.Response) (*ResolveIncidentResponse,
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

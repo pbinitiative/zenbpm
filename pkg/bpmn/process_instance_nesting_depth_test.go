@@ -290,6 +290,12 @@ func TestNestedMessageEventSubProcessExceedingMaxProcessInstanceNestingDepthCrea
 	require.NoError(t, err)
 	assert.Len(t, completedSubscriptions, 1)
 
+	err = engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(2, nil))
+	require.ErrorIs(t, err, ErrInvalidJobRequest, "an incident without a token leaves no job waiting to give retries to")
+	activeSubscriptions, err = store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
+	require.NoError(t, err)
+	assert.Empty(t, activeSubscriptions, "the refused resolution changes nothing")
+
 	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
 	activeSubscriptions, err = store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
 	require.NoError(t, err)

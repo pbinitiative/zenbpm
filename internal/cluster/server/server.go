@@ -1440,12 +1440,7 @@ func jobRequestError(jobKey int64, action string, err error) *zenerr.ZenError {
 	case errors.Is(err, jobmanager.NodeIsNotALeader):
 		return zenerr.ClusterError(fmt.Errorf("cannot %s job %d: this node does not lead its partition", action, jobKey))
 	case errors.Is(err, bpmn.ErrInvalidJobRequest):
-		// the reason travels alone, so that the requester is told it as it is
-		var invalid *bpmn.InvalidJobRequestError
-		if errors.As(err, &invalid) {
-			return zenerr.BadRequest(errors.New(invalid.Reason))
-		}
-		return zenerr.BadRequest(err)
+		return invalidJobRequestError(err)
 	case errors.Is(err, bpmn.ErrJobInTerminalState), errors.Is(err, bpmn.ErrDeliverySuperseded):
 		return zenerr.Conflict(err)
 	}
@@ -1455,6 +1450,17 @@ func jobRequestError(jobKey int64, action string, err error) *zenerr.ZenError {
 		return zerr
 	}
 	return zenerr.TechnicalError(fmt.Errorf("failed to %s job %d: %w", action, jobKey, err))
+}
+
+// invalidJobRequestError is the bad request of a job request the engine
+// refused for what it asks. The reason travels alone, so that the requester is
+// told it as it is.
+func invalidJobRequestError(err error) *zenerr.ZenError {
+	var invalid *bpmn.InvalidJobRequestError
+	if errors.As(err, &invalid) {
+		return zenerr.BadRequest(errors.New(invalid.Reason))
+	}
+	return zenerr.BadRequest(err)
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
@@ -2033,26 +2039,47 @@ func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, req *
 }
 
 func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncidentRequest) (*proto.ResolveIncidentResponse, error) {
+	// checked here as well as in the REST layer, since the RPC is reachable on
+	// its own: dropping the retryAt would hand the job out earlier than asked
+	if req.RetryAt != nil && req.Retries == nil {
+		err := zenerr.BadRequest(errors.New("retryAt can only be given together with retries"))
+		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
+	}
 	partitionId := zenflake.GetPartitionId(req.GetIncidentKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
 	}
-	if err := engine.ResolveIncident(ctx, req.GetIncidentKey()); err != nil {
+	var options []bpmn.ResolveIncidentOption
+	if req.Retries != nil {
+		var retryAt *time.Time
+		if req.RetryAt != nil {
+			retryAt = new(time.UnixMilli(req.GetRetryAt()))
+		}
+		options = append(options, bpmn.WithJobRetries(req.GetRetries(), retryAt))
+	}
+	if err := engine.ResolveIncident(ctx, req.GetIncidentKey(), options...); err != nil {
 		return &proto.ResolveIncidentResponse{Error: resolveIncidentError(req.GetIncidentKey(), err).ToProtoError()}, nil
 	}
 	return &proto.ResolveIncidentResponse{}, nil
 }
 
 // resolveIncidentError classifies the error of a resolution: an unknown
-// incident, one the state of its instance does not let be resolved as things
-// stand, whose message names the way out, or a technical failure.
+// incident, retries given with it which the engine refuses, a conflict with
+// the state of the incident or its job (resolved already, retries for a job
+// which no longer waits, or one the state of its instance does not let be
+// resolved as things stand, whose message names the way out), or a technical
+// failure.
 func resolveIncidentError(incidentKey int64, err error) *zenerr.ZenError {
 	switch {
 	case isErrNotFound(err):
 		return zenerr.NotFound(err)
-	case errors.Is(err, bpmn.ErrIncidentNotResolvable):
+	case errors.Is(err, bpmn.ErrInvalidJobRequest):
+		return invalidJobRequestError(err)
+	case errors.Is(err, bpmn.ErrIncidentNotResolvable),
+		errors.Is(err, bpmn.ErrIncidentAlreadyResolved),
+		errors.Is(err, bpmn.ErrJobInTerminalState):
 		return zenerr.Conflict(err)
 	}
 	return zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", incidentKey, err))

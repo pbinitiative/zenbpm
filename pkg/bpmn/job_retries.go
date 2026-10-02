@@ -327,19 +327,13 @@ func attemptsPhrase(attempts int32) string {
 
 // UpdateJobRetries sets the remaining retries of an active or failed job and
 // when it is handed out next; a nil retryAt, or one in the past, makes it
-// deliverable at once. A retryAt further ahead than MaxRetryBackoff allows is
-// refused like any other backoff beyond the cap would be lowered: a mistyped
-// year would otherwise park the job without an incident. A failed job keeps
-// its incident open: resolving it then keeps the retries and the retryAt set
-// here instead of restoring the definition's retries.
+// deliverable at once; checkOperatorRetries names what is refused. A failed
+// job keeps its incident open: resolving it then keeps the retries and the
+// retryAt set here instead of restoring the definition's retries. To set them
+// and resolve the incident at once, see WithJobRetries.
 func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) (retErr error) {
-	if retries < 1 || retries > engine.jobRetryLimits.MaxRetries {
-		return invalidJobRequestf("retries of job %d must be between 1 and %d (jobs.maxRetries), got %d",
-			jobKey, engine.jobRetryLimits.MaxRetries, retries)
-	}
-	if latest := time.Now().Add(engine.jobRetryLimits.MaxRetryBackoff); retryAt != nil && retryAt.After(latest) {
-		return invalidJobRequestf("retryAt of job %d must not be later than %s from now (jobs.maxRetryBackoff), got %s",
-			jobKey, engine.jobRetryLimits.MaxRetryBackoff, retryAt.Format(time.RFC3339))
+	if err := engine.checkOperatorRetries(jobKey, retries, retryAt); err != nil {
+		return err
 	}
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
@@ -358,13 +352,7 @@ func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retrie
 		}
 	}()
 
-	now := time.Now()
-	job.Retries = retries
-	job.RetryAt = nil
-	if retryAt != nil && retryAt.After(now) {
-		job.RetryAt = retryAt
-	}
-	job.RetriesSetByOperator = true
+	setOperatorRetries(&job, retries, retryAt, time.Now())
 	if err := batch.SaveJob(ctx, job); err != nil {
 		return err
 	}
@@ -372,6 +360,34 @@ func (engine *Engine) UpdateJobRetries(ctx context.Context, jobKey int64, retrie
 		return fmt.Errorf("failed to update retries of job %d: %w", jobKey, err)
 	}
 	return nil
+}
+
+// checkOperatorRetries refuses retries an operator sets for a job outside 1 to
+// MaxRetries, and a retryAt further ahead than MaxRetryBackoff allows: a
+// mistyped year would otherwise park the job without an incident.
+func (engine *Engine) checkOperatorRetries(jobKey int64, retries int32, retryAt *time.Time) error {
+	if retries < 1 || retries > engine.jobRetryLimits.MaxRetries {
+		return invalidJobRequestf("retries of job %d must be between 1 and %d (jobs.maxRetries), got %d",
+			jobKey, engine.jobRetryLimits.MaxRetries, retries)
+	}
+	if latest := time.Now().Add(engine.jobRetryLimits.MaxRetryBackoff); retryAt != nil && retryAt.After(latest) {
+		return invalidJobRequestf("retryAt of job %d must not be later than %s from now (jobs.maxRetryBackoff), got %s",
+			jobKey, engine.jobRetryLimits.MaxRetryBackoff, retryAt.Format(time.RFC3339))
+	}
+	return nil
+}
+
+// setOperatorRetries gives the job the retries an operator set and hands it
+// out at retryAt, or at once when retryAt is nil or not after now. The next
+// resolution of the job's own incident keeps both instead of restoring the
+// retries of the task definition.
+func setOperatorRetries(job *runtime.Job, retries int32, retryAt *time.Time, now time.Time) {
+	job.Retries = retries
+	job.RetryAt = nil
+	if retryAt != nil && retryAt.After(now) {
+		job.RetryAt = retryAt
+	}
+	job.RetriesSetByOperator = true
 }
 
 // ensureJobRetriesAreUpdatable refuses a job which no longer waits for a worker or an operator.

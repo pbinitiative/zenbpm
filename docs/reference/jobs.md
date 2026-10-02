@@ -151,7 +151,7 @@ job:
    retries meanwhile (see below), which are kept together with the `retryAt` the operator chose.
    A `retries` expression which no longer evaluates refuses the resolution with `409` and changes
    nothing; the message names the error and the way out: correct the variables the expression
-   reads, or set the job's retries, then resolve again.
+   reads and resolve again, or resolve again with the job's retries given (see below).
    Resolving the incident of an error code nothing caught does the same, so leftover retries do not
    carry over into the new series; retries an operator set before that incident are forgotten with
    the series they belonged to. An incident the job did not raise itself, such as one of a boundary
@@ -290,6 +290,28 @@ set here and, while it still lies ahead, the `retryAt`. A `completed` or `termin
 lower.
 
 <ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1retries/post" example={true} />
+
+### Setting the retries while resolving the incident
+
+To give a failed job new retries and resolve its incident in one request, send them in the
+optional body of `POST /v1/incidents/{incidentKey}/resolve`: `retries`, and optionally `retryAt`,
+which is accepted only together with `retries`. Both are checked as above, and set in the same
+transaction that resolves the incident, so either both happen or neither does. The new series
+starts with these retries instead of the task definition's, which are not evaluated, so this also
+resolves an incident whose `retries` expression no longer evaluates. Retries given here win over
+retries set for the job since it failed.
+
+Retries given for an incident which leaves no job waiting, such as one of an expression or of an
+event subprocess, are refused with `400`, and the incident stays open. A job whose incident it did
+not raise itself, such as one of a boundary event of its task, gets them as the endpoint above sets
+them: its series goes on with the new retries, and a job the endpoint above refuses with `409` is
+refused the same way. Without a body, the resolution works as before.
+
+An incident which is resolved already answers `409` and changes nothing; retries in the body are
+not applied. A client which repeats a resolution after a timeout can tell from this that an earlier
+attempt, or somebody else, resolved it, and reads the job to see which retries it has.
+
+<ApiOperation id="api" pointer="#/paths/~1incidents~1{incidentKey}~1resolve/post" example={true} />
 
 ### What stays the worker's business
 

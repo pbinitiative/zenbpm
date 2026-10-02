@@ -18,6 +18,42 @@ import (
 // what to change before the resolution is repeated.
 var ErrIncidentNotResolvable = errors.New("incident cannot be resolved as things stand")
 
+// ErrIncidentAlreadyResolved is wrapped into the error of a resolution of an
+// incident which is resolved already, by another request or by an earlier
+// attempt of the same one whose answer was lost. Nothing is changed, so
+// retries given with the resolution are not applied either.
+var ErrIncidentAlreadyResolved = errors.New("incident already resolved")
+
+// ResolveIncidentOption is an optional argument of ResolveIncident.
+type ResolveIncidentOption func(*incidentResolution)
+
+type incidentResolution struct {
+	jobRetries *operatorRetries
+}
+
+// operatorRetries are the retries an operator sets for a job, and when it is
+// handed out next; a nil retryAt means at once.
+type operatorRetries struct {
+	retries int32
+	retryAt *time.Time
+}
+
+// WithJobRetries sets the retries of the job the incident leaves waiting, and
+// when it is handed out next, in the same transaction that resolves the
+// incident: either both happen or neither does. The values are checked as
+// UpdateJobRetries checks them. A job whose own incident is resolved starts
+// its new series with them instead of evaluating the retries of the task
+// definition, so the resolution succeeds even where those no longer evaluate;
+// a job whose incident it did not raise gets them as UpdateJobRetries sets
+// them, and a job UpdateJobRetries would refuse with ErrJobInTerminalState
+// refuses them the same way. An incident which leaves no job waiting refuses
+// them with ErrInvalidJobRequest.
+func WithJobRetries(retries int32, retryAt *time.Time) ResolveIncidentOption {
+	return func(resolution *incidentResolution) {
+		resolution.jobRetries = &operatorRetries{retries: retries, retryAt: retryAt}
+	}
+}
+
 func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine *Engine) runtime.Incident {
 	return runtime.Incident{
 		Key:                engine.generateKey(),
@@ -91,13 +127,14 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 // restartJobRetries starts a fresh series of attempts for a job whose own
 // incident is resolved: no attempts, no backoff, and the retries of the task
 // definition re-evaluated, whatever the incident was about. Retries an operator
-// set through UpdateJobRetries since the last series ended are kept instead, and
-// so is the moment the operator chose for the next delivery while it lies
-// ahead; the series which followed an update did not exhaust them, or the
-// update would have been forgotten with the incident. Retries which no longer
+// set since the last series ended, through UpdateJobRetries or with the
+// resolution itself (WithJobRetries), are kept instead, and so is the moment
+// the operator chose for the next delivery while it lies ahead; the series
+// which followed an update did not exhaust them, or the update would have
+// been forgotten with the incident. Retries which no longer
 // evaluate refuse the resolution with ErrIncidentNotResolvable: the job would
 // otherwise wait without the retries its definition asks for.
-func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, job *runtime.Job) error {
+func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, incidentKey int64, job *runtime.Job) error {
 	job.Attempts = 0
 	if job.RetriesSetByOperator {
 		job.RetriesSetByOperator = false
@@ -115,15 +152,25 @@ func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, job *r
 	variableHolder.SetLocalVariables(job.InputVariables)
 	retries, err := engine.initialRetries(task, variableHolder.ExecutionScopeSnapshot())
 	if err != nil {
-		return fmt.Errorf("%w: the retries of job %d no longer evaluate (%w); correct the variables they read, "+
-			"or set the job's retries (POST /v1/jobs/%d/retries), then resolve the incident again",
-			ErrIncidentNotResolvable, job.Key, err, job.Key)
+		return fmt.Errorf("%w: the retries of job %d no longer evaluate (%w); correct the variables they read "+
+			"and resolve the incident again, or resolve it with the job's retries given "+
+			"(\"retries\" in the body of POST /v1/incidents/%d/resolve)",
+			ErrIncidentNotResolvable, job.Key, err, incidentKey)
 	}
 	job.Retries = retries
 	return nil
 }
 
-func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr error) {
+// ResolveIncident resolves an incident and continues the token it failed. The
+// job the incident leaves waiting, if any, is handed out again; one whose own
+// incident it is starts a fresh series of attempts (see restartJobRetries).
+// WithJobRetries gives that job retries of the operator's own at the same time.
+func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ...ResolveIncidentOption) (retErr error) {
+	var resolution incidentResolution
+	for _, option := range options {
+		option(&resolution)
+	}
+
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
 		if retErr != nil {
@@ -143,9 +190,13 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, incident.ProcessInstanceKey),
 		attribute.Int64(otelPkg.AttributeToken, incident.Token.Key),
 	)
+	if retries := resolution.jobRetries; retries != nil {
+		// a trace shows that an operator replaced the retries of the task definition
+		resoveIncidentSpan.SetAttributes(attribute.Int(otelPkg.AttributeJobRetries, int(retries.retries)))
+	}
 
 	if incident.ResolvedAt != nil {
-		return newEngineErrorf("incident already resolved")
+		return incidentAlreadyResolved(incident)
 	}
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
@@ -169,10 +220,13 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return fmt.Errorf("%w: %w", newEngineErrorf("failed to find incident with key %d", key), err)
 	}
 	if incident.ResolvedAt != nil {
-		return newEngineErrorf("incident with key %d was already resolved", key)
+		return incidentAlreadyResolved(incident)
 	}
 
 	if incident.Token.Key == 0 {
+		if resolution.jobRetries != nil {
+			return incidentWithoutJobRefusesRetries(key)
+		}
 		if err := engine.retryEventSubprocessSubscriptionIncident(ctx, &batch, instance, incident); err != nil {
 			return fmt.Errorf("failed to recreate event subprocess subscription for incident %d: %w", key, err)
 		}
@@ -201,6 +255,23 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	if err != nil {
 		return err
 	}
+	if job != nil {
+		resoveIncidentSpan.SetAttributes(attribute.Int64(otelPkg.AttributeJobKey, job.Key))
+	}
+	if retries := resolution.jobRetries; retries != nil {
+		if job == nil {
+			return incidentWithoutJobRefusesRetries(key)
+		}
+		if err := engine.checkOperatorRetries(job.Key, retries.retries, retries.retryAt); err != nil {
+			return err
+		}
+		if err := ensureJobRetriesAreUpdatable(*job); err != nil {
+			return err
+		}
+		// a job which did not raise the incident keeps them as UpdateJobRetries
+		// leaves them; the restart of a failed job below keeps them for its new series
+		setOperatorRetries(job, retries.retries, retries.retryAt, time.Now())
+	}
 
 	incident.ResolvedAt = new(time.Now())
 	err = batch.SaveIncident(ctx, incident)
@@ -225,7 +296,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		// an incident the job did not raise itself, such as a boundary event
 		// which failed to correlate, leaves the job's series and backoff alone
 		if job.State == runtime.ActivityStateFailed {
-			if err := engine.restartJobRetries(instance, job); err != nil {
+			if err := engine.restartJobRetries(instance, incident.Key, job); err != nil {
 				return err
 			}
 		}
@@ -266,6 +337,21 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
+}
+
+// incidentAlreadyResolved is the refusal of a resolution of an incident which
+// is resolved already.
+func incidentAlreadyResolved(incident runtime.Incident) error {
+	return fmt.Errorf("%w: incident %d was resolved at %s; nothing was changed",
+		ErrIncidentAlreadyResolved, incident.Key, incident.ResolvedAt.Format(time.RFC3339))
+}
+
+// incidentWithoutJobRefusesRetries is the refusal of retries given with the
+// resolution of an incident which leaves no job waiting, such as one of an
+// expression: silently dropping them would hide the requester's mistake.
+func incidentWithoutJobRefusesRetries(incidentKey int64) error {
+	return invalidJobRequestf("incident %d leaves no job waiting; retries can only be given with the resolution of the incident of a job",
+		incidentKey)
 }
 
 // jobOfIncident is the pending job the resolution of an incident leaves

@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -110,7 +111,7 @@ func TestResolvedIncidentRestoresRetries(t *testing.T) {
 // TestResolvingAnIncidentWhoseRetriesNoLongerEvaluateAnswersTheWayOut shows a
 // resolution which cannot evaluate the retries of the job it would leave
 // waiting is refused with 409 and changes nothing, that its message names the
-// retries endpoint, and that the resolution succeeds once the retries are set.
+// way out, retries given with the resolution, and that the way works.
 func TestResolvingAnIncidentWhoseRetriesNoLongerEvaluateAnswersTheWayOut(t *testing.T) {
 	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries_expression.bpmn", map[string]any{"attemptsAllowed": 0})
 	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
@@ -125,24 +126,140 @@ func TestResolvingAnIncidentWhoseRetriesNoLongerEvaluateAnswersTheWayOut(t *test
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, updated.StatusCode(), "body: %s", string(updated.Body))
 
-	refused, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key)
+	refused, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{})
 
 	require.NoError(t, err)
 	require.Equal(t, http.StatusConflict, refused.StatusCode(), "body: %s", string(refused.Body))
 	require.NotNil(t, refused.JSON409)
-	assert.Contains(t, refused.JSON409.Message, fmt.Sprintf("POST /v1/jobs/%d/retries", job.Key))
+	assert.Contains(t, refused.JSON409.Message, fmt.Sprintf("POST /v1/incidents/%d/resolve", incidents[0].Key))
 	assert.Equal(t, zenclient.JobStateFailed, getJob(t, job.Key).State, "the refused resolution changes nothing")
-	stillOpen, err := getProcessInstanceIncidents(t, instance.Key)
-	require.NoError(t, err)
-	require.Len(t, stillOpen, 1)
-	assert.Nil(t, stillOpen[0].ResolvedAt)
+	assertIncidentStillOpen(t, instance.Key)
 
-	retries, err := app.restClient.UpdateJobRetriesWithResponse(t.Context(), job.Key, zenclient.UpdateJobRetriesJSONRequestBody{Retries: 2})
+	resolved, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{Retries: new(int32(2))})
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, retries.StatusCode(), "body: %s", string(retries.Body))
-	resolveIncident(t, incidents[0].Key)
+	require.Equal(t, http.StatusCreated, resolved.StatusCode(), "body: %s", string(resolved.Body))
 
 	assert.Equal(t, new(int32(2)), waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task").Retries)
+}
+
+// TestResolvingWithRetriesSetsThemInTheSameRequest shows the retries and the
+// retryAt given with a resolution are what the job has afterwards, without a
+// request to the retries endpoint of the job.
+func TestResolvingWithRetriesSetsThemInTheSameRequest(t *testing.T) {
+	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries.bpmn", nil)
+	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
+	failJobWithRetryRequest(t, job.Key, zenclient.FailJobJSONRequestBody{Message: new("down"), Retries: new(int32(0))})
+	waitForProcessInstanceJobByElementId(t, instance.Key, "retried-task", public.JobStateFailed)
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	retryAt := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+	response, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{
+		Retries: new(int32(7)),
+		RetryAt: &retryAt,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode(), "body: %s", string(response.Body))
+	resolved := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
+	assert.Equal(t, new(int32(7)), resolved.Retries)
+	assert.Equal(t, new(int32(0)), resolved.Attempts)
+	require.NotNil(t, resolved.RetryAt, "the job waits for the deadline given with the resolution")
+	assert.True(t, retryAt.Equal(*resolved.RetryAt), "expected %s, got %s", retryAt, *resolved.RetryAt)
+}
+
+// TestResolvingWithoutABodyRestoresTheRetries shows a resolution sent without
+// any body, as clients written before the body existed send it, still works.
+func TestResolvingWithoutABodyRestoresTheRetries(t *testing.T) {
+	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries.bpmn", nil)
+	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
+	failJobWithRetryRequest(t, job.Key, zenclient.FailJobJSONRequestBody{Message: new("down"), Retries: new(int32(0))})
+	waitForProcessInstanceJobByElementId(t, instance.Key, "retried-task", public.JobStateFailed)
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+
+	withoutContentType := func(_ context.Context, request *http.Request) error {
+		request.Header.Del("Content-Type")
+		return nil
+	}
+	response, err := app.restClient.ResolveIncidentWithBodyWithResponse(t.Context(), incidents[0].Key, "", nil, withoutContentType)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode(), "body: %s", string(response.Body))
+	assert.Equal(t, new(int32(3)), waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task").Retries)
+}
+
+// TestRepeatingAResolutionIsAConflictWhichChangesNothing shows a resolution
+// repeated after it succeeded, as a client repeating it after a timeout sends,
+// is answered 409 instead of an internal error, and its retries are not applied.
+func TestRepeatingAResolutionIsAConflictWhichChangesNothing(t *testing.T) {
+	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries.bpmn", nil)
+	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
+	failJobWithRetryRequest(t, job.Key, zenclient.FailJobJSONRequestBody{Message: new("down"), Retries: new(int32(0))})
+	waitForProcessInstanceJobByElementId(t, instance.Key, "retried-task", public.JobStateFailed)
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	first, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{Retries: new(int32(7))})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, first.StatusCode(), "body: %s", string(first.Body))
+
+	repeated, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{Retries: new(int32(2))})
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusConflict, repeated.StatusCode(), "body: %s", string(repeated.Body))
+	require.NotNil(t, repeated.JSON409)
+	assert.Contains(t, repeated.JSON409.Message, fmt.Sprintf("incident %d was resolved at", incidents[0].Key))
+	assert.Equal(t, new(int32(7)), getJob(t, job.Key).Retries, "the repeated resolution's retries are not applied")
+}
+
+// TestResolvingWithRetriesAnswersWhatItCannotDo shows the values and the
+// incidents a resolution with retries refuses with 400, each changing nothing.
+// Retries below one never reach the engine: the OpenAPI validator refuses them
+// by the schema's minimum.
+func TestResolvingWithRetriesAnswersWhatItCannotDo(t *testing.T) {
+	instance, _ := startRetryFixture(t, "testdata/service_task/service_task_retries.bpmn", nil)
+	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "retried-task")
+	failJobWithRetryRequest(t, job.Key, zenclient.FailJobJSONRequestBody{Message: new("down"), Retries: new(int32(0))})
+	waitForProcessInstanceJobByElementId(t, instance.Key, "retried-task", public.JobStateFailed)
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+
+	for name, body := range map[string]zenclient.ResolveIncidentJSONRequestBody{
+		"a retryAt without retries is a bad request":                  {RetryAt: new(time.Now().Add(time.Minute))},
+		"retries below the schema's minimum of one are a bad request": {Retries: new(int32(0))},
+		"retries above jobs.maxRetries are a bad request":             {Retries: new(int32(101))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, body)
+
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusBadRequest, response.StatusCode(), "body: %s", string(response.Body))
+			assert.Equal(t, zenclient.JobStateFailed, getJob(t, job.Key).State, "the refused resolution changes nothing")
+			assertIncidentStillOpen(t, instance.Key)
+		})
+	}
+	t.Run("retries for an incident which leaves no job waiting are a bad request", func(t *testing.T) {
+		gateway := deployAndCreateUniqueProcessDefinition(t, "testdata/gateway_exclusive/exclusive_gateway_amount_based_routing.bpmn", map[string]any{"amount": 1000})
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, gateway.Key)
+		})
+		waitForProcessInstanceState(t, gateway.Key, zenclient.ProcessInstanceStateFailed)
+		gatewayIncidents, err := getProcessInstanceIncidents(t, gateway.Key)
+		require.NoError(t, err)
+		require.Len(t, gatewayIncidents, 1)
+
+		response, err := app.restClient.ResolveIncidentWithResponse(t.Context(), gatewayIncidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{Retries: new(int32(2))})
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode(), "body: %s", string(response.Body))
+		require.NotNil(t, response.JSON400)
+		assert.Contains(t, response.JSON400.Message, "leaves no job waiting")
+		assertIncidentStillOpen(t, gateway.Key)
+	})
 }
 
 func TestFailWithErrorCodeStillRoutesTheBoundaryEvent(t *testing.T) {
@@ -332,6 +449,15 @@ func failJobWithRetryRequest(t testing.TB, jobKey int64, body zenclient.FailJobJ
 	response, err := app.restClient.FailJobWithResponse(t.Context(), jobKey, body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, response.StatusCode(), "unexpected fail job response: %s body: %s", response.Status(), string(response.Body))
+}
+
+// assertIncidentStillOpen checks the single incident of the instance is unresolved.
+func assertIncidentStillOpen(t testing.TB, processInstanceKey int64) {
+	t.Helper()
+	incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
+	assert.Nil(t, incidents[0].ResolvedAt, "the incident stays open")
 }
 
 func getJob(t testing.TB, jobKey int64) zenclient.Job {

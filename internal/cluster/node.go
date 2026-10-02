@@ -1131,7 +1131,10 @@ func (node *ZenNode) jobPartition(key int64) (uint32, error) {
 	return partition, nil
 }
 
-func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
+// ResolveIncident resolves an incident on the leader of its partition. Retries
+// other than nil are given to the job the incident leaves waiting, together
+// with when it is handed out next (nil: at once), in the same transaction.
+func (node *ZenNode) ResolveIncident(ctx context.Context, key int64, retries *int32, retryAt *time.Time) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
@@ -1140,9 +1143,14 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
 	}
-	resp, err := client.ResolveIncident(ctx, &proto.ResolveIncidentRequest{
+	request := &proto.ResolveIncidentRequest{
 		IncidentKey: &key,
-	})
+		Retries:     retries,
+	}
+	if retryAt != nil {
+		request.RetryAt = new(retryAt.UnixMilli())
+	}
+	resp, err := client.ResolveIncident(ctx, request)
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to resolve incident failed: %w", err))
 	}

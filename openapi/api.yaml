@@ -2704,7 +2704,8 @@ paths:
         absent `retryAt` makes a job waiting out a backoff deliverable at once. The incident of a
         `failed` job stays open: resolving it then keeps the retries set here instead of restoring
         the retries of the task definition, and a `retryAt` still ahead keeps the job from its
-        workers until then.
+        workers until then. To set the retries of a failed job and resolve its incident in one
+        request, give them to `POST /v1/incidents/{incidentKey}/resolve` instead.
       parameters:
         - name: jobKey
           in: path
@@ -2947,6 +2948,20 @@ paths:
       tags:
         - incident
       summary: Resolve an incident
+      description: |
+        Resolves an incident and continues the execution it stopped. The job the incident leaves
+        waiting, if any, starts a fresh series of attempts with the retries of its task definition,
+        evaluated again, and is handed out at once. Retries set for the job since its last series
+        ended, with `POST /v1/jobs/{jobKey}/retries`, are kept instead, together with their `retryAt`.
+
+        The body is optional. With `retries` the job gets these retries, and with `retryAt` it is
+        not handed out before then, in the same transaction that resolves the incident: either both
+        happen or neither does. The retries of the task definition are not evaluated then, so this is
+        also the way out when they no longer evaluate (`409`). `retries` and `retryAt` are checked as
+        `POST /v1/jobs/{jobKey}/retries` checks them. Retries given for an incident which leaves no
+        job waiting, such as one of an expression, are refused with `400`; a job whose incident it
+        did not raise itself, such as one of a boundary event, keeps them as that endpoint would set
+        them.
       parameters:
         - name: incidentKey
           in: path
@@ -2955,11 +2970,32 @@ paths:
             type: integer
             format: int64
           example: 4503599627370530
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                retries:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  description: Retries the job the incident leaves waiting has from now on, at most `jobs.maxRetries`. Absent, the resolution restores them from the task definition, unless retries were set for the job since its last series ended.
+                retryAt:
+                  type: string
+                  format: date-time
+                  description: When that job is handed out next; only together with `retries`. Absent, or in the past, means at once; later than now plus `jobs.maxRetryBackoff` is refused.
+            example:
+              retries: 3
       responses:
         201:
           description: Incident resolved
         400:
-          description: Bad request
+          description: >-
+            Bad request: `retryAt` without `retries`, retries below 1 or above `jobs.maxRetries`, a
+            `retryAt` later than now plus `jobs.maxRetryBackoff`, or retries for an incident which
+            leaves no job waiting. Nothing is changed.
           content:
             application/json:
               schema:
@@ -2972,10 +3008,13 @@ paths:
                 $ref: "#/components/schemas/Error"
         409:
           description: >-
-            The incident cannot be resolved as things stand: the `retries` expression of the job it
-            leaves waiting no longer evaluates. The message names the error and the way out: correct
-            the variables the expression reads, or set the job's retries with
-            `POST /v1/jobs/{jobKey}/retries`; then repeat the resolution. Nothing is changed.
+            Nothing is changed, because the resolution conflicts with the state of the incident or
+            its job. The incident is resolved already, by another request or by an earlier attempt of
+            this one whose answer was lost; retries in the body are not applied then. Or `retries`
+            were given for a job which no longer waits (completed or terminated). Or the `retries`
+            expression of the job the incident leaves waiting no longer evaluates; the message names
+            the error and the way out: correct the variables the expression reads and repeat the
+            resolution, or repeat it with the job's `retries` in the body.
           content:
             application/json:
               schema:
@@ -2994,6 +3033,10 @@ paths:
                 $ref: "#/components/schemas/Error"
         405:
           $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /modify/start-process-instance:
     post:

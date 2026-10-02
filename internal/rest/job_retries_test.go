@@ -71,6 +71,20 @@ func TestUpdateJobRetriesRefusesLessThanOne(t *testing.T) {
 	assert.Contains(t, refusal.Message, "at least 1")
 }
 
+func TestResolveIncidentRefusesARetryAtWithoutRetries(t *testing.T) {
+	server := &Server{}
+
+	response, err := server.ResolveIncident(t.Context(), public.ResolveIncidentRequestObject{
+		IncidentKey: 1,
+		Body:        &public.ResolveIncidentJSONRequestBody{RetryAt: new(time.Now().Add(time.Minute))},
+	})
+
+	require.NoError(t, err)
+	refusal, ok := response.(public.ResolveIncident400JSONResponse)
+	require.True(t, ok, "expected 400, got %T", response)
+	assert.Equal(t, "retryAt can only be given together with retries", refusal.Message)
+}
+
 func TestGetJobFailuresRefusesAPageBeyondTheLimit(t *testing.T) {
 	server := &Server{}
 

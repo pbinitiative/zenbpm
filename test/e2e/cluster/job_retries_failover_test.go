@@ -70,33 +70,7 @@ func TestRetryStateSurvivesPartitionLeaderFailover(t *testing.T) {
 		assert.Len(c, failures.JSON200.Items, 1, "the failure history survives the failover")
 	}, 60*time.Second, 500*time.Millisecond, "the failure history must be readable after the failover")
 
-	var deliveries sync.Map // job key -> attempt of its latest delivery
-	conn, err := grpc.NewClient(survivor.GrpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, conn.Close()) }()
-	_, err = zenclient.NewGrpc(conn).RegisterWorkerWithOptions(t.Context(), "retry-failover-worker",
-		func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
-			deliveries.Store(job.GetKey(), job.GetAttempt())
-			return map[string]any{}, nil
-		}, zenclient.WithJobType("charge-card"))
-	require.NoError(t, err)
-	// a job of the same type deliverable at once proves the worker's stream
-	// reaches the new leader, or the check below would pass for a stream
-	// which is not up yet
-	require.Eventually(t, func() bool {
-		created, err := survivor.RestClient.CreateProcessInstanceWithResponse(context.Background(), zenclient.CreateProcessInstanceJSONRequestBody{
-			ProcessDefinitionKey: new(GetFirstDefinitionKey(t, survivor)),
-		})
-		return err == nil && created.JSON201 != nil
-	}, 60*time.Second, 500*time.Millisecond, "the new leader must start a probe instance")
-	require.Eventually(t, func() bool {
-		probeDelivered := false
-		deliveries.Range(func(key, _ any) bool {
-			probeDelivered = key.(int64) != jobKey
-			return !probeDelivered
-		})
-		return probeDelivered
-	}, 30*time.Second, 100*time.Millisecond, "the worker must receive jobs from the new leader")
+	deliveries := recordDeliveriesFromTheNewLeader(t, survivor, jobKey)
 	assert.Never(t, func() bool {
 		_, delivered := deliveries.Load(jobKey)
 		return delivered
@@ -153,7 +127,7 @@ func TestOperatorRetriesOfAFailedJobSurvivePartitionLeaderFailover(t *testing.T)
 		if incidents.JSON200.Items[0].ResolvedAt != nil {
 			return true
 		}
-		resolved, err := survivor.RestClient.ResolveIncidentWithResponse(context.Background(), incidents.JSON200.Items[0].Key)
+		resolved, err := survivor.RestClient.ResolveIncidentWithResponse(context.Background(), incidents.JSON200.Items[0].Key, zenclient.ResolveIncidentJSONRequestBody{})
 		return err == nil && resolved.StatusCode() == http.StatusCreated
 	}, 60*time.Second, 500*time.Millisecond, "the new leader must resolve the incident")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -164,6 +138,106 @@ func TestOperatorRetriesOfAFailedJobSurvivePartitionLeaderFailover(t *testing.T)
 		assert.Equal(c, zenclient.JobStateActive, response.JSON200.State)
 		assert.Equal(c, new(int32(5)), response.JSON200.Retries, "the operator's retries survive the failover")
 	}, 60*time.Second, 500*time.Millisecond, "the resolved job must be readable after the failover")
+}
+
+// TestRetriesGivenWithAResolutionSurvivePartitionLeaderFailover exhausts the
+// retries of a job, kills the leader of its partition and resolves the
+// incident on a surviving node with retries and a deadline in the same
+// request: the new leader applies both, and keeps the job from its workers
+// until the deadline.
+func TestRetriesGivenWithAResolutionSurvivePartitionLeaderFailover(t *testing.T) {
+	tc := NewTestCluster(t, 3)
+	defer tc.Teardown(t)
+	WaitForHealthy(t, tc, 150*time.Second)
+	WaitForPartitions(t, tc, 1, 30*time.Second)
+
+	leader := tc.Leader()
+	require.NotNil(t, leader)
+	DeployDefinitionOnNode(t, leader, "job_retries/service-task-retries.bpmn")
+	instanceKey := CreateInstanceOnNode(t, leader, GetFirstDefinitionKey(t, leader), nil)
+	jobKey := activeJobOf(t, leader, instanceKey)
+	failed, err := leader.RestClient.FailJobWithResponse(context.Background(), jobKey, zenclient.FailJobJSONRequestBody{
+		Message: new("card declined"),
+		Retries: new(int32(0)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, failed.StatusCode(), "body: %s", string(failed.Body))
+
+	tc.KillNode(t, partitionLeaderID(t, tc))
+	survivor := tc.RunningNodes()[0]
+	retryAt := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+	// as in TestOperatorRetriesOfAFailedJobSurvivePartitionLeaderFailover, the
+	// resolution is retried until the new leader answers; one whose answer was
+	// lost committed all the same, which the incident then shows
+	require.Eventually(t, func() bool {
+		incidents, err := survivor.RestClient.GetIncidentsWithResponse(context.Background(), instanceKey, &zenclient.GetIncidentsParams{})
+		if err != nil || incidents.JSON200 == nil || len(incidents.JSON200.Items) != 1 {
+			return false
+		}
+		if incidents.JSON200.Items[0].ResolvedAt != nil {
+			return true
+		}
+		resolved, err := survivor.RestClient.ResolveIncidentWithResponse(context.Background(), incidents.JSON200.Items[0].Key, zenclient.ResolveIncidentJSONRequestBody{
+			Retries: new(int32(5)),
+			RetryAt: &retryAt,
+		})
+		return err == nil && resolved.StatusCode() == http.StatusCreated
+	}, 60*time.Second, 500*time.Millisecond, "the new leader must resolve the incident")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		response, err := survivor.RestClient.GetJobWithResponse(context.Background(), jobKey)
+		if !assert.NoError(c, err) || !assert.NotNil(c, response.JSON200) {
+			return
+		}
+		job := response.JSON200
+		assert.Equal(c, zenclient.JobStateActive, job.State)
+		assert.Equal(c, new(int32(5)), job.Retries, "the retries given with the resolution reach the new leader")
+		assert.Equal(c, new(int32(0)), job.Attempts, "the resolution starts a new series")
+		if assert.NotNil(c, job.RetryAt) {
+			assert.True(c, retryAt.Equal(*job.RetryAt), "expected %s, got %s", retryAt, *job.RetryAt)
+		}
+	}, 60*time.Second, 500*time.Millisecond, "the resolved job must be readable after the failover")
+
+	deliveries := recordDeliveriesFromTheNewLeader(t, survivor, jobKey)
+	assert.Never(t, func() bool {
+		_, delivered := deliveries.Load(jobKey)
+		return delivered
+	}, 3*time.Second, 100*time.Millisecond, "the new leader must keep the job until the deadline given with the resolution")
+}
+
+// recordDeliveriesFromTheNewLeader registers a worker for charge-card jobs on
+// the node and returns the attempt of each job's latest delivery to it, by job
+// key. It returns once a probe job reached the worker, which proves the
+// worker's stream reaches the partition's new leader; without the probe, a
+// check that the job given is not delivered would pass for a stream which is
+// not up yet.
+func recordDeliveriesFromTheNewLeader(t *testing.T, n *TestNode, jobKey int64) *sync.Map {
+	t.Helper()
+	var deliveries sync.Map
+	conn, err := grpc.NewClient(n.GrpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	_, err = zenclient.NewGrpc(conn).RegisterWorkerWithOptions(t.Context(), "retry-failover-worker",
+		func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+			deliveries.Store(job.GetKey(), job.GetAttempt())
+			return map[string]any{}, nil
+		}, zenclient.WithJobType("charge-card"))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		created, err := n.RestClient.CreateProcessInstanceWithResponse(context.Background(), zenclient.CreateProcessInstanceJSONRequestBody{
+			ProcessDefinitionKey: new(GetFirstDefinitionKey(t, n)),
+		})
+		return err == nil && created.JSON201 != nil
+	}, 60*time.Second, 500*time.Millisecond, "the new leader must start a probe instance")
+	require.Eventually(t, func() bool {
+		probeDelivered := false
+		deliveries.Range(func(key, _ any) bool {
+			probeDelivered = key.(int64) != jobKey
+			return !probeDelivered
+		})
+		return probeDelivered
+	}, 30*time.Second, 100*time.Millisecond, "the worker must receive jobs from the new leader")
+	return &deliveries
 }
 
 func activeJobOf(t *testing.T, n *TestNode, instanceKey int64) int64 {

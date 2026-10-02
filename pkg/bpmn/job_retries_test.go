@@ -679,15 +679,194 @@ func TestResolveIncidentWhoseRetriesNoLongerEvaluateNamesTheWayOut(t *testing.T)
 	err = engine.ResolveIncident(t.Context(), incident.Key)
 
 	require.ErrorIs(t, err, ErrIncidentNotResolvable)
-	assert.ErrorContains(t, err, fmt.Sprintf("POST /v1/jobs/%d/retries", job.Key))
+	assert.ErrorContains(t, err, fmt.Sprintf("POST /v1/incidents/%d/resolve", incident.Key))
 	assert.Nil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt, "the incident stays open")
 	assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, job.Key).State)
 
-	require.NoError(t, engine.UpdateJobRetries(t.Context(), job.Key, 2, nil))
-	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(2, nil)))
 	resolved := reloadJob(t, store, job.Key)
 	assert.Equal(t, runtime.ActivityStateActive, resolved.State)
 	assert.Equal(t, int32(2), resolved.Retries, "the operator's retries are kept")
+}
+
+// TestResolveIncidentWithJobRetries shows the retries given with a resolution
+// are set in the same transaction as the resolution, checked as
+// UpdateJobRetries checks them, and refused for an incident which leaves no
+// job waiting. Whatever is refused changes nothing.
+func TestResolveIncidentWithJobRetries(t *testing.T) {
+	t.Run("a failed job starts a fresh series with them and is handed out at once", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), new(time.Hour), nil))
+		incident := singleIncident(t, store, job.ProcessInstanceKey)
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(9, nil)))
+
+		resolved := reloadJob(t, store, job.Key)
+		assert.Equal(t, runtime.ActivityStateActive, resolved.State)
+		assert.Equal(t, int32(9), resolved.Retries, "the given retries win over the definition's")
+		assert.Zero(t, resolved.Attempts, "a resolution starts a fresh series")
+		assert.Nil(t, resolved.RetryAt)
+		assert.False(t, resolved.RetriesSetByOperator, "the resolution consumed them")
+		assert.NotNil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt)
+		assertInstanceState(t, store, job.ProcessInstanceKey, runtime.ActivityStateActive)
+		assert.Equal(t, []int64{job.Key}, activatedJobKeys(t, engine))
+	})
+	t.Run("a retryAt ahead keeps the job from its workers until then", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		retryAt := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key, WithJobRetries(2, &retryAt)))
+
+		resolved := reloadJob(t, store, job.Key)
+		assert.Equal(t, runtime.ActivityStateActive, resolved.State)
+		assert.Equal(t, int32(2), resolved.Retries)
+		require.NotNil(t, resolved.RetryAt)
+		assert.Equal(t, retryAt, *resolved.RetryAt)
+		assert.Empty(t, activatedJobKeys(t, engine))
+	})
+	t.Run("a retryAt in the past hands the job out at once", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key, WithJobRetries(2, new(time.Now().Add(-time.Minute)))))
+
+		assert.Nil(t, reloadJob(t, store, job.Key).RetryAt)
+		assert.Equal(t, []int64{job.Key}, activatedJobKeys(t, engine))
+	})
+	t.Run("they win over retries set for the failed job before", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		require.NoError(t, engine.UpdateJobRetries(t.Context(), job.Key, 7, new(time.Now().Add(time.Hour))))
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key, WithJobRetries(4, nil)))
+
+		resolved := reloadJob(t, store, job.Key)
+		assert.Equal(t, int32(4), resolved.Retries)
+		assert.Nil(t, resolved.RetryAt, "the earlier deadline went with the earlier retries")
+	})
+	t.Run("a job which did not raise the incident gets them as UpdateJobRetries sets them", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, nil, new(time.Hour), nil))
+		raiseIncidentOnTheTokenOf(t, engine, store, reloadJob(t, store, job.Key))
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key, WithJobRetries(5, nil)))
+
+		resolved := reloadJob(t, store, job.Key)
+		assert.Equal(t, runtime.ActivityStateActive, resolved.State)
+		assert.Equal(t, int32(5), resolved.Retries)
+		assert.Equal(t, int32(1), resolved.Attempts, "the series goes on")
+		assert.True(t, resolved.RetriesSetByOperator, "the next resolution of the job's own incident keeps them")
+		assert.Nil(t, resolved.RetryAt, "without retryAt the backoff is cut short")
+		assert.Equal(t, []int64{job.Key}, activatedJobKeys(t, engine))
+	})
+	t.Run("values out of bounds are refused and change nothing", func(t *testing.T) {
+		limits := DefaultJobRetryLimits()
+		limits.MaxRetries = 5
+		limits.MaxRetryBackoff = time.Hour
+		engine, store, job := startRetriedJob(t, limits, "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		incident := singleIncident(t, store, job.ProcessInstanceKey)
+		for name, option := range map[string]ResolveIncidentOption{
+			"retries below one":             WithJobRetries(0, nil),
+			"retries above jobs.maxRetries": WithJobRetries(6, nil),
+			"a retryAt beyond the cap":      WithJobRetries(2, new(time.Now().Add(2*time.Hour))),
+		} {
+			err := engine.ResolveIncident(t.Context(), incident.Key, option)
+
+			require.ErrorIs(t, err, ErrInvalidJobRequest, name)
+			assert.ErrorContains(t, err, fmt.Sprintf("of job %d", job.Key), name)
+			assertIncidentOfFailedJobUnchanged(t, store, job)
+		}
+	})
+	t.Run("an incident which leaves no job waiting refuses them", func(t *testing.T) {
+		store := inmemory.NewStorage()
+		engine := NewEngine(EngineWithStorage(store))
+		t.Cleanup(engine.Stop)
+		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
+		require.NoError(t, err)
+		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"price": 0})
+		require.Error(t, err, "no flow of the gateway matches")
+		incident := singleIncident(t, store, instance.ProcessInstance().Key)
+
+		err = engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(2, nil))
+
+		require.ErrorIs(t, err, ErrInvalidJobRequest)
+		assert.ErrorContains(t, err, fmt.Sprintf("incident %d leaves no job waiting", incident.Key))
+		assert.Nil(t, singleIncident(t, store, instance.ProcessInstance().Key).ResolvedAt, "the incident stays open")
+	})
+	t.Run("a repeated resolution is refused as resolved already and applies no retries", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		incident := singleIncident(t, store, job.ProcessInstanceKey)
+		require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(9, nil)))
+
+		err := engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(4, nil))
+
+		require.ErrorIs(t, err, ErrIncidentAlreadyResolved)
+		assert.ErrorContains(t, err, fmt.Sprintf("incident %d was resolved at", incident.Key))
+		assert.Equal(t, int32(9), reloadJob(t, store, job.Key).Retries, "the first resolution's retries stay")
+	})
+	t.Run("a job which no longer waits refuses them as UpdateJobRetries does", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		incident := singleIncident(t, store, job.ProcessInstanceKey)
+		// a pending job, but one UpdateJobRetries refuses
+		completing := reloadJob(t, store, job.Key)
+		completing.State = runtime.ActivityStateCompleting
+		require.NoError(t, store.SaveJob(t.Context(), completing))
+		require.ErrorIs(t, engine.UpdateJobRetries(t.Context(), job.Key, 2, nil), ErrJobInTerminalState)
+
+		err := engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(2, nil))
+
+		require.ErrorIs(t, err, ErrJobInTerminalState)
+		unchanged := reloadJob(t, store, job.Key)
+		assert.Equal(t, runtime.ActivityStateCompleting, unchanged.State)
+		assert.Zero(t, unchanged.Retries)
+		assert.Nil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt, "the incident stays open")
+	})
+	t.Run("the span of the resolution records them and the job", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		incident := singleIncident(t, store, job.ProcessInstanceKey)
+		recorder := tracetest.NewSpanRecorder()
+		engine.tracer = sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(9, nil)))
+
+		var attributes map[attribute.Key]attribute.Value
+		for _, span := range recorder.Ended() {
+			if span.Name() == fmt.Sprintf("incident:%d", incident.Key) {
+				attributes = map[attribute.Key]attribute.Value{}
+				for _, kv := range span.Attributes() {
+					attributes[kv.Key] = kv.Value
+				}
+			}
+		}
+		require.NotNil(t, attributes, "the resolution has a span")
+		assert.Equal(t, attribute.IntValue(9), attributes[otelPkg.AttributeJobRetries])
+		assert.Equal(t, attribute.Int64Value(job.Key), attributes[otelPkg.AttributeJobKey])
+	})
+	t.Run("a commit which fails sets neither the retries nor resolves the incident", func(t *testing.T) {
+		store := &failingFlushes{Storage: inmemory.NewStorage()}
+		engine := NewEngine(EngineWithStorage(store))
+		t.Cleanup(engine.Stop)
+		definition, err := engine.LoadFromFile(t.Context(), "./test-cases/job_retries/service-task-retries.bpmn")
+		require.NoError(t, err)
+		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+		require.NoError(t, err)
+		jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		job := jobs[0]
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		incident := singleIncident(t, store.Storage, job.ProcessInstanceKey)
+		store.failFlushes.Store(true)
+
+		require.Error(t, engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(9, nil)))
+
+		assertIncidentOfFailedJobUnchanged(t, store.Storage, job)
+	})
 }
 
 // TestAFailureNamingItsDeliveryCountsOnce shows a failure repeated after a
@@ -1665,6 +1844,17 @@ func assertBackoffAfterFailure(t *testing.T, engine *Engine, store *inmemory.Sto
 	waited := job.RetryAt.Sub(before)
 	assert.GreaterOrEqual(t, waited, expected, "attempt %d", job.Attempts)
 	assert.Less(t, waited, expected+time.Second, "attempt %d", job.Attempts)
+}
+
+// assertIncidentOfFailedJobUnchanged checks a job failed without retries left
+// is still failed with none, and its incident still open.
+func assertIncidentOfFailedJobUnchanged(t *testing.T, store *inmemory.Storage, job runtime.Job) {
+	t.Helper()
+	unchanged := reloadJob(t, store, job.Key)
+	assert.Equal(t, runtime.ActivityStateFailed, unchanged.State)
+	assert.Zero(t, unchanged.Retries)
+	assert.False(t, unchanged.RetriesSetByOperator)
+	assert.Nil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt, "the incident stays open")
 }
 
 func assertNoIncidents(t *testing.T, store *inmemory.Storage, processInstanceKey int64) {

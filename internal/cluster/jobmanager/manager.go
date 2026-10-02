@@ -129,6 +129,8 @@ type Job struct {
 	// DeliveryToken identifies this delivery; a failure naming it counts once,
 	// and not at all once the job was handed out again.
 	DeliveryToken int64
+	// Headers are the static task headers configured on the BPMN element.
+	Headers map[string]string
 }
 
 func New(

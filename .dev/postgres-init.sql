@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     execution_token BIGINT NOT NULL,
     assignee TEXT,
     output_variables TEXT,
+    headers TEXT NOT NULL DEFAULT '{}',
     retries BIGINT NOT NULL DEFAULT 1,
     attempts BIGINT NOT NULL DEFAULT 0,
     retry_at BIGINT,

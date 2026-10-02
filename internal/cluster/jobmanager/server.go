@@ -397,7 +397,15 @@ func (s *jobServer) distributeJobs() {
 		round := &distributionRound{capacity: capacity, settingsVersion: settingsVersion, loadedAt: loadedAt, recorded: make(chan struct{})}
 		reserved := make([]reservedDelivery, 0, len(jobs))
 		for _, job := range jobs {
+			headers, err := sql.JobHeadersFromJSON(job.Headers)
+			if err != nil {
+				// SaveJobWith always stores headers as a JSON object, so a parse
+				// failure means a corrupt value: log it and skip the job
+				s.logger.Error("Failed to parse job headers", "jobType", job.Type, "key", job.Key, "err", err)
+				continue
+			}
 			if delivery, ok := s.reserveDelivery(round, job); ok {
+				delivery.headers = headers
 				reserved = append(reserved, delivery)
 			}
 		}
@@ -436,6 +444,7 @@ type distributionRound struct {
 // job carries the token of the delivery once the delivery is recorded.
 type reservedDelivery struct {
 	job          sql.Job
+	headers      map[string]string
 	handOut      *handOut
 	client       ClientID
 	stream       *nodeSub
@@ -660,6 +669,7 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 			Retries:        new(int32(job.Retries)), // #nosec G115 -- the engine writes this column from an int32 field
 			Attempt:        new(attemptOfDelivery(job)),
 			DeliveryToken:  &job.DeliveryToken,
+			Headers:        delivery.headers,
 		},
 	})
 	if err != nil {

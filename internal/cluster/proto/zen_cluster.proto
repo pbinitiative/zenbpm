@@ -322,17 +322,18 @@ message Job {
   string assignee = 9;
   bytes output_variables = 10;
   string element_type = 11;
+  map<string, string> headers = 12;
   // attempts left: failures without an error code the job may still report; the one which leaves none creates an incident
-  int32 retries = 12;
+  int32 retries = 13;
   // unix millis before which the job is not handed out again; absent = at once
-  int64 retry_at = 13;
-  string last_failure_message = 14;
+  int64 retry_at = 14;
+  string last_failure_message = 15;
   // failures without an error code since the job was created or its incident resolved
-  int32 attempts = 15;
+  int32 attempts = 16;
   // backoff policy of the task definition ("PT10S,PT1M"); absent = the engine default
-  string retry_backoff = 16;
+  string retry_backoff = 17;
   // token of the latest delivery of the job to a worker; 0 = never handed out
-  int64 delivery_token = 17;
+  int64 delivery_token = 18;
 }
 
 message JobFailure {
@@ -524,12 +525,13 @@ message InternalJob {
   string element_type = 8;
   // Unix milliseconds on the leader's clock at which the lock of this delivery lapses.
   int64 lock_until = 9;
+  map<string, string> headers = 10;
   // retries remaining at delivery
-  int32 retries = 10;
+  int32 retries = 11;
   // 1 for the first delivery of a series, one more after every failure without an error code
-  int32 attempt = 11;
+  int32 attempt = 12;
   // token of this delivery, higher than that of every delivery of the job before
-  int64 delivery_token = 12;
+  int64 delivery_token = 13;
 }
 
 message SetMessageSubscriptionPointerRequest {

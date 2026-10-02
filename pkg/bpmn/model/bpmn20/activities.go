@@ -37,6 +37,14 @@ type InternalTask interface {
 	GetOutputMapping() []extensions.TIoMapping
 }
 
+// TaskHeaderProvider is implemented by elements that support static task headers
+// (zenbpm:taskHeaders / zeebe:taskHeaders). It is intentionally separate from
+// InternalTask so that elements without headers (e.g. throwing events handled as
+// tasks) do not need to implement it.
+type TaskHeaderProvider interface {
+	GetTaskHeaders() []extensions.THeader
+}
+
 type UserTask interface {
 	InternalTask
 	GetAssignmentAssignee() string
@@ -53,11 +61,15 @@ type TActivity struct {
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 	In     *extensions.TIn         `xml:"extensionElements>in"`
+	// Headers are static key/value pairs handed to the job worker
+	// (zenbpm:taskHeaders, Zeebe-compatible with zeebe:taskHeaders).
+	Headers []extensions.THeader `xml:"extensionElements>taskHeaders>header"`
 }
 
 func (task TActivity) GetInputMapping() []extensions.TIoMapping  { return task.Input }
 func (task TActivity) GetOutputMapping() []extensions.TIoMapping { return task.Output }
 func (task TActivity) GetMultiInstance() *TMultiInstance         { return task.MultiInstance }
+func (task TActivity) GetTaskHeaders() []extensions.THeader      { return task.Headers }
 func (task TActivity) GetBusinessKey() *string {
 	if task.In == nil {
 		return nil
@@ -147,7 +159,6 @@ func (d TBusinessRuleTaskLocal) businessRuleTaskImplementation() {}
 
 type TBusinessRuleTaskExternal struct {
 	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-	Headers        extensions.THeader         `xml:"extensionElements>taskHeaders"`
 }
 
 func (d TBusinessRuleTaskExternal) businessRuleTaskImplementation() {}

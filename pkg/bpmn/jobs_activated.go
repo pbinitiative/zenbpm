@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"maps"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -20,6 +21,7 @@ type activatedJob struct {
 	createdAt                time.Time
 	localVariables           map[string]interface{}
 	outputVariables          map[string]interface{}
+	headers                  map[string]string
 }
 
 // ActivatedJob represents an abstraction for the activated job
@@ -52,6 +54,10 @@ type ActivatedJob interface {
 	GetLocalVariables() map[string]interface{}
 
 	GetOutputVariables() map[string]interface{}
+
+	// Headers returns the static key/value pairs configured on the BPMN element
+	// via the taskHeaders extension. Nil when the element defines none.
+	Headers() map[string]string
 
 	// InstanceKey get instance key from ProcessInfo
 	InstanceKey() int64
@@ -124,6 +130,11 @@ func (aj *activatedJob) GetLocalVariables() map[string]interface{} {
 
 func (aj *activatedJob) GetOutputVariables() map[string]interface{} {
 	return aj.outputVariables
+}
+
+// Headers implements ActivatedJob
+func (aj *activatedJob) Headers() map[string]string {
+	return maps.Clone(aj.headers)
 }
 
 // Fail implements ActivatedJob

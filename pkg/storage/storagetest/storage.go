@@ -297,6 +297,7 @@ func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job 
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 		Token:              token,
 		InputVariables:     map[string]any{"foo": "bar"},
+		Headers:            map[string]string{"content-type": "application/json", "retries-hint": "5"},
 	}
 }
 

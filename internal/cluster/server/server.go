@@ -1148,7 +1148,12 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 		totalCount = int32(result[0].TotalCount)
 	}
 	for i, row := range result {
-		jobs[i] = jobToProto(row.Job)
+		job, err := jobToProto(row.Job)
+		if err != nil {
+			zerr := zenerr.TechnicalError(err)
+			return &proto.GetProcessInstanceJobsResponse{Error: zerr.ToProtoError()}, nil
+		}
+		jobs[i] = job
 	}
 	return &proto.GetProcessInstanceJobsResponse{
 		Jobs:       jobs,
@@ -1263,7 +1268,12 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				}
 				totalCount = int32(count)
 			}
-			partitionJobs[i] = jobToProto(row.Job)
+			job, err := jobToProto(row.Job)
+			if err != nil {
+				zerr := zenerr.TechnicalError(err)
+				return &proto.GetJobsResponse{Error: zerr.ToProtoError()}, nil
+			}
+			partitionJobs[i] = job
 		}
 
 		resp = append(resp, &proto.PartitionedJobs{
@@ -1298,14 +1308,23 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	return &proto.GetJobResponse{Job: jobToProto(job)}, nil
+	protoJob, err := jobToProto(job)
+	if err != nil {
+		zerr := zenerr.TechnicalError(err)
+		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
+	}
+	return &proto.GetJobResponse{Job: protoJob}, nil
 }
 
 // jobToProto maps a job row onto the wire; a NULL column stays absent.
-func jobToProto(job sql.Job) *proto.Job {
+func jobToProto(job sql.Job) (*proto.Job, error) {
 	var outputVariables []byte
 	if job.OutputVariables.Valid {
 		outputVariables = []byte(job.OutputVariables.String)
+	}
+	headers, err := sql.JobHeadersFromJSON(job.Headers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err)
 	}
 	return &proto.Job{
 		Key:                new(job.Key),
@@ -1319,13 +1338,14 @@ func jobToProto(job sql.Job) *proto.Job {
 		Assignee:           sql.FromNullString(job.Assignee),
 		InputVariables:     []byte(job.InputVariables),
 		OutputVariables:    outputVariables,
+		Headers:            headers,
 		Retries:            new(int32(job.Retries)),  // #nosec G115 -- the engine writes this column from an int32 field
 		Attempts:           new(int32(job.Attempts)), // #nosec G115 -- the engine writes this column from an int32 field
 		RetryAt:            sql.FromNullInt64(job.RetryAt),
 		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:       sql.FromNullString(job.RetryBackoff),
 		DeliveryToken:      new(job.DeliveryToken),
-	}
+	}, nil
 }
 
 // UpdateJobRetries sets the remaining retries of a job on the leader of its

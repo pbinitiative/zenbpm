@@ -137,18 +137,19 @@ message WaitingJob {
   // the end of the send. When the clocks cannot be trusted, count the lock duration
   // of the subscription from the moment of receipt instead of comparing timestamps.
   int64 lock_until = 8;
+  map<string, string> headers = 9;
   // Attempts left: failures without an error code the job may still report; the one which leaves none creates an incident.
-  int32 retries = 9;
+  int32 retries = 10;
   // 1 for the first delivery of a series of attempts, one more after every failure without an
   // error code; two deliveries of one attempt (a lapsed lock) carry the same number. It tells
   // a redelivery of an attempt from a retry within one series; resolving an incident starts a
   // new series at 1, so (key, attempt) is not unique over the life of a job. Key an effect
   // which must happen once per job on the job key, or on a key of the business operation.
-  int32 attempt = 10;
+  int32 attempt = 11;
   // Identifies this delivery: every delivery of the job carries a higher token than the one
   // before, a redelivery of the same attempt after a lapsed lock or a leader change included.
   // Send it back as JobFailRequest.delivery_token.
-  int64 delivery_token = 11;
+  int64 delivery_token = 12;
 }
 
 message ErrorResult {

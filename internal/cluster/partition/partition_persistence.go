@@ -1932,6 +1932,10 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 			return bpmnruntime.Job{}, fmt.Errorf("failed to unmarshal output variables of job %d: %w", job.Key, err)
 		}
 	}
+	headers, err := sql.JobHeadersFromJSON(job.Headers)
+	if err != nil {
+		return bpmnruntime.Job{}, fmt.Errorf("failed to unmarshal headers of job %d: %w", job.Key, err)
+	}
 	var retryBackoff []time.Duration
 	if job.RetryBackoff.Valid && job.RetryBackoff.String != "" {
 		policy, err := extensions.ParseRetryBackoff(job.RetryBackoff.String)
@@ -1955,6 +1959,7 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 		InputVariables:       inputVariables,
 		OutputVariables:      outputVariables,
 		Assignee:             sql.FromNullString(job.Assignee),
+		Headers:              headers,
 		Retries:              int32(job.Retries),  // #nosec G115 -- the engine writes this column from an int32 field
 		Attempts:             int32(job.Attempts), // #nosec G115 -- the engine writes this column from an int32 field
 		RetryAt:              nullInt64ToTimePtr(job.RetryAt),
@@ -1982,11 +1987,27 @@ func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, rq.Queries, job)
 }
 
+// jobHeadersToJSON marshals job headers for storage. Empty headers are stored as '{}'.
+func jobHeadersToJSON(headers map[string]string) (string, error) {
+	if len(headers) == 0 {
+		return "{}", nil
+	}
+	raw, err := json.Marshal(headers)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal job headers: %w", err)
+	}
+	return string(raw), nil
+}
+
 // SaveJobWith persists job using the supplied sql.Queries handle.
 func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
 	inputVariableBytes, err := json.Marshal(job.InputVariables)
 	if err != nil {
 		return fmt.Errorf("failed to marshal input variables for job %d: %w", job.GetKey(), err)
+	}
+	headersJSON, err := jobHeadersToJSON(job.Headers)
+	if err != nil {
+		return fmt.Errorf("failed to marshal headers for job %d: %w", job.GetKey(), err)
 	}
 	var outputVariableBytes []byte
 	if job.OutputVariables != nil {
@@ -2020,6 +2041,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		RetriesSetByOperator: boolToInt64(job.RetriesSetByOperator),
 		DeliveryToken:        job.DeliveryToken,
 		FailedDeliveryToken:  job.FailedDeliveryToken,
+		Headers:              headersJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

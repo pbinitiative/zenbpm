@@ -261,6 +261,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			Retries:        resp.Job.GetRetries(),
 			Attempt:        resp.Job.GetAttempt(),
 			DeliveryToken:  resp.Job.GetDeliveryToken(),
+			Headers:        resp.Job.GetHeaders(),
 		}
 	}
 }

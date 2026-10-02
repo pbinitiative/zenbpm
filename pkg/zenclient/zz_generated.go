@@ -924,6 +924,9 @@ type Job struct {
 	RetryBackoff *string  `json:"retryBackoff,omitempty"`
 	State        JobState `json:"state"`
 
+	// TaskHeaders Static key/value task headers configured on the BPMN element (zenbpm:taskHeaders)
+	TaskHeaders *map[string]string `json:"taskHeaders,omitempty"`
+
 	// Type Configurable worker-routing type
 	Type string `json:"type"`
 }

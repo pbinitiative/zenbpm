@@ -483,9 +483,12 @@ type Job struct {
 	Type               string
 	InputVariables     map[string]any
 	OutputVariables    map[string]any
-	CreatedAt          time.Time
-	Token              ExecutionToken
-	Assignee           *string
+	// Headers are static key/value pairs defined on the BPMN element
+	// (taskHeaders extension) and passed through to the job worker.
+	Headers   map[string]string
+	CreatedAt time.Time
+	Token     ExecutionToken
+	Assignee  *string
 	// Retries is how many failures without an error code the job may still
 	// report before one of them becomes an incident.
 	Retries int32

@@ -791,13 +791,17 @@ type grpcSrv struct {
 	failRequests   []*proto.FailJobRequest
 	// extendLockResponse, when set, is what every ExtendJobLock answers
 	extendLockResponse *proto.ExtendJobLockResponse
+	// failJobResponse, when set, is what every FailJob answers
+	failJobResponse *proto.FailJobResponse
+	// completeJobResponse, when set, is what every CompleteJob answers
+	completeJobResponse *proto.CompleteJobResponse
 }
 
 func (s *grpcSrv) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
 	if s.extendLockResponse != nil {
 		return s.extendLockResponse, nil
 	}
-	lockUntil, err := s.jobManager.ExtendJobLock(ctx, ClientID(req.GetClientId()), req.GetKey(), DurationFromMillis(req.GetLockDurationMs()))
+	lockUntil, err := s.jobManager.ExtendJobLock(ctx, ClientID(req.GetClientId()), req.GetKey(), DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
 	if err != nil {
 		return &proto.ExtendJobLockResponse{Error: zenerr.TechnicalError(err).ToProtoError()}, nil
 	}
@@ -808,11 +812,15 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 	s.failRequestsMu.Lock()
 	s.failRequests = append(s.failRequests, req)
 	s.failRequestsMu.Unlock()
+	if s.failJobResponse != nil {
+		return s.failJobResponse, nil
+	}
 	vars := make(map[string]any)
 	if err := json.Unmarshal(req.Variables, &vars); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
-	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
+	err := s.jobManager.FailJob(ctx, ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
+		req.Retries, RetryBackoffFromMillis(req.RetryBackoffMs), req.DeliveryToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err)
 	}
@@ -830,6 +838,9 @@ func (s *grpcSrv) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJo
 }
 
 func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
+	if s.completeJobResponse != nil {
+		return s.completeJobResponse, nil
+	}
 	md, found := metadata.FromIncomingContext(ctx)
 	clientID := ClientID("")
 	if found {
@@ -867,7 +878,18 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 type testCompleter struct {
 	completedJobs []int64
 	failedJobs    []int64
-	loader        *testLoader
+	// failures records the retry arguments of every JobFailByKey call
+	failures []testJobFailure
+	// retryUpdates records the key of every JobUpdateRetriesByKey call
+	retryUpdates []int64
+	loader       *testLoader
+}
+
+type testJobFailure struct {
+	jobKey        int64
+	retries       *int32
+	retryBackoff  *time.Duration
+	deliveryToken *int64
 }
 
 func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[string]any) error {
@@ -882,7 +904,7 @@ func (c *testCompleter) JobCompleteByKey(_ context.Context, jobKey int64, _ map[
 	return nil
 }
 
-func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any) error {
+func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, _ *string, _ map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
@@ -891,6 +913,23 @@ func (c *testCompleter) JobFailByKey(_ context.Context, jobKey int64, _ string, 
 		}
 	}
 	c.failedJobs = append(c.failedJobs, jobKey)
+	c.failures = append(c.failures, testJobFailure{jobKey: jobKey, retries: retries, retryBackoff: retryBackoff, deliveryToken: deliveryToken})
+	return nil
+}
+
+// JobUpdateRetriesByKey takes the job out of the loader when it is moved into a
+// backoff, the way the database query stops returning it.
+func (c *testCompleter) JobUpdateRetriesByKey(_ context.Context, jobKey int64, _ int32, retryAt *time.Time) error {
+	c.loader.mu.Lock()
+	defer c.loader.mu.Unlock()
+	if retryAt != nil && retryAt.After(time.Now()) {
+		for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
+			if c.loader.jobsToSend[i].Key == jobKey {
+				c.loader.jobsToSend = append(c.loader.jobsToSend[:i], c.loader.jobsToSend[i+1:]...)
+			}
+		}
+	}
+	c.retryUpdates = append(c.retryUpdates, jobKey)
 	return nil
 }
 
@@ -899,6 +938,16 @@ type testLoader struct {
 	mu         *sync.RWMutex
 	// onLoad is an optional hook invoked with the arguments of every LoadJobsToDistribute call
 	onLoad func(jobTypes []string, idsToSkip []int64, count int64)
+	// afterLoad is an optional hook invoked with the jobs a LoadJobsToDistribute
+	// call read, before they are returned, the moment a query result is in hand
+	afterLoad func(jobs []sql.Job)
+	// onRecord is an optional hook invoked with the jobs of every
+	// RecordDeliveries call before anything is recorded
+	onRecord func(jobs []sql.Job)
+	// recordingRefusal, while set, fails every RecordDeliveries call
+	recordingRefusal error
+	// withdrawalRefusal, while set, fails every WithdrawDelivery call
+	withdrawalRefusal error
 }
 
 func (l *testLoader) addJobs(jobs ...sql.Job) {
@@ -933,7 +982,56 @@ func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		}
 	}
 	l.mu.Unlock()
+	if l.afterLoad != nil {
+		l.afterLoad(distributedJobs)
+	}
 	return distributedJobs, nil
+}
+
+// RecordDeliveries raises the delivery token of every job which is still to be
+// sent and carries the token it was loaded with, as the database does.
+func (l *testLoader) RecordDeliveries(jobs []sql.Job) ([]sql.Job, error) {
+	if l.onRecord != nil {
+		l.onRecord(jobs)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.recordingRefusal != nil {
+		return nil, l.recordingRefusal
+	}
+	recorded := make([]sql.Job, 0, len(jobs))
+	for _, job := range jobs {
+		for i := range l.jobsToSend {
+			if l.jobsToSend[i].Key == job.Key && l.jobsToSend[i].DeliveryToken == job.DeliveryToken {
+				l.jobsToSend[i].DeliveryToken++
+				recorded = append(recorded, l.jobsToSend[i])
+			}
+		}
+	}
+	return recorded, nil
+}
+
+// WithdrawDelivery takes the token of a delivery back to the one before, as the
+// database does, while no other delivery was recorded since.
+func (l *testLoader) WithdrawDelivery(_ context.Context, jobKey int64, deliveryToken int64) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.withdrawalRefusal != nil {
+		return l.withdrawalRefusal
+	}
+	for i := range l.jobsToSend {
+		if l.jobsToSend[i].Key == jobKey && l.jobsToSend[i].DeliveryToken == deliveryToken {
+			l.jobsToSend[i].DeliveryToken--
+		}
+	}
+	return nil
+}
+
+// refuseRecording makes every RecordDeliveries call fail with refusal, or none when nil.
+func (l *testLoader) refuseRecording(refusal error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.recordingRefusal = refusal
 }
 
 func isExpectedGRPCServerStopError(err error) bool {
@@ -1014,6 +1112,8 @@ type captureStream struct {
 	sendGate chan struct{}
 	// lastLockUntil is the deadline the last delivered job carried.
 	lastLockUntil int64
+	// lastDeliveryToken is the delivery token the last delivered job carried.
+	lastDeliveryToken int64
 }
 
 func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
@@ -1042,7 +1142,14 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 	s.sent[ClientID(resp.GetClientId())]++
 	s.sentByType[resp.GetJobType()]++
 	s.lastLockUntil = resp.GetJob().GetLockUntil()
+	s.lastDeliveryToken = resp.GetJob().GetDeliveryToken()
 	return nil
+}
+
+func (s *captureStream) deliveredToken() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastDeliveryToken
 }
 
 func (s *captureStream) deliveredLockUntil() int64 {

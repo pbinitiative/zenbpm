@@ -122,11 +122,27 @@ worker, err := zen.RegisterWorkerWithOptions(context.Background(), "my-client-id
 ```
 The engine caps both values at its configured maximum and reports the effective deadline in
 `job.GetLockUntil()`. The worker does not renew locks by itself: a handler which needs longer than
-its lock calls `worker.ExtendLock(ctx, job.GetKey(), 0)` before the deadline, with a `ctx` that
-carries a deadline. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
+its lock calls `worker.ExtendDeliveryLock(ctx, job, 0)` before the deadline, with a `ctx` that
+carries a deadline. It extends the lock of the handler's own delivery only, and answers
+`zenclient.ErrLockNotHeld` once the job was handed out again, even to this worker;
+`worker.ExtendLock(ctx, job.GetKey(), 0)` extends whatever lock the worker holds on the job. An error which `errors.Is` `zenclient.ErrLeaderUnavailable` means the partition
 leader could not be reached or has just changed: retry the call in a moment instead of failing the
 job, and count on the deadline of the last confirmed answer only, the outcome of the failed call is
 unknown. See [Jobs](../reference/jobs.md) for the lock semantics.
+
+A handler which cannot finish a job returns a `*zenclient.WorkerError`. With an `ErrorCode` it
+throws a BPMN error. Without one it spends one of the job's retries: the engine hands the job out
+again after its backoff and creates an incident only when no retries are left. `Retries` and
+`RetryBackoff` override what remains and how long the job waits; left `nil`, the engine decrements
+and applies the task definition's `retryBackoff`. `job.GetAttempt()` and `job.GetRetries()` tell the
+handler which attempt it runs and how many are left:
+```go
+return nil, &zenclient.WorkerError{Err: err, RetryBackoff: new(30 * time.Second)}
+```
+The failure names the delivery token of its delivery, `job.GetDeliveryToken()`, so it counts once
+however often it reaches the engine, and not at all once the job was handed out again, as after the
+lock of the delivery lapsed while the handler still worked: the newer delivery decides. See
+[Delivery tokens](../reference/jobs.md#delivery-tokens).
 ## Java Client
 
 The Java client is available on GitHub at [pbinitiative/zenbpm-java-client](https://github.com/pbinitiative/zenbpm-java-client). Its Maven group and Java package prefix are `org.pbinitiative.zenbpm`.

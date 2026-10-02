@@ -22,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/buildinfo"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -31,6 +32,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -649,6 +651,8 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 				return public.CompleteJob400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.CompleteJob404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.CompleteJob409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CompleteJob500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
@@ -1943,7 +1947,7 @@ func (s *Server) ExtendJobLock(ctx context.Context, request public.ExtendJobLock
 	if err != nil {
 		return public.ExtendJobLock400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
 	}
-	lockUntil, err := s.node.ExtendJobLock(ctx, request.JobKey, request.Body.ClientId, lockDuration)
+	lockUntil, err := s.node.ExtendJobLock(ctx, request.JobKey, request.Body.ClientId, lockDuration, request.Body.DeliveryToken)
 	if err == nil {
 		return public.ExtendJobLock200JSONResponse{LockUntil: lockUntil}, nil
 	}
@@ -2003,19 +2007,7 @@ func calendarPartOf(parsed duration.Duration, now time.Time) time.Duration {
 // timePartOf converts the hours, minutes and seconds of an ISO-8601 duration
 // into a time.Duration, saturating at the maximum instead of wrapping.
 func timePartOf(parsed duration.Duration) time.Duration {
-	const maxSeconds = math.MaxInt64 / int64(time.Second)
-	seconds := int64(0)
-	for _, part := range []struct{ count, secondsPerUnit int64 }{
-		{int64(parsed.TH), 60 * 60},
-		{int64(parsed.TM), 60},
-		{int64(parsed.TS), 1},
-	} {
-		if part.count > (maxSeconds-seconds)/part.secondsPerUnit {
-			return time.Duration(math.MaxInt64)
-		}
-		seconds += part.count * part.secondsPerUnit
-	}
-	return time.Duration(seconds) * time.Second
+	return extensions.FixedLengthOf(duration.Duration{TH: parsed.TH, TM: parsed.TM, TS: parsed.TS})
 }
 
 // saturatingSum adds two non-negative durations, saturating at the maximum.
@@ -2027,7 +2019,23 @@ func saturatingSum(a, b time.Duration) time.Duration {
 }
 
 func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {
-	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ErrorCode, ""), ptr.Deref(request.Body.Variables, map[string]any{}))
+	if request.Body.Retries != nil && *request.Body.Retries < 0 {
+		return public.FailJob400JSONResponse(zenerr.BadRequest(fmt.Errorf("retries must not be negative, got %d", *request.Body.Retries)).ToApiError()), nil
+	}
+	var retryBackoff *time.Duration
+	if request.Body.RetryBackoff != nil {
+		backoff, err := extensions.ParseBackoffDuration(*request.Body.RetryBackoff)
+		if err != nil {
+			return public.FailJob400JSONResponse(zenerr.BadRequest(fmt.Errorf("retryBackoff: %w", err)).ToApiError()), nil
+		}
+		retryBackoff = &backoff
+	}
+	var errorCode *string
+	if code := ptr.Deref(request.Body.ErrorCode, ""); code != "" {
+		errorCode = &code
+	}
+	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ClientId, ""), ptr.Deref(request.Body.Message, ""), errorCode,
+		ptr.Deref(request.Body.Variables, map[string]any{}), request.Body.Retries, retryBackoff, request.Body.DeliveryToken)
 
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -2039,6 +2047,8 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 				return public.FailJob400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.FailJob404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.FailJob409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.FailJob500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
@@ -2046,6 +2056,89 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 		return public.FailJob500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
 	}
 	return public.FailJob204Response{}, nil
+}
+
+// UpdateJobRetries sets the remaining retries of an active or failed job.
+func (s *Server) UpdateJobRetries(ctx context.Context, request public.UpdateJobRetriesRequestObject) (public.UpdateJobRetriesResponseObject, error) {
+	if request.Body.Retries < 1 {
+		return public.UpdateJobRetries400JSONResponse(zenerr.BadRequest(fmt.Errorf("retries must be at least 1, got %d", request.Body.Retries)).ToApiError()), nil
+	}
+	err := s.node.UpdateJobRetries(ctx, request.JobKey, request.Body.Retries, request.Body.RetryAt)
+	if err == nil {
+		return public.UpdateJobRetries204Response{}, nil
+	}
+	var zerr *zenerr.ZenError
+	if !errors.As(err, &zerr) {
+		return public.UpdateJobRetries500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
+	}
+	switch zerr.Code {
+	case zenerr.ClusterErrorCode:
+		return public.UpdateJobRetries502JSONResponse(zerr.ToApiError()), nil
+	case zenerr.BadRequestCode:
+		return public.UpdateJobRetries400JSONResponse(zerr.ToApiError()), nil
+	case zenerr.NotFoundCode:
+		return public.UpdateJobRetries404JSONResponse(zerr.ToApiError()), nil
+	case zenerr.ConflictCode:
+		return public.UpdateJobRetries409JSONResponse(zerr.ToApiError()), nil
+	default:
+		return public.UpdateJobRetries500JSONResponse(trackInternalServerError(ctx, zerr)), nil
+	}
+}
+
+// maxJobFailuresPageSize is the largest page of job failures one request
+// reads; the partition answering the page enforces the same bound.
+const maxJobFailuresPageSize = server.MaxJobFailuresPageSize
+
+// GetJobFailures lists the failures without an error code of a job, newest first.
+func (s *Server) GetJobFailures(ctx context.Context, request public.GetJobFailuresRequestObject) (public.GetJobFailuresResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	page, size := *request.Params.Page, *request.Params.Size
+	if page < 1 || size < 1 || size > maxJobFailuresPageSize {
+		return public.GetJobFailures400JSONResponse(zenerr.BadRequest(fmt.Errorf("page must be at least 1 and size between 1 and %d, got page %d and size %d", maxJobFailuresPageSize, page, size)).ToApiError()), nil
+	}
+	resp, err := s.node.GetJobFailures(ctx, request.JobKey, page, size)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.GetJobFailures404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ClusterErrorCode:
+				return public.GetJobFailures502JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetJobFailures500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
+	}
+	items := make([]public.JobFailure, len(resp.GetFailures()))
+	for i, failure := range resp.GetFailures() {
+		items[i] = public.JobFailure{
+			Key:                failure.GetKey(),
+			JobKey:             failure.GetJobKey(),
+			ProcessInstanceKey: failure.GetProcessInstanceKey(),
+			Attempt:            failure.GetAttempt(),
+			FailedAt:           time.UnixMilli(failure.GetFailedAt()),
+			RetryAt:            unixMilliPtrToTime(failure.RetryAt),
+			Message:            failure.GetMessage(),
+			IncidentKey:        failure.IncidentKey,
+		}
+	}
+	return public.GetJobFailures200JSONResponse{
+		Items: items,
+		PageMetadata: public.PageMetadata{
+			Count:      len(items),
+			Page:       int(page),
+			Size:       int(size),
+			TotalCount: int(resp.GetTotalCount()),
+		},
+	}, nil
+}
+
+// unixMilliPtrToTime turns an optional unix millisecond timestamp of the wire into a time.
+func unixMilliPtrToTime(unixMilli *int64) *time.Time {
+	if unixMilli == nil {
+		return nil
+	}
+	return new(time.UnixMilli(*unixMilli))
 }
 
 func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
@@ -2098,6 +2191,12 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		TaskHeaders:        taskHeaders,
 		OutputVariables:    outputVars,
 		Assignee:           assignee,
+		Retries:            job.Retries,
+		Attempts:           job.Attempts,
+		RetryAt:            unixMilliPtrToTime(job.RetryAt),
+		LastFailureMessage: job.LastFailureMessage,
+		RetryBackoff:       job.RetryBackoff,
+		DeliveryToken:      job.DeliveryToken,
 	}, nil
 }
 
@@ -2281,6 +2380,7 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			ProcessInstanceKey: incident.GetProcessInstanceKey(),
 			Message:            incident.GetMessage(),
 			ExecutionToken:     incident.GetExecutionToken(),
+			JobKey:             incident.JobKey,
 		}
 	}
 	return public.GetIncidents200JSONResponse{
@@ -2294,8 +2394,18 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	}, nil
 }
 
+// ResolveIncident resolves an incident, giving the job it leaves waiting the
+// retries of the optional body in the same transaction.
 func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveIncidentRequestObject) (public.ResolveIncidentResponseObject, error) {
-	err := s.node.ResolveIncident(ctx, request.IncidentKey)
+	var retries *int32
+	var retryAt *time.Time
+	if request.Body != nil {
+		retries, retryAt = request.Body.Retries, request.Body.RetryAt
+	}
+	if retryAt != nil && retries == nil {
+		return public.ResolveIncident400JSONResponse(zenerr.BadRequest(errors.New("retryAt can only be given together with retries")).ToApiError()), nil
+	}
+	err := s.node.ResolveIncident(ctx, request.IncidentKey, retries, retryAt)
 
 	if err != nil {
 		var zerr *zenerr.ZenError
@@ -2303,8 +2413,12 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.ResolveIncident502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.ResolveIncident400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.ResolveIncident404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.ResolveIncident409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.ResolveIncident500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}

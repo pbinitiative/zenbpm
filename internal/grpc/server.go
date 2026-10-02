@@ -44,8 +44,8 @@ type jobManager interface {
 	AddClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType, jobmanager.SubscriptionSettings) error
 	RemoveClientJobSub(context.Context, jobmanager.ClientID, jobmanager.JobType) error
 	CompleteJobReq(context.Context, jobmanager.ClientID, int64, map[string]any) error
-	FailJobReq(context.Context, jobmanager.ClientID, int64, string, *string, map[string]any) error
-	ExtendJobLockReq(context.Context, jobmanager.ClientID, int64, time.Duration) (time.Time, error)
+	FailJobReq(ctx context.Context, clientID jobmanager.ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error
+	ExtendJobLockReq(ctx context.Context, clientID jobmanager.ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error)
 }
 
 // NewServer returns a new instance of ZenBpm GRPC server
@@ -139,7 +139,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    nil,
+						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
@@ -152,12 +152,9 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
-				s.logger.Error("failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
+				s.logJobRequestError(err, "failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: new("Failed to complete job"),
-					},
+					Error: completeJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
 					},
@@ -172,7 +169,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    nil,
+						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
 					},
 					Job: &proto.WaitingJob{
@@ -183,14 +180,12 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				}
 				continue
 			}
-			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
+			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars,
+				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), req.Fail.DeliveryToken)
 			if err != nil {
-				s.logger.Error("failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
+				s.logJobRequestError(err, "failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: new("Failed to process job failure request"),
-					},
+					Error: failJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
 					},
@@ -276,6 +271,9 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      &job.LockUntil,
+					Retries:        &job.Retries,
+					Attempt:        &job.Attempt,
+					DeliveryToken:  &job.DeliveryToken,
 					Headers:        job.Headers,
 				},
 			})
@@ -291,7 +289,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 // whose code tells a lapsed lock from one held by somebody else. Either answer
 // names the job key so the client can match it to its request.
 func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, req *proto.JobExtendLockRequest) *proto.JobStreamResponse {
-	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
 	if err == nil {
 		return &proto.JobStreamResponse{
 			LockExtended: &proto.LockExtended{Key: req.Key, LockUntil: new(lockUntil.UnixMilli())},
@@ -319,6 +317,99 @@ func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, r
 		Error:        &proto.ErrorResult{Code: new(uint32(code)), Message: &message},
 		LockExtended: &proto.LockExtended{Key: req.Key},
 	}
+}
+
+// jobStreamErrorCode is the code a job request's error carries to the worker,
+// unspecified when the error is none the worker can act on by code.
+func jobStreamErrorCode(err error) proto.JobStreamErrorCode {
+	switch {
+	case errors.Is(err, jobmanager.ErrInvalidJobRequest):
+		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST
+	case errors.Is(err, jobmanager.ErrJobNotFound):
+		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND
+	case errors.Is(err, jobmanager.ErrJobInTerminalState):
+		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE
+	case errors.Is(err, jobmanager.ErrLeaderUnavailable):
+		return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE
+	}
+	return proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED
+}
+
+// logJobRequestError logs a completion or failure the engine did not carry
+// out. One refused with a code is an expected outcome the worker is told about,
+// such as a job a boundary timer terminated while its worker ran, and is
+// logged as a warning; an error nobody expected stays an error.
+func (s *Server) logJobRequestError(err error, msg string, args ...any) {
+	if jobStreamErrorCode(err) == proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED {
+		s.logger.Error(msg, args...)
+		return
+	}
+	s.logger.Warn(msg, args...)
+}
+
+// jobStreamError builds the answer to a job request the engine did not carry
+// out, with the code of the error and a message the worker may show, never an
+// internal detail. An error without a code carries the generic message.
+func jobStreamError(code proto.JobStreamErrorCode, message string) *proto.ErrorResult {
+	if code == proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED {
+		return &proto.ErrorResult{Message: &message}
+	}
+	return &proto.ErrorResult{Code: new(uint32(code)), Message: &message} // #nosec G115 -- the codes are the proto enum's small non-negative values
+}
+
+// completeJobError tells the worker by code why its completion was not
+// recorded: a job which no longer waits (terminated or failed; a completed one
+// is answered as completed), an unknown job, or a leader which could not be
+// reached, in which case the completion may have been recorded and repeating
+// it is safe.
+func completeJobError(err error) *proto.ErrorResult {
+	code := jobStreamErrorCode(err)
+	message := "Failed to complete job"
+	switch code {
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST:
+		message = "Invalid job completion request: " + refusalReason(err)
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND:
+		message = "Job not found"
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE:
+		message = "The job no longer waits for a worker: it was terminated or failed"
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE:
+		message = "The leader of the job's partition is unavailable at the moment; the completion may have been recorded, and repeating it is safe"
+	}
+	return jobStreamError(code, message)
+}
+
+// failJobError tells the worker by code why its failure was not recorded: a
+// request the engine refuses for what it asks, an unknown job, a job which no
+// longer waits for this delivery, or a leader which could not be reached, in
+// which case the failure may have been recorded. Repeating a failure which
+// names its delivery token then changes nothing more; one without a token
+// spends another attempt, or, with an error code, is refused as the job no
+// longer waits once the first was recorded.
+func failJobError(err error) *proto.ErrorResult {
+	code := jobStreamErrorCode(err)
+	message := "Failed to process job failure request"
+	switch code {
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST:
+		message = "Invalid job failure request: " + refusalReason(err)
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND:
+		message = "Job not found"
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE:
+		message = "The job no longer waits for this delivery: it was completed, terminated or already failed, or handed out again after it"
+	case proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LEADER_UNAVAILABLE:
+		message = "The leader of the job's partition is unavailable at the moment; the failure may have been recorded. Repeating it changes nothing more when it names its delivery token"
+	}
+	return jobStreamError(code, message)
+}
+
+// refusalReason is what the engine said about a request it refused, without
+// the wrapping of the layers on the way: the engine's reason names the field
+// and the value, which the worker may act on, and nothing internal.
+func refusalReason(err error) string {
+	var invalid *jobmanager.InvalidJobRequestError
+	if errors.As(err, &invalid) {
+		return invalid.Reason
+	}
+	return err.Error()
 }
 
 func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {

@@ -120,6 +120,15 @@ type Job struct {
 	// LockUntil is the unix millisecond on the leader's clock at which the
 	// lock of this delivery lapses.
 	LockUntil int64
+	// Retries is how many attempts the job has left: failures without an error
+	// code it may still report, the one which leaves none creating an incident.
+	Retries int32
+	// Attempt is 1 for the first delivery of a series of attempts and one
+	// more after every failure without an error code.
+	Attempt int32
+	// DeliveryToken identifies this delivery; a failure naming it counts once,
+	// and not at all once the job was handed out again.
+	DeliveryToken int64
 	// Headers are the static task headers configured on the BPMN element.
 	Headers map[string]string
 }
@@ -210,35 +219,46 @@ func (m *JobManager) CompleteJob(ctx context.Context, clientId ClientID, jobKey 
 }
 
 // ExtendJobLockReq is called by a client to move the lock deadline of a job it
-// holds to now plus duration (zero: the subscription's lock duration). It
-// returns the new deadline on the leader's clock.
-func (m *JobManager) ExtendJobLockReq(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
-	return m.client.extendLock(ctx, clientID, jobKey, duration)
+// holds to now plus duration (zero: the subscription's lock duration), only
+// the lock of that delivery when deliveryToken names one. It returns the new
+// deadline on the leader's clock.
+func (m *JobManager) ExtendJobLockReq(ctx context.Context, clientID ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error) {
+	return m.client.extendLock(ctx, clientID, jobKey, duration, deliveryToken)
 }
 
 // ExtendJobLock is called by the internal GRPC server on the partition leader
 // to move the lock deadline of a distributed job. The extension is an
 // in-memory operation, so the context is not needed.
-func (m *JobManager) ExtendJobLock(_ context.Context, clientID ClientID, jobKey int64, duration time.Duration) (time.Time, error) {
+func (m *JobManager) ExtendJobLock(_ context.Context, clientID ClientID, jobKey int64, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	server := m.server.Load()
 	if server == nil {
 		return time.Time{}, NodeIsNotALeader
 	}
-	return server.extendLock(clientID, jobKey, duration)
+	return server.extendLock(clientID, jobKey, duration, deliveryToken)
 }
 
 // FailJobReq is called by a client to request job failure
-func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any) error {
-	return m.client.failJob(ctx, clientID, jobKey, message, errorCode, variables)
+func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
+	return m.client.failJob(ctx, clientID, jobKey, message, errorCode, variables, retries, retryBackoff, deliveryToken)
 }
 
 // FailJob is called by internal GRPC server to fail job with optional error code which triggers BPMN error execution
-func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]any, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
 	server := m.server.Load()
 	if server == nil {
 		return NodeIsNotALeader
 	}
-	return server.failJob(ctx, clientID, jobKey, message, errorCode, variables)
+	return server.failJob(ctx, clientID, jobKey, message, errorCode, variables, retries, retryBackoff, deliveryToken)
+}
+
+// UpdateJobRetries is called by internal GRPC server to set the retries of a
+// job of a partition this node leads, and when it is handed out next.
+func (m *JobManager) UpdateJobRetries(ctx context.Context, jobKey int64, retries int32, retryAt *time.Time) error {
+	server := m.server.Load()
+	if server == nil {
+		return NodeIsNotALeader
+	}
+	return server.updateJobRetries(ctx, jobKey, retries, retryAt)
 }
 
 func (m *JobManager) OnClusterStateChange(_ context.Context) {

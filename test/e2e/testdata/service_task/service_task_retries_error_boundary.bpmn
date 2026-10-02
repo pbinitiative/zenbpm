@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_service-task-retries-error-boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="service-task-retries-error-boundary" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start" sourceRef="StartEvent_1" targetRef="retried-task" />
+    <bpmn:serviceTask id="retried-task" name="Charge card">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="charge-card" retries="3" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start</bpmn:incoming>
+      <bpmn:outgoing>Flow_done</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_done" sourceRef="retried-task" targetRef="done-end" />
+    <bpmn:endEvent id="done-end" name="Done">
+      <bpmn:incoming>Flow_done</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="payment-declined-boundary" attachedToRef="retried-task">
+      <bpmn:outgoing>Flow_declined</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="payment-declined-definition" errorRef="payment-declined" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_declined" sourceRef="payment-declined-boundary" targetRef="declined-end" />
+    <bpmn:endEvent id="declined-end" name="Declined">
+      <bpmn:incoming>Flow_declined</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="payment-declined" name="payment declined" errorCode="PAYMENT_DECLINED" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="service-task-retries-error-boundary">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="retried_task_di" bpmnElement="retried-task">
+        <dc:Bounds x="270" y="77" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="done_end_di" bpmnElement="done-end">
+        <dc:Bounds x="482" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_di" bpmnElement="Flow_start">
+        <di:waypoint x="215" y="117" />
+        <di:waypoint x="270" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_done_di" bpmnElement="Flow_done">
+        <di:waypoint x="370" y="117" />
+        <di:waypoint x="482" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="declined_end_di" bpmnElement="declined-end">
+        <dc:Bounds x="482" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="payment_declined_boundary_di" bpmnElement="payment-declined-boundary">
+        <dc:Bounds x="352" y="139" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_declined_di" bpmnElement="Flow_declined">
+        <di:waypoint x="388" y="157" />
+        <di:waypoint x="435" y="157" />
+        <di:waypoint x="435" y="240" />
+        <di:waypoint x="482" y="240" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

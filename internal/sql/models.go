@@ -81,22 +81,43 @@ type Incident struct {
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
 	IncidentType       string        `json:"incident_type"`
+	JobKey             sql.NullInt64 `json:"job_key"`
 }
 
 type Job struct {
-	Key                int64          `json:"key"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ElementID          string         `json:"element_id"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ElementType        string         `json:"element_type"`
-	Headers            string         `json:"headers"`
+	Key                  int64          `json:"key"`
+	ElementInstanceKey   int64          `json:"element_instance_key"`
+	ElementID            string         `json:"element_id"`
+	ProcessInstanceKey   int64          `json:"process_instance_key"`
+	Type                 string         `json:"type"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	InputVariables       string         `json:"input_variables"`
+	ExecutionToken       int64          `json:"execution_token"`
+	Assignee             sql.NullString `json:"assignee"`
+	OutputVariables      sql.NullString `json:"output_variables"`
+	ElementType          string         `json:"element_type"`
+	Headers              string         `json:"headers"`
+	Retries              int64          `json:"retries"`
+	Attempts             int64          `json:"attempts"`
+	RetryAt              sql.NullInt64  `json:"retry_at"`
+	LastFailureMessage   sql.NullString `json:"last_failure_message"`
+	RetryBackoff         sql.NullString `json:"retry_backoff"`
+	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
+	DeliveryToken        int64          `json:"delivery_token"`
+	FailedDeliveryToken  int64          `json:"failed_delivery_token"`
+}
+
+type JobFailure struct {
+	Key                int64         `json:"key"`
+	JobKey             int64         `json:"job_key"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	Attempt            int64         `json:"attempt"`
+	FailedAt           int64         `json:"failed_at"`
+	RetryAt            sql.NullInt64 `json:"retry_at"`
+	Message            string        `json:"message"`
+	IncidentKey        sql.NullInt64 `json:"incident_key"`
+	DeliveryToken      sql.NullInt64 `json:"delivery_token"`
 }
 
 type MessageSubscription struct {

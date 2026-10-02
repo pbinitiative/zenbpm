@@ -7,7 +7,7 @@
     <bpmn:sequenceFlow id="Flow_0cgyiyy" sourceRef="StartEvent_1" targetRef="Event_11flm9z" />
     <bpmn:endEvent id="Event_11flm9z">
       <bpmn:extensionElements>
-        <zenbpm:taskDefinition type="message-end-event-task-1" retries="5" />
+        <zenbpm:taskDefinition type="message-end-event-task-1" />
         <zenbpm:ioMapping>
           <zenbpm:input source="=&#34;beijing&#34;" target="city" />
           <zenbpm:output source="=city" target="newCity" />

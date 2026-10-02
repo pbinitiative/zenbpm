@@ -186,20 +186,31 @@ type TimerStorageWriter interface {
 }
 
 type JobStorageReader interface {
-	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
+	// FindPendingProcessInstanceJobs returns the jobs of the process instance which are Active,
+	// Completing or Failed, and none in another state. A Failed job waits for the resolution of its
+	// incident, which finds the job here to hand it out again; one left out would leave the incident
+	// resolved and the job failed for good.
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
 	GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error)
 
 	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
 
+	// FindActiveJobsByType returns the active jobs of the type which are deliverable now,
+	// leaving out those waiting out a retry backoff.
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
+
+	// FindJobFailures returns the failures without an error code reported for the job, newest first.
+	FindJobFailures(ctx context.Context, jobKey int64) ([]bpmnruntime.JobFailure, error)
 }
 
 type JobStorageWriter interface {
 	// SaveJob persists the Job
 	// and potentially overwrites prior data stored with given JobKey
 	SaveJob(ctx context.Context, job bpmnruntime.Job) error
+
+	// SaveJobFailure records one failure without an error code of a job.
+	SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error
 }
 
 type MessageStorageReader interface {

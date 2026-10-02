@@ -20,6 +20,16 @@ const (
 	AttributeJobKey      = Prefix + "job.key"
 	AttributeIncidentKey = Prefix + "incident.key"
 
+	// The committed outcome of a job failure without an error code:
+	// JobFailureOutcomeRetry or JobFailureOutcomeIncident.
+	AttributeJobFailureOutcome = Prefix + "job.failure.outcome"
+	AttributeJobAttempt        = Prefix + "job.attempt"
+	AttributeJobRetries        = Prefix + "job.retries"
+	AttributeJobRetryBackoffMs = Prefix + "job.retry_backoff_ms"
+
+	JobFailureOutcomeRetry    = "retry"
+	JobFailureOutcomeIncident = "incident"
+
 	AttributeDecisionID          = Prefix + "decision.id"
 	AttributeDecisionKey         = Prefix + "decision.key"
 	AttributeDecisionInstanceKey = Prefix + "decision.instance_key"

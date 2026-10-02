@@ -276,6 +276,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      &job.LockUntil,
+					Headers:        job.Headers,
 				},
 			})
 			if err != nil {

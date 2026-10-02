@@ -2079,6 +2079,12 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		assignee = nil
 	}
 
+	var taskHeaders *map[string]string
+	if len(job.GetHeaders()) > 0 {
+		headers := job.GetHeaders()
+		taskHeaders = &headers
+	}
+
 	return public.Job{
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
@@ -2089,6 +2095,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		State:              jobState,
 		Type:               job.GetType(),
 		InputVariables:     inputVars,
+		TaskHeaders:        taskHeaders,
 		OutputVariables:    outputVars,
 		Assignee:           assignee,
 	}, nil

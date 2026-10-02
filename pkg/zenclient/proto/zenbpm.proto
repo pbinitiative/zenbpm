@@ -96,6 +96,7 @@ message WaitingJob {
   // the end of the send. When the clocks cannot be trusted, count the lock duration
   // of the subscription from the moment of receipt instead of comparing timestamps.
   int64 lock_until = 8;
+  map<string, string> headers = 9;
 }
 
 message ErrorResult {

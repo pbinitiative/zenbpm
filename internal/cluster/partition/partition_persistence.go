@@ -1818,6 +1818,10 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 		if job.Assignee.Valid {
 			assignee = new(job.Assignee.String)
 		}
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementType:        job.ElementType,
@@ -1833,6 +1837,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 			InputVariables:  inputVariables,
 			OutputVariables: outputVariables,
 			Assignee:        assignee,
+			Headers:         headers,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1882,6 +1887,10 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
 			}
 		}
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementType:        job.ElementType,
@@ -1897,6 +1906,7 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 			InputVariables:  inputVariables,
 			OutputVariables: outputVariables,
 			Assignee:        assignee,
+			Headers:         headers,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1958,6 +1968,10 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 		s := job.Assignee.String
 		assignee = &s
 	}
+	headers, err := sql.JobHeadersFromJSON(job.Headers)
+	if err != nil {
+		return res, fmt.Errorf("failed to unmarshal job headers: %w", err)
+	}
 	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementType:        job.ElementType,
@@ -1977,6 +1991,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 		InputVariables:  inputVariables,
 		OutputVariables: outputVariables,
 		Assignee:        assignee,
+		Headers:         headers,
 	}
 	return res, nil
 }
@@ -2005,6 +2020,10 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
 			}
 		}
+		headers, err := sql.JobHeadersFromJSON(job.Headers)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job headers for job %d: %w", job.Key, err)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementType:        job.ElementType,
@@ -2019,6 +2038,7 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 			},
 			InputVariables:  inputVariables,
 			OutputVariables: outputVariables,
+			Headers:         headers,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -2049,11 +2069,27 @@ func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, rq.Queries, job)
 }
 
+// jobHeadersToJSON marshals job headers for storage. Empty headers are stored as '{}'.
+func jobHeadersToJSON(headers map[string]string) (string, error) {
+	if len(headers) == 0 {
+		return "{}", nil
+	}
+	raw, err := json.Marshal(headers)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal job headers: %w", err)
+	}
+	return string(raw), nil
+}
+
 // SaveJobWith persists job using the supplied sql.Queries handle.
 func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
 	inputVariableBytes, err := json.Marshal(job.InputVariables)
 	if err != nil {
 		return fmt.Errorf("failed to marshal input variables for job %d: %w", job.GetKey(), err)
+	}
+	headersJSON, err := jobHeadersToJSON(job.Headers)
+	if err != nil {
+		return fmt.Errorf("failed to marshal headers for job %d: %w", job.GetKey(), err)
 	}
 	var outputVariableBytes []byte
 	if job.OutputVariables != nil {
@@ -2079,6 +2115,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		OutputVariables:    outputVariables,
 		ExecutionToken:     job.Token.Key,
 		Assignee:           sql.ToNullString(job.Assignee),
+		Headers:            headersJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

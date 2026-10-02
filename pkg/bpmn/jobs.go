@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -26,6 +27,12 @@ func (engine *Engine) createInternalTask(
 	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
+	// taskHeaders are static worker parameters; only elements that declare the
+	// extension provide them (see bpmn20.TaskHeaderProvider).
+	var taskHeaders []extensions.THeader
+	if provider, ok := element.(bpmn20.TaskHeaderProvider); ok {
+		taskHeaders = provider.GetTaskHeaders()
+	}
 	job := runtime.Job{
 		ElementId:          currentToken.ElementId,
 		ElementType:        string(element.GetType()),
@@ -35,6 +42,7 @@ func (engine *Engine) createInternalTask(
 		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
 		InputVariables:     jobVarHolder.LocalVariables(),
+		Headers:            extensions.HeadersToMap(taskHeaders),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}
@@ -104,6 +112,7 @@ func (engine *Engine) createInternalTask(
 			createdAt:                job.CreatedAt,
 			localVariables:           jobVarHolder.LocalVariables(),
 			outputVariables:          map[string]any{},
+			headers:                  job.Headers,
 		}
 		ctx, internalCompleteSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", activatedJob.ElementId()), trace.WithAttributes(
 			attribute.Int64("key", activatedJob.key),

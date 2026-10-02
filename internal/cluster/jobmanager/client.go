@@ -258,6 +258,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			ElementType:    resp.Job.GetElementType(),
 			ClientID:       ClientID(resp.GetClientId()),
 			LockUntil:      resp.Job.GetLockUntil(),
+			Headers:        resp.Job.GetHeaders(),
 		}
 	}
 }

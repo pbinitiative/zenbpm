@@ -289,6 +289,13 @@ func (s *jobServer) distributeJobs() {
 		s.emptyDistributionCounter = 0
 		assignedJobs := 0
 		for _, job := range jobs {
+			headers, err := sql.JobHeadersFromJSON(job.Headers)
+			if err != nil {
+				// SaveJobWith always stores headers as a JSON object, so a parse
+				// failure means a corrupt value: log it and skip the job
+				s.logger.Error("Failed to parse job headers", "jobType", job.Type, "key", job.Key, "err", err)
+				continue
+			}
 			s.clientMu.Lock()
 			if s.settingsVersion != settingsVersion {
 				// a subscription changed since the snapshot: a lowered cap
@@ -350,7 +357,7 @@ func (s *jobServer) distributeJobs() {
 			// this might be bottleneck for now...in the future we might want
 			// to have something that will allow us to send jobs to clients on
 			// non blocked stream or use a pool of GRPC connections to handle jobs
-			err := nodeStream.stream.Send(&proto.SubscribeJobResponse{
+			err = nodeStream.stream.Send(&proto.SubscribeJobResponse{
 				JobType:  &job.Type,
 				ClientId: new(string(clientID)),
 				Job: &proto.InternalJob{
@@ -363,6 +370,7 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:      &job.CreatedAt,
 					ElementType:    &job.ElementType,
 					LockUntil:      new(lockUntil.UnixMilli()),
+					Headers:        headers,
 				},
 			})
 			if err != nil {

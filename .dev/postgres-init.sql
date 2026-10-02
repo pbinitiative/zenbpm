@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     input_variables TEXT NOT NULL,
     execution_token BIGINT NOT NULL,
     assignee TEXT,
-    output_variables TEXT
+    output_variables TEXT,
+    headers TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key

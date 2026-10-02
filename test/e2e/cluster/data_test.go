@@ -246,7 +246,7 @@ func TestConcurrentWritesToDifferentNodes(t *testing.T) {
 }
 
 func TestListAggregatesAcrossPartitions(t *testing.T) {
-	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go) — see docs/cluster-implementation-plan.md")
+	t.Skip("multi-partition formation requires Phase 2: DesiredPartitions is hardcoded to 1 (store.go)")
 	tc := NewTestCluster(t, 3, WithPartitions(3))
 	defer tc.Teardown(t)
 

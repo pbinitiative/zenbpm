@@ -243,8 +243,7 @@ func (c CDC) ResolveServiceID(advancedServiceID string) (string, error) {
 // the controller assigns every partition beyond the first to a single node,
 // while that node's partition raft group inherits the cluster-wide
 // bootstrap-expect and waits for members that are never assigned. Until
-// partition membership is implemented (docs/cluster-implementation-plan.md)
-// the option is limited to one partition rather than accepted silently.
+// partition membership is implemented the option is limited to one partition rather than accepted silently.
 func (c Cluster) ValidateDesiredPartitions() error {
 	if c.DesiredPartitions > 1 {
 		return fmt.Errorf("cluster.desiredPartitions=%d is not supported yet: partitions beyond the first cannot bootstrap because partition membership is not implemented; use 1", c.DesiredPartitions)

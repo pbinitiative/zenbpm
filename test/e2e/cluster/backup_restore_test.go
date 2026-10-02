@@ -25,9 +25,8 @@ import (
 // skipSecondPartitionNeverForms explains why tests needing two partitions are
 // skipped: the controller assigns a new partition to a single node, while that
 // node's partition raft group inherits the cluster-wide bootstrap-expect and
-// waits for members that are never assigned. Partition membership is tracked
-// in docs/cluster-implementation-plan.md.
-const skipSecondPartitionNeverForms = "a second partition never forms: its raft group inherits the cluster bootstrap-expect while only one node is assigned to it (partition membership is not implemented, see docs/cluster-implementation-plan.md)"
+// waits for members that are never assigned.
+const skipSecondPartitionNeverForms = "a second partition never forms: its raft group inherits the cluster bootstrap-expect while only one node is assigned to it (partition membership is not implemented."
 
 // defaultScriptConfig returns FEEL/JS VM pool sizes matching the cleanenv
 // env-defaults (Max 10 / Min 2). The harness builds config.Config as a struct
@@ -271,8 +270,7 @@ func TestClusterRestoreOperationEndpoints(t *testing.T) {
 // It needs two partitions and is skipped until a second partition can form:
 // the controller assigns a new partition to a single node, while that node's
 // partition raft group inherits the cluster-wide bootstrap-expect and so waits
-// for members that are never assigned (see docs/cluster-implementation-plan.md,
-// partition membership).
+// for members that are never assigned.
 func TestRestoreReconcilesDefinitionSnapshotSkew(t *testing.T) {
 	tc := NewTestCluster(t, 3, WithPartitions(2))
 	defer tc.Teardown(t)

@@ -1846,19 +1846,14 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	var reqState *runtime.ActivityState
 	if request.Params.State != nil {
-		switch *request.Params.State {
-		case public.JobStateActive:
-			reqState = new(runtime.ActivityStateActive)
-		case public.JobStateCompleted:
-			reqState = new(runtime.ActivityStateCompleted)
-		case public.JobStateTerminated:
-			reqState = new(runtime.ActivityStateActive)
-		default:
-			supportedStates := [...]public.JobState{public.JobStateActive, public.JobStateCompleted, public.JobStateTerminated}
+		state, ok := jobStateToActivityState(*request.Params.State)
+		if !ok {
+			supportedStates := [...]public.JobState{public.JobStateActive, public.JobStateCompleted, public.JobStateFailed, public.JobStateTerminated}
 			return public.GetJobs400JSONResponse(
 				zenerr.BadRequest(fmt.Errorf("unexpected GetJobsRequest state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
 			), nil
 		}
+		reqState = &state
 	}
 
 	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
@@ -2099,6 +2094,23 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		OutputVariables:    outputVars,
 		Assignee:           assignee,
 	}, nil
+}
+
+// jobStateToActivityState maps a REST job state filter to the activity state
+// stored on a job. It returns false when the state is not supported.
+func jobStateToActivityState(state public.JobState) (runtime.ActivityState, bool) {
+	switch state {
+	case public.JobStateActive:
+		return runtime.ActivityStateActive, true
+	case public.JobStateCompleted:
+		return runtime.ActivityStateCompleted, true
+	case public.JobStateFailed:
+		return runtime.ActivityStateFailed, true
+	case public.JobStateTerminated:
+		return runtime.ActivityStateTerminated, true
+	default:
+		return 0, false
+	}
 }
 
 func getRestJobState(state runtime.ActivityState) (public.JobState, error) {

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go, rqlite v10.2.0 embedded (`store.Backup`/`store.Load`), gRPC streaming (proto edition 2023), chi router (REST), HashiCorp Raft (cluster-state flag), `archive/tar`, `crypto/sha256`, `compress/gzip`, testify.
 
-**Spec:** `docs/superpowers/specs/2026-07-05-cluster-backup-restore-design.md` — read it before starting any task.
+**Spec:** `.specs/cluster/2026-07-05-cluster-backup-restore-design.md` — read it before starting any task.
 
 ## Global Constraints
 

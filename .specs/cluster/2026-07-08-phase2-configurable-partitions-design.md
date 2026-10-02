@@ -2,7 +2,7 @@
 
 > Date: 2026-07-08
 > Status: Approved (pending user review of this document)
-> Supersedes: Phase 2 section of `docs/cluster-implementation-plan.md` where they conflict (plan will be synced on implementation commits)
+> Supersedes: Phase 2 section of `.specs/cluster/cluster-implementation-plan.md` where they conflict (plan will be synced on implementation commits)
 
 ## Goal
 
@@ -212,7 +212,7 @@ if len(cs.Partitions) == cs.Config.DesiredPartitions
 
 ### 9. Documentation sync (same commits, per project rule)
 
-`docs/cluster-implementation-plan.md`:
+`.specs/cluster/cluster-implementation-plan.md`:
 
 - Phase 2 section rewritten to match this design (enum = 5, second proto file, seeding location, full-replication decision, ticker, pointer rebuild).
 - Phase 3.3 marked resolved-by-Phase-2 (stale premise documented) once its e2e verification passes.
@@ -237,7 +237,7 @@ if len(cs.Partitions) == cs.Config.DesiredPartitions
 | `openapi/system.yaml` | `PUT /cluster/config` admin operation (scope exception D8) |
 | `internal/rest/cluster_config.go` | REST handler + status-code mapping (scope exception D8) |
 | `test/e2e/cluster/*` | harness wiring, un-skips, new tests |
-| `docs/cluster-implementation-plan.md` | sync per §9 |
+| `.specs/cluster/cluster-implementation-plan.md` | sync per §9 |
 
 ## Risks
 

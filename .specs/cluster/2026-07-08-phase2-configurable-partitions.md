@@ -8,14 +8,14 @@
 
 **Tech Stack:** Go, HashiCorp Raft, protobuf (edition 2023, `ptr.To` for presence), rqlite partitions, chi REST router, testify.
 
-**Spec:** `docs/superpowers/specs/2026-07-08-phase2-configurable-partitions-design.md` (decisions D1–D8, hardenings R1–R8).
+**Spec:** `.specs/cluster/2026-07-08-phase2-configurable-partitions-design.md` (decisions D1–D8, hardenings R1–R8).
 
 ## Global Constraints
 
 - Conventional Commits, **single-line**, `(cluster)` scope where applicable. **Never** add a `Co-Authored-By: Claude` trailer or any AI mention.
 - TDD: write the failing test before the implementation, run it red, implement, run it green.
 - Never hand-edit generated files (`*.pb.go`, `zz_generated.deepcopy.go`); run `make generate` after proto/state changes.
-- Doc-sync rule: any commit that changes something `docs/cluster-implementation-plan.md` tracks MUST update that file in the same commit and bump its `> Last updated:` line. Task steps call this out explicitly.
+- Doc-sync rule: any commit that changes something `.specs/cluster/cluster-implementation-plan.md` tracks MUST update that file in the same commit and bump its `> Last updated:` line. Task steps call this out explicitly.
 - Allowed scope: `internal/cluster/**`, `test/e2e/`, `docs/`, `conf/`, **plus user-approved exceptions**: `internal/config/config.go` (D7), `openapi/system.yaml` + `internal/rest/` (D8), `internal/cluster/node.go` (already cluster scope).
 - Deviation from spec §2 (noted during planning): the spec plumbs `DesiredPartitions` into the store `Config`; nothing consumes it there — the controller reads its own `config.Cluster`. YAGNI: skip the store-Config plumb.
 - After each task: `go build ./...` must pass. Fast e2e tier (`make test-e2e-cluster`) is run at the milestones marked below (it takes ~3 min).
@@ -304,7 +304,7 @@ git commit -m "feat(cluster): add DesiredPartitions and ReconcileInterval to clu
 - Modify: `internal/cluster/controller/controller.go`
 - Modify: `internal/cluster/store/store.go:124-130`
 - Modify: `internal/cluster/controller/controller_test.go` (fake store + new tests)
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 **Interfaces:**
 - Consumes: `Store.WriteConfigurationChange` (Task 2), `config.Cluster.DesiredPartitions` (Task 3).
@@ -436,10 +436,10 @@ Expected: new tests PASS. `TestControllerCanStartNewPartitions` still passes (it
 Run: `make test-e2e-cluster`
 Expected: PASS (single-partition formation works through seed → reconcile).
 
-- [ ] **Step 6: Doc-sync + commit.** In `docs/cluster-implementation-plan.md`: check off 2.2 and 2.3 items (FSM handler, hardcode removal, initial config, `WriteConfigurationChange`), correct 2.1 text (enum is `5`, not `4`), note tasks 2.1–2.3 done, bump `> Last updated:`.
+- [ ] **Step 6: Doc-sync + commit.** In `.specs/cluster/cluster-implementation-plan.md`: check off 2.2 and 2.3 items (FSM handler, hardcode removal, initial config, `WriteConfigurationChange`), correct 2.1 text (enum is `5`, not `4`), note tasks 2.1–2.3 done, bump `> Last updated:`.
 
 ```bash
-git add internal/cluster/ docs/cluster-implementation-plan.md
+git add internal/cluster/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): seed DesiredPartitions from app config on fresh bootstrap"
 ```
 
@@ -600,7 +600,7 @@ Expected: all PASS (including existing tests — the single-flight must not brea
 - [ ] **Step 5: Commit** (doc-sync: mark plan Risk #5 resolved — one-per-pass + ticker; bump Last updated)
 
 ```bash
-git add internal/cluster/controller/ docs/cluster-implementation-plan.md
+git add internal/cluster/controller/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): add level-triggered reconcile ticker with single-flight guard"
 ```
 
@@ -611,7 +611,7 @@ git commit -m "feat(cluster): add level-triggered reconcile ticker with single-f
 **Files:**
 - Modify: `internal/cluster/controller/controller.go:126-186`
 - Test: `internal/cluster/controller/controller_test.go`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 **Interfaces:**
 - Produces: rewritten partition block of `performLeaderOperations`; `assignNewPartition` now assigns **all started nodes**; the "0-partition nodes → partition 1" fallback loop is deleted.
@@ -755,10 +755,10 @@ Expected: PASS, including `TestControllerCanStartNewPartitions` (1 started node,
 Run: `make test-e2e-cluster`
 Expected: PASS — 3-node formation now goes through "all started nodes join partition 1" (same observable behavior as the old fallback loop, now by design).
 
-- [ ] **Step 6: Doc-sync + commit.** Update `docs/cluster-implementation-plan.md`: rewrite the 2.5 block (the plan's naive for-loop is superseded by one-per-pass + full replication + R2 guard — reference the spec), bump Last updated.
+- [ ] **Step 6: Doc-sync + commit.** Update `.specs/cluster/cluster-implementation-plan.md`: rewrite the 2.5 block (the plan's naive for-loop is superseded by one-per-pass + full replication + R2 guard — reference the spec), bump Last updated.
 
 ```bash
-git add internal/cluster/controller/ docs/cluster-implementation-plan.md
+git add internal/cluster/controller/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): create partitions one per pass with all started nodes as members"
 ```
 
@@ -770,7 +770,7 @@ git commit -m "feat(cluster): create partitions one per pass with all started no
 - Modify: `internal/cluster/proto/zen_cluster.proto:866-869`
 - Modify: `internal/cluster/server/server.go` (`StoreService` interface + RPC at line ~180)
 - Test: `internal/cluster/server/server_test.go`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 **Interfaces:**
 - Consumes: `Store.WriteConfigurationChange` (Task 2), `client.ClientManager.ClusterLeader()`.
@@ -947,7 +947,7 @@ Expected: PASS.
 - [ ] **Step 6: Doc-sync + commit.** Plan file: check off 2.4; fix the Panic Tracker rows for `ConfigurationUpdate` (it returned `codes.Unimplemented`, not a panic — correct the row and mark Done); bump Last updated.
 
 ```bash
-git add internal/cluster/proto/ internal/cluster/server/ internal/cluster/controller/ docs/cluster-implementation-plan.md
+git add internal/cluster/proto/ internal/cluster/server/ internal/cluster/controller/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): implement ConfigurationUpdate RPC with leader validation and forwarding"
 ```
 
@@ -961,7 +961,7 @@ git commit -m "feat(cluster): implement ConfigurationUpdate RPC with leader vali
 - Create: `internal/rest/cluster_config.go`
 - Modify: `internal/rest/server.go:88-91` (route)
 - Test: `internal/rest/cluster_config_test.go`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 **Interfaces:**
 - Consumes: `ConfigurationUpdate` RPC (Task 7), `node.client.ClusterLeader()`.
@@ -1126,7 +1126,7 @@ Expected: PASS.
 - [ ] **Step 6: Doc-sync + commit.** Plan file: add REST endpoint note to Phase 2 section (D8); bump Last updated.
 
 ```bash
-git add openapi/system.yaml internal/rest/ internal/cluster/node.go docs/cluster-implementation-plan.md
+git add openapi/system.yaml internal/rest/ internal/cluster/node.go .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): expose cluster configuration update via REST admin endpoint"
 ```
 
@@ -1138,7 +1138,7 @@ git commit -m "feat(cluster): expose cluster configuration update via REST admin
 - Modify: `internal/cluster/backup/coordinator.go` (extract shared helpers)
 - Modify: `internal/cluster/controller/controller.go`
 - Test: `internal/cluster/controller/controller_test.go`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 **Interfaces:**
 - Consumes: `backup.PlanPointerRebuild`, `backup.ClientProvider`, `ListActiveMessageSubscriptions`/`RebuildMessageSubscriptionPointers` RPCs, `RoutingPartitions` (Task 1), `WriteMaintenanceChange`.
@@ -1425,7 +1425,7 @@ Expected: PASS.
 - [ ] **Step 7: Doc-sync + commit.** Plan file: describe the rebuild under Phase 2; note 3.3's premise is stale (pointer indirection already gives exact addressing; scale-up case now closed) — do **not** mark 3.3 done yet (needs e2e verification in Task 12); bump Last updated.
 
 ```bash
-git add internal/cluster/ docs/cluster-implementation-plan.md
+git add internal/cluster/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "feat(cluster): rebuild message pointers after partition scale-up via RoutingPartitions marker"
 ```
 
@@ -1436,7 +1436,7 @@ git commit -m "feat(cluster): rebuild message pointers after partition scale-up 
 **Files:**
 - Modify: `internal/cluster/state/state.go:103`
 - Test: `internal/cluster/state/state_test.go`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -1469,7 +1469,7 @@ Expected: PASS.
 - [ ] **Step 5: Doc-sync + commit.** Plan file: check off 3.2, update Phase 3 progress count, bump Last updated.
 
 ```bash
-git add internal/cluster/state/ docs/cluster-implementation-plan.md
+git add internal/cluster/state/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "fix(cluster): LeastStressedPartition off-by-one panic on single partition"
 ```
 
@@ -1481,7 +1481,7 @@ git commit -m "fix(cluster): LeastStressedPartition off-by-one panic on single p
 - Modify: `test/e2e/cluster/harness.go` (~line 137 and the `AddNode` config at ~line 287)
 - Modify: `test/e2e/cluster/partition_test.go` (un-skip lines 20, 34, 142)
 - Modify: `test/e2e/cluster/data_test.go:250`, `test/e2e/cluster/stream_resilience_test.go:214`, `test/e2e/cluster/backup_restore_test.go:191`
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 - [ ] **Step 1: Wire `WithPartitions`.** In `harness.go`, both `config.Config` struct literals (NewTestCluster ~line 134 and AddNode ~line 286) gain, inside `Cluster:`:
 
@@ -1503,7 +1503,7 @@ Expected: PASS including the newly un-skipped tests. If a formation timeout appe
 - [ ] **Step 4: Doc-sync + commit.** Plan file: move the un-skipped tests out of "Unblocks E2E" into done, bump Last updated.
 
 ```bash
-git add test/e2e/cluster/ docs/cluster-implementation-plan.md
+git add test/e2e/cluster/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "test(cluster): enable multi-partition e2e via WithPartitions harness wiring"
 ```
 
@@ -1514,7 +1514,7 @@ git commit -m "test(cluster): enable multi-partition e2e via WithPartitions harn
 **Files:**
 - Modify: `test/e2e/cluster/partition_test.go` (`TestIncreasePartitionCount` at ~line 111, new test, `TestMaxPartitions` un-skip at line 160)
 - Modify: `test/e2e/cluster/data_test.go` (verify `TestMessageCorrelationAcrossNodes`)
-- Modify: `docs/cluster-implementation-plan.md` (same commit)
+- Modify: `.specs/cluster/cluster-implementation-plan.md` (same commit)
 
 - [ ] **Step 1: Implement `TestIncreasePartitionCount`** — replace its body's TODO + `t.Skip` (line ~111-123):
 
@@ -1616,7 +1616,7 @@ Expected: PASS. Optionally (manual, long): `make test-e2e-cluster-slow` for `Tes
 - [ ] **Step 6: Doc-sync + commit.** Plan file: mark 3.3 resolved-by-Phase-2 (stale premise documented in spec §6; scale-up case closed; correlation e2e green), update Phase 3 progress to reflect 3.2+3.3 done, update Risks table row 3 (message correlation routing — resolved: exact addressing + rebuild), bump Last updated.
 
 ```bash
-git add test/e2e/cluster/ docs/cluster-implementation-plan.md
+git add test/e2e/cluster/ .specs/cluster/cluster-implementation-plan.md
 git commit -m "test(cluster): cover runtime partition scale-up and pointer rebuild end to end"
 ```
 
@@ -1625,7 +1625,7 @@ git commit -m "test(cluster): cover runtime partition scale-up and pointer rebui
 ### Task 13: Final documentation reconciliation
 
 **Files:**
-- Modify: `docs/cluster-implementation-plan.md`
+- Modify: `.specs/cluster/cluster-implementation-plan.md`
 
 - [ ] **Step 1: Full sweep.** Re-read the whole plan file against reality:
   - Progress Summary: Phase 2 → **Done** (5/5 + REST endpoint + rebuild), Phase 3 → 4/4 (3.1 won't-fix, 3.2 done, 3.3 resolved, 3.4 won't-fix) → **Done**.
@@ -1643,7 +1643,7 @@ Expected: all PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/cluster-implementation-plan.md
+git add .specs/cluster/cluster-implementation-plan.md
 git commit -m "docs(cluster): mark phase 2 configurable partitions done"
 ```
 

@@ -19,6 +19,8 @@ type Querier interface {
 	// otherwise prefer). See TestHotPathIndexes.
 	CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error)
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
+	// Counted apart from the page: a page beyond the last one has no row to carry a window count.
+	CountJobFailures(ctx context.Context, jobKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
@@ -30,12 +32,13 @@ type Querier interface {
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesErrorSubscriptions(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesJobFailures(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesTimers(ctx context.Context, processinstancekeys []sql.NullInt64) error
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
-	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
+	FindActiveJobsByType(ctx context.Context, arg FindActiveJobsByTypeParams) ([]Job, error)
 	FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, arg FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams) ([]ProcessInstance, error)
 	FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
@@ -65,6 +68,8 @@ type Querier interface {
 	FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg FindIncidentsPageByProcessInstanceKeyParams) ([]FindIncidentsPageByProcessInstanceKeyRow, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
+	FindJobFailuresByJobKey(ctx context.Context, jobKey int64) ([]JobFailure, error)
+	FindJobFailuresPage(ctx context.Context, arg FindJobFailuresPageParams) ([]JobFailure, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error)
@@ -162,6 +167,9 @@ type Querier interface {
 	// latest_and_tagged_only (1/0) keeps only the latest version of every
 	// process and the versions carrying a version tag.
 	ListProcessDefinitionVersions(ctx context.Context, arg ListProcessDefinitionVersionsParams) ([]ListProcessDefinitionVersionsRow, error)
+	// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
+	// and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+	RecordJobDelivery(ctx context.Context, arg RecordJobDeliveryParams) (int64, error)
 	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
@@ -169,7 +177,11 @@ type Querier interface {
 	SaveErrorSubscription(ctx context.Context, arg SaveErrorSubscriptionParams) error
 	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
+	// retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
+	// delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
+	// before a delivery was recorded does not take the token back when it is saved.
 	SaveJob(ctx context.Context, arg SaveJobParams) error
+	SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error
 	SaveMigration(ctx context.Context, arg SaveMigrationParams) error
@@ -179,6 +191,10 @@ type Querier interface {
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 	SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error
 	UpdateOutputFlowElementInstance(ctx context.Context, arg UpdateOutputFlowElementInstanceParams) error
+	// Takes back the token of a delivery the job manager recorded but never sent, so that the delivery
+	// before it counts again. Only while no other delivery was recorded since; the token was never handed
+	// out, so issuing it again later is harmless.
+	WithdrawJobDelivery(ctx context.Context, arg WithdrawJobDeliveryParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

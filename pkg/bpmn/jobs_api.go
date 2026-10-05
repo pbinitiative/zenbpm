@@ -19,6 +19,10 @@ import (
 )
 
 // JobAssignByKey sets (or clears) the assignee of a job. Pass nil to unassign.
+//
+// Saving a job writes all of it, its retry state included, so the job is read
+// again under the lock of its process instance, the lock failures and retry
+// updates hold: a copy read before one of them committed would undo it.
 func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee *string) error {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
@@ -27,6 +31,13 @@ func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee
 		}
 		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
+	engine.runningInstances.lockInstance(job.ProcessInstanceKey)
+	defer engine.runningInstances.unlockInstance(job.ProcessInstanceKey)
+	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		// not turned into an engine error, so that a job deleted meanwhile is still not found
+		return fmt.Errorf("failed to refresh job with key %d: %w", jobKey, err)
+	}
 	job.Assignee = assignee
 	if err := engine.persistence.SaveJob(ctx, job); err != nil {
 		return newEngineErrorf("failed to save job assignee for key: %d", jobKey)
@@ -34,14 +45,70 @@ func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee
 	return nil
 }
 
-// JobFailByKey is used to mark external jobs as failed
-func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (retErr error) {
+// JobFailByKey reports that a worker could not finish an external job.
+//
+// With an error code it is a BPMN error: a matching error boundary event or
+// error event sub-process takes over, otherwise the job fails with an incident.
+// Retries are neither consulted nor spent.
+//
+// Without an error code (nil or empty) one attempt of the job is spent. retries
+// is what remains afterwards (nil: one less than now) and retryBackoff how long
+// the job waits before it is handed out again (nil: the policy of the task
+// definition, else the engine's default). With retries remaining the job stays
+// active, no incident is created and the variables are dropped; at zero the
+// job fails with an incident and keeps the variables as its output.
+//
+// deliveryToken, when given, names the delivery the failure belongs to, and
+// makes the failure count once, whatever it carries: a repeat of a failure the
+// job recorded changes nothing and returns nil, whatever state the job is in
+// now. Only the repeat of an error-coded failure which raised an incident is
+// refused with ErrDeliverySuperseded once that incident was resolved and a
+// later delivery's failure was recorded: the failure history, which the
+// engine asks for earlier deliveries, keeps no entry for it. A failure of a
+// delivery which another one superseded before its failure was recorded - the
+// job was handed out again after the lock lapsed or the leader changed -
+// changes nothing either and is refused with
+// ErrDeliverySuperseded: the newer delivery decides. A token which was never
+// handed out is refused with ErrInvalidJobRequest. Without deliveryToken every
+// failure counts.
+//
+// retries, retryBackoff and deliveryToken are validated first, whatever the
+// error code: an invalid value is refused with ErrInvalidJobRequest and changes
+// nothing.
+func (engine *Engine) JobFailByKey(
+	ctx context.Context,
+	jobKey int64,
+	message string,
+	errorCode *string,
+	variables map[string]interface{},
+	retries *int32,
+	retryBackoff *time.Duration,
+	deliveryToken *int64,
+) (retErr error) {
+	if deliveryToken != nil && *deliveryToken < 1 {
+		return invalidJobRequestf("delivery token of job %d must be at least 1, got %d", jobKey, *deliveryToken)
+	}
+	if retries != nil && *retries < 0 {
+		return invalidJobRequestf("retries of job %d must not be negative, got %d", jobKey, *retries)
+	}
+	if retryBackoff != nil && *retryBackoff < 0 {
+		return invalidJobRequestf("retry backoff of job %d must not be negative, got %s", jobKey, *retryBackoff)
+	}
+	// clients built before retries existed send an empty code when they mean none
+	if errorCode != nil && *errorCode == "" {
+		errorCode = nil
+	}
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
+	}
+	if deliveryToken != nil {
+		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
+			return err
+		}
 	}
 
 	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
@@ -55,29 +122,33 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		failJobSpan.End()
 	}()
 
-	if job.State == runtime.ActivityStateFailed {
-		return newEngineErrorf("job %d is already failed", job.Key)
+	// a failure of the same delivery which committed meanwhile, even the one
+	// which ended the job, or a delivery recorded meanwhile, answers this one
+	// below instead
+	ensureJobTakesTheFailure := func(job runtime.Job) error {
+		if deliveryToken != nil && !recordsFailureOf(job, *deliveryToken) {
+			return nil
+		}
+		return ensureJobStillWaits(job)
 	}
-
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	job, instance, batch, err := engine.lockInstanceOfJob(ctx, job, "fail", ensureJobTakesTheFailure)
 	if err != nil {
-		return newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey)
-	}
-
-	batch, err := engine.NewEngineBatch(ctx, instance)
-	if err != nil {
-		return newEngineErrorf("failed to create engine batch")
+		if deliveryToken != nil && errors.Is(err, ErrInstanceAlreadyTerminal) {
+			return engine.failureRacedTheEndOfTheInstance(ctx, jobKey, *deliveryToken, err)
+		}
+		return err
 	}
 	defer func() {
 		if retErr != nil {
 			batch.Clear(ctx)
 		}
 	}()
-
-	//refresh
-	job, err = engine.refreshAndValidateJob(ctx, jobKey)
-	if err != nil {
-		return err
+	if deliveryToken != nil {
+		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
+			batch.Clear(ctx)
+			return err
+		}
+		job.FailedDeliveryToken = *deliveryToken
 	}
 
 	failJobSpan.SetAttributes(
@@ -86,8 +157,9 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
 	)
 
+	retried := false
 	defer func() {
-		if retErr == nil {
+		if retErr == nil && !retried {
 			engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("type", job.Type),
 				attribute.Bool("internal", false),
@@ -96,33 +168,39 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		}
 	}()
 
-	if errorCode != nil {
-		target, err := engine.findErrorCatchTarget(ctx, &batch, instance, job.Token, errorCode)
+	if errorCode == nil {
+		retried, err = engine.failJobWithoutErrorCode(ctx, &batch, job, message, variables, retries, retryBackoff, deliveryToken)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to fail job %d: %w", job.Key, err)
 		}
+		return nil
+	}
 
-		if target != nil {
-			switch {
-			case target.boundary != nil:
-				if handled, err := engine.processBoundaryErrorEvent(ctx, &batch, job, instance, target.boundary, variables); err != nil {
-					return err
-				} else if handled {
-					return nil
-				}
-			case target.eventSubprocess != nil:
-				if handled, err := engine.processErrorEventSubprocessForJob(ctx, &batch, job, target.eventSubprocess, variables); err != nil {
-					if errors.Is(err, ErrMaxProcessInstanceNestingDepthExceeded) {
-						batch.discardWrites()
-						if incidentErr := engine.failJobWithIncident(ctx, &batch, job, err.Error(), errorCode, variables); incidentErr != nil {
-							return errors.Join(err, incidentErr)
-						}
-						return nil
+	target, err := engine.findErrorCatchTarget(ctx, &batch, instance, job.Token, errorCode)
+	if err != nil {
+		return err
+	}
+
+	if target != nil {
+		switch {
+		case target.boundary != nil:
+			if handled, err := engine.processBoundaryErrorEvent(ctx, &batch, job, instance, target.boundary, variables); err != nil {
+				return err
+			} else if handled {
+				return nil
+			}
+		case target.eventSubprocess != nil:
+			if handled, err := engine.processErrorEventSubprocessForJob(ctx, &batch, job, target.eventSubprocess, variables); err != nil {
+				if errors.Is(err, ErrMaxProcessInstanceNestingDepthExceeded) {
+					batch.discardWrites()
+					if incidentErr := engine.failJobWithIncident(ctx, &batch, job, err.Error(), errorCode, variables); incidentErr != nil {
+						return errors.Join(err, incidentErr)
 					}
-					return err
-				} else if handled {
 					return nil
 				}
+				return err
+			} else if handled {
+				return nil
 			}
 		}
 	}
@@ -168,22 +246,42 @@ func (engine *Engine) failJobWithIncident(
 	errorCode *string,
 	variables map[string]interface{},
 ) error {
+	code := ptr.Deref(errorCode, "")
+	return engine.raiseJobIncident(ctx, batch, job, fmt.Sprintf("%s: %s", message, code), variables, nil)
+}
 
+// raiseJobIncident fails the job, creates an incident naming it and flushes the
+// batch. A failure, when given, is recorded carrying the key of the incident.
+func (engine *Engine) raiseJobIncident(
+	ctx context.Context,
+	batch *EngineBatch,
+	job runtime.Job,
+	incidentMessage string,
+	variables map[string]interface{},
+	failure *runtime.JobFailure,
+) error {
 	job.State = runtime.ActivityStateFailed
+	// every incident of the job ends its series: retries an operator set before
+	// are forgotten, and resolving the incident restores the definition's
+	// unless the operator sets new ones meanwhile
+	job.RetriesSetByOperator = false
 	if variables != nil {
 		job.OutputVariables = variables
 	}
-	err := batch.SaveJob(ctx, job)
-	if err != nil {
+	if err := batch.SaveJob(ctx, job); err != nil {
 		return err
 	}
 
-	code := ptr.Deref(errorCode, "")
-
-	incident := createNewIncidentFromToken(fmt.Errorf("%s: %s", message, code), job.Token, engine)
-
+	incident := createNewIncidentFromToken(errors.New(incidentMessage), job.Token, engine)
+	incident.JobKey = &job.Key
 	if err := batch.SaveIncident(ctx, incident); err != nil {
 		return err
+	}
+	if failure != nil {
+		failure.IncidentKey = &incident.Key
+		if err := batch.SaveJobFailure(ctx, *failure); err != nil {
+			return err
+		}
 	}
 
 	return batch.Flush(ctx)
@@ -231,39 +329,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	if job.State == runtime.ActivityStateCompleted {
-		// A duplicate completion can heal any stranded Running sibling, not only the
-		// completed job's token. The token embedded in the job can be a stale
-		// snapshot, so check persisted tokens before taking the instance lock.
-		// The continuation reloads them under the lock if there is Running work.
-		continuationCtx, cancelContinuation := engine.continuationContext(ctx)
-		activeTokens, readErr := engine.persistence.GetActiveTokensForProcessInstance(continuationCtx, job.ProcessInstanceKey)
-		cancelContinuation()
-		if readErr != nil {
-			engine.wakeReconciliation(job.ProcessInstanceKey)
-			return fmt.Errorf("failed to check running tokens for process instance %d after retrying completed job %d: %w",
-				job.ProcessInstanceKey, job.Key, readErr)
-		}
-		needsContinuation := false
-		for _, token := range activeTokens {
-			if token.State == runtime.TokenStateRunning {
-				needsContinuation = true
-				break
-			}
-		}
-		if !needsContinuation {
-			return nil
-		}
-		engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
-		outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey)
-		if runErr != nil {
-			if !outcome.isPersistedIncidentOnly() {
-				return fmt.Errorf("failed to continue process instance %d after retrying completed job %d: %w",
-					job.ProcessInstanceKey, job.Key, runErr)
-			}
-			engine.logger.Warn("failed to continue process instance for an already completed job",
-				"job", job.Key, "processInstance", job.ProcessInstanceKey, "err", runErr)
-		}
-		return nil
+		return engine.repeatedCompletion(ctx, job)
+	}
+
+	// checked before the batch as well: a terminated or failed job may belong
+	// to an instance which ended, and a batch cannot be opened for it
+	if err := ensureJobStillWaits(job); err != nil {
+		return err
 	}
 
 	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
@@ -289,6 +361,9 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
+		if errors.Is(err, ErrInstanceAlreadyTerminal) {
+			return engine.completionRacedTheEndOfTheInstance(ctx, jobKey, err)
+		}
 		return newEngineErrorf("failed to create engine batch")
 	}
 	defer func() {
@@ -302,8 +377,16 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	//refresh token
-	job, err = engine.refreshAndValidateJob(ctx, jobKey)
+	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
+	}
+	if job.State == runtime.ActivityStateCompleted {
+		// a repeated completion which raced the one that committed while the instance keeps running
+		batch.Clear(ctx)
+		return engine.repeatedCompletion(ctx, job)
+	}
+	if err := ensureJobStillWaits(job); err != nil {
 		return err
 	}
 
@@ -412,22 +495,172 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	return nil
 }
 
-// refreshAndValidateJob fetches the latest job state and returns an error if
-// the job is already in a terminal state (completed, terminated, or failed).
-func (engine *Engine) refreshAndValidateJob(ctx context.Context, jobKey int64) (runtime.Job, error) {
+// repeatedCompletion answers a completion of a job completed before: it is as
+// done as the first one. A duplicate completion can heal any stranded Running
+// sibling, not only the completed job's token. The token embedded in the job
+// can be a stale snapshot, so persisted tokens are checked before the instance
+// lock is taken; the continuation reloads them under the lock if there is
+// Running work.
+func (engine *Engine) repeatedCompletion(ctx context.Context, job runtime.Job) error {
+	continuationCtx, cancelContinuation := engine.continuationContext(ctx)
+	activeTokens, readErr := engine.persistence.GetActiveTokensForProcessInstance(continuationCtx, job.ProcessInstanceKey)
+	cancelContinuation()
+	if readErr != nil {
+		engine.wakeReconciliation(job.ProcessInstanceKey)
+		return fmt.Errorf("failed to check running tokens for process instance %d after retrying completed job %d: %w",
+			job.ProcessInstanceKey, job.Key, readErr)
+	}
+	needsContinuation := false
+	for _, token := range activeTokens {
+		if token.State == runtime.TokenStateRunning {
+			needsContinuation = true
+			break
+		}
+	}
+	if !needsContinuation {
+		return nil
+	}
+	engine.logger.Debug("job is already completed; checking whether its process instance needs to continue", "job", job.Key, "processInstance", job.ProcessInstanceKey)
+	outcome, runErr := engine.continueProcessInstanceAfterCommit(ctx, job.ProcessInstanceKey)
+	if runErr != nil {
+		if !outcome.isPersistedIncidentOnly() {
+			return fmt.Errorf("failed to continue process instance %d after retrying completed job %d: %w",
+				job.ProcessInstanceKey, job.Key, runErr)
+		}
+		engine.logger.Warn("failed to continue process instance for an already completed job",
+			"job", job.Key, "processInstance", job.ProcessInstanceKey, "err", runErr)
+	}
+	return nil
+}
+
+// completionRacedTheEndOfTheInstance classifies a completion which read an
+// active job and then found its instance ended: a repeated completion whose
+// first report ended the instance is as done as any duplicate, everything else
+// is a conflict.
+func (engine *Engine) completionRacedTheEndOfTheInstance(ctx context.Context, jobKey int64, batchErr error) error {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return runtime.Job{}, newEngineErrorf("failed to find job with key: %d", jobKey)
+		return fmt.Errorf("failed to refresh job with key %d after its instance ended: %w", jobKey, err)
 	}
+	if job.State == runtime.ActivityStateCompleted {
+		engine.logger.Debug("job is already completed and its process instance ended", "job", job.Key, "processInstance", job.ProcessInstanceKey)
+		return nil
+	}
+	return fmt.Errorf("%w: cannot complete job %d: %w", ErrJobInTerminalState, jobKey, batchErr)
+}
+
+// failureRacedTheEndOfTheInstance classifies a failure naming its delivery
+// which read an active job and then found its instance ended. It is answered
+// as it would be after the end: the repeat of a failure the job recorded as
+// recorded, a failure of a delivery another one superseded as superseded, and
+// a failure the job would have recorded as a conflict.
+func (engine *Engine) failureRacedTheEndOfTheInstance(ctx context.Context, jobKey int64, deliveryToken int64, batchErr error) error {
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return fmt.Errorf("failed to refresh job with key %d after its instance ended: %w", jobKey, err)
+	}
+	if answered, err := engine.answerFailureNotToRecord(ctx, job, deliveryToken); answered {
+		return err
+	}
+	return batchErr
+}
+
+// lockInstanceOfJob opens a batch on the instance of a job read before, which
+// holds the instance, and reads the job again under it: nothing changes the job
+// from then on, so a copy read before a failure or a retry update committed is
+// never saved over it. ensure refuses a job the request does not suit, before
+// the batch as well, since the instance of a job which ended may have ended
+// itself and a batch cannot be opened for it. action names the request in the
+// error of a job which ended with its instance meanwhile.
+func (engine *Engine) lockInstanceOfJob(
+	ctx context.Context,
+	job runtime.Job,
+	action string,
+	ensure func(runtime.Job) error,
+) (runtime.Job, runtime.ProcessInstance, EngineBatch, error) {
+	if err := ensure(job); err != nil {
+		return runtime.Job{}, nil, EngineBatch{}, err
+	}
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	if err != nil {
+		return runtime.Job{}, nil, EngineBatch{}, newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey)
+	}
+	batch, err := engine.NewEngineBatch(ctx, instance)
+	if err != nil {
+		if errors.Is(err, ErrInstanceAlreadyTerminal) {
+			// the job ended with its instance between the check above and the lock
+			return runtime.Job{}, nil, EngineBatch{}, fmt.Errorf("%w: cannot %s job %d: %w", ErrJobInTerminalState, action, job.Key, err)
+		}
+		return runtime.Job{}, nil, EngineBatch{}, fmt.Errorf("failed to create engine batch for job %d: %w", job.Key, err)
+	}
+	refreshed, err := engine.persistence.FindJobByJobKey(ctx, job.Key)
+	if err != nil {
+		err = fmt.Errorf("failed to find job with key %d: %w", job.Key, err)
+	} else {
+		err = ensure(refreshed)
+	}
+	if err != nil {
+		batch.Clear(ctx)
+		return runtime.Job{}, nil, EngineBatch{}, err
+	}
+	return refreshed, instance, batch, nil
+}
+
+// recordsFailureOf reports whether the job records a failure naming the
+// delivery token: only one of its latest delivery, and only the first.
+func recordsFailureOf(job runtime.Job, deliveryToken int64) bool {
+	return deliveryToken == job.DeliveryToken && deliveryToken != job.FailedDeliveryToken
+}
+
+// answerFailureNotToRecord answers a failure naming a delivery token the job
+// does not record a failure of, and reports whether it did: the repeat of a
+// failure the job recorded is answered as recorded, a failure of a delivery
+// another one superseded with ErrDeliverySuperseded, and a token never handed
+// out with ErrInvalidJobRequest. A failure of the job's latest delivery, the
+// first one reported for it, is left to the caller to record.
+func (engine *Engine) answerFailureNotToRecord(ctx context.Context, job runtime.Job, deliveryToken int64) (bool, error) {
+	switch {
+	case deliveryToken > job.DeliveryToken:
+		return true, invalidJobRequestf("delivery token %d of job %d was never handed out: its latest delivery has token %d",
+			deliveryToken, job.Key, job.DeliveryToken)
+	case deliveryToken == job.FailedDeliveryToken:
+		engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
+		return true, nil
+	case deliveryToken == job.DeliveryToken:
+		return false, nil
+	}
+	// an earlier delivery: its failure was recorded before the job was handed
+	// out again, or it arrived after the job had been handed out again
+	failures, err := engine.persistence.FindJobFailures(ctx, job.Key)
+	if err != nil {
+		return true, fmt.Errorf("failed to find the failures of job %d: %w", job.Key, err)
+	}
+	for _, failure := range failures {
+		if failure.DeliveryToken != nil && *failure.DeliveryToken == deliveryToken {
+			engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
+			return true, nil
+		}
+	}
+	return true, fmt.Errorf("%w: job %d was handed out again after delivery %d, its latest delivery has token %d",
+		ErrDeliverySuperseded, job.Key, deliveryToken, job.DeliveryToken)
+}
+
+// ensureJobStillWaits refuses a job which is completed, terminated or failed
+// with an error wrapping ErrJobInTerminalState: with retries a repeated
+// failure is an expected event, a conflict rather than a technical failure.
+func ensureJobStillWaits(job runtime.Job) error {
+	var ended string
 	switch job.State {
 	case runtime.ActivityStateCompleted:
-		return runtime.Job{}, newEngineErrorf("job already completed: %d", job.Key)
+		ended = "completed"
 	case runtime.ActivityStateTerminated:
-		return runtime.Job{}, newEngineErrorf("job already terminated: %d", job.Key)
+		ended = "terminated"
 	case runtime.ActivityStateFailed:
-		return runtime.Job{}, newEngineErrorf("job already failed: %d", job.Key)
+		ended = "failed"
+	default:
+		return nil
 	}
-	return job, nil
+	return fmt.Errorf("%w: job %d is already %s", ErrJobInTerminalState, job.Key, ended)
 }
 
 // recordJobLifetime records the time between job creation and its terminal state, in milliseconds.

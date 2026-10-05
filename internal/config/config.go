@@ -15,6 +15,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/rqlite/rqlite/v10/cdc"
 )
 
@@ -33,6 +34,114 @@ type Config struct {
 	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
 	JobManager JobManager `yaml:"jobManager" json:"jobManager"` // defaults and caps for job locks handed to job stream clients
+	Jobs       Jobs       `yaml:"jobs" json:"jobs"`             // defaults and caps for the retries of failed jobs
+}
+
+// Defaults is a configuration which names nothing: every section whose fields
+// carry no env-default gets its defaults here, before the file and the environment are read.
+func Defaults() Config {
+	return Config{JobManager: DefaultJobManager(), Jobs: DefaultJobs()}
+}
+
+// Jobs sets what happens to a job a worker reports as failed without an error
+// code: how many attempts it gets and how long it waits between them.
+//
+// Like JobManager, the fields carry no env-default: DefaultJobs sets them
+// before the file and the environment are read, so a value written in either
+// is validated as written.
+type Jobs struct {
+	// DefaultRetries is the number of attempts of a job whose zenbpm:taskDefinition names no retries.
+	DefaultRetries int32 `yaml:"defaultRetries" json:"defaultRetries" env:"JOBS_DEFAULT_RETRIES"`
+	// MaxRetries caps the retries of a job, whether the definition, a worker or an operator sets them.
+	MaxRetries int32 `yaml:"maxRetries" json:"maxRetries" env:"JOBS_MAX_RETRIES"`
+	// DefaultRetryBackoff is the backoff of a job whose zenbpm:taskDefinition names none: an
+	// ISO-8601 duration or a comma-separated list of them, one per failure, the last repeating.
+	DefaultRetryBackoff string `yaml:"defaultRetryBackoff" json:"defaultRetryBackoff" env:"JOBS_DEFAULT_RETRY_BACKOFF"`
+	// MaxRetryBackoff caps every backoff a job waits, an ISO-8601 duration.
+	MaxRetryBackoff string `yaml:"maxRetryBackoff" json:"maxRetryBackoff" env:"JOBS_MAX_RETRY_BACKOFF"`
+}
+
+// DefaultJobs is the jobs section of a configuration which names nothing: one
+// attempt, so the first failure without an error code creates an incident as
+// it always did, no backoff, at most 100 retries and a day of backoff.
+func DefaultJobs() Jobs {
+	return Jobs{
+		DefaultRetries:      1,
+		MaxRetries:          100,
+		DefaultRetryBackoff: "PT0S",
+		MaxRetryBackoff:     "PT24H",
+	}
+}
+
+// WithDefaults returns the section with every field left at its zero value
+// replaced by its default. A configuration read by InitConfig has its defaults
+// already; one built in code, as an embedding application or a test harness
+// builds it, may leave the section out altogether.
+func (j Jobs) WithDefaults() Jobs {
+	defaults := DefaultJobs()
+	if j.DefaultRetries == 0 {
+		j.DefaultRetries = defaults.DefaultRetries
+	}
+	if j.MaxRetries == 0 {
+		j.MaxRetries = defaults.MaxRetries
+	}
+	if strings.TrimSpace(j.DefaultRetryBackoff) == "" {
+		j.DefaultRetryBackoff = defaults.DefaultRetryBackoff
+	}
+	if strings.TrimSpace(j.MaxRetryBackoff) == "" {
+		j.MaxRetryBackoff = defaults.MaxRetryBackoff
+	}
+	return j
+}
+
+// Validate rejects a jobs section which does not parse, whose defaults exceed
+// their caps, or which would give a job no attempt at all. Every message names
+// the field and its environment variable.
+func (j Jobs) Validate() error {
+	if j.DefaultRetries < 1 {
+		return fmt.Errorf("jobs.defaultRetries (JOBS_DEFAULT_RETRIES) must be at least 1, got %d", j.DefaultRetries)
+	}
+	if j.MaxRetries < 1 {
+		return fmt.Errorf("jobs.maxRetries (JOBS_MAX_RETRIES) must be at least 1, got %d", j.MaxRetries)
+	}
+	if j.DefaultRetries > j.MaxRetries {
+		return fmt.Errorf("jobs.defaultRetries (JOBS_DEFAULT_RETRIES) is %d but must not exceed jobs.maxRetries (JOBS_MAX_RETRIES) %d", j.DefaultRetries, j.MaxRetries)
+	}
+	maxBackoff, err := j.MaxRetryBackoffDuration()
+	if err != nil {
+		return err
+	}
+	if maxBackoff <= 0 {
+		return fmt.Errorf("jobs.maxRetryBackoff (JOBS_MAX_RETRY_BACKOFF) must be longer than zero, got %q", j.MaxRetryBackoff)
+	}
+	policy, err := j.DefaultRetryBackoffPolicy()
+	if err != nil {
+		return err
+	}
+	for _, backoff := range policy {
+		if backoff > maxBackoff {
+			return fmt.Errorf("jobs.defaultRetryBackoff (JOBS_DEFAULT_RETRY_BACKOFF) %q has an entry longer than jobs.maxRetryBackoff (JOBS_MAX_RETRY_BACKOFF) %q", j.DefaultRetryBackoff, j.MaxRetryBackoff)
+		}
+	}
+	return nil
+}
+
+// DefaultRetryBackoffPolicy parses DefaultRetryBackoff.
+func (j Jobs) DefaultRetryBackoffPolicy() ([]time.Duration, error) {
+	policy, err := extensions.ParseRetryBackoff(j.DefaultRetryBackoff)
+	if err != nil {
+		return nil, fmt.Errorf("jobs.defaultRetryBackoff (JOBS_DEFAULT_RETRY_BACKOFF) must be an ISO-8601 duration or a comma-separated list of them such as PT10S,PT1M: %w", err)
+	}
+	return policy, nil
+}
+
+// MaxRetryBackoffDuration parses MaxRetryBackoff.
+func (j Jobs) MaxRetryBackoffDuration() (time.Duration, error) {
+	backoff, err := extensions.ParseBackoffDuration(j.MaxRetryBackoff)
+	if err != nil {
+		return 0, fmt.Errorf("jobs.maxRetryBackoff (JOBS_MAX_RETRY_BACKOFF) must be an ISO-8601 duration such as PT24H: %w", err)
+	}
+	return backoff, nil
 }
 
 // JobManager bounds what a job stream client may ask for when it subscribes to a
@@ -396,6 +505,9 @@ func (c *Config) validate() error {
 	if err := c.Cluster.Engine.ValidateReconciliation(); err != nil {
 		return err
 	}
+	if err := c.Jobs.Validate(); err != nil {
+		return err
+	}
 	if c.Cluster.NodeId == "" {
 		c.Cluster.NodeId = c.Cluster.Adv
 	}
@@ -468,7 +580,7 @@ func (c *Config) validate() error {
 }
 
 func InitConfig() Config {
-	c := Config{JobManager: DefaultJobManager()}
+	c := Defaults()
 	var fileName string
 	confFile := os.Getenv("CONFIG_FILE")
 	if confFile == "" {

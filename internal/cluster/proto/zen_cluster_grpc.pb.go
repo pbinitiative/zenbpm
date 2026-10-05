@@ -79,6 +79,8 @@ const (
 	ZenService_ExtendJobLock_FullMethodName                          = "/cluster.ZenService/ExtendJobLock"
 	ZenService_ReassignJob_FullMethodName                            = "/cluster.ZenService/ReassignJob"
 	ZenService_AssignJobToAssignee_FullMethodName                    = "/cluster.ZenService/AssignJobToAssignee"
+	ZenService_UpdateJobRetries_FullMethodName                       = "/cluster.ZenService/UpdateJobRetries"
+	ZenService_GetJobFailures_FullMethodName                         = "/cluster.ZenService/GetJobFailures"
 	ZenService_GetProcessDefinitionStatistics_FullMethodName         = "/cluster.ZenService/GetProcessDefinitionStatistics"
 	ZenService_GetProcessDefinitionElementStatistics_FullMethodName  = "/cluster.ZenService/GetProcessDefinitionElementStatistics"
 	ZenService_GetProcessInstanceElementStatistics_FullMethodName    = "/cluster.ZenService/GetProcessInstanceElementStatistics"
@@ -177,6 +179,10 @@ type ZenServiceClient interface {
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 	AssignJobToAssignee(ctx context.Context, in *AssignJobToAssigneeRequest, opts ...grpc.CallOption) (*AssignJobToAssigneeResponse, error)
+	// Sets the remaining retries of an active or failed job and when it is handed out next.
+	UpdateJobRetries(ctx context.Context, in *UpdateJobRetriesRequest, opts ...grpc.CallOption) (*UpdateJobRetriesResponse, error)
+	// Lists the failures without an error code of a job, newest first.
+	GetJobFailures(ctx context.Context, in *GetJobFailuresRequest, opts ...grpc.CallOption) (*GetJobFailuresResponse, error)
 	GetProcessDefinitionStatistics(ctx context.Context, in *GetProcessDefinitionStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionStatisticsResponse, error)
 	GetProcessDefinitionElementStatistics(ctx context.Context, in *GetProcessDefinitionElementStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionElementStatisticsResponse, error)
 	GetProcessInstanceElementStatistics(ctx context.Context, in *GetProcessInstanceElementStatisticsRequest, opts ...grpc.CallOption) (*GetProcessInstanceElementStatisticsResponse, error)
@@ -816,6 +822,26 @@ func (c *zenServiceClient) AssignJobToAssignee(ctx context.Context, in *AssignJo
 	return out, nil
 }
 
+func (c *zenServiceClient) UpdateJobRetries(ctx context.Context, in *UpdateJobRetriesRequest, opts ...grpc.CallOption) (*UpdateJobRetriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateJobRetriesResponse)
+	err := c.cc.Invoke(ctx, ZenService_UpdateJobRetries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetJobFailures(ctx context.Context, in *GetJobFailuresRequest, opts ...grpc.CallOption) (*GetJobFailuresResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetJobFailuresResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetJobFailures_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) GetProcessDefinitionStatistics(ctx context.Context, in *GetProcessDefinitionStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionStatisticsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProcessDefinitionStatisticsResponse)
@@ -939,6 +965,10 @@ type ZenServiceServer interface {
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	AssignJobToAssignee(context.Context, *AssignJobToAssigneeRequest) (*AssignJobToAssigneeResponse, error)
+	// Sets the remaining retries of an active or failed job and when it is handed out next.
+	UpdateJobRetries(context.Context, *UpdateJobRetriesRequest) (*UpdateJobRetriesResponse, error)
+	// Lists the failures without an error code of a job, newest first.
+	GetJobFailures(context.Context, *GetJobFailuresRequest) (*GetJobFailuresResponse, error)
 	GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error)
 	GetProcessDefinitionElementStatistics(context.Context, *GetProcessDefinitionElementStatisticsRequest) (*GetProcessDefinitionElementStatisticsResponse, error)
 	GetProcessInstanceElementStatistics(context.Context, *GetProcessInstanceElementStatisticsRequest) (*GetProcessInstanceElementStatisticsResponse, error)
@@ -1128,6 +1158,12 @@ func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRe
 }
 func (UnimplementedZenServiceServer) AssignJobToAssignee(context.Context, *AssignJobToAssigneeRequest) (*AssignJobToAssigneeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AssignJobToAssignee not implemented")
+}
+func (UnimplementedZenServiceServer) UpdateJobRetries(context.Context, *UpdateJobRetriesRequest) (*UpdateJobRetriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateJobRetries not implemented")
+}
+func (UnimplementedZenServiceServer) GetJobFailures(context.Context, *GetJobFailuresRequest) (*GetJobFailuresResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetJobFailures not implemented")
 }
 func (UnimplementedZenServiceServer) GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessDefinitionStatistics not implemented")
@@ -2167,6 +2203,42 @@ func _ZenService_AssignJobToAssignee_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_UpdateJobRetries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateJobRetriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).UpdateJobRetries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_UpdateJobRetries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).UpdateJobRetries(ctx, req.(*UpdateJobRetriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetJobFailures_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetJobFailuresRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetJobFailures(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetJobFailures_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetJobFailures(ctx, req.(*GetJobFailuresRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_GetProcessDefinitionStatistics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProcessDefinitionStatisticsRequest)
 	if err := dec(in); err != nil {
@@ -2439,6 +2511,14 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AssignJobToAssignee",
 			Handler:    _ZenService_AssignJobToAssignee_Handler,
+		},
+		{
+			MethodName: "UpdateJobRetries",
+			Handler:    _ZenService_UpdateJobRetries_Handler,
+		},
+		{
+			MethodName: "GetJobFailures",
+			Handler:    _ZenService_GetJobFailures_Handler,
 		},
 		{
 			MethodName: "GetProcessDefinitionStatistics",

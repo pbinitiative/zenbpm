@@ -18,7 +18,7 @@ func TestJobFailOnServiceTaskWithMatchingErrorBoundaryIsCaught(t *testing.T) {
 	require.NotZero(t, job.Key, fmt.Sprintf("expected to find %s job created for process instance", "service-task-error-boundary"))
 
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -32,7 +32,7 @@ func TestBoundaryErrorEventCompletedAt(t *testing.T) {
 
 	before := time.Now()
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	require.NoError(t, err)
 	after := time.Now()
 
@@ -65,7 +65,7 @@ func TestJobFailOnServiceTaskWithMismatchingErrorBoundaryCreatesIncident(t *test
 	require.NotZero(t, job.Key, "expected to find service-task-error-boundary job created for process instance")
 
 	errorCode := "99"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithIncident(t, createdProcessInstance, job)
@@ -77,7 +77,7 @@ func TestJobFailOnServiceTaskWithoutErrorCodeCreatesIncident(t *testing.T) {
 	job := findJobForProcessInstance(createdProcessInstance.ProcessInstance().Key, "service-task-error-boundary")
 	require.NotZero(t, job.Key, "expected to find service-task-error-boundary job created for process instance")
 
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "missing error code", nil, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "missing error code", nil, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithIncident(t, createdProcessInstance, job)
@@ -90,7 +90,7 @@ func TestJobFailOnServiceTaskWithoutErrorRefInBoundaryEventShouldCatchAll(t *tes
 	require.NotZero(t, job.Key, "expected to find service-task-error-boundary job created for process instance")
 
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -103,7 +103,7 @@ func TestBusinessRuleTaskExternalWithoutErrorRefInBoundaryEventShouldCatchAll(t 
 	require.NotZero(t, job.Key, "expected to find boundary-error-business-rule-external job created for process instance")
 
 	errorCode := "any-error"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -116,7 +116,7 @@ func TestBusinessRuleTaskExternalWithMatchingErrorBoundaryIsCaught(t *testing.T)
 	require.NotZero(t, job.Key, "expected to find boundary-error-business-rule-external job created for process instance")
 
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -129,7 +129,7 @@ func TestBusinessRuleTaskExternalWithMismatchingErrorBoundaryCreatesIncident(t *
 	require.NotZero(t, job.Key, "expected to find boundary-error-business-rule-external job created for process instance")
 
 	errorCode := "99"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithIncident(t, createdProcessInstance, job)
@@ -152,7 +152,7 @@ func TestJobFailOnCallActivityWithCatchAllErrorBoundaryIsCaught(t *testing.T) {
 	}, time.Second, 20*time.Millisecond, "expected to find child process job created for call activity")
 
 	errorCode := "any-error"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	parentProcessInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
@@ -190,7 +190,7 @@ func TestJobFailOnCallActivityWithMatchingErrorBoundaryIsCaught(t *testing.T) {
 	}, time.Second, 20*time.Millisecond, "expected to find child process job created for call activity")
 
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	processInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
@@ -233,7 +233,7 @@ func TestJobFailOnCallActivityWithMatchingErrorBoundaryPropagatesVariablesToCatc
 	errorCode := "42"
 	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, map[string]interface{}{
 		"variable_from_request": "request_variable",
-	})
+	}, nil, nil, nil)
 	assert.NoError(t, err)
 
 	processInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
@@ -273,7 +273,7 @@ func TestJobFailOnCallActivityWithMatchingErrorBoundaryWithoutOutputMappingPropa
 	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, map[string]interface{}{
 		"variable_from_request": "request_variable",
 		"request_count":         7,
-	})
+	}, nil, nil, nil)
 	assert.NoError(t, err)
 
 	processInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
@@ -310,7 +310,7 @@ func TestJobFailOnCallActivityWithNonMatchingErrorBoundaryIsIncident(t *testing.
 	}, time.Second, 25*time.Millisecond, "expected to find child process job created for call activity")
 
 	errorCode := "422"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	parentProcessInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
@@ -391,7 +391,7 @@ func TestJobFailOnNestedCallActivityBoundaryIsCaughtInAncestor(t *testing.T) {
 	}, time.Second, 20*time.Millisecond, "expected to find leaf process job created for nested call activity")
 
 	errorCode := "42"
-	err = bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested boundary error", &errorCode, nil)
+	err = bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	var rootInstance runtime.ProcessInstance
@@ -469,7 +469,7 @@ func TestJobFailOnNestedSubProcessBoundaryIsCaughtInAncestor(t *testing.T) {
 	}, time.Second, 20*time.Millisecond, "expected to find nested subprocess job")
 
 	errorCode := "54"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested subprocess boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested subprocess boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -528,7 +528,7 @@ func TestJobFailOnMultiInstanceInsideSubProcessWithMatchingErrorBoundaryIsCaught
 	}, time.Second, 20*time.Millisecond, "expected to find multi-instance job inside subprocess")
 
 	errorCode := "44"
-	err = bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested multi-instance boundary error", &errorCode, nil)
+	err = bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected nested multi-instance boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -576,7 +576,7 @@ func TestJobFailOnUserTaskWithCatchAllErrorBoundaryIsCaught(t *testing.T) {
 	require.NotZero(t, job.Key, "expected to find user-task-error-boundary job created for process instance")
 
 	errorCode := "any-error"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -589,7 +589,7 @@ func TestJobFailOnUserTaskWithMatchingErrorBoundaryIsCaught(t *testing.T) {
 	require.NotZero(t, job.Key, fmt.Sprintf("expected to find %s job created for process instance", "user-task-error-boundary"))
 
 	errorCode := "42"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
@@ -602,7 +602,7 @@ func TestJobFailOnUserTaskWithMismatchingErrorBoundaryCreatesIncident(t *testing
 	require.NotZero(t, job.Key, fmt.Sprintf("expected to find %s job created for process instance", "user-task-error-boundary"))
 
 	errorCode := "99"
-	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil)
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected incident", &errorCode, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	assertProcessInstanceWithIncident(t, createdProcessInstance, job)

@@ -109,6 +109,10 @@ service ZenService {
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
   rpc AssignJobToAssignee(AssignJobToAssigneeRequest) returns (AssignJobToAssigneeResponse);
+  // Sets the remaining retries of an active or failed job and when it is handed out next.
+  rpc UpdateJobRetries(UpdateJobRetriesRequest) returns (UpdateJobRetriesResponse);
+  // Lists the failures without an error code of a job, newest first.
+  rpc GetJobFailures(GetJobFailuresRequest) returns (GetJobFailuresResponse);
   rpc GetProcessDefinitionStatistics(GetProcessDefinitionStatisticsRequest) returns (GetProcessDefinitionStatisticsResponse);
   rpc GetProcessDefinitionElementStatistics(GetProcessDefinitionElementStatisticsRequest) returns (GetProcessDefinitionElementStatisticsResponse);
   rpc GetProcessInstanceElementStatistics(GetProcessInstanceElementStatisticsRequest) returns (GetProcessInstanceElementStatisticsResponse);
@@ -319,6 +323,30 @@ message Job {
   bytes output_variables = 10;
   string element_type = 11;
   map<string, string> headers = 12;
+  // attempts left: failures without an error code the job may still report; the one which leaves none creates an incident
+  int32 retries = 13;
+  // unix millis before which the job is not handed out again; absent = at once
+  int64 retry_at = 14;
+  string last_failure_message = 15;
+  // failures without an error code since the job was created or its incident resolved
+  int32 attempts = 16;
+  // backoff policy of the task definition ("PT10S,PT1M"); absent = the engine default
+  string retry_backoff = 17;
+  // token of the latest delivery of the job to a worker; 0 = never handed out
+  int64 delivery_token = 18;
+}
+
+message JobFailure {
+  int64 key = 1;
+  int64 job_key = 2;
+  int64 process_instance_key = 3;
+  int32 attempt = 4;
+  int64 failed_at = 5;
+  // absent when the job was deliverable at once or the failure exhausted the retries
+  int64 retry_at = 6;
+  string message = 7;
+  // set on the failure which exhausted the retries
+  int64 incident_key = 8;
 }
 
 message FlowElement {
@@ -341,6 +369,8 @@ message Incident {
   int64 created_at = 6;
   int64 resolved_at = 7;
   int64 execution_token = 8;
+  // the job the incident was created for; absent for incidents without a job
+  int64 job_key = 9;
 }
 
 message DeployDmnResourceDefinitionRequest {
@@ -439,6 +469,13 @@ message FailJobRequest {
   string client_id = 3;
   string error_code = 4;
   bytes variables = 5;
+  // retries remaining after this failure; absent = one less than now
+  int32 retries = 6;
+  // how long the job waits before it is handed out again; absent = the policy of the task definition
+  int64 retry_backoff_ms = 7;
+  // the delivery the failure belongs to; a repeat of a recorded failure and a failure of a superseded
+  // delivery change nothing; absent = every report counts
+  int64 delivery_token = 8;
 }
 
 message FailJobResponse {
@@ -450,6 +487,8 @@ message ExtendJobLockRequest {
   string client_id = 2;
   // 0 = the lock duration of the subscription the job was delivered under.
   int64 lock_duration_ms = 3;
+  // the delivery whose lock to extend; the lock of another delivery is not held for it; absent = any
+  int64 delivery_token = 4;
 }
 
 message ExtendJobLockResponse {
@@ -487,6 +526,12 @@ message InternalJob {
   // Unix milliseconds on the leader's clock at which the lock of this delivery lapses.
   int64 lock_until = 9;
   map<string, string> headers = 10;
+  // retries remaining at delivery
+  int32 retries = 11;
+  // 1 for the first delivery of a series, one more after every failure without an error code
+  int32 attempt = 12;
+  // token of this delivery, higher than that of every delivery of the job before
+  int64 delivery_token = 13;
 }
 
 message SetMessageSubscriptionPointerRequest {
@@ -773,6 +818,12 @@ message GetJobsResponse {
 
 message ResolveIncidentRequest {
   int64 incident_key = 1;
+  // retries of the job the incident leaves waiting, set together with the
+  // resolution; absent = the resolution restores them as usual
+  int32 retries = 2;
+  // unix millis before which that job is not handed out; only with retries,
+  // absent = at once
+  int64 retry_at = 3;
 }
 
 message ResolveIncidentResponse {
@@ -816,6 +867,29 @@ message AssignJobToAssigneeRequest {
 
 message AssignJobToAssigneeResponse {
   ErrorResult error = 1;
+}
+
+message UpdateJobRetriesRequest {
+  int64 key = 1;
+  int32 retries = 2;
+  // unix millis before which the job is not handed out; absent = at once
+  int64 retry_at = 3;
+}
+
+message UpdateJobRetriesResponse {
+  ErrorResult error = 1;
+}
+
+message GetJobFailuresRequest {
+  int64 job_key = 1;
+  int32 page = 2;
+  int32 size = 3;
+}
+
+message GetJobFailuresResponse {
+  ErrorResult error = 1;
+  repeated JobFailure failures = 2;
+  int32 total_count = 3;
 }
 
 message GetProcessDefinitionElementStatisticsRequest {

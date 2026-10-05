@@ -735,6 +735,15 @@ func TestDataCleanup(t *testing.T) {
 		}
 		err = db.SaveJob(ctx, job)
 		assert.NoError(t, err)
+		err = db.SaveJobFailure(ctx, runtime.JobFailure{
+			Key:                r2 + 95,
+			JobKey:             job.Key,
+			ProcessInstanceKey: inst2.ProcessInstance().Key,
+			Attempt:            1,
+			FailedAt:           time.Now(),
+			Message:            "payment service unavailable",
+		})
+		assert.NoError(t, err)
 
 		flowHist := runtime.FlowElementInstance{
 			Key:                job.Key,
@@ -824,6 +833,8 @@ func TestDataCleanup(t *testing.T) {
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from job")
 	require.Equal(t, remainingCalls, count)
+	count = queryCount(t, db, "select count(*) from job_failure")
+	require.Equal(t, remainingCalls, count, "the failures of a job are deleted with the job")
 	count = queryCount(t, db, "select count(*) from execution_token")
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from flow_element_instance")
@@ -862,14 +873,15 @@ func TestDataCleanup(t *testing.T) {
 		return queryCount(t, db, "select count(*) from message_subscription") +
 			queryCount(t, db, "select count(*) from timer") +
 			queryCount(t, db, "select count(*) from job") +
+			queryCount(t, db, "select count(*) from job_failure") +
 			queryCount(t, db, "select count(*) from execution_token") +
 			queryCount(t, db, "select count(*) from flow_element_instance") +
 			queryCount(t, db, "select count(*) from incident") +
 			queryCount(t, db, "select count(*) from error_subscription")
 	}
 	// The deleted instance is the newest deletable one: the child of the last
-	// idsToKeep call, which owns 3 history rows (timer, job, flow element).
-	require.Equal(t, remainingCalls*7-3, sumHistoryRows())
+	// idsToKeep call, which owns 4 history rows (timer, job, job failure, flow element).
+	require.Equal(t, remainingCalls*8-4, sumHistoryRows())
 
 	// Instances without a TTL must never be cleaned up, no matter how far in
 	// the future the cleanup runs.
@@ -882,7 +894,270 @@ func TestDataCleanup(t *testing.T) {
 	require.Empty(t, inactiveIDs)
 	count = queryCount(t, db, "select count(*) from process_instance")
 	require.Equal(t, int64(len(idsWithoutTTL)), count)
-	require.Equal(t, int64(len(idsWithoutTTL)/2*7), sumHistoryRows())
+	require.Equal(t, int64(len(idsWithoutTTL)/2*8), sumHistoryRows())
+}
+
+// TestWaitingJobsLeaveOutJobsWaitingOutABackoff shows the query a partition
+// leader distributes jobs from hands out a job waiting out a retry backoff only
+// once its deadline passed on the clock the leader passes in.
+func TestWaitingJobsLeaveOutJobsWaitingOutABackoff(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-waiting-jobs-backoff-db")
+
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Waiting_Jobs_Backoff_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("waiting-jobs-backoff-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      fmt.Sprintf(data, definitionKey),
+		BpmnChecksum:  [16]byte{3},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+
+	now := time.Now()
+	jobType := fmt.Sprintf("backoff-%d", definitionKey)
+	saveJob := func(retryAt *time.Time) int64 {
+		key := db.GenerateId()
+		token := runtime.ExecutionToken{Key: key, ElementInstanceKey: key, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
+		require.NoError(t, db.SaveToken(t.Context(), token))
+		require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+			ElementId:          "task",
+			ElementInstanceKey: key,
+			ProcessInstanceKey: instance.Key,
+			Key:                key,
+			Type:               jobType,
+			State:              runtime.ActivityStateActive,
+			CreatedAt:          now,
+			Token:              token,
+			Retries:            2,
+			RetryAt:            retryAt,
+		}))
+		return key
+	}
+	inBackoff := saveJob(new(now.Add(time.Hour)))
+	backoffPassed := saveJob(new(now.Add(-time.Second)))
+	neverFailed := saveJob(nil)
+
+	waitingKeys := func(at time.Time) []int64 {
+		jobs, err := db.Queries.GetWaitingJobs(t.Context(), sql.GetWaitingJobsParams{
+			Type:    []string{jobType},
+			KeySkip: []int64{0},
+			Now:     at.UnixMilli(),
+			Limit:   10,
+		})
+		require.NoError(t, err)
+		keys := make([]int64, len(jobs))
+		for i, job := range jobs {
+			keys[i] = job.Key
+		}
+		return keys
+	}
+	assert.ElementsMatch(t, []int64{backoffPassed, neverFailed}, waitingKeys(now))
+	assert.ElementsMatch(t, []int64{inBackoff, backoffPassed, neverFailed}, waitingKeys(now.Add(2*time.Hour)),
+		"once the deadline passed the job is deliverable again")
+}
+
+// TestAStoredDefinitionWithARetriesValueTheEngineNeverReadIsStillRead shows
+// the reads of a stored definition do not apply the deployment checks: an
+// engine which did not read zenbpm:taskDefinition retries yet stored any value,
+// and the instances of such a definition must keep running after the upgrade.
+func TestAStoredDefinitionWithARetriesValueTheEngineNeverReadIsStillRead(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-stored-definition-unread-retries-db")
+
+	definitionKey := db.GenerateId()
+	processID := fmt.Sprintf("unread-retries-%d", definitionKey)
+	data := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_%s">
+  <bpmn:process id="%s" isExecutable="true">
+    <bpmn:startEvent id="start"><bpmn:outgoing>to-task</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="task">
+      <bpmn:extensionElements><zenbpm:taskDefinition type="charge-card" retries="${retries}" /></bpmn:extensionElements>
+      <bpmn:incoming>to-task</bpmn:incoming>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="to-task" sourceRef="start" targetRef="task" />
+  </bpmn:process>
+</bpmn:definitions>`, processID, processID)
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), runtime.ProcessDefinition{
+		BpmnProcessId: processID,
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      data,
+		BpmnChecksum:  [16]byte{7},
+	}))
+
+	byKey, err := db.FindProcessDefinitionByKey(t.Context(), definitionKey)
+	require.NoError(t, err, "the definition an older engine stored must load")
+	assert.Equal(t, "${retries}", byKey.Definitions.Process.GetInternalTaskById("task").GetTaskDefinition().Retries)
+	byID, err := db.FindProcessDefinitionsById(t.Context(), processID)
+	require.NoError(t, err, "every version of the process must load, or a corrected one cannot be deployed")
+	require.Len(t, byID, 1)
+	assert.Equal(t, definitionKey, byID[0].Key)
+}
+
+// TestAJobWhoseStoredBackoffCannotBeReadIsStillRead shows a retry backoff
+// column the engine no longer understands, as after a change of its format,
+// does not keep the job from being read: the policy reads as none and the
+// engine default applies.
+func TestAJobWhoseStoredBackoffCannotBeReadIsStillRead(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-unreadable-backoff-db")
+
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("unreadable-backoff-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="p" isExecutable="true"></bpmn:process></xml>`,
+		BpmnChecksum:  [16]byte{4},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+	jobKey := db.GenerateId()
+	token := runtime.ExecutionToken{Key: jobKey, ElementInstanceKey: jobKey, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
+	require.NoError(t, db.SaveToken(t.Context(), token))
+	require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+		ElementId:          "task",
+		ElementInstanceKey: jobKey,
+		ProcessInstanceKey: instance.Key,
+		Key:                jobKey,
+		Type:               "charge-card",
+		State:              runtime.ActivityStateActive,
+		CreatedAt:          time.Now(),
+		Token:              token,
+		Retries:            2,
+		RetryBackoff:       []time.Duration{10 * time.Second},
+	}))
+	_, err := db.ExecContext(t.Context(), "UPDATE job SET retry_backoff = ? WHERE key = ?", "PT10.5S", jobKey)
+	require.NoError(t, err)
+
+	byKey, err := db.FindJobByJobKey(t.Context(), jobKey)
+	require.NoError(t, err)
+	assert.Nil(t, byKey.RetryBackoff, "the unreadable policy reads as none")
+	pending, err := db.FindPendingProcessInstanceJobs(t.Context(), instance.Key)
+	require.NoError(t, err, "the reads which end an instance must not fail on one row")
+	require.Len(t, pending, 1)
+	assert.Nil(t, pending[0].RetryBackoff)
+}
+
+// TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded shows the write
+// which records the deliveries of a round raises the token of a job only while
+// the job still waits for a worker and nobody recorded another delivery of it
+// since it was loaded; the others are left out, so that they are not handed out.
+// A delivery withdrawn before it was sent gives its token back only while it is
+// still the job's latest.
+func TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-record-job-deliveries-db")
+
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("record-deliveries-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="p" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{5},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+	saveJob := func(state runtime.ActivityState, deliveryToken int64) sql.Job {
+		key := db.GenerateId()
+		token := runtime.ExecutionToken{Key: key, ElementInstanceKey: key, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
+		require.NoError(t, db.SaveToken(t.Context(), token))
+		require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+			ElementId:          "task",
+			ElementInstanceKey: key,
+			ProcessInstanceKey: instance.Key,
+			Key:                key,
+			Type:               "charge-card",
+			State:              state,
+			CreatedAt:          time.Now(),
+			Token:              token,
+			Retries:            1,
+			DeliveryToken:      deliveryToken,
+		}))
+		return sql.Job{Key: key, DeliveryToken: deliveryToken}
+	}
+	waiting := saveJob(runtime.ActivityStateActive, 4)
+	deliveredSinceLoaded := saveJob(runtime.ActivityStateActive, 1)
+	deliveredSinceLoaded.DeliveryToken = 0
+	completed := saveJob(runtime.ActivityStateCompleted, 0)
+
+	recorded, err := db.RecordJobDeliveries(t.Context(), []sql.Job{waiting, deliveredSinceLoaded, completed})
+	require.NoError(t, err)
+
+	require.Len(t, recorded, 1)
+	assert.Equal(t, waiting.Key, recorded[0].Key)
+	assert.Equal(t, int64(5), recorded[0].DeliveryToken)
+	storedTokens := map[int64]int64{}
+	for _, job := range []sql.Job{waiting, deliveredSinceLoaded, completed} {
+		stored, err := db.FindJobByJobKey(t.Context(), job.Key)
+		require.NoError(t, err)
+		storedTokens[job.Key] = stored.DeliveryToken
+	}
+	assert.Equal(t, map[int64]int64{waiting.Key: 5, deliveredSinceLoaded.Key: 1, completed.Key: 0}, storedTokens)
+
+	recorded, err = db.RecordJobDeliveries(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, recorded, "a round which reserved nothing writes nothing")
+
+	withdrawn, err := db.WithdrawJobDelivery(t.Context(), waiting.Key, 5)
+	require.NoError(t, err)
+	assert.True(t, withdrawn, "a delivery never sent gives its token back")
+	stored, err := db.FindJobByJobKey(t.Context(), waiting.Key)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), stored.DeliveryToken)
+	withdrawn, err = db.WithdrawJobDelivery(t.Context(), deliveredSinceLoaded.Key, 5)
+	require.NoError(t, err)
+	assert.False(t, withdrawn, "a token which is not the job's latest is left alone")
+	stored, err = db.FindJobByJobKey(t.Context(), deliveredSinceLoaded.Key)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stored.DeliveryToken)
 }
 
 func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {

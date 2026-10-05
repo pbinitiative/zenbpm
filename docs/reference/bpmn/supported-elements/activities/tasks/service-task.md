@@ -23,6 +23,8 @@ To make a Service Task executable, define the job type in a `zenbpm:taskDefiniti
 | Extension element                    | Attribute          | Required | Description                                                                                                                        |
 | ------------------------------------ | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `zenbpm:taskDefinition`              | `type`             | yes      | The job type. The engine creates a job of this type when the task is activated; workers subscribe to this type to receive the job. |
+| `zenbpm:taskDefinition`              | `retries`          | no       | How many attempts the job gets; the failure without an error code which uses the last one creates an incident: a non-negative integer, or a FEEL expression starting with `=` evaluated when the job is created. Default `jobs.defaultRetries` (`1`). See [Failures and retries](../../../../jobs.md#failures-and-retries). |
+| `zenbpm:taskDefinition`              | `retryBackoff`     | no       | How long the job waits after such a failure before it is handed out again: an ISO-8601 duration (`PT10S`), a comma-separated list with one entry per failure, the last repeating (`PT10S,PT1M,PT10M`), or a FEEL expression starting with `=`. Default `jobs.defaultRetryBackoff` (`PT0S`). |
 | `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, visible to the job worker. See [Variables](../../../variable-mapping.md).      |
 | `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the job's result variables back to the process scope. See [Variables](../../../variable-mapping.md).                          |
 
@@ -31,7 +33,7 @@ Execution flow:
 1. A token arrives at the Service Task and the engine creates a job with the configured `type`, carrying the task's variables.
 2. A worker activates the job via the REST or gRPC API (or an internal task handler registered on the engine), performs the work, and completes or fails it.
 3. On completion, output mappings are applied and the token moves on. **Without output mappings, no variables returned by the worker are propagated to the process scope** — define an output mapping for every value you want to keep.
-4. On failure, an incident is created; the failure can be handled with an error boundary event.
+4. On failure with an error code, the error is routed to a matching error boundary event or error event sub-process, or creates an incident. On failure without one, the job spends a retry and is handed out again after its backoff; the failure which leaves no retries creates an incident. See [Failures and retries](../../../../jobs.md#failures-and-retries).
 
 ## Related documentation
 
@@ -40,12 +42,12 @@ Execution flow:
 
 ## XML example
 
-A Service Task that creates a job of type `charge-card`. The input mapping passes the order total to the worker as `amount`; the output mapping stores the worker's `transactionId` result in the process variable `paymentTransactionId`.
+A Service Task that creates a job of type `charge-card` with three attempts, waiting ten seconds after the first failure and a minute after the second. The input mapping passes the order total to the worker as `amount`; the output mapping stores the worker's `transactionId` result in the process variable `paymentTransactionId`.
 
 ```xml
 <bpmn:serviceTask id="Activity_ChargeCard" name="Charge credit card">
   <bpmn:extensionElements>
-    <zenbpm:taskDefinition type="charge-card" />
+    <zenbpm:taskDefinition type="charge-card" retries="3" retryBackoff="PT10S,PT1M" />
     <zenbpm:ioMapping>
       <zenbpm:input source="=order.totalAmount" target="amount" />
       <zenbpm:output source="=transactionId" target="paymentTransactionId" />

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -306,13 +307,7 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 	}
 	err = s.jobManager.CompleteJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), vars)
 	if err != nil {
-		var zerr *zenerr.ZenError
-		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
-		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to complete job %d: %w", req.GetKey(), err))
-		}
-		return &proto.CompleteJobResponse{Error: zerr.ToProtoError()}, nil
+		return &proto.CompleteJobResponse{Error: jobRequestError(req.GetKey(), "complete", err).ToProtoError()}, nil
 	}
 	return &proto.CompleteJobResponse{}, nil
 }
@@ -330,7 +325,7 @@ func (s *Server) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequ
 		return &proto.ExtendJobLockResponse{Error: zerr.ToProtoError(), Refusal: proto.LockRefusal_LOCK_REFUSAL_NONE.Enum()}, nil
 	}
 	lockUntil, err := s.jobManager.ExtendJobLock(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(),
-		jobmanager.DurationFromMillis(req.GetLockDurationMs()))
+		jobmanager.DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
 	if err != nil {
 		refusal := proto.LockRefusal_LOCK_REFUSAL_NONE
 		var zerr *zenerr.ZenError
@@ -384,16 +379,10 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
-
+	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars,
+		req.Retries, jobmanager.RetryBackoffFromMillis(req.RetryBackoffMs), req.DeliveryToken)
 	if err != nil {
-		var zerr *zenerr.ZenError
-		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
-		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err))
-		}
-		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
+		return &proto.FailJobResponse{Error: jobRequestError(req.GetKey(), "fail", err).ToProtoError()}, nil
 	}
 
 	return &proto.FailJobResponse{}, nil
@@ -1158,34 +1147,13 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 	if len(result) > 0 {
 		totalCount = int32(result[0].TotalCount)
 	}
-	for i, job := range result {
-		var assignee *string
-		if job.Assignee.Valid {
-			assignee = &job.Assignee.String
-		}
-		var outputVarsBytes []byte
-		if job.OutputVariables.Valid {
-			outputVarsBytes = []byte(job.OutputVariables.String)
-		}
-		headers, err := sql.JobHeadersFromJSON(job.Headers)
+	for i, row := range result {
+		job, err := jobToProto(row.Job)
 		if err != nil {
-			zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
+			zerr := zenerr.TechnicalError(err)
 			return &proto.GetProcessInstanceJobsResponse{Error: zerr.ToProtoError()}, nil
 		}
-		jobs[i] = &proto.Job{
-			Key:                &job.Key,
-			ElementInstanceKey: &job.ElementInstanceKey,
-			ElementId:          &job.ElementID,
-			ProcessInstanceKey: &job.ProcessInstanceKey,
-			Type:               &job.Type,
-			ElementType:        &job.ElementType,
-			State:              new(job.State),
-			CreatedAt:          &job.CreatedAt,
-			InputVariables:     []byte(job.InputVariables),
-			OutputVariables:    outputVarsBytes,
-			Assignee:           assignee,
-			Headers:            headers,
-		}
+		jobs[i] = job
 	}
 	return &proto.GetProcessInstanceJobsResponse{
 		Jobs:       jobs,
@@ -1291,38 +1259,21 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 		partitionJobs := make([]*proto.Job, len(dbJobs))
 
 		totalCount := int32(0)
-		for i, job := range dbJobs {
+		for i, row := range dbJobs {
 			if i == 0 {
-				totalCount = int32(job.TotalCount)
+				// a partition's jobs have no bound of their own: a count beyond the page metadata's int32 saturates
+				count := row.TotalCount
+				if count > math.MaxInt32 {
+					count = math.MaxInt32
+				}
+				totalCount = int32(count)
 			}
-
-			var a *string
-			if job.Assignee.Valid {
-				a = &job.Assignee.String
-			}
-			var outputVarsBytes []byte
-			if job.OutputVariables.Valid {
-				outputVarsBytes = []byte(job.OutputVariables.String)
-			}
-			headers, err := sql.JobHeadersFromJSON(job.Headers)
+			job, err := jobToProto(row.Job)
 			if err != nil {
-				zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
+				zerr := zenerr.TechnicalError(err)
 				return &proto.GetJobsResponse{Error: zerr.ToProtoError()}, nil
 			}
-			partitionJobs[i] = &proto.Job{
-				Key:                new(job.Key),
-				ProcessInstanceKey: new(job.ProcessInstanceKey),
-				ElementId:          new(job.ElementID),
-				ElementInstanceKey: new(job.ElementInstanceKey),
-				Type:               new(job.Type),
-				ElementType:        new(job.ElementType),
-				CreatedAt:          new(job.CreatedAt),
-				State:              new(job.State),
-				Assignee:           a,
-				InputVariables:     []byte(job.InputVariables),
-				OutputVariables:    outputVarsBytes,
-				Headers:            headers,
-			}
+			partitionJobs[i] = job
 		}
 
 		resp = append(resp, &proto.PartitionedJobs{
@@ -1357,37 +1308,159 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	var assignee *string
-	if job.Assignee.Valid {
-		assignee = &job.Assignee.String
+	protoJob, err := jobToProto(job)
+	if err != nil {
+		zerr := zenerr.TechnicalError(err)
+		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
 	}
+	return &proto.GetJobResponse{Job: protoJob}, nil
+}
 
-	var outputVarsBytes []byte
+// jobToProto maps a job row onto the wire; a NULL column stays absent.
+func jobToProto(job sql.Job) (*proto.Job, error) {
+	var outputVariables []byte
 	if job.OutputVariables.Valid {
-		outputVarsBytes = []byte(job.OutputVariables.String)
+		outputVariables = []byte(job.OutputVariables.String)
 	}
 	headers, err := sql.JobHeadersFromJSON(job.Headers)
 	if err != nil {
-		zerr := zenerr.TechnicalError(fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err))
-		return &proto.GetJobResponse{Error: zerr.ToProtoError()}, nil
+		return nil, fmt.Errorf("failed to parse headers for job %d: %w", job.Key, err)
 	}
-	return &proto.GetJobResponse{
-		Job: &proto.Job{
-			Key:                &job.Key,
-			ElementInstanceKey: &job.ElementInstanceKey,
-			ElementId:          &job.ElementID,
-			ProcessInstanceKey: &job.ProcessInstanceKey,
-			Type:               &job.Type,
-			ElementType:        &job.ElementType,
-			State:              &job.State,
-			CreatedAt:          &job.CreatedAt,
-			Assignee:           assignee,
-			InputVariables:     []byte(job.InputVariables),
-			OutputVariables:    outputVarsBytes,
-			Headers:            headers,
-		},
+	return &proto.Job{
+		Key:                new(job.Key),
+		ElementInstanceKey: new(job.ElementInstanceKey),
+		ElementId:          new(job.ElementID),
+		ProcessInstanceKey: new(job.ProcessInstanceKey),
+		Type:               new(job.Type),
+		ElementType:        new(job.ElementType),
+		State:              new(job.State),
+		CreatedAt:          new(job.CreatedAt),
+		Assignee:           sql.FromNullString(job.Assignee),
+		InputVariables:     []byte(job.InputVariables),
+		OutputVariables:    outputVariables,
+		Headers:            headers,
+		Retries:            new(int32(job.Retries)),  // #nosec G115 -- the engine writes this column from an int32 field
+		Attempts:           new(int32(job.Attempts)), // #nosec G115 -- the engine writes this column from an int32 field
+		RetryAt:            sql.FromNullInt64(job.RetryAt),
+		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
+		RetryBackoff:       sql.FromNullString(job.RetryBackoff),
+		DeliveryToken:      new(job.DeliveryToken),
 	}, nil
+}
 
+// UpdateJobRetries sets the remaining retries of a job on the leader of its
+// partition. It goes through the job manager like a failure, so that a batch
+// the leader loaded before does not deliver a job the update postponed.
+func (s *Server) UpdateJobRetries(ctx context.Context, req *proto.UpdateJobRetriesRequest) (*proto.UpdateJobRetriesResponse, error) {
+	var retryAt *time.Time
+	if req.RetryAt != nil {
+		retryAt = new(time.UnixMilli(req.GetRetryAt()))
+	}
+	if err := s.jobManager.UpdateJobRetries(ctx, req.GetKey(), req.GetRetries(), retryAt); err != nil {
+		return &proto.UpdateJobRetriesResponse{Error: jobRequestError(req.GetKey(), "update retries of", err).ToProtoError()}, nil
+	}
+	return &proto.UpdateJobRetriesResponse{}, nil
+}
+
+// MaxJobFailuresPageSize is the largest page of job failures one request
+// reads. It is enforced here, at the partition, whoever asks: the REST API
+// checks it first, but the RPC is reachable on its own.
+const MaxJobFailuresPageSize = 1000
+
+// GetJobFailures lists the failures without an error code of a job, newest
+// first. A page below 1 or a size outside 1 to MaxJobFailuresPageSize is a
+// bad request: SQLite reads a negative limit as no limit at all.
+func (s *Server) GetJobFailures(ctx context.Context, req *proto.GetJobFailuresRequest) (*proto.GetJobFailuresResponse, error) {
+	if page, size := req.GetPage(), req.GetSize(); page < 1 || size < 1 || size > MaxJobFailuresPageSize {
+		err := zenerr.BadRequest(fmt.Errorf("page must be at least 1 and size between 1 and %d, got page %d and size %d", MaxJobFailuresPageSize, page, size))
+		return &proto.GetJobFailuresResponse{Error: err.ToProtoError()}, nil
+	}
+	partitionID := zenflake.GetPartitionId(req.GetJobKey())
+	queries := s.controller.PartitionQueries(ctx, partitionID)
+	if queries == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionID))
+		return &proto.GetJobFailuresResponse{Error: err.ToProtoError()}, nil
+	}
+	rows, err := queries.FindJobFailuresPage(ctx, sql.FindJobFailuresPageParams{
+		JobKey: req.GetJobKey(),
+		Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:   int64(req.GetSize()),
+	})
+	if err != nil {
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to find failures of job %d: %w", req.GetJobKey(), err))
+		return &proto.GetJobFailuresResponse{Error: zerr.ToProtoError()}, nil
+	}
+	count, err := queries.CountJobFailures(ctx, req.GetJobKey())
+	if err != nil {
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to count failures of job %d: %w", req.GetJobKey(), err))
+		return &proto.GetJobFailuresResponse{Error: zerr.ToProtoError()}, nil
+	}
+	if count == 0 {
+		// an empty history reads the same for a job which never failed and
+		// for a key nobody ever issued; only the first is a page
+		if _, err := queries.FindJobByJobKey(ctx, req.GetJobKey()); err != nil {
+			var zerr *zenerr.ZenError
+			if isErrNotFound(err) {
+				zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetJobKey()))
+			} else {
+				zerr = zenerr.TechnicalError(fmt.Errorf("failed to get job %d: %w", req.GetJobKey(), err))
+			}
+			return &proto.GetJobFailuresResponse{Error: zerr.ToProtoError()}, nil
+		}
+	}
+	// the failures of every series of attempts are kept, so their number has no
+	// bound of its own: a count beyond the page metadata's int32 saturates
+	if count > math.MaxInt32 {
+		count = math.MaxInt32
+	}
+	totalCount := int32(count)
+	failures := make([]*proto.JobFailure, len(rows))
+	for i, row := range rows {
+		failures[i] = &proto.JobFailure{
+			Key:                new(row.Key),
+			JobKey:             new(row.JobKey),
+			ProcessInstanceKey: new(row.ProcessInstanceKey),
+			Attempt:            new(int32(row.Attempt)), // #nosec G115 -- the engine writes this column from an int32 field
+			FailedAt:           new(row.FailedAt),
+			RetryAt:            sql.FromNullInt64(row.RetryAt),
+			Message:            new(row.Message),
+			IncidentKey:        sql.FromNullInt64(row.IncidentKey),
+		}
+	}
+	return &proto.GetJobFailuresResponse{Failures: failures, TotalCount: &totalCount}, nil
+}
+
+// jobRequestError classifies the error of a request about one job: an unknown
+// job, a request the engine refuses for what it asks, a job which no longer
+// waits for a worker or an operator, or a technical failure.
+func jobRequestError(jobKey int64, action string, err error) *zenerr.ZenError {
+	switch {
+	case isErrNotFound(err):
+		return zenerr.NotFound(fmt.Errorf("job %d not found", jobKey))
+	case errors.Is(err, jobmanager.NodeIsNotALeader):
+		return zenerr.ClusterError(fmt.Errorf("cannot %s job %d: this node does not lead its partition", action, jobKey))
+	case errors.Is(err, bpmn.ErrInvalidJobRequest):
+		return invalidJobRequestError(err)
+	case errors.Is(err, bpmn.ErrJobInTerminalState), errors.Is(err, bpmn.ErrDeliverySuperseded):
+		return zenerr.Conflict(err)
+	}
+	// a node which refuses a mutation while the cluster is restored says so itself
+	var zerr *zenerr.ZenError
+	if errors.As(err, &zerr) {
+		return zerr
+	}
+	return zenerr.TechnicalError(fmt.Errorf("failed to %s job %d: %w", action, jobKey, err))
+}
+
+// invalidJobRequestError is the bad request of a job request the engine
+// refused for what it asks. The reason travels alone, so that the requester is
+// told it as it is.
+func invalidJobRequestError(err error) *zenerr.ZenError {
+	var invalid *bpmn.InvalidJobRequestError
+	if errors.As(err, &invalid) {
+		return zenerr.BadRequest(errors.New(invalid.Reason))
+	}
+	return zenerr.BadRequest(err)
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
@@ -1778,6 +1851,7 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 				return nil
 			}(),
 			ExecutionToken: &incident.ExecutionToken,
+			JobKey:         sql.FromNullInt64(incident.JobKey),
 		}
 	}
 	return &proto.GetIncidentsResponse{
@@ -1965,23 +2039,50 @@ func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, req *
 }
 
 func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncidentRequest) (*proto.ResolveIncidentResponse, error) {
+	// checked here as well as in the REST layer, since the RPC is reachable on
+	// its own: dropping the retryAt would hand the job out earlier than asked
+	if req.RetryAt != nil && req.Retries == nil {
+		err := zenerr.BadRequest(errors.New("retryAt can only be given together with retries"))
+		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
+	}
 	partitionId := zenflake.GetPartitionId(req.GetIncidentKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
 	}
-	err := engine.ResolveIncident(ctx, req.GetIncidentKey())
-	if err != nil {
-		var zerr *zenerr.ZenError
-		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(err)
-		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", req.GetIncidentKey(), err))
+	var options []bpmn.ResolveIncidentOption
+	if req.Retries != nil {
+		var retryAt *time.Time
+		if req.RetryAt != nil {
+			retryAt = new(time.UnixMilli(req.GetRetryAt()))
 		}
-		return &proto.ResolveIncidentResponse{Error: zerr.ToProtoError()}, nil
+		options = append(options, bpmn.WithJobRetries(req.GetRetries(), retryAt))
+	}
+	if err := engine.ResolveIncident(ctx, req.GetIncidentKey(), options...); err != nil {
+		return &proto.ResolveIncidentResponse{Error: resolveIncidentError(req.GetIncidentKey(), err).ToProtoError()}, nil
 	}
 	return &proto.ResolveIncidentResponse{}, nil
+}
+
+// resolveIncidentError classifies the error of a resolution: an unknown
+// incident, retries given with it which the engine refuses, a conflict with
+// the state of the incident or its job (resolved already, retries for a job
+// which no longer waits, or one the state of its instance does not let be
+// resolved as things stand, whose message names the way out), or a technical
+// failure.
+func resolveIncidentError(incidentKey int64, err error) *zenerr.ZenError {
+	switch {
+	case isErrNotFound(err):
+		return zenerr.NotFound(err)
+	case errors.Is(err, bpmn.ErrInvalidJobRequest):
+		return invalidJobRequestError(err)
+	case errors.Is(err, bpmn.ErrIncidentNotResolvable),
+		errors.Is(err, bpmn.ErrIncidentAlreadyResolved),
+		errors.Is(err, bpmn.ErrJobInTerminalState):
+		return zenerr.Conflict(err)
+	}
+	return zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", incidentKey, err))
 }
 
 func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {

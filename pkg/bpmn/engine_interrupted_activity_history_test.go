@@ -14,7 +14,7 @@ func TestInterruptedActivityHistory(t *testing.T) {
 		require.NotZero(t, job.Key, "expected the service task job to be created")
 
 		errorCode := "42"
-		require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil))
+		require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil))
 		waitForProcessInstanceState(t, bpmnEngine.persistence, processInstance.ProcessInstance().Key, runtime.ActivityStateCompleted)
 
 		requireFlowElementHistoryCompleted(t, processInstance.ProcessInstance().Key, "service-task-error-boundary")
@@ -56,7 +56,7 @@ func TestInterruptedActivityHistory(t *testing.T) {
 		job := findJobForProcessInstance(processInstance.ProcessInstance().Key, "service-task-error-event-subprocess")
 		require.NotZero(t, job.Key, "expected the service task job to be created")
 
-		require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected event subprocess error", new("42"), nil))
+		require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected event subprocess error", new("42"), nil, nil, nil, nil))
 		waitForProcessInstanceState(t, bpmnEngine.persistence, processInstance.ProcessInstance().Key, runtime.ActivityStateCompleted)
 
 		requireFlowElementHistoryCompleted(t, processInstance.ProcessInstance().Key, "service-task-error-event-subprocess")

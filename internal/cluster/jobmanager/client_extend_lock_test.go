@@ -38,7 +38,7 @@ func TestClientExtendLockReportsAnUnavailableLeader(t *testing.T) {
 		}
 		defer func() { leaderGRPC.extendLockResponse = nil }()
 
-		_, err := clientManager.ExtendJobLockReq(t.Context(), "client-1", jobKey, 0)
+		_, err := clientManager.ExtendJobLockReq(t.Context(), "client-1", jobKey, 0, nil)
 
 		assert.ErrorIs(t, err, ErrLeaderUnavailable)
 	})
@@ -50,7 +50,7 @@ func TestClientExtendLockReportsAnUnavailableLeader(t *testing.T) {
 		})
 		clientManager := createClientNode(t, clientStore)
 
-		_, err := clientManager.ExtendJobLockReq(t.Context(), "client-1", jobKey, 0)
+		_, err := clientManager.ExtendJobLockReq(t.Context(), "client-1", jobKey, 0, nil)
 
 		assert.ErrorIs(t, err, ErrLeaderUnavailable)
 	})
@@ -66,7 +66,7 @@ func TestClientExtendLockReportsAnUnavailableLeader(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 
-		_, err := clientManager.ExtendJobLockReq(ctx, "client-1", jobKey, 0)
+		_, err := clientManager.ExtendJobLockReq(ctx, "client-1", jobKey, 0, nil)
 
 		assert.ErrorIs(t, err, ErrLeaderUnavailable)
 	})
@@ -80,7 +80,7 @@ func TestClientExtendLockReportsAnUnavailableLeader(t *testing.T) {
 		gone, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := clientManager.ExtendJobLockReq(gone, "client-1", jobKey, 0)
+		_, err := clientManager.ExtendJobLockReq(gone, "client-1", jobKey, 0, nil)
 
 		assert.ErrorIs(t, err, context.Canceled, "a caller which is gone is told so, whatever the cluster looks like")
 		assert.NotErrorIs(t, err, ErrLeaderUnavailable)
@@ -91,7 +91,7 @@ func TestClientExtendLockReportsAnUnavailableLeader(t *testing.T) {
 		gone, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := clientManager.ExtendJobLockReq(gone, "client-1", jobKey, 0)
+		_, err := clientManager.ExtendJobLockReq(gone, "client-1", jobKey, 0, nil)
 
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrLeaderUnavailable, "the cluster is not to blame for a caller which is gone")
@@ -111,7 +111,7 @@ func TestClientExtendLockDoesNotTakeAnUnknownCallForAnUnavailableLeader(t *testi
 	serveUnimplementedGRPC(t, listener)
 	clientManager := createClientNode(t, getTestStore(listener).forNode("node-2"))
 
-	_, err = clientManager.ExtendJobLockReq(t.Context(), "client-1", gen.Generate().Int64(), 0)
+	_, err = clientManager.ExtendJobLockReq(t.Context(), "client-1", gen.Generate().Int64(), 0, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, codes.Unimplemented, status.Code(err))
@@ -129,4 +129,28 @@ func serveUnimplementedGRPC(t *testing.T, listener net.Listener) {
 		srv.Stop()
 		require.True(t, isExpectedGRPCServerStopError(<-serveErr))
 	})
+}
+
+// TestClientExtendLockNamingADeliveryReachesTheLeader shows the delivery an
+// extension names travels to the leader of the job's partition, which extends
+// the lock of that delivery and refuses the extension naming another one.
+func TestClientExtendLockNamingADeliveryReachesTheLeader(t *testing.T) {
+	mux, nodeListener, err := network.NewNodeMux("")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, nodeListener.Close()) }()
+	listener := network.NewZenBpmClusterListener(mux)
+	serverStore := getTestStore(listener)
+	_, completer, _ := createServerNodeWithGRPC(t, listener, serverStore)
+	clientManager := createClientNode(t, serverStore.forNode("node-2"))
+	clientJobs := make(chan Job)
+	require.NoError(t, clientManager.AddClient(t.Context(), "client-1", clientJobs))
+	require.NoError(t, clientManager.AddClientJobSub(t.Context(), "client-1", "test-job", SubscriptionSettings{}))
+	completer.loader.addJobs(generateJobs(1)...)
+	delivered := <-clientJobs
+
+	_, err = clientManager.ExtendJobLockReq(t.Context(), "client-1", delivered.Key, 0, &delivered.DeliveryToken)
+	require.NoError(t, err, "the lock of the delivery the worker got")
+
+	_, err = clientManager.ExtendJobLockReq(t.Context(), "client-1", delivered.Key, 0, new(delivered.DeliveryToken-1))
+	require.Error(t, err, "the lock of an earlier delivery is not held")
 }

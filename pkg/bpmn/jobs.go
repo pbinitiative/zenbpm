@@ -33,6 +33,28 @@ func (engine *Engine) createInternalTask(
 	if provider, ok := element.(bpmn20.TaskHeaderProvider); ok {
 		taskHeaders = provider.GetTaskHeaders()
 	}
+	handler := engine.findTaskHandler(element)
+	// retries are spent by external workers only: a handler in the engine fails
+	// the job with an incident at once, so an expression which cannot be
+	// evaluated must not fail a task which never reads it. Resolving such an
+	// incident evaluates the retries of the job it leaves waiting.
+	var retries int32
+	var retryBackoff []time.Duration
+	if handler == nil {
+		// only an expression reads the variables, so literals spare the copy of every scope
+		var jobScope map[string]any
+		definition := element.GetTaskDefinition()
+		if extensions.IsExpression(definition.Retries) || extensions.IsExpression(definition.RetryBackoff) {
+			jobScope = jobVarHolder.ExecutionScopeSnapshot()
+		}
+		var err error
+		if retries, err = engine.initialRetries(element, jobScope); err != nil {
+			return runtime.ActivityStateFailed, fmt.Errorf("failed to create job: %w", err)
+		}
+		if retryBackoff, err = engine.retryBackoffPolicy(element, jobScope); err != nil {
+			return runtime.ActivityStateFailed, fmt.Errorf("failed to create job: %w", err)
+		}
+	}
 	job := runtime.Job{
 		ElementId:          currentToken.ElementId,
 		ElementType:        string(element.GetType()),
@@ -45,6 +67,8 @@ func (engine *Engine) createInternalTask(
 		Headers:            extensions.HeadersToMap(taskHeaders),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
+		Retries:            retries,
+		RetryBackoff:       retryBackoff,
 	}
 	// Only evaluate assignee for UserTask elements
 	if userTask, ok := element.(bpmn20.UserTask); ok {
@@ -84,7 +108,6 @@ func (engine *Engine) createInternalTask(
 		return job.State, err
 	}
 
-	handler := engine.findTaskHandler(element)
 	if handler == nil {
 		engine.metrics.JobsCreated.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", false)))
 		return job.State, nil

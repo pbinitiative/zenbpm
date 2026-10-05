@@ -38,6 +38,7 @@ type Storage struct {
 	FlowNodeCounts     map[int64]int64
 	Incidents          map[int64]bpmnruntime.Incident
 	ErrorSubscriptions map[int64]bpmnruntime.ErrorSubscription
+	JobFailures        map[int64]bpmnruntime.JobFailure
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -73,6 +74,7 @@ func NewStorage() *Storage {
 		FlowNodeCounts:         make(map[int64]int64),
 		Incidents:              make(map[int64]bpmnruntime.Incident),
 		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
+		JobFailures:            make(map[int64]bpmnruntime.JobFailure),
 	}
 }
 
@@ -92,6 +94,7 @@ func (mem *Storage) Copy() *Storage {
 	maps.Copy(c.FlowElementInstance, mem.FlowElementInstance)
 	maps.Copy(c.FlowNodeCounts, mem.FlowNodeCounts)
 	maps.Copy(c.Incidents, mem.Incidents)
+	maps.Copy(c.JobFailures, mem.JobFailures)
 	maps.Copy(c.ErrorSubscriptions, mem.ErrorSubscriptions)
 	return c
 }
@@ -659,13 +662,33 @@ var _ storage.JobStorageReader = &Storage{}
 func (mem *Storage) FindActiveJobsByType(_ context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
+	now := time.Now()
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
-		if job.Type != jobType || job.State != bpmnruntime.ActivityStateActive {
+		if job.Type != jobType || job.State != bpmnruntime.ActivityStateActive || job.IsWaitingOutBackoff(now) {
 			continue
 		}
 		res = append(res, job)
 	}
+	return res, nil
+}
+
+func (mem *Storage) FindJobFailures(_ context.Context, jobKey int64) ([]bpmnruntime.JobFailure, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.JobFailure, 0)
+	for _, failure := range mem.JobFailures {
+		if failure.JobKey == jobKey {
+			res = append(res, failure)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].FailedAt.Equal(res[j].FailedAt) {
+			// like the SQL storage: by key, the order the failures were recorded in
+			return res[i].Key > res[j].Key
+		}
+		return res[i].FailedAt.After(res[j].FailedAt)
+	})
 	return res, nil
 }
 
@@ -717,10 +740,40 @@ func (mem *Storage) FindPendingProcessInstanceJobs(_ context.Context, processIns
 
 var _ storage.JobStorageWriter = &Storage{}
 
+// SaveJob stores the job. The delivery token of a job stored before stays: only
+// a delivery raises it, see RecordJobDelivery.
 func (mem *Storage) SaveJob(_ context.Context, job bpmnruntime.Job) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	if stored, ok := mem.Jobs[job.GetKey()]; ok {
+		job.DeliveryToken = stored.DeliveryToken
+	}
 	mem.Jobs[job.GetKey()] = job
+	return nil
+}
+
+// RecordJobDelivery hands the job out as the job manager of a cluster does: it
+// raises the job's delivery token and returns the token of this delivery. A
+// job which no longer waits for a worker is not handed out.
+func (mem *Storage) RecordJobDelivery(jobKey int64) (int64, error) {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	job, ok := mem.Jobs[jobKey]
+	if !ok {
+		return 0, fmt.Errorf("job %d: %w", jobKey, storage.ErrNotFound)
+	}
+	if job.State != bpmnruntime.ActivityStateActive {
+		return 0, fmt.Errorf("job %d in state %s is not handed out", jobKey, job.State)
+	}
+	job.DeliveryToken++
+	mem.Jobs[jobKey] = job
+	return job.DeliveryToken, nil
+}
+
+func (mem *Storage) SaveJobFailure(_ context.Context, failure bpmnruntime.JobFailure) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	mem.JobFailures[failure.Key] = failure
 	return nil
 }
 
@@ -1427,6 +1480,13 @@ var _ storage.JobStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveJob(ctx, job)
+	})
+	return nil
+}
+
+func (b *StorageBatch) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveJobFailure(ctx, failure)
 	})
 	return nil
 }

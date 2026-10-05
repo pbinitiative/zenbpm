@@ -4,8 +4,12 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 func (definitions *TDefinitions) ResolveReferences() error {
@@ -122,6 +126,38 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 	for i := range container.SubProcess {
 		if err := validateEventBasedGateways(&container.SubProcess[i].TFlowElementsContainer); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// ValidateForDeployment refuses what a new deployment must not introduce: a
+// literal retries or retryBackoff attribute which does not parse, so that the
+// mistake is reported to whoever deploys instead of as an incident of the
+// first job. It is deliberately not part of parsing: a definition stored by an
+// engine which did not read these attributes yet must keep loading, or its
+// running instances would be stuck and a corrected version of the process could
+// not be deployed. Such a definition is checked when a job is created. A FEEL
+// expression is only known then as well.
+func (definitions *TDefinitions) ValidateForDeployment() error {
+	return validateTaskDefinitions(definitions.Process.internalTasksByID)
+}
+
+// validateTaskDefinitions is ValidateForDeployment over the indexed tasks. The
+// elements are visited in the order of their ids, so the same model always
+// names the same element.
+func validateTaskDefinitions(tasks map[string]InternalTask) error {
+	for _, id := range slices.Sorted(maps.Keys(tasks)) {
+		taskDefinition := tasks[id].GetTaskDefinition()
+		if retries := strings.TrimSpace(taskDefinition.Retries); retries != "" && !extensions.IsExpression(retries) {
+			if _, err := extensions.ParseRetries(retries); err != nil {
+				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
+			}
+		}
+		if backoff := strings.TrimSpace(taskDefinition.RetryBackoff); backoff != "" && !extensions.IsExpression(backoff) {
+			if _, err := extensions.ParseRetryBackoff(backoff); err != nil {
+				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
+			}
 		}
 	}
 	return nil

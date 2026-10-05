@@ -489,6 +489,63 @@ type Job struct {
 	CreatedAt time.Time
 	Token     ExecutionToken
 	Assignee  *string
+	// Retries is how many failures without an error code the job may still
+	// report before one of them becomes an incident.
+	Retries int32
+	// Attempts counts the failures without an error code since the job was
+	// created or its last incident was resolved.
+	Attempts int32
+	// RetryAt is the moment before which a job waiting out a backoff is not
+	// handed out again; nil means at once.
+	RetryAt *time.Time
+	// LastFailureMessage is the message of the latest failure without an error code.
+	LastFailureMessage *string
+	// RetryBackoff is the backoff policy of the task definition, fixed when the
+	// job was created: the n-th failure waits the n-th entry, the last entry
+	// repeats. Empty means the engine's default policy applies.
+	RetryBackoff []time.Duration
+	// RetriesSetByOperator marks Retries and RetryAt as set by an operator:
+	// resolving the job's incident keeps them instead of restoring the
+	// definition's retries. It is cleared once a resolution kept them or an
+	// incident ended the series they belonged to.
+	RetriesSetByOperator bool
+	// DeliveryToken identifies the latest delivery of the job to a worker. The
+	// job manager raises it before it sends a delivery and lowers it only to
+	// take back a delivery it never sent, so a failure naming an earlier token
+	// belongs to a delivery another one superseded. 0 means the job was never
+	// handed out. The engine never changes it, and an update of a stored job
+	// leaves the token alone: a job read before a delivery was recorded must
+	// not take the token back. Inserting a new job writes it, 0 for every job
+	// the engine creates.
+	DeliveryToken int64
+	// FailedDeliveryToken is the token of the delivery whose failure the job
+	// recorded last, so that a repeat of that failure changes nothing. 0 means
+	// no failure naming its delivery was recorded.
+	FailedDeliveryToken int64
+}
+
+// IsWaitingOutBackoff reports whether the job must not be handed out before RetryAt.
+func (j Job) IsWaitingOutBackoff(now time.Time) bool {
+	return j.RetryAt != nil && j.RetryAt.After(now)
+}
+
+// JobFailure is one failure without an error code a worker reported for a job.
+type JobFailure struct {
+	Key                int64
+	JobKey             int64
+	ProcessInstanceKey int64
+	// Attempt is the 1-based number of the failure within the job's series.
+	Attempt  int32
+	FailedAt time.Time
+	// RetryAt is when the job became deliverable again; nil when it was at once
+	// or when this failure exhausted the retries.
+	RetryAt *time.Time
+	Message string
+	// IncidentKey is set on the failure which exhausted the retries.
+	IncidentKey *int64
+	// DeliveryToken is the delivery the failure was reported for; nil when the
+	// request named none.
+	DeliveryToken *int64
 }
 
 func (j Job) GetKey() int64 {
@@ -559,4 +616,6 @@ type Incident struct {
 	CreatedAt  time.Time
 	ResolvedAt *time.Time
 	Token      ExecutionToken
+	// JobKey is the job the incident was created for; nil for incidents without a job.
+	JobKey *int64
 }

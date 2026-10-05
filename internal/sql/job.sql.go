@@ -49,16 +49,22 @@ func (q *Queries) DeleteProcessInstancesJobs(ctx context.Context, keys []int64) 
 
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 WHERE
     type = ?1
     AND state = 1
+    AND (retry_at IS NULL OR retry_at <= CAST(?2 AS INTEGER))
 `
 
-func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findActiveJobsByType, type_)
+type FindActiveJobsByTypeParams struct {
+	Type string `json:"type"`
+	Now  int64  `json:"now"`
+}
+
+func (q *Queries) FindActiveJobsByType(ctx context.Context, arg FindActiveJobsByTypeParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, findActiveJobsByType, arg.Type, arg.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +86,14 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 			&i.OutputVariables,
 			&i.ElementType,
 			&i.Headers,
+			&i.Retries,
+			&i.Attempts,
+			&i.RetryAt,
+			&i.LastFailureMessage,
+			&i.RetryBackoff,
+			&i.RetriesSetByOperator,
+			&i.DeliveryToken,
+			&i.FailedDeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -96,7 +110,7 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 
 const findAllJobs = `-- name: FindAllJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 LIMIT ?2 offset ?1
@@ -130,6 +144,14 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 			&i.OutputVariables,
 			&i.ElementType,
 			&i.Headers,
+			&i.Retries,
+			&i.Attempts,
+			&i.RetryAt,
+			&i.LastFailureMessage,
+			&i.RetryBackoff,
+			&i.RetriesSetByOperator,
+			&i.DeliveryToken,
+			&i.FailedDeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -146,7 +168,7 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 
 const findJobByJobKey = `-- name: FindJobByJobKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 WHERE
@@ -170,13 +192,21 @@ func (q *Queries) FindJobByJobKey(ctx context.Context, key int64) (Job, error) {
 		&i.OutputVariables,
 		&i.ElementType,
 		&i.Headers,
+		&i.Retries,
+		&i.Attempts,
+		&i.RetryAt,
+		&i.LastFailureMessage,
+		&i.RetryBackoff,
+		&i.RetriesSetByOperator,
+		&i.DeliveryToken,
+		&i.FailedDeliveryToken,
 	)
 	return i, err
 }
 
 const findJobByKey = `-- name: FindJobByKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 WHERE
@@ -200,13 +230,21 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 		&i.OutputVariables,
 		&i.ElementType,
 		&i.Headers,
+		&i.Retries,
+		&i.Attempts,
+		&i.RetryAt,
+		&i.LastFailureMessage,
+		&i.RetryBackoff,
+		&i.RetriesSetByOperator,
+		&i.DeliveryToken,
+		&i.FailedDeliveryToken,
 	)
 	return i, err
 }
 
 const findJobs = `-- name: FindJobs :many
 SELECT
-  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.input_variables, j.execution_token, j.assignee, j.output_variables, j.element_type, j.headers,
+  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.input_variables, j.execution_token, j.assignee, j.output_variables, j.element_type, j.headers, j.retries, j.attempts, j.retry_at, j.last_failure_message, j.retry_backoff, j.retries_set_by_operator, j.delivery_token, j.failed_delivery_token,
   COUNT(*) OVER() AS total_count
 FROM job AS j
 WHERE
@@ -242,20 +280,8 @@ type FindJobsParams struct {
 }
 
 type FindJobsRow struct {
-	Key                int64          `json:"key"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ElementID          string         `json:"element_id"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ElementType        string         `json:"element_type"`
-	Headers            string         `json:"headers"`
-	TotalCount         int64          `json:"total_count"`
+	Job        Job   `json:"job"`
+	TotalCount int64 `json:"total_count"`
 }
 
 // force sqlc to keep sort param
@@ -278,19 +304,27 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 	for rows.Next() {
 		var i FindJobsRow
 		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.InputVariables,
-			&i.ExecutionToken,
-			&i.Assignee,
-			&i.OutputVariables,
-			&i.ElementType,
-			&i.Headers,
+			&i.Job.Key,
+			&i.Job.ElementInstanceKey,
+			&i.Job.ElementID,
+			&i.Job.ProcessInstanceKey,
+			&i.Job.Type,
+			&i.Job.State,
+			&i.Job.CreatedAt,
+			&i.Job.InputVariables,
+			&i.Job.ExecutionToken,
+			&i.Job.Assignee,
+			&i.Job.OutputVariables,
+			&i.Job.ElementType,
+			&i.Job.Headers,
+			&i.Job.Retries,
+			&i.Job.Attempts,
+			&i.Job.RetryAt,
+			&i.Job.LastFailureMessage,
+			&i.Job.RetryBackoff,
+			&i.Job.RetriesSetByOperator,
+			&i.Job.DeliveryToken,
+			&i.Job.FailedDeliveryToken,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -308,7 +342,7 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers,
+    job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.input_variables, job.execution_token, job.assignee, job.output_variables, job.element_type, job.headers, job.retries, job.attempts, job.retry_at, job.last_failure_message, job.retry_backoff, job.retries_set_by_operator, job.delivery_token, job.failed_delivery_token,
     COUNT(*) OVER () AS total_count
 FROM
     job
@@ -324,20 +358,8 @@ type FindProcessInstanceJobsParams struct {
 }
 
 type FindProcessInstanceJobsRow struct {
-	Key                int64          `json:"key"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ElementID          string         `json:"element_id"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ElementType        string         `json:"element_type"`
-	Headers            string         `json:"headers"`
-	TotalCount         int64          `json:"total_count"`
+	Job        Job   `json:"job"`
+	TotalCount int64 `json:"total_count"`
 }
 
 func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error) {
@@ -350,19 +372,27 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 	for rows.Next() {
 		var i FindProcessInstanceJobsRow
 		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.InputVariables,
-			&i.ExecutionToken,
-			&i.Assignee,
-			&i.OutputVariables,
-			&i.ElementType,
-			&i.Headers,
+			&i.Job.Key,
+			&i.Job.ElementInstanceKey,
+			&i.Job.ElementID,
+			&i.Job.ProcessInstanceKey,
+			&i.Job.Type,
+			&i.Job.State,
+			&i.Job.CreatedAt,
+			&i.Job.InputVariables,
+			&i.Job.ExecutionToken,
+			&i.Job.Assignee,
+			&i.Job.OutputVariables,
+			&i.Job.ElementType,
+			&i.Job.Headers,
+			&i.Job.Retries,
+			&i.Job.Attempts,
+			&i.Job.RetryAt,
+			&i.Job.LastFailureMessage,
+			&i.Job.RetryBackoff,
+			&i.Job.RetriesSetByOperator,
+			&i.Job.DeliveryToken,
+			&i.Job.FailedDeliveryToken,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -380,7 +410,7 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 
 const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job INDEXED BY idx_fk_job_process_instance_key
 WHERE
@@ -430,6 +460,14 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 			&i.OutputVariables,
 			&i.ElementType,
 			&i.Headers,
+			&i.Retries,
+			&i.Attempts,
+			&i.RetryAt,
+			&i.LastFailureMessage,
+			&i.RetryBackoff,
+			&i.RetriesSetByOperator,
+			&i.DeliveryToken,
+			&i.FailedDeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -447,7 +485,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 const getJobsInStateByTokenKey = `-- name: GetJobsInStateByTokenKey :many
 
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 WHERE
@@ -495,6 +533,14 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 			&i.OutputVariables,
 			&i.ElementType,
 			&i.Headers,
+			&i.Retries,
+			&i.Attempts,
+			&i.RetryAt,
+			&i.LastFailureMessage,
+			&i.RetryBackoff,
+			&i.RetriesSetByOperator,
+			&i.DeliveryToken,
+			&i.FailedDeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -511,13 +557,14 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 
 const getWaitingJobs = `-- name: GetWaitingJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables, element_type, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token
 FROM
     job
 WHERE
     state = 1
     AND type IN (/*SLICE:type*/?)
     AND key NOT IN (/*SLICE:key_skip*/?)
+    AND (retry_at IS NULL OR retry_at <= CAST(? AS INTEGER))
 ORDER BY
     created_at ASC
 LIMIT ?
@@ -526,6 +573,7 @@ LIMIT ?
 type GetWaitingJobsParams struct {
 	Type    []string `json:"type"`
 	KeySkip []int64  `json:"key_skip"`
+	Now     int64    `json:"now"`
 	Limit   int64    `json:"limit"`
 }
 
@@ -548,6 +596,7 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 	} else {
 		query = strings.Replace(query, "/*SLICE:key_skip*/?", "NULL", 1)
 	}
+	queryParams = append(queryParams, arg.Now)
 	queryParams = append(queryParams, arg.Limit)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
@@ -571,6 +620,14 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 			&i.OutputVariables,
 			&i.ElementType,
 			&i.Headers,
+			&i.Retries,
+			&i.Attempts,
+			&i.RetryAt,
+			&i.LastFailureMessage,
+			&i.RetryBackoff,
+			&i.RetriesSetByOperator,
+			&i.DeliveryToken,
+			&i.FailedDeliveryToken,
 		); err != nil {
 			return nil, err
 		}
@@ -585,33 +642,74 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 	return items, nil
 }
 
+const recordJobDelivery = `-- name: RecordJobDelivery :execrows
+UPDATE job
+SET delivery_token = ?1
+WHERE key = ?2
+    AND state = 1
+    AND delivery_token = ?3
+`
+
+type RecordJobDeliveryParams struct {
+	DeliveryToken       int64 `json:"delivery_token"`
+	Key                 int64 `json:"key"`
+	LoadedDeliveryToken int64 `json:"loaded_delivery_token"`
+}
+
+// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
+// and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+func (q *Queries) RecordJobDelivery(ctx context.Context, arg RecordJobDeliveryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, recordJobDelivery, arg.DeliveryToken, arg.Key, arg.LoadedDeliveryToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const saveJob = `-- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
         input_variables = excluded.input_variables,
         output_variables = excluded.output_variables,
-        assignee = excluded.assignee
+        assignee = excluded.assignee,
+        retries = excluded.retries,
+        attempts = excluded.attempts,
+        retry_at = excluded.retry_at,
+        last_failure_message = excluded.last_failure_message,
+        retries_set_by_operator = excluded.retries_set_by_operator,
+        failed_delivery_token = excluded.failed_delivery_token
 `
 
 type SaveJobParams struct {
-	Key                int64          `json:"key"`
-	ElementID          string         `json:"element_id"`
-	ElementType        string         `json:"element_type"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	InputVariables     string         `json:"input_variables"`
-	OutputVariables    sql.NullString `json:"output_variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	Headers            string         `json:"headers"`
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ElementType          string         `json:"element_type"`
+	ElementInstanceKey   int64          `json:"element_instance_key"`
+	ProcessInstanceKey   int64          `json:"process_instance_key"`
+	Type                 string         `json:"type"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	InputVariables       string         `json:"input_variables"`
+	OutputVariables      sql.NullString `json:"output_variables"`
+	ExecutionToken       int64          `json:"execution_token"`
+	Assignee             sql.NullString `json:"assignee"`
+	Headers              string         `json:"headers"`
+	Retries              int64          `json:"retries"`
+	Attempts             int64          `json:"attempts"`
+	RetryAt              sql.NullInt64  `json:"retry_at"`
+	LastFailureMessage   sql.NullString `json:"last_failure_message"`
+	RetryBackoff         sql.NullString `json:"retry_backoff"`
+	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
+	DeliveryToken        int64          `json:"delivery_token"`
+	FailedDeliveryToken  int64          `json:"failed_delivery_token"`
 }
 
+// retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
+// delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
+// before a delivery was recorded does not take the token back when it is saved.
 func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 	_, err := q.db.ExecContext(ctx, saveJob,
 		arg.Key,
@@ -627,6 +725,38 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.ExecutionToken,
 		arg.Assignee,
 		arg.Headers,
+		arg.Retries,
+		arg.Attempts,
+		arg.RetryAt,
+		arg.LastFailureMessage,
+		arg.RetryBackoff,
+		arg.RetriesSetByOperator,
+		arg.DeliveryToken,
+		arg.FailedDeliveryToken,
 	)
 	return err
+}
+
+const withdrawJobDelivery = `-- name: WithdrawJobDelivery :execrows
+UPDATE job
+SET delivery_token = ?1
+WHERE key = ?2
+    AND delivery_token = ?3
+`
+
+type WithdrawJobDeliveryParams struct {
+	PreviousDeliveryToken int64 `json:"previous_delivery_token"`
+	Key                   int64 `json:"key"`
+	DeliveryToken         int64 `json:"delivery_token"`
+}
+
+// Takes back the token of a delivery the job manager recorded but never sent, so that the delivery
+// before it counts again. Only while no other delivery was recorded since; the token was never handed
+// out, so issuing it again later is harmless.
+func (q *Queries) WithdrawJobDelivery(ctx context.Context, arg WithdrawJobDeliveryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, withdrawJobDelivery, arg.PreviousDeliveryToken, arg.Key, arg.DeliveryToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

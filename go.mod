@@ -3,7 +3,7 @@ module github.com/pbinitiative/zenbpm
 go 1.26.7
 
 require (
-	github.com/adhocore/gronx v1.20.4
+	github.com/adhocore/gronx v1.20.5
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/dop251/goja v0.0.0-20251103141225-af2ceb9156d7
 	github.com/getkin/kin-openapi v0.149.0

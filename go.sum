@@ -309,8 +309,8 @@ github.com/rqlite/go-sqlite3 v1.51.0 h1:9b2AeiirIRLRyxxT9245yaKuNlQ/xEjhTXIjW91J
 github.com/rqlite/go-sqlite3 v1.51.0/go.mod h1:XIq9SQymduohsJwPy++jWepF9QJ5gT/S3SkUivYSVZ0=
 github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48 h1:NZ62M+kT0JqhyFUMc8I4SMmfmD4NGJxhb2ePJQXjryc=
 github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48/go.mod h1:CRnsxgy5G8fAf5J+AM0yrsSdxXHKkIYOaq2sm+Q4DYc=
-github.com/rqlite/rqlite/v10 v10.3.6 h1:TW3IcLXgB4vi35brFXM6hNhaIZblAdeRwn6l/tBq19s=
-github.com/rqlite/rqlite/v10 v10.3.6/go.mod h1:I8fDGIv9tQRPKrrNDUF5wVUmIPlCDvz3pnZpKSRZCFY=
+github.com/rqlite/rqlite/v10 v10.5.1 h1:qsu891/22fK1smqNaZOzA/0HvNjAdLlybcsQZmIQoho=
+github.com/rqlite/rqlite/v10 v10.5.1/go.mod h1:I8fDGIv9tQRPKrrNDUF5wVUmIPlCDvz3pnZpKSRZCFY=
 github.com/rqlite/sql v0.0.0-20260224021119-1b2524a41372 h1:2V0y6mzmPj7vQKad76nTL7sZ/lFLj5VKvNjpa6IRxYE=
 github.com/rqlite/sql v0.0.0-20260224021119-1b2524a41372/go.mod h1:ib9zVtNgRKiGuoMyUqqL5aNpk+r+++YlyiVIkclVqPg=
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 h1:1EYB5IzjZawrrnELUi78f9fPu57HuXjmddZPjrls/28=

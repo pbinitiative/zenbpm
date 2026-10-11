@@ -68,12 +68,9 @@ Current theoretical limit for partitions is 122 due to network multiplexer imple
 :::
 
 :::note[Future plans]
-You can specify how many partitions and partition replicas will be created through the [application configuration](./configuration.md). After the cluster has been created you can modify these through [zenctl](./zenctl.md) cli that is used to manage Zen clusters.
+You can specify how many partitions and partition replicas will be created through the [application configuration](./configuration.md).
 :::
 
-:::note[Future plans]
-You can query each partition database through the `zenctl` or public REST/GRPC API
-:::
 ## Backup & Restore
 
 ZenBPM provides a whole-cluster backup and restore API. A backup captures a point-in-time snapshot of every partition database and streams it as a single tar archive directly to the HTTP client — no external storage is required.

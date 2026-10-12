@@ -13,6 +13,16 @@ ORDER BY
     failed_at DESC,
     key DESC;
 
+-- name: HasJobFailureOfDelivery :one
+-- Whether the job recorded a failure naming the delivery token; idx_job_failure_job_key narrows it to
+-- the failures of the job.
+SELECT EXISTS (
+    SELECT 1
+    FROM job_failure
+    WHERE job_key = @job_key
+        AND delivery_token = @delivery_token
+);
+
 -- name: FindJobFailuresPage :many
 SELECT
     *

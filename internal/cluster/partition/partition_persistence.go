@@ -1866,6 +1866,18 @@ func (rq *DB) FindJobFailures(ctx context.Context, jobKey int64) ([]bpmnruntime.
 	return res, nil
 }
 
+// HasJobFailureOfDelivery reports whether the job recorded a failure naming the delivery token.
+func (rq *DB) HasJobFailureOfDelivery(ctx context.Context, jobKey int64, deliveryToken int64) (bool, error) {
+	recorded, err := rq.Queries.HasJobFailureOfDelivery(ctx, sql.HasJobFailureOfDeliveryParams{
+		JobKey:        jobKey,
+		DeliveryToken: sql.ToNullInt64(&deliveryToken),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to find a failure of delivery %d of job %d: %w", deliveryToken, jobKey, err)
+	}
+	return recorded == 1, nil
+}
+
 // BuildJobFailure maps a persisted job failure row into its runtime representation.
 func BuildJobFailure(failure sql.JobFailure) bpmnruntime.JobFailure {
 	var incidentKey *int64
@@ -2038,7 +2050,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		RetryAt:              timePtrToNullInt64(job.RetryAt),
 		LastFailureMessage:   sql.ToNullString(job.LastFailureMessage),
 		RetryBackoff:         ssql.NullString{String: extensions.FormatRetryBackoff(job.RetryBackoff), Valid: len(job.RetryBackoff) > 0},
-		RetriesSetByOperator: boolToInt64(job.RetriesSetByOperator),
+		RetriesSetByOperator: sqlFlag(job.RetriesSetByOperator),
 		DeliveryToken:        job.DeliveryToken,
 		FailedDeliveryToken:  job.FailedDeliveryToken,
 		Headers:              headersJSON,
@@ -2052,19 +2064,21 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 // RecordJobDeliveries raises the delivery token of every job the job manager
 // is about to hand out, in one write, and returns the jobs it recorded a
 // delivery for, each carrying the token of its delivery. A job which no longer
-// waits for a worker, or for which another delivery was recorded since it was
-// loaded, is left out and must not be handed out.
+// waits for a worker, waits out a backoff set since it was loaded, or for which
+// another delivery was recorded since, is left out and must not be handed out.
 func (rq *DB) RecordJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.Job, error) {
 	if len(jobs) == 0 {
 		return nil, nil
 	}
 	batch := &DBBatch{db: rq}
 	queries := sql.New(batch)
+	now := time.Now().UnixMilli()
 	for _, job := range jobs {
 		if _, err := queries.RecordJobDelivery(ctx, sql.RecordJobDeliveryParams{
 			Key:                 job.Key,
 			DeliveryToken:       job.DeliveryToken + 1,
 			LoadedDeliveryToken: job.DeliveryToken,
+			Now:                 now,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to prepare the delivery of job %d: %w", job.Key, err)
 		}
@@ -2088,26 +2102,43 @@ func (rq *DB) RecordJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.Jo
 	return recorded, nil
 }
 
-// WithdrawJobDelivery takes back the token of a delivery which was recorded but
-// never sent, so that the delivery before it counts again, and reports whether
-// it did: a delivery recorded since is left alone.
-func (rq *DB) WithdrawJobDelivery(ctx context.Context, jobKey int64, deliveryToken int64) (bool, error) {
+// WithdrawJobDeliveries takes back the tokens of deliveries which were
+// recorded but never sent, each job carrying the token of its delivery, in one
+// write, so that the delivery before each counts again, and returns the jobs
+// whose token went back, each carrying the token it has now. A delivery
+// recorded since is left alone.
+func (rq *DB) WithdrawJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.Job, error) {
+	if len(jobs) == 0 {
+		return nil, nil
+	}
 	batch := &DBBatch{db: rq}
-	if _, err := sql.New(batch).WithdrawJobDelivery(ctx, sql.WithdrawJobDeliveryParams{
-		Key:                   jobKey,
-		DeliveryToken:         deliveryToken,
-		PreviousDeliveryToken: deliveryToken - 1,
-	}); err != nil {
-		return false, fmt.Errorf("failed to prepare the withdrawal of delivery %d of job %d: %w", deliveryToken, jobKey, err)
+	queries := sql.New(batch)
+	for _, job := range jobs {
+		if _, err := queries.WithdrawJobDelivery(ctx, sql.WithdrawJobDeliveryParams{
+			Key:                   job.Key,
+			DeliveryToken:         job.DeliveryToken,
+			PreviousDeliveryToken: job.DeliveryToken - 1,
+		}); err != nil {
+			return nil, fmt.Errorf("failed to prepare the withdrawal of delivery %d of job %d: %w", job.DeliveryToken, job.Key, err)
+		}
 	}
 	results, err := rq.ExecuteStatements(ctx, batch.stmtToRun)
 	if err != nil {
-		return false, fmt.Errorf("failed to withdraw delivery %d of job %d: %w", deliveryToken, jobKey, err)
+		return nil, fmt.Errorf("failed to withdraw the delivery of %d jobs on partition %d: %w", len(jobs), rq.Partition, err)
 	}
-	if results[0].GetError() != "" {
-		return false, fmt.Errorf("failed to withdraw delivery %d of job %d: %s", deliveryToken, jobKey, results[0].GetError())
+	withdrawn := make([]sql.Job, 0, len(jobs))
+	for i, result := range results {
+		if result.GetError() != "" {
+			// the statements run in one transaction, so none of them was applied
+			return nil, fmt.Errorf("failed to withdraw delivery %d of job %d on partition %d: %s", jobs[i].DeliveryToken, jobs[i].Key, rq.Partition, result.GetError())
+		}
+		if result.GetE().GetRowsAffected() == 1 {
+			previous := jobs[i]
+			previous.DeliveryToken--
+			withdrawn = append(withdrawn, previous)
+		}
 	}
-	return results[0].GetE().GetRowsAffected() == 1, nil
+	return withdrawn, nil
 }
 
 func (rq *DB) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
@@ -2914,14 +2945,6 @@ func timePtrToNullInt64(t *time.Time) ssql.NullInt64 {
 		Int64: t.UnixMilli(),
 		Valid: true,
 	}
-}
-
-// boolToInt64 writes a flag into an INTEGER column, SQLite having no boolean type.
-func boolToInt64(flag bool) int64 {
-	if flag {
-		return 1
-	}
-	return 0
 }
 
 var _ storage.IncidentStorageReader = &DB{}

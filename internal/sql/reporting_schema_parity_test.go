@@ -18,6 +18,8 @@ import (
 var (
 	reportingTablePattern   = regexp.MustCompile(`(?ims)^CREATE TABLE IF NOT EXISTS\s+reporting\.([a-z_][a-z0-9_]*)\s*\((.*?)^\s*\);`)
 	reportingDefaultPattern = regexp.MustCompile(`(?i)\bDEFAULT\s+(.+)$`)
+	allowedTablesPattern    = regexp.MustCompile(`(?s)v_allowed_tables\s+CONSTANT\s+TEXT\[]\s*:=\s*ARRAY\[(.*?)];`)
+	quotedNamePattern       = regexp.MustCompile(`'([a-z_][a-z0-9_]*)'`)
 )
 
 type reportingSchemaColumn struct {
@@ -50,6 +52,21 @@ func TestReportingSchemaParity(t *testing.T) {
 			require.Equal(t, runtimeSchema[tableName], reportingSchema[tableName],
 				"reporting projection for table %s must preserve column types, nullability, defaults, and primary keys", tableName)
 		}
+	})
+	t.Run("the CDC function applies the events of every reporting table", func(t *testing.T) {
+		projectRoot, err := findProjectRoot()
+		require.NoError(t, err)
+		postgresInit, err := os.ReadFile(filepath.Join(projectRoot, ".dev", "postgres-init.sql"))
+		require.NoError(t, err)
+
+		reportingSchema, err := parseReportingSchema(string(postgresInit))
+		require.NoError(t, err)
+		delete(reportingSchema, "cdc_event")
+		allowedTables, err := parseAllowedTables(string(postgresInit))
+		require.NoError(t, err)
+
+		require.Equal(t, sortedTableNames(reportingSchema), allowedTables,
+			"apply_cdc_event skips the events of a table missing from v_allowed_tables, which then stays empty")
 	})
 }
 
@@ -226,6 +243,20 @@ func parseReportingSchema(sql string) (map[string]reportingSchemaTable, error) {
 		schema[tableName] = columns
 	}
 	return schema, nil
+}
+
+// parseAllowedTables reads the tables whose CDC events apply_cdc_event applies, sorted.
+func parseAllowedTables(sql string) ([]string, error) {
+	match := allowedTablesPattern.FindStringSubmatch(sql)
+	if match == nil {
+		return nil, fmt.Errorf("v_allowed_tables not found")
+	}
+	var tables []string
+	for _, name := range quotedNamePattern.FindAllStringSubmatch(match[1], -1) {
+		tables = append(tables, name[1])
+	}
+	sort.Strings(tables)
+	return tables, nil
 }
 
 func postgresTypeForSQLite(sqliteType string) string {

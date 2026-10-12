@@ -181,7 +181,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 			err = s.jobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars,
-				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), req.Fail.DeliveryToken)
+				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), deliveryTokenOf(req.Fail.DeliveryToken))
 			if err != nil {
 				s.logJobRequestError(err, "failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
 				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
@@ -261,22 +261,26 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			if !ok {
 				return
 			}
-			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
-				Job: &proto.WaitingJob{
-					Key:            &job.Key,
-					InstanceKey:    &job.InstanceKey,
-					InputVariables: job.InputVariables,
-					Type:           new(string(job.Type)),
-					ElementId:      &job.ElementID,
-					CreatedAt:      &job.CreatedAt,
-					ElementType:    &job.ElementType,
-					LockUntil:      &job.LockUntil,
-					Retries:        &job.Retries,
-					Attempt:        &job.Attempt,
-					DeliveryToken:  &job.DeliveryToken,
-					Headers:        job.Headers,
-				},
-			})
+			waiting := &proto.WaitingJob{
+				Key:            &job.Key,
+				InstanceKey:    &job.InstanceKey,
+				InputVariables: job.InputVariables,
+				Type:           new(string(job.Type)),
+				ElementId:      &job.ElementID,
+				CreatedAt:      &job.CreatedAt,
+				ElementType:    &job.ElementType,
+				LockUntil:      &job.LockUntil,
+				Retries:        &job.Retries,
+				Attempt:        &job.Attempt,
+				Headers:        job.Headers,
+			}
+			// a leader which issues no tokens, during a rolling upgrade, hands
+			// out 0; the worker echoes the token it got, and a failure naming 0
+			// is refused, while one naming none is recorded
+			if job.DeliveryToken > 0 {
+				waiting.DeliveryToken = &job.DeliveryToken
+			}
+			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {
 				s.logger.Error("Failed to send message to stream: %w", "err", err)
 				continue
@@ -285,11 +289,23 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 	}
 }
 
+// deliveryTokenOf is the delivery a request names. A delivery handed out
+// without a token, as by a leader during a rolling upgrade, leaves the field
+// out, and a client which copies the field whether or not it is present sends
+// 0 for it, which no delivery carries: it names no delivery, like the field
+// left out, rather than one never handed out.
+func deliveryTokenOf(token *int64) *int64 {
+	if token != nil && *token == 0 {
+		return nil
+	}
+	return token
+}
+
 // extendLock answers a lock extension with the new deadline, or with an error
 // whose code tells a lapsed lock from one held by somebody else. Either answer
 // names the job key so the client can match it to its request.
 func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, req *proto.JobExtendLockRequest) *proto.JobStreamResponse {
-	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()), req.DeliveryToken)
+	lockUntil, err := s.jobManager.ExtendJobLockReq(ctx, clientID, req.GetKey(), jobmanager.DurationFromMillis(req.GetLockDurationMs()), deliveryTokenOf(req.DeliveryToken))
 	if err == nil {
 		return &proto.JobStreamResponse{
 			LockExtended: &proto.LockExtended{Key: req.Key, LockUntil: new(lockUntil.UnixMilli())},

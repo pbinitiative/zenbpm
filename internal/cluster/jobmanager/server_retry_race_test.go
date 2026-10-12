@@ -68,6 +68,56 @@ func TestAJobFailedWhileAnotherSendBlocksIsNotDelivered(t *testing.T) {
 	}, 500*time.Millisecond, 10*time.Millisecond, "the job failed into a backoff meanwhile must not follow it")
 }
 
+// TestAJobChangedOutsideTheJobManagerWhileAnotherSendBlocksIsNotDelivered
+// shows a change the job manager does not make itself, such as an incident
+// resolution moving the job into a backoff, withdraws a delivery of the job
+// whose token the round wrote but which is still to be sent behind a slow
+// send, and gives its token back, when it announces itself as BeginJobChange
+// asks.
+func TestAJobChangedOutsideTheJobManagerWhileAnotherSendBlocksIsNotDelivered(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &testCompleter{loader: loader})
+	manager := &JobManager{}
+	manager.server.Store(server)
+	stream.sendGate = make(chan struct{})
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{MaxActiveJobs: 10})
+	jobs := generateJobs(2)
+	loader.addJobs(jobs...)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+	require.Eventually(t, func() bool {
+		return stream.sendAttempts() == 1
+	}, 5*time.Second, 10*time.Millisecond, "the first send must be in progress")
+	require.Equal(t, int64(1), loaderJobs(loader)[1].DeliveryToken, "the delivery of the second job is written")
+
+	endChange, err := manager.BeginJobChange(t.Context(), jobs[1].Key)
+	require.NoError(t, err)
+	assert.Zero(t, loaderJobs(loader)[1].DeliveryToken, "the delivery never sent gave its token back")
+	// the change commits a backoff, which keeps later rounds from loading the job
+	loader.mu.Lock()
+	loader.jobsToSend = loader.jobsToSend[:1]
+	loader.mu.Unlock()
+	endChange()
+	close(stream.sendGate)
+
+	require.Eventually(t, func() bool {
+		return stream.sentTo("client-1") == 1
+	}, 5*time.Second, 10*time.Millisecond, "the job whose send was in progress is delivered")
+	assert.Never(t, func() bool {
+		return stream.sentTo("client-1") > 1
+	}, 500*time.Millisecond, 10*time.Millisecond, "the job changed meanwhile must not follow it")
+}
+
+// TestAChangeAnnouncedToANodeWhichHandsOutNoJobsGoesOn shows BeginJobChange on
+// a node which leads no partition, and so hands out no job, has nothing to wait for.
+func TestAChangeAnnouncedToANodeWhichHandsOutNoJobsGoesOn(t *testing.T) {
+	endChange, err := (&JobManager{}).BeginJobChange(t.Context(), 1)
+
+	require.NoError(t, err)
+	endChange()
+}
+
 // TestAJobSkippedForAMutationIsDeliveredByALaterRound shows a skipped job is
 // not lost: once the mutation is over, a later round loads it again when it is
 // still deliverable, as after a failure which asks for no backoff.

@@ -101,6 +101,68 @@ func TestAJobWhoseDeliveryWasNotRecordedIsNotHandedOut(t *testing.T) {
 	})
 }
 
+// TestADeliveryWhoseSendFailedGivesItsTokenBack shows the token of a delivery
+// the stream did not take is taken back, as one a change withdrew: it reached
+// no worker, so the job carries the token of the delivery before it again, and
+// the next delivery is issued the same token.
+func TestADeliveryWhoseSendFailedGivesItsTokenBack(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &retryAtOnceCompleter{})
+	stream.failSends = 1
+	server.subscribeClient("node-2", "client-a", "test-job", SubscriptionSettings{LockDuration: time.Minute})
+	job := generateJobs(1)[0]
+	job.DeliveryToken = 1 // its first delivery's lock lapsed, its worker still works on it
+	loader.addJobs(job)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	require.Eventually(t, func() bool {
+		return stream.sentTo("client-a") == 1
+	}, 5*time.Second, 10*time.Millisecond, "the job is handed out once the stream takes it")
+	assert.Equal(t, 2, stream.sendAttempts())
+	assert.Equal(t, int64(2), stream.deliveredToken(), "the token of the failed send went back and was issued again")
+	assert.Equal(t, int64(2), loaderJobs(loader)[0].DeliveryToken)
+}
+
+// TestTheDeliveriesABrokenStreamDidNotTakeGiveTheirTokensBackInOneWrite shows
+// a stream whose send failed is not tried again in the round, and that the
+// tokens of every delivery of the round it did not take go back in one write,
+// not one per job.
+func TestTheDeliveriesABrokenStreamDidNotTakeGiveTheirTokensBackInOneWrite(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &retryAtOnceCompleter{})
+	stream.failSends = 1
+	server.subscribeClient("node-2", "client-a", "test-job", SubscriptionSettings{MaxActiveJobs: 10})
+	jobs := generateJobs(3)
+	loader.addJobs(jobs...)
+	type withdrawal struct {
+		jobs         []sql.Job
+		sendAttempts int
+	}
+	withdrawals := make(chan withdrawal, 10)
+	loader.onWithdraw = func(jobs []sql.Job) {
+		withdrawals <- withdrawal{jobs: jobs, sendAttempts: stream.sendAttempts()}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+
+	require.Eventually(t, func() bool {
+		return stream.sentTo("client-a") == len(jobs)
+	}, 5*time.Second, 10*time.Millisecond, "a later round hands every job out")
+	require.Len(t, withdrawals, 1)
+	first := <-withdrawals
+	assert.Equal(t, 1, first.sendAttempts, "the broken stream was not tried again in the round")
+	assert.Len(t, first.jobs, len(jobs), "the tokens of the round went back in one write")
+	for _, withdrawn := range first.jobs {
+		assert.Equal(t, int64(1), withdrawn.DeliveryToken, "the job names the token which goes back")
+	}
+	for _, job := range loaderJobs(loader) {
+		assert.Equal(t, int64(1), job.DeliveryToken, "the token went back and was issued again")
+	}
+}
+
 // TestAFailureWaitsForTheDeliveryOfItsJobBeingRecorded shows a failure which
 // arrives while the delivery of its job is being written reaches the engine
 // only once the write is done, and then sees the token of a delivery which
@@ -273,6 +335,37 @@ func TestAFailureWaitingForARecordingWhichPanickedGoesOn(t *testing.T) {
 		require.FailNow(t, "the failure still waits for the write which panicked")
 	}
 	assert.Empty(t, lockHolder(server, job.Key), "the reservation is dropped")
+}
+
+// TestAFailureWaitingForASendWhichPanickedGoesOn shows a failure which waits
+// for the send of its job goes on when the send panics instead of returning:
+// the hand-out of the job is over all the same.
+func TestAFailureWaitingForASendWhichPanickedGoesOn(t *testing.T) {
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &retryAtOnceCompleter{})
+	stream.panicGate = make(chan struct{})
+	server.subscribeClient("node-2", "client-a", "test-job", SubscriptionSettings{LockDuration: time.Minute})
+	job := generateJobs(1)[0]
+	loader.addJobs(job)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server.startServer(ctx)
+	require.Eventually(t, func() bool {
+		return stream.sendAttempts() == 1
+	}, 5*time.Second, 10*time.Millisecond, "the send must be in progress")
+
+	failed := make(chan error, 1)
+	go func() {
+		failed <- server.failJob(t.Context(), "client-a", job.Key, "down", nil, nil, nil, nil, nil)
+	}()
+	close(stream.panicGate)
+
+	select {
+	case err := <-failed:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the failure still waits for the send which panicked")
+	}
 }
 
 // TestAFailureWaitingForARecordingGivesUpWithItsContext shows a failure waiting

@@ -11,6 +11,7 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -29,6 +30,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -2501,53 +2503,93 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 const deliveryWriteTimeout = 10 * time.Second
 
 // RecordDeliveries records a delivery of every job, one write per partition
-// this node leads, and returns the jobs whose delivery was recorded, each
-// carrying the token of its delivery. A partition which is not led here any
-// more, or whose write fails, records none of its jobs; the error names it, and
-// the jobs of the other partitions are returned all the same.
+// this node leads, the writes running at once, and returns the jobs whose
+// delivery was recorded, each carrying the token of its delivery. A partition
+// which is not led here any more, or whose write fails, records none of its
+// jobs; the error names it, and the jobs of the other partitions are returned
+// all the same.
 func (node *ZenNode) RecordDeliveries(jobs []sql.Job) ([]sql.Job, error) {
-	jobsByPartition := make(map[uint32][]sql.Job)
+	writes, notLed := node.deliveriesByLedPartition(jobs)
+	recorded, err := writePartitionsAtOnce("record-job-deliveries", writes, func(write partitionDeliveries) ([]sql.Job, error) {
+		writeCtx, cancel := context.WithTimeout(node.ctx, deliveryWriteTimeout)
+		defer cancel()
+		return write.db.RecordJobDeliveries(writeCtx, write.jobs)
+	})
+	return recorded, errors.Join(err, notLedPartitionsError("record the delivery of", notLed))
+}
+
+// WithdrawDeliveries takes back the tokens of deliveries the job manager
+// recorded but never sent, each job carrying the token of its delivery, in one
+// write per partition this node leads, the writes running at once. The jobs of
+// a partition which is not led here any more, or whose write fails, keep their
+// tokens; the error names the partition.
+func (node *ZenNode) WithdrawDeliveries(ctx context.Context, jobs []sql.Job) error {
+	writes, notLed := node.deliveriesByLedPartition(jobs)
+	_, err := writePartitionsAtOnce("withdraw-job-deliveries", writes, func(write partitionDeliveries) ([]sql.Job, error) {
+		writeCtx, cancel := context.WithTimeout(ctx, deliveryWriteTimeout)
+		defer cancel()
+		return write.db.WithdrawJobDeliveries(writeCtx, write.jobs)
+	})
+	return errors.Join(err, notLedPartitionsError("withdraw the delivery of", notLed))
+}
+
+// partitionDeliveries are the jobs of one partition whose deliveries are to be
+// written, and the database of the partition.
+type partitionDeliveries struct {
+	db   *partition.DB
+	jobs []sql.Job
+}
+
+// deliveriesByLedPartition groups the jobs by the partition they belong to:
+// those of a partition this node leads into a write each, the others by
+// partition, as nothing can be written for them here.
+func (node *ZenNode) deliveriesByLedPartition(jobs []sql.Job) (writes []partitionDeliveries, notLed map[uint32][]sql.Job) {
+	notLed = make(map[uint32][]sql.Job)
 	for _, job := range jobs {
 		partitionID := zenflake.GetPartitionId(job.Key)
-		jobsByPartition[partitionID] = append(jobsByPartition[partitionID], job)
+		notLed[partitionID] = append(notLed[partitionID], job)
 	}
-	recorded := make([]sql.Job, 0, len(jobs))
-	var errs []error
 	for _, db := range node.controller.AllPartitionLeaderDBs(node.ctx) {
-		partitionJobs, ok := jobsByPartition[db.Partition]
+		partitionJobs, ok := notLed[db.Partition]
 		if !ok {
 			continue
 		}
-		delete(jobsByPartition, db.Partition)
-		writeCtx, cancel := context.WithTimeout(node.ctx, deliveryWriteTimeout)
-		delivered, err := db.RecordJobDeliveries(writeCtx, partitionJobs)
-		cancel()
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		recorded = append(recorded, delivered...)
+		delete(notLed, db.Partition)
+		writes = append(writes, partitionDeliveries{db: db, jobs: partitionJobs})
 	}
-	for partitionID, partitionJobs := range jobsByPartition {
-		errs = append(errs, fmt.Errorf("cannot record the delivery of %d jobs on partition %d: %w", len(partitionJobs), partitionID, jobmanager.NodeIsNotALeader))
-	}
-	return recorded, errors.Join(errs...)
+	return writes, notLed
 }
 
-// WithdrawDelivery takes back the token of a delivery the job manager recorded
-// but never sent, on the partition of the job, which this node leads.
-func (node *ZenNode) WithdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) error {
-	partitionID := zenflake.GetPartitionId(jobKey)
-	for _, db := range node.controller.AllPartitionLeaderDBs(node.ctx) {
-		if db.Partition != partitionID {
-			continue
-		}
-		writeCtx, cancel := context.WithTimeout(ctx, deliveryWriteTimeout)
-		defer cancel()
-		_, err := db.WithdrawJobDelivery(writeCtx, jobKey, deliveryToken)
-		return err
+// notLedPartitionsError names the partitions this node does not lead whose
+// jobs a write of deliveries was asked to do what for, or is nil.
+func notLedPartitionsError(what string, notLed map[uint32][]sql.Job) error {
+	errs := make([]error, 0, len(notLed))
+	for partitionID, partitionJobs := range notLed {
+		errs = append(errs, fmt.Errorf("cannot %s %d jobs on partition %d: %w", what, len(partitionJobs), partitionID, jobmanager.NodeIsNotALeader))
 	}
-	return fmt.Errorf("cannot withdraw delivery %d of job %d on partition %d: %w", deliveryToken, jobKey, partitionID, jobmanager.NodeIsNotALeader)
+	return errors.Join(errs...)
+}
+
+// writePartitionsAtOnce runs the write of every partition at the same time,
+// so that a partition whose write waits out its timeout holds up the round by
+// that timeout once, not once per partition, and gathers the jobs the writes
+// returned, in the order of the partitions, and the errors of those which
+// failed. A write which panics fails like one which returns an error; name
+// tells it apart in the panic's report.
+func writePartitionsAtOnce[P any](name string, partitions []P, write func(P) ([]sql.Job, error)) ([]sql.Job, error) {
+	writtenByPartition := make([][]sql.Job, len(partitions))
+	errs := make([]error, len(partitions))
+	var writes sync.WaitGroup
+	for i, target := range partitions {
+		writes.Go(func() {
+			errs[i] = safego.Run(name, safego.DefaultLogger, func() (err error) {
+				writtenByPartition[i], err = write(target)
+				return err
+			})
+		})
+	}
+	writes.Wait()
+	return slices.Concat(writtenByPartition...), errors.Join(errs...)
 }
 
 func loadJobsWithGlobalLimit(sourceCount int, count int64, load func(index int, limit int64) ([]sql.Job, error)) ([]sql.Job, error) {

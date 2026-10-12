@@ -1076,8 +1076,8 @@ func TestAJobWhoseStoredBackoffCannotBeReadIsStillRead(t *testing.T) {
 // which records the deliveries of a round raises the token of a job only while
 // the job still waits for a worker and nobody recorded another delivery of it
 // since it was loaded; the others are left out, so that they are not handed out.
-// A delivery withdrawn before it was sent gives its token back only while it is
-// still the job's latest.
+// Deliveries withdrawn before they were sent give their tokens back, in one
+// write, only while each is still the job's latest.
 func TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded(t *testing.T) {
 	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
 	defer func() {
@@ -1105,7 +1105,7 @@ func TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded(t *testing.T) {
 		},
 	}
 	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
-	saveJob := func(state runtime.ActivityState, deliveryToken int64) sql.Job {
+	saveJob := func(state runtime.ActivityState, deliveryToken int64, retryAt *time.Time) sql.Job {
 		key := db.GenerateId()
 		token := runtime.ExecutionToken{Key: key, ElementInstanceKey: key, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
 		require.NoError(t, db.SaveToken(t.Context(), token))
@@ -1120,44 +1120,60 @@ func TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded(t *testing.T) {
 			Token:              token,
 			Retries:            1,
 			DeliveryToken:      deliveryToken,
+			RetryAt:            retryAt,
 		}))
 		return sql.Job{Key: key, DeliveryToken: deliveryToken}
 	}
-	waiting := saveJob(runtime.ActivityStateActive, 4)
-	deliveredSinceLoaded := saveJob(runtime.ActivityStateActive, 1)
+	waiting := saveJob(runtime.ActivityStateActive, 4, nil)
+	deliveredSinceLoaded := saveJob(runtime.ActivityStateActive, 1, nil)
 	deliveredSinceLoaded.DeliveryToken = 0
-	completed := saveJob(runtime.ActivityStateCompleted, 0)
+	completed := saveJob(runtime.ActivityStateCompleted, 0, nil)
+	// a backoff set after the load, as by retries given with the resolution of an incident
+	inBackoffSinceLoaded := saveJob(runtime.ActivityStateActive, 0, new(time.Now().Add(time.Hour)))
+	backoffPassed := saveJob(runtime.ActivityStateActive, 0, new(time.Now().Add(-time.Second)))
 
-	recorded, err := db.RecordJobDeliveries(t.Context(), []sql.Job{waiting, deliveredSinceLoaded, completed})
+	recorded, err := db.RecordJobDeliveries(t.Context(), []sql.Job{waiting, deliveredSinceLoaded, completed, inBackoffSinceLoaded, backoffPassed})
 	require.NoError(t, err)
 
-	require.Len(t, recorded, 1)
+	require.Len(t, recorded, 2)
 	assert.Equal(t, waiting.Key, recorded[0].Key)
 	assert.Equal(t, int64(5), recorded[0].DeliveryToken)
+	assert.Equal(t, backoffPassed.Key, recorded[1].Key)
 	storedTokens := map[int64]int64{}
-	for _, job := range []sql.Job{waiting, deliveredSinceLoaded, completed} {
+	for _, job := range []sql.Job{waiting, deliveredSinceLoaded, completed, inBackoffSinceLoaded, backoffPassed} {
 		stored, err := db.FindJobByJobKey(t.Context(), job.Key)
 		require.NoError(t, err)
 		storedTokens[job.Key] = stored.DeliveryToken
 	}
-	assert.Equal(t, map[int64]int64{waiting.Key: 5, deliveredSinceLoaded.Key: 1, completed.Key: 0}, storedTokens)
+	assert.Equal(t, map[int64]int64{
+		waiting.Key:              5,
+		deliveredSinceLoaded.Key: 1,
+		completed.Key:            0,
+		inBackoffSinceLoaded.Key: 0,
+		backoffPassed.Key:        1,
+	}, storedTokens)
 
 	recorded, err = db.RecordJobDeliveries(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, recorded, "a round which reserved nothing writes nothing")
 
-	withdrawn, err := db.WithdrawJobDelivery(t.Context(), waiting.Key, 5)
+	withdrawn, err := db.WithdrawJobDeliveries(t.Context(), []sql.Job{
+		{Key: waiting.Key, DeliveryToken: 5},
+		{Key: deliveredSinceLoaded.Key, DeliveryToken: 5},
+		{Key: backoffPassed.Key, DeliveryToken: 1},
+	})
 	require.NoError(t, err)
-	assert.True(t, withdrawn, "a delivery never sent gives its token back")
-	stored, err := db.FindJobByJobKey(t.Context(), waiting.Key)
+	assert.Equal(t, []sql.Job{{Key: waiting.Key, DeliveryToken: 4}, {Key: backoffPassed.Key, DeliveryToken: 0}}, withdrawn,
+		"deliveries never sent give their tokens back in one write; a token which is not the job's latest is left alone")
+	for key, token := range map[int64]int64{waiting.Key: 4, deliveredSinceLoaded.Key: 1, backoffPassed.Key: 0} {
+		stored, err := db.FindJobByJobKey(t.Context(), key)
+		require.NoError(t, err)
+		assert.Equal(t, token, stored.DeliveryToken)
+	}
+
+	withdrawn, err = db.WithdrawJobDeliveries(t.Context(), nil)
 	require.NoError(t, err)
-	assert.Equal(t, int64(4), stored.DeliveryToken)
-	withdrawn, err = db.WithdrawJobDelivery(t.Context(), deliveredSinceLoaded.Key, 5)
-	require.NoError(t, err)
-	assert.False(t, withdrawn, "a token which is not the job's latest is left alone")
-	stored, err = db.FindJobByJobKey(t.Context(), deliveredSinceLoaded.Key)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), stored.DeliveryToken)
+	assert.Empty(t, withdrawn, "nothing to take back writes nothing")
 }
 
 func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {

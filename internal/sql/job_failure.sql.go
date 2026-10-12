@@ -145,6 +145,29 @@ func (q *Queries) FindJobFailuresPage(ctx context.Context, arg FindJobFailuresPa
 	return items, nil
 }
 
+const hasJobFailureOfDelivery = `-- name: HasJobFailureOfDelivery :one
+SELECT EXISTS (
+    SELECT 1
+    FROM job_failure
+    WHERE job_key = ?1
+        AND delivery_token = ?2
+)
+`
+
+type HasJobFailureOfDeliveryParams struct {
+	JobKey        int64         `json:"job_key"`
+	DeliveryToken sql.NullInt64 `json:"delivery_token"`
+}
+
+// Whether the job recorded a failure naming the delivery token; idx_job_failure_job_key narrows it to
+// the failures of the job.
+func (q *Queries) HasJobFailureOfDelivery(ctx context.Context, arg HasJobFailureOfDeliveryParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasJobFailureOfDelivery, arg.JobKey, arg.DeliveryToken)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const saveJobFailure = `-- name: SaveJobFailure :exec
 INSERT INTO job_failure(key, job_key, process_instance_key, attempt, failed_at, retry_at, message, incident_key, delivery_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

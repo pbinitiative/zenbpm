@@ -2052,6 +2052,11 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
 	}
 	var options []bpmn.ResolveIncidentOption
+	if s.jobManager != nil {
+		// the resolution may move the job into a backoff, which a delivery of
+		// the job about to leave must not overtake
+		options = append(options, bpmn.WithJobChangeFence(s.jobManager.BeginJobChange))
+	}
 	if req.Retries != nil {
 		var retryAt *time.Time
 		if req.RetryAt != nil {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 )
 
 func TestClusterPartitionRetryDelayFromEnv(t *testing.T) {
@@ -443,6 +444,28 @@ func TestJobsDefaultsGiveOneAttemptWithoutBackoff(t *testing.T) {
 	}
 	if err := c.Jobs.Validate(); err != nil {
 		t.Errorf("the defaults must validate, got %v", err)
+	}
+}
+
+// TestJobsDefaultsAreThoseOfAnEngineWhichIsNotConfigured shows a cluster node
+// and an engine embedded as a library start with the same retry limits.
+func TestJobsDefaultsAreThoseOfAnEngineWhichIsNotConfigured(t *testing.T) {
+	engine := bpmn.DefaultJobRetryLimits()
+	jobs := DefaultJobs()
+
+	maxBackoff, err := jobs.MaxRetryBackoffDuration()
+	if err != nil {
+		t.Fatalf("the default backoff cap must parse, got %v", err)
+	}
+	policy, err := jobs.DefaultRetryBackoffPolicy()
+	if err != nil {
+		t.Fatalf("the default backoff must parse, got %v", err)
+	}
+	if jobs.DefaultRetries != engine.DefaultRetries || jobs.MaxRetries != engine.MaxRetries || maxBackoff != engine.MaxRetryBackoff {
+		t.Errorf("expected the engine's limits %+v, got %+v", engine, jobs)
+	}
+	if len(engine.DefaultRetryBackoff) == 0 && (len(policy) != 1 || policy[0] != 0) {
+		t.Errorf("expected no backoff like the engine, got %v", policy)
 	}
 }
 

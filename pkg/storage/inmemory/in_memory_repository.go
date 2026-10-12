@@ -692,6 +692,17 @@ func (mem *Storage) FindJobFailures(_ context.Context, jobKey int64) ([]bpmnrunt
 	return res, nil
 }
 
+func (mem *Storage) HasJobFailureOfDelivery(_ context.Context, jobKey int64, deliveryToken int64) (bool, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	for _, failure := range mem.JobFailures {
+		if failure.JobKey == jobKey && failure.DeliveryToken != nil && *failure.DeliveryToken == deliveryToken {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (mem *Storage) FindJobByJobKey(_ context.Context, jobKey int64) (bpmnruntime.Job, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()

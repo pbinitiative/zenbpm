@@ -261,6 +261,22 @@ func (m *JobManager) UpdateJobRetries(ctx context.Context, jobKey int64, retries
 	return server.updateJobRetries(ctx, jobKey, retries, retryAt)
 }
 
+// BeginJobChange announces a change of a job which the job manager does not
+// make itself, such as the resolution of an incident of the job, the way its
+// own completions and failures announce themselves: a delivery of the job whose
+// token is written but which is not sent yet is withdrawn, one whose token is
+// being written or which is being sent is waited for, and a batch loaded before
+// the change ends does not hand the job out. The returned function ends the
+// change. A node which leads no partition hands out no job, so there is
+// nothing to announce.
+func (m *JobManager) BeginJobChange(ctx context.Context, jobKey int64) (endChange func(), err error) {
+	server := m.server.Load()
+	if server == nil {
+		return func() {}, nil
+	}
+	return server.beginMutation(ctx, jobKey)
+}
+
 func (m *JobManager) OnClusterStateChange(_ context.Context) {
 	state := m.store.ClusterState()
 	newPartitionLeaders := map[uint32]partitionRoleState{}

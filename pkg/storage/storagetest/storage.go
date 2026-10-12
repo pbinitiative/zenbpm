@@ -48,6 +48,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestActiveJobsLeaveOutJobsWaitingOutABackoff,
 		st.TestJobFailuresAreListedNewestFirst,
 		st.TestJobFailuresOfTheSameMomentAreListedByKey,
+		st.TestAJobFailureIsFoundByTheDeliveryItNames,
 		st.TestIncidentNamesItsJob,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
@@ -805,6 +806,36 @@ func (st *StorageTester) TestJobFailuresOfTheSameMomentAreListedByKey(s storage.
 		failures, err := s.FindJobFailures(t.Context(), job.Key)
 		require.NoError(t, err)
 		assert.Equal(t, []bpmnruntime.JobFailure{afterResolution, exhausting}, failures)
+	}
+}
+
+// TestAJobFailureIsFoundByTheDeliveryItNames shows the lookup the engine makes
+// for the late failure of an earlier delivery: only a failure of the job which
+// names that delivery counts, not one naming another or none.
+func (st *StorageTester) TestAJobFailureIsFoundByTheDeliveryItNames(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		job := st.saveJobWithToken(t, s, nil)
+		otherJob := st.saveJobWithToken(t, s, nil)
+		failedAt := time.Now().Truncate(time.Millisecond)
+		batch := s.NewBatch()
+		for _, failure := range []bpmnruntime.JobFailure{
+			{JobKey: job.Key, Attempt: 1, DeliveryToken: new(int64(2))},
+			{JobKey: job.Key, Attempt: 2},
+			{JobKey: otherJob.Key, Attempt: 1, DeliveryToken: new(int64(3))},
+		} {
+			failure.Key = s.GenerateId()
+			failure.ProcessInstanceKey = job.ProcessInstanceKey
+			failure.FailedAt = failedAt
+			failure.Message = "down"
+			require.NoError(t, batch.SaveJobFailure(t.Context(), failure))
+		}
+		require.NoError(t, batch.Flush(t.Context()))
+
+		for token, expected := range map[int64]bool{2: true, 1: false, 3: false} {
+			recorded, err := s.HasJobFailureOfDelivery(t.Context(), job.Key, token)
+			require.NoError(t, err)
+			assert.Equal(t, expected, recorded, "delivery %d", token)
+		}
 	}
 }
 

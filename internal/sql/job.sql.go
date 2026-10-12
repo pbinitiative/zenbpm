@@ -648,18 +648,27 @@ SET delivery_token = ?1
 WHERE key = ?2
     AND state = 1
     AND delivery_token = ?3
+    AND (retry_at IS NULL OR retry_at <= CAST(?4 AS INTEGER))
 `
 
 type RecordJobDeliveryParams struct {
 	DeliveryToken       int64 `json:"delivery_token"`
 	Key                 int64 `json:"key"`
 	LoadedDeliveryToken int64 `json:"loaded_delivery_token"`
+	Now                 int64 `json:"now"`
 }
 
-// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
-// and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker,
+// is not waiting out a backoff and no other delivery was recorded since it was loaded. No row affected
+// = do not hand it out. The backoff is checked again as a guard against a change which reaches the job
+// without announcing itself to the job manager and sets a backoff after the load.
 func (q *Queries) RecordJobDelivery(ctx context.Context, arg RecordJobDeliveryParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, recordJobDelivery, arg.DeliveryToken, arg.Key, arg.LoadedDeliveryToken)
+	result, err := q.db.ExecContext(ctx, recordJobDelivery,
+		arg.DeliveryToken,
+		arg.Key,
+		arg.LoadedDeliveryToken,
+		arg.Now,
+	)
 	if err != nil {
 		return 0, err
 	}

@@ -163,12 +163,16 @@ job:
 Every delivery over the stream carries a `delivery_token`. The job manager writes it before it
 hands the job out and raises it with every delivery, a redelivery after a lapsed lock or a leader
 change included, and it never goes back for a delivery which reached a worker, not even when an
-incident of the job is resolved. A delivery which a completion, failure or retry update of its job
-overtakes after its token was written but before it was sent is not sent, and its token is taken
-back, so that the failure of the delivery before it is judged against the delivery which really
-reached a worker. A fail request names the token of the delivery it belongs to -
-`JobFailRequest.delivery_token` on the stream, `deliveryToken` on the REST endpoint - and takes it
-from that delivery. `GET /v1/jobs/{key}` shows the token of the job's latest delivery for
+incident of the job is resolved. A delivery which a completion, failure or retry update of its job,
+or the resolution of an incident of the job, overtakes after its token was written but before it
+was sent is not sent, and its token is taken back, so that the failure of the delivery before it is
+judged against the delivery which really reached a worker. The same holds for the token of a
+delivery which the stream to the worker's node did not accept; that stream is not used again in the
+round, and the tokens of every delivery it did not take go back in one write. A delivery handed out
+by a leader which issues no tokens, as during a rolling upgrade, reaches the worker without one, and
+a request over the stream naming the token 0, which no delivery carries, names no delivery. A fail
+request names the token of the delivery it belongs to - `JobFailRequest.delivery_token` on the
+stream, `deliveryToken` on the REST endpoint - and takes it from that delivery. `GET /v1/jobs/{key}` shows the token of the job's latest delivery for
 inspection, but it is served by any node and may lag behind, so it is no source for a failure; a
 worker which never received the job over the stream sends no token. The Go client names it in every
 failure it sends. With it a failure counts once, whatever it carries:
@@ -227,7 +231,9 @@ How long a failed job waits before it is handed out again is decided, most speci
 2. the `retryBackoff` of the `zenbpm:taskDefinition`: one ISO-8601 duration (`PT10S`, a fixed
    delay) or a comma-separated list of them (`PT10S,PT1M,PT10M`), where the n-th failure waits the
    n-th entry and the last entry repeats - `PT10S,PT20S,PT40S,PT80S` is an exponential backoff. A
-   FEEL expression starting with `=` may produce such a string or a list of duration strings;
+   FEEL expression starting with `=` may produce such a string, a FEEL duration
+   (`=duration("PT10S")`) or a list of duration strings and FEEL durations; a fraction of a
+   second in a FEEL duration is dropped;
 3. `jobs.defaultRetryBackoff`, `PT0S` unless configured.
 
 Every backoff is capped by `jobs.maxRetryBackoff` (`PT24H`). Durations are hours, minutes, seconds,
@@ -347,10 +353,10 @@ and the attempt, would repeat the effect on every retry.
 >   `retryBackoff` asks for.
 > - For applications embedding the engine as a library: `Engine.JobFailByKey` takes the retries
 >   and the backoff of the failure and the delivery token it names as three more arguments, and a
->   storage implementation has to provide `FindJobFailures` and `SaveJobFailure`
->   (`storage.JobStorageReader` and `storage.JobStorageWriter`), write `Job.DeliveryToken` when it
->   inserts a job but keep the stored one when it saves a job it stored before, and keep
->   `JobFailure.DeliveryToken`.
+>   storage implementation has to provide `FindJobFailures`, `HasJobFailureOfDelivery` and
+>   `SaveJobFailure` (`storage.JobStorageReader` and `storage.JobStorageWriter`), write
+>   `Job.DeliveryToken` when it inserts a job but keep the stored one when it saves a job it
+>   stored before, and keep `JobFailure.DeliveryToken`.
 
 ## Job manager
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -406,6 +407,97 @@ func TestARetryBackoffExpressionWhichIsNoDurationListEndsInAnIncidentAtCreation(
 	assert.Contains(t, incident.Message, "retryBackoff")
 	assert.Contains(t, incident.Message, "is not a duration string")
 	assert.Empty(t, activatedJobKeys(t, &engine), "no job is left to hand out")
+}
+
+// TestARetryBackoffExpressionMayProduceFeelDurations shows duration(...), the
+// natural FEEL form of a duration, is read like the ISO-8601 string it was
+// made from, alone or in a list, and refused for what such a string is refused.
+func TestARetryBackoffExpressionMayProduceFeelDurations(t *testing.T) {
+	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+	t.Cleanup(engine.Stop)
+	policyOf := func(expression string) ([]time.Duration, error) {
+		task := &bpmn20.TServiceTask{TExternallyProcessedTask: bpmn20.TExternallyProcessedTask{
+			TaskDefinition: extensions.TTaskDefinition{RetryBackoff: expression},
+		}}
+		return engine.retryBackoffPolicy(task, map[string]any{})
+	}
+
+	for expression, expected := range map[string][]time.Duration{
+		`=duration("PT2S")`:                       {2 * time.Second},
+		`=[duration("PT1S"), duration("P1DT2H")]`: {time.Second, 26 * time.Hour},
+		`=["PT5S", duration("PT1M")]`:             {5 * time.Second, time.Minute},
+		`=duration("PT1.5S")`:                     {time.Second},
+		`=duration("PT0S")`:                       {0},
+		`=date and time("2020-01-01T00:00:10") - date and time("2020-01-01T00:00:00")`: {10 * time.Second},
+	} {
+		t.Run(expression, func(t *testing.T) {
+			policy, err := policyOf(expression)
+			require.NoError(t, err)
+			assert.Equal(t, expected, policy)
+		})
+	}
+	for expression, refusal := range map[string]string{
+		`=duration("P1M")`:         "years or months",
+		`=duration("-PT2S")`:       "must not be negative",
+		`=[duration("PT1S"), 5]`:   "entry 5 (int64) is not a duration string or a FEEL duration",
+		`=date("2020-01-01")`:      "which is neither a duration nor a list of durations",
+		`={wait: duration("P1D")}`: "which is neither a duration nor a list of durations",
+		`=duration("PT")`:          "names no amount of any unit",
+		// contexts made to look like a duration, which must not read as no backoff
+		`={isLuxonDuration: true}`:                                              "carries its units as <nil> (<nil>) instead of a context",
+		`={isLuxonDuration: true, values: "wrong"}`:                             "carries its units as wrong (string) instead of a context",
+		`={isLuxonDuration: true, invalid: "unparsable", values: {seconds: 1}}`: "FEEL duration is invalid: unparsable",
+	} {
+		t.Run(expression, func(t *testing.T) {
+			_, err := policyOf(expression)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), refusal)
+			assert.Less(t, len(err.Error()), 300, "the message quotes the value cut short, not every field of a FEEL object")
+		})
+	}
+}
+
+// TestAResolutionAnnouncesTheChangeOfItsJob shows a resolution given a job
+// change fence announces the change of the job it leaves waiting before it
+// changes the job, and ends it once the change is committed, whether the
+// incident is the job's own or is found on the job's token; a fence which
+// refuses leaves everything as it was.
+func TestAResolutionAnnouncesTheChangeOfItsJob(t *testing.T) {
+	t.Run("of the job whose own incident it is", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		fence, announced := recordingJobChangeFence(t, store)
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key,
+			WithJobRetries(2, new(time.Now().Add(time.Hour))), WithJobChangeFence(fence)))
+
+		assert.Equal(t, []jobChange{{jobKey: job.Key, stateAtStart: runtime.ActivityStateFailed, stateAtEnd: runtime.ActivityStateActive, ended: true}}, *announced,
+			"announced before the job was changed, ended after")
+	})
+	t.Run("of the job on the token of the incident", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		raiseIncidentOnTheTokenOf(t, engine, store, job)
+		fence, announced := recordingJobChangeFence(t, store)
+
+		require.NoError(t, engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key,
+			WithJobRetries(2, new(time.Now().Add(time.Hour))), WithJobChangeFence(fence)))
+
+		require.Len(t, *announced, 1)
+		assert.Equal(t, job.Key, (*announced)[0].jobKey)
+		assert.True(t, (*announced)[0].ended)
+	})
+	t.Run("a fence which refuses leaves everything as it was", func(t *testing.T) {
+		engine, store, job := startRetriedJob(t, DefaultJobRetryLimits(), "service-task-retries.bpmn", nil)
+		require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "down", nil, nil, new(int32(0)), nil, nil))
+		refusal := errors.New("the job is being handed out")
+
+		err := engine.ResolveIncident(t.Context(), singleIncident(t, store, job.ProcessInstanceKey).Key,
+			WithJobChangeFence(func(context.Context, int64) (func(), error) { return nil, refusal }))
+
+		require.ErrorIs(t, err, refusal)
+		assert.Nil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt, "the incident stays open")
+		assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, job.Key).State)
+	})
 }
 
 func TestEveryJobProducingElementSpendsItsRetriesByItsPolicy(t *testing.T) {
@@ -1805,6 +1897,31 @@ func raiseIncidentOnTheTokenOf(t *testing.T, engine *Engine, store *inmemory.Sto
 	require.NoError(t, err)
 	require.NoError(t, batch.WriteTokenIncident(t.Context(), token, instance, errors.New("boundary message correlation failed")))
 	require.NoError(t, batch.Flush(t.Context()))
+}
+
+// jobChange is a change of a job announced through a job change fence, with
+// the state of the job when it was announced and when it ended.
+type jobChange struct {
+	jobKey       int64
+	stateAtStart runtime.ActivityState
+	stateAtEnd   runtime.ActivityState
+	ended        bool
+}
+
+// recordingJobChangeFence is a job change fence which records every change it
+// is told of.
+func recordingJobChangeFence(t *testing.T, store *inmemory.Storage) (JobChangeFence, *[]jobChange) {
+	t.Helper()
+	var announced []jobChange
+	fence := func(_ context.Context, jobKey int64) (func(), error) {
+		index := len(announced)
+		announced = append(announced, jobChange{jobKey: jobKey, stateAtStart: reloadJob(t, store, jobKey).State})
+		return func() {
+			announced[index].stateAtEnd = reloadJob(t, store, jobKey).State
+			announced[index].ended = true
+		}, nil
+	}
+	return fence, &announced
 }
 
 // deliver hands the job out as the job manager of a cluster does and returns

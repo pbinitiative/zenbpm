@@ -631,15 +631,13 @@ func (engine *Engine) answerFailureNotToRecord(ctx context.Context, job runtime.
 	}
 	// an earlier delivery: its failure was recorded before the job was handed
 	// out again, or it arrived after the job had been handed out again
-	failures, err := engine.persistence.FindJobFailures(ctx, job.Key)
+	recorded, err := engine.persistence.HasJobFailureOfDelivery(ctx, job.Key, deliveryToken)
 	if err != nil {
 		return true, fmt.Errorf("failed to find the failures of job %d: %w", job.Key, err)
 	}
-	for _, failure := range failures {
-		if failure.DeliveryToken != nil && *failure.DeliveryToken == deliveryToken {
-			engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
-			return true, nil
-		}
+	if recorded {
+		engine.logger.Debug("failure of a delivery the job recorded already, nothing changes", "job", job.Key, "deliveryToken", deliveryToken)
+		return true, nil
 	}
 	return true, fmt.Errorf("%w: job %d was handed out again after delivery %d, its latest delivery has token %d",
 		ErrDeliverySuperseded, job.Key, deliveryToken, job.DeliveryToken)

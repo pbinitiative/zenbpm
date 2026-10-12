@@ -413,8 +413,8 @@ type JobFailRequest struct {
 	// keeps no entry naming its token. A failure of a delivery which was superseded, because the job
 	// was handed out again after its lock lapsed or its leader changed, changes nothing either and is
 	// refused with JOB_STREAM_ERROR_CODE_JOB_IN_TERMINAL_STATE: the newer delivery decides. A token
-	// never handed out is refused with JOB_STREAM_ERROR_CODE_INVALID_REQUEST. Absent = every report
-	// counts, and one without an error code spends an attempt.
+	// never handed out is refused with JOB_STREAM_ERROR_CODE_INVALID_REQUEST. Absent or 0, which no
+	// delivery carries = every report counts, and one without an error code spends an attempt.
 	DeliveryToken *int64 `protobuf:"varint,7,opt,name=delivery_token,json=deliveryToken" json:"delivery_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -511,7 +511,7 @@ type JobExtendLockRequest struct {
 	// The delivery whose lock to extend, WaitingJob.delivery_token. The lock of another
 	// delivery of the job, such as the next one after this delivery's lock lapsed and the
 	// job came back to this client, is not extended: JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD.
-	// Absent = whatever delivery of the job this client holds.
+	// Absent or 0, which no delivery carries = whatever delivery of the job this client holds.
 	DeliveryToken *int64 `protobuf:"varint,3,opt,name=delivery_token,json=deliveryToken" json:"delivery_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -708,7 +708,9 @@ type WaitingJob struct {
 	Attempt *int32 `protobuf:"varint,11,opt,name=attempt" json:"attempt,omitempty"`
 	// Identifies this delivery: every delivery of the job carries a higher token than the one
 	// before, a redelivery of the same attempt after a lapsed lock or a leader change included.
-	// Send it back as JobFailRequest.delivery_token.
+	// Send it back as JobFailRequest.delivery_token. Absent when the leader which handed the job
+	// out issues no tokens, as during a rolling upgrade; the failure then names none, and a client
+	// which copies the field whether or not it is present sends 0, which names none as well.
 	DeliveryToken *int64 `protobuf:"varint,12,opt,name=delivery_token,json=deliveryToken" json:"delivery_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

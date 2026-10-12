@@ -47,44 +47,41 @@ var (
 	ErrLeaderUnavailable = errors.New("leader of the job's partition is unavailable")
 	// ErrInvalidJobRequest is returned by a job request the leader refused for
 	// what it asks, such as negative retries; repeating it gets the same answer.
-	ErrInvalidJobRequest = errors.New("invalid job request")
+	// It is the engine's own, so that a check against either name matches a
+	// refusal of the engine on this node and one a leader answered alike.
+	ErrInvalidJobRequest = bpmn.ErrInvalidJobRequest
 	// ErrJobNotFound is returned by a job request for a key which names no job.
 	ErrJobNotFound = errors.New("job not found")
 	// ErrJobInTerminalState is returned by a job request for a job which no
 	// longer waits for a worker: it was completed, terminated or already failed,
 	// or, for a failure naming its delivery, it was handed out again after it.
-	ErrJobInTerminalState = errors.New("job no longer waits for a worker")
+	// It is the engine's own, like ErrInvalidJobRequest, but stands for more
+	// here: the engine refuses that last case with bpmn.ErrDeliverySuperseded,
+	// which the leader answers with the same conflict as this one. A caller of
+	// the engine on this node checks for both.
+	ErrJobInTerminalState = bpmn.ErrJobInTerminalState
 )
 
 // InvalidJobRequestError is ErrInvalidJobRequest together with the reason the
 // leader gave, which names the field and the value and is what the worker is
-// told.
-type InvalidJobRequestError struct {
-	Reason string
-}
-
-func (e *InvalidJobRequestError) Error() string {
-	return ErrInvalidJobRequest.Error() + ": " + e.Reason
-}
-
-func (e *InvalidJobRequestError) Unwrap() error {
-	return ErrInvalidJobRequest
-}
+// told. It is the engine's own, like ErrInvalidJobRequest.
+type InvalidJobRequestError = bpmn.InvalidJobRequestError
 
 type JobLoader interface {
 	// LoadJobsToDistribute loads at most count jobs, sorted from oldest, across all partitions led by the node.
 	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error)
 	// RecordDeliveries persists a delivery of every loaded job, one write per
 	// partition, and returns the jobs whose delivery it recorded, each carrying
-	// the token of its delivery. A job which no longer waits for a worker, or
-	// for which another delivery was recorded since it was loaded, is left
-	// out, and so are the jobs of a partition whose write failed, which the
-	// error names.
+	// the token of its delivery. A job which no longer waits for a worker,
+	// waits out a backoff set since it was loaded, or for which another
+	// delivery was recorded since, is left out, and so are the jobs of a
+	// partition whose write failed, which the error names.
 	RecordDeliveries(jobs []sql.Job) ([]sql.Job, error)
-	// WithdrawDelivery takes back the token of a delivery which was recorded
-	// but never sent, so that the delivery before it counts again. A delivery
-	// recorded since is left alone.
-	WithdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) error
+	// WithdrawDeliveries takes back the tokens of deliveries which were
+	// recorded but never sent, each job carrying the token of its delivery, so
+	// that the delivery before each counts again, in one write per partition.
+	// A delivery recorded since is left alone.
+	WithdrawDeliveries(ctx context.Context, jobs []sql.Job) error
 }
 
 type JobCompleter interface {
@@ -187,8 +184,9 @@ type distributedJob struct {
 
 // jobMutations tells the distribution loop which jobs of a loaded batch were
 // changed after the batch was read. A batch is a snapshot of the database: a
-// failure which commits a backoff, or a retry update which postpones a job,
-// between the query and the delivery would otherwise be overtaken by a
+// failure which commits a backoff, or a retry update or an incident resolution
+// which postpones a job, between the query and the delivery would otherwise be
+// overtaken by a
 // delivery of the stale snapshot. Every change runs between beginMutation and
 // endMutation, and every event advances seq; a job counts as changed when a
 // change of it is in progress or its last event came after the batch was read.
@@ -251,8 +249,9 @@ type jobServer struct {
 	// handingOut are the deliveries reserved and not yet sent, by job key,
 	// guarded by distributedJobsMu, see handOut and beginMutation.
 	handingOut map[int64]*handOut
-	// mutations tracks the jobs a completion, failure or retry update is
-	// changing, guarded by distributedJobsMu, see beginMutation.
+	// mutations tracks the jobs a completion, failure or retry update, or a
+	// change announced through JobManager.BeginJobChange, is changing, guarded
+	// by distributedJobsMu, see beginMutation.
 	mutations                jobMutations
 	emptyDistributionCounter int
 
@@ -411,12 +410,7 @@ func (s *jobServer) distributeJobs() {
 		}
 		recorded, err := s.recordDeliveries(round, reserved)
 		s.logRecordingError(err)
-		assignedJobs := 0
-		for _, delivery := range recorded {
-			if s.sendRecordedDelivery(delivery) {
-				assignedJobs++
-			}
-		}
+		assignedJobs := s.sendRecordedDeliveries(recorded)
 		if err != nil && len(recorded) == 0 {
 			// give it some time not to overwhelm the node we might not be a leader anymore
 			s.pause(1 * time.Second)
@@ -625,29 +619,85 @@ func (s *jobServer) logRecordingError(err error) {
 	}
 }
 
-// sendRecordedDelivery sends a recorded delivery unless a change of its job
-// withdrew it meanwhile, see beginMutation, and reports whether it was sent.
-// The changes of the job which arrive during the send wait for it.
-func (s *jobServer) sendRecordedDelivery(delivery reservedDelivery) bool {
-	key := delivery.job.Key
+// sendRecordedDeliveries sends the recorded deliveries of a round which no
+// change of their jobs withdrew meanwhile, see beginMutation, and returns how
+// many were sent. The changes of a job which arrive during its send wait for
+// it. A stream which did not take a delivery is not tried again in the round:
+// a gRPC stream whose send failed is broken. The deliveries it did not take or
+// was not given go back, see giveBackUnsent.
+func (s *jobServer) sendRecordedDeliveries(recorded []reservedDelivery) (sent int) {
+	// every hand-out is over by the time the round returns, even when a send
+	// panicked, so that no change of a job waits for it for good; ending a
+	// hand-out which is over already does nothing
+	defer func() {
+		for _, delivery := range recorded {
+			s.endSend(delivery)
+		}
+	}()
+	var unsent []reservedDelivery
+	brokenStreams := map[*nodeSub]struct{}{}
+	for _, delivery := range recorded {
+		if !s.beginSend(delivery) {
+			continue
+		}
+		if _, broken := brokenStreams[delivery.stream]; !broken {
+			if s.sendReservedJob(delivery) {
+				s.endSend(delivery)
+				sent++
+				continue
+			}
+			brokenStreams[delivery.stream] = struct{}{}
+		}
+		unsent = append(unsent, delivery)
+	}
+	s.giveBackUnsent(unsent)
+	return sent
+}
+
+// beginSend marks a recorded delivery as being sent, so that a change of its
+// job waits for it, and reports whether it is still to be sent: a change may
+// have withdrawn it.
+func (s *jobServer) beginSend(delivery reservedDelivery) bool {
 	s.distributedJobsMu.Lock()
-	if s.handingOut[key] != delivery.handOut {
-		s.distributedJobsMu.Unlock()
+	defer s.distributedJobsMu.Unlock()
+	if s.handingOut[delivery.job.Key] != delivery.handOut {
 		return false
 	}
 	delivery.handOut.stage = deliveryBeingSent
+	return true
+}
+
+// endSend lets the changes of a job whose delivery is sent, or went back, go on.
+func (s *jobServer) endSend(delivery reservedDelivery) {
+	s.distributedJobsMu.Lock()
+	defer s.distributedJobsMu.Unlock()
+	s.endHandOutLocked(delivery.job.Key, delivery.handOut)
+}
+
+// giveBackUnsent drops the reservations of deliveries which reached no worker,
+// so that a later round hands their jobs out again, and takes their tokens back
+// in one write per partition rather than one per job: a broken stream would
+// otherwise cost the round a write for every job still to be sent to it. The
+// changes of those jobs wait until the tokens are back.
+func (s *jobServer) giveBackUnsent(unsent []reservedDelivery) {
+	if len(unsent) == 0 {
+		return
+	}
+	jobs := make([]sql.Job, len(unsent))
+	s.distributedJobsMu.Lock()
+	for i, delivery := range unsent {
+		s.dropReservationLocked(delivery)
+		jobs[i] = delivery.job
+	}
 	s.distributedJobsMu.Unlock()
-	defer func() {
-		s.distributedJobsMu.Lock()
-		defer s.distributedJobsMu.Unlock()
-		s.endHandOutLocked(key, delivery.handOut)
-	}()
-	return s.sendReservedJob(delivery)
+	s.withdrawDeliveries(s.ctx, jobs)
+	for _, delivery := range unsent {
+		s.endSend(delivery)
+	}
 }
 
 // sendReservedJob sends a reserved job to its client, holding no lock while
-// the stream may block, and reports whether it was sent. A job which could not
-// be sent loses its reservation, so that a later round hands it out again.
+// the stream may block, and reports whether it was sent.
 func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 	job := delivery.job
 	// this might be bottleneck for now...in the future we might want
@@ -673,12 +723,8 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		s.distributedJobsMu.Lock()
-		if locked, ok := s.distributedJobs[job.Key]; ok && locked.client == delivery.client {
-			delete(s.distributedJobs, job.Key)
-		}
-		s.distributedJobsMu.Unlock()
-		s.logger.Error("Failed to send job to node", "jobType", job.Type, "key", job.Key, "err", err)
+		s.logger.Error("Failed to send job to node, its stream is not used again this round",
+			"node", delivery.stream.nodeID, "jobType", job.Type, "key", job.Key, "err", err)
 		return false
 	}
 	s.restartLockAfterSend(job.Key, delivery.client, delivery.lockDuration)
@@ -1110,7 +1156,7 @@ func (s *jobServer) beginMutation(ctx context.Context, jobKey int64) (endMutatio
 	s.mutations.changedAt[jobKey] = s.mutations.seq
 	s.distributedJobsMu.Unlock()
 	if withdrawn != nil {
-		s.withdrawDelivery(ctx, jobKey, withdrawn.written)
+		s.withdrawDeliveries(ctx, []sql.Job{{Key: jobKey, DeliveryToken: withdrawn.written}})
 	}
 	return func() {
 		s.distributedJobsMu.Lock()
@@ -1123,14 +1169,16 @@ func (s *jobServer) beginMutation(ctx context.Context, jobKey int64) (endMutatio
 	}, nil
 }
 
-// withdrawDelivery takes back the token of a delivery a change withdrew before
-// it was sent, see beginMutation. When that fails the job keeps the token, and
-// a failure of the delivery before it is refused as superseded although the
-// job reached nobody since; the job is handed out again all the same.
-func (s *jobServer) withdrawDelivery(ctx context.Context, jobKey int64, deliveryToken int64) {
-	if err := s.loader.WithdrawDelivery(ctx, jobKey, deliveryToken); err != nil {
-		s.logger.Warn("Failed to take back the token of a delivery which was never sent",
-			"jobKey", jobKey, "deliveryToken", deliveryToken, "err", err)
+// withdrawDeliveries takes back the tokens of deliveries which reached no
+// worker, each job carrying the token of its delivery: a change withdrew it
+// before it was sent, see beginMutation, or the stream did not take it, see
+// giveBackUnsent. When that fails the jobs keep the tokens, and a failure of
+// the delivery before is refused as superseded although the job reached nobody
+// since; the jobs are handed out again all the same.
+func (s *jobServer) withdrawDeliveries(ctx context.Context, jobs []sql.Job) {
+	if err := s.loader.WithdrawDeliveries(ctx, jobs); err != nil {
+		s.logger.Warn("Failed to take back the tokens of deliveries which were never sent",
+			"jobs", len(jobs), "err", err)
 	}
 }
 

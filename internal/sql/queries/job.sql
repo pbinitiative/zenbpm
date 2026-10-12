@@ -18,13 +18,16 @@ ON CONFLICT
         failed_delivery_token = excluded.failed_delivery_token;
 
 -- name: RecordJobDelivery :execrows
--- Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
--- and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+-- Raises the delivery token of a job the job manager hands out, provided it still waits for a worker,
+-- is not waiting out a backoff and no other delivery was recorded since it was loaded. No row affected
+-- = do not hand it out. The backoff is checked again as a guard against a change which reaches the job
+-- without announcing itself to the job manager and sets a backoff after the load.
 UPDATE job
 SET delivery_token = @delivery_token
 WHERE key = @key
     AND state = 1
-    AND delivery_token = @loaded_delivery_token;
+    AND delivery_token = @loaded_delivery_token
+    AND (retry_at IS NULL OR retry_at <= CAST(@now AS INTEGER));
 
 -- name: WithdrawJobDelivery :execrows
 -- Takes back the token of a delivery the job manager recorded but never sent, so that the delivery

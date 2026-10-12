@@ -202,6 +202,9 @@ type JobStorageReader interface {
 
 	// FindJobFailures returns the failures without an error code reported for the job, newest first.
 	FindJobFailures(ctx context.Context, jobKey int64) ([]bpmnruntime.JobFailure, error)
+
+	// HasJobFailureOfDelivery reports whether the job recorded a failure naming the delivery token.
+	HasJobFailureOfDelivery(ctx context.Context, jobKey int64, deliveryToken int64) (bool, error)
 }
 
 type JobStorageWriter interface {

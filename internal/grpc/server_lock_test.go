@@ -153,6 +153,24 @@ func TestSendClientJobsCarriesRetriesAttemptAndDeliveryToken(t *testing.T) {
 	assert.Equal(t, int64(5), stream.sent[0].Job.GetDeliveryToken())
 }
 
+// TestSendClientJobsLeavesOutTheTokenOfADeliveryWhichHasNone shows a job
+// handed out by a leader which issues no delivery tokens, one not yet upgraded
+// during a rolling upgrade, reaches the worker without a token: a worker
+// echoes the token it got, and an upgraded leader refuses a failure naming 0.
+func TestSendClientJobsLeavesOutTheTokenOfADeliveryWhichHasNone(t *testing.T) {
+	stream := newJobStreamTestServer()
+	server := &Server{ctx: t.Context(), logger: hclog.NewNullLogger()}
+	clientCh := make(chan jobmanager.Job, 1)
+	recvDone := make(chan struct{})
+	clientCh <- jobmanager.Job{Key: 7, Type: "job-a"}
+	close(clientCh)
+
+	server.sendClientJobs(stream, clientCh, recvDone, &sync.Mutex{})
+
+	require.Len(t, stream.sent, 1)
+	assert.Nil(t, stream.sent[0].Job.DeliveryToken)
+}
+
 // TestRecvClientRequestsPassesRetriesAndBackoffOn shows a failure's retries,
 // backoff and delivery token reach the job manager as sent, and stay absent when a
 // client, such as one built before retries existed, sends none.
@@ -177,6 +195,32 @@ func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	assert.Nil(t, manager.failedRetries[1])
 	assert.Nil(t, manager.failedBackoffs[1])
 	assert.Nil(t, manager.failedDeliveries[1])
+}
+
+// TestRecvClientRequestsReadsATokenOfZeroAsNone shows a client which copies
+// the delivery token of a delivery handed out without one, as during a rolling
+// upgrade, names no delivery, in a failure and in a lock extension alike,
+// instead of being refused for a token never handed out.
+func TestRecvClientRequestsReadsATokenOfZeroAsNone(t *testing.T) {
+	key := int64(42)
+	failure := &proto.JobStreamRequest{Request: &proto.JobStreamRequest_Fail{Fail: &proto.JobFailRequest{
+		Key:           &key,
+		DeliveryToken: new(int64(0)),
+	}}}
+	extension := &proto.JobStreamRequest{Request: &proto.JobStreamRequest_ExtendLock{ExtendLock: &proto.JobExtendLockRequest{
+		Key:           &key,
+		DeliveryToken: new(int64(0)),
+	}}}
+	manager := &jobStreamTestManager{}
+	stream := newJobStreamTestServer(failure, extension)
+	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
+
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+	require.Len(t, manager.failedDeliveries, 1)
+	assert.Nil(t, manager.failedDeliveries[0])
+	require.Len(t, manager.extendedDeliveries, 1)
+	assert.Nil(t, manager.extendedDeliveries[0])
 }
 
 func TestRecvClientRequestsReportsWhyAFailureWasNotRecordedByCode(t *testing.T) {

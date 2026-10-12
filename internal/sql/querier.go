@@ -159,6 +159,9 @@ type Querier interface {
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error)
+	// Whether the job recorded a failure naming the delivery token; idx_job_failure_job_key narrows it to
+	// the failures of the job.
+	HasJobFailureOfDelivery(ctx context.Context, arg HasJobFailureOfDeliveryParams) (int64, error)
 	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	// Lists the versions of process definitions, ordered by process id and
 	// version, as a deployment observes them. bpmn_process_id restricts the
@@ -167,8 +170,10 @@ type Querier interface {
 	// latest_and_tagged_only (1/0) keeps only the latest version of every
 	// process and the versions carrying a version tag.
 	ListProcessDefinitionVersions(ctx context.Context, arg ListProcessDefinitionVersionsParams) ([]ListProcessDefinitionVersionsRow, error)
-	// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker
-	// and no other delivery was recorded since it was loaded. No row affected = do not hand it out.
+	// Raises the delivery token of a job the job manager hands out, provided it still waits for a worker,
+	// is not waiting out a backoff and no other delivery was recorded since it was loaded. No row affected
+	// = do not hand it out. The backoff is checked again as a guard against a change which reaches the job
+	// without announcing itself to the job manager and sets a backoff after the load.
 	RecordJobDelivery(ctx context.Context, arg RecordJobDeliveryParams) (int64, error)
 	ResetProcessInstanceFlowNodeCount(ctx context.Context, processInstanceKey int64) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error

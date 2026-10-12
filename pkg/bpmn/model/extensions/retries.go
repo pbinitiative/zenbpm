@@ -11,6 +11,17 @@ import (
 	"github.com/senseyeio/duration"
 )
 
+// The retries of the jobs of an engine which is not configured: one attempt,
+// so the first failure without an error code creates an incident, at most 100
+// retries and a day of backoff, and no backoff unless a definition names one.
+// The engine's defaults and those of a cluster node's configuration are both
+// taken from here, so that the two start alike.
+const (
+	DefaultJobRetries  int32 = 1
+	MaxJobRetries      int32 = 100
+	MaxJobRetryBackoff       = 24 * time.Hour
+)
+
 // IsExpression reports whether an attribute value is a FEEL expression, which
 // starts with '='. Such a value is evaluated when a job is created, not parsed
 // when the definition is deployed.

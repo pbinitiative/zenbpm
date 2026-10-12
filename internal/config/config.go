@@ -61,15 +61,20 @@ type Jobs struct {
 	MaxRetryBackoff string `yaml:"maxRetryBackoff" json:"maxRetryBackoff" env:"JOBS_MAX_RETRY_BACKOFF"`
 }
 
-// DefaultJobs is the jobs section of a configuration which names nothing: one
-// attempt, so the first failure without an error code creates an incident as
-// it always did, no backoff, at most 100 retries and a day of backoff.
+// DefaultJobs is the jobs section of a configuration which names nothing: the
+// limits of an engine which is not configured, taken from the same constants
+// as bpmn.DefaultJobRetryLimits, so that a cluster node and an engine embedded
+// as a library start alike. That is one attempt, so the first failure without
+// an error code creates an incident as it always did, no backoff, at most 100
+// retries and a day of backoff.
 func DefaultJobs() Jobs {
 	return Jobs{
-		DefaultRetries:      1,
-		MaxRetries:          100,
-		DefaultRetryBackoff: "PT0S",
-		MaxRetryBackoff:     "PT24H",
+		DefaultRetries: extensions.DefaultJobRetries,
+		MaxRetries:     extensions.MaxJobRetries,
+		// the engine's default policy is empty, which hands a failed job out
+		// again at once and which the configuration says as PT0S
+		DefaultRetryBackoff: extensions.FormatBackoffDuration(0),
+		MaxRetryBackoff:     extensions.FormatBackoffDuration(extensions.MaxJobRetryBackoff),
 	}
 }
 

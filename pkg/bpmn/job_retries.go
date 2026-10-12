@@ -73,9 +73,9 @@ type JobRetryLimits struct {
 // no backoff, at most 100 retries and a day of backoff.
 func DefaultJobRetryLimits() JobRetryLimits {
 	return JobRetryLimits{
-		DefaultRetries:  1,
-		MaxRetries:      100,
-		MaxRetryBackoff: 24 * time.Hour,
+		DefaultRetries:  extensions.DefaultJobRetries,
+		MaxRetries:      extensions.MaxJobRetries,
+		MaxRetryBackoff: extensions.MaxJobRetryBackoff,
 	}
 }
 
@@ -153,7 +153,7 @@ func retriesFromExpressionResult(result any) (int32, error) {
 	case string:
 		return extensions.ParseRetries(value)
 	default:
-		return 0, fmt.Errorf("evaluated to %v (%T), which is not an integer", result, result)
+		return 0, fmt.Errorf("evaluated to %s, which is not an integer", shortDescriptionOf(result))
 	}
 	if retries < 0 {
 		return 0, fmt.Errorf("evaluated to %d, which is negative", retries)
@@ -167,9 +167,9 @@ func retriesFromExpressionResult(result any) (int32, error) {
 
 // retryBackoffPolicy evaluates the retryBackoff attribute of the element's
 // task definition: a literal duration or list of durations, or a FEEL
-// expression evaluated against variables whose result is such a string or a
-// list of duration strings. Absent, the policy is empty and the engine default
-// applies when the job fails.
+// expression evaluated against variables whose result is such a string, a FEEL
+// duration or a list of duration strings and FEEL durations. Absent, the policy
+// is empty and the engine default applies when the job fails.
 func (engine *Engine) retryBackoffPolicy(element bpmn20.InternalTask, variables map[string]any) ([]time.Duration, error) {
 	raw := strings.TrimSpace(element.GetTaskDefinition().RetryBackoff)
 	if raw == "" {
@@ -182,26 +182,122 @@ func (engine *Engine) retryBackoffPolicy(element bpmn20.InternalTask, variables 
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate retryBackoff: %w", err)
 	}
-	switch value := result.(type) {
-	case string:
-		return extensions.ParseRetryBackoff(value)
-	case []any:
-		policy := make([]time.Duration, len(value))
-		for i, entry := range value {
-			text, ok := entry.(string)
-			if !ok {
-				return nil, fmt.Errorf("retryBackoff expression %q: entry %v (%T) is not a duration string", raw, entry, entry)
-			}
-			backoff, err := extensions.ParseBackoffDuration(text)
-			if err != nil {
-				return nil, fmt.Errorf("retryBackoff expression %q: %w", raw, err)
-			}
-			policy[i] = backoff
-		}
-		return policy, nil
-	default:
-		return nil, fmt.Errorf("retryBackoff expression %q evaluated to %v (%T), which is neither a duration string nor a list of them", raw, result, result)
+	if text, ok := result.(string); ok {
+		return extensions.ParseRetryBackoff(text)
 	}
+	entries, isList := result.([]any)
+	if !isList {
+		if !isFeelDuration(result) {
+			return nil, fmt.Errorf("retryBackoff expression %q evaluated to %s, which is neither a duration nor a list of durations", raw, shortDescriptionOf(result))
+		}
+		entries = []any{result}
+	}
+	policy := make([]time.Duration, len(entries))
+	for i, entry := range entries {
+		backoff, err := backoffOfExpressionEntry(entry)
+		if err != nil {
+			return nil, fmt.Errorf("retryBackoff expression %q: %w", raw, err)
+		}
+		policy[i] = backoff
+	}
+	return policy, nil
+}
+
+// backoffOfExpressionEntry reads one backoff a retryBackoff expression
+// produced: an ISO-8601 duration string or a FEEL duration.
+func backoffOfExpressionEntry(entry any) (time.Duration, error) {
+	if text, ok := entry.(string); ok {
+		return extensions.ParseBackoffDuration(text)
+	}
+	if isFeelDuration(entry) {
+		return backoffOfFeelDuration(entry.(map[string]any))
+	}
+	return 0, fmt.Errorf("entry %s is not a duration string or a FEEL duration", shortDescriptionOf(entry))
+}
+
+// isFeelDuration reports whether an expression result is a FEEL duration such
+// as duration("PT10S"): the FEEL runtime hands it over as the fields of the
+// Luxon Duration which holds it.
+func isFeelDuration(result any) bool {
+	fields, ok := result.(map[string]any)
+	return ok && fields["isLuxonDuration"] == true
+}
+
+// backoffOfFeelDuration converts a FEEL duration the way ParseBackoffDuration
+// converts an ISO-8601 one: a week counts seven days and a day 24 hours, years
+// and months are refused because their length depends on the date, and a
+// duration beyond what time.Duration holds saturates at its maximum. A fraction
+// of a second is dropped, as the job keeps its policy in whole seconds. A
+// duration which names no unit, such as duration("PT"), is refused like the
+// string "PT", and so is one which does not carry its units the way the FEEL
+// runtime hands them over, as a context made to look like a duration may: it
+// would otherwise read as no backoff at all.
+func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
+	if invalid := duration["invalid"]; invalid != nil {
+		return 0, fmt.Errorf("FEEL duration is invalid: %s", shortDescriptionOf(invalid))
+	}
+	units, ok := duration["values"].(map[string]any)
+	if !ok {
+		return 0, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", shortDescriptionOf(duration["values"]))
+	}
+	if len(units) == 0 {
+		return 0, errors.New("FEEL duration names no amount of any unit")
+	}
+	seconds := 0.0
+	for unit, amount := range units {
+		count, ok := amount.(float64)
+		if !ok {
+			whole, isWhole := amount.(int64)
+			if !isWhole {
+				return 0, fmt.Errorf("FEEL duration has %s %s, which is not a number", shortDescriptionOf(amount), unit)
+			}
+			count = float64(whole)
+		}
+		if math.IsNaN(count) || math.IsInf(count, 0) {
+			return 0, fmt.Errorf("FEEL duration has %v %s, which is not a finite number", count, unit)
+		}
+		switch unit {
+		case "years", "quarters", "months":
+			if count != 0 {
+				return 0, fmt.Errorf("FEEL duration uses years or months, whose length depends on the date: use weeks, days, hours, minutes or seconds")
+			}
+		case "weeks":
+			seconds += count * 7 * 24 * 60 * 60
+		case "days":
+			seconds += count * 24 * 60 * 60
+		case "hours":
+			seconds += count * 60 * 60
+		case "minutes":
+			seconds += count * 60
+		case "seconds":
+			seconds += count
+		case "milliseconds":
+			seconds += count / 1000
+		default:
+			return 0, fmt.Errorf("FEEL duration has the unknown unit %q", unit)
+		}
+	}
+	if seconds < 0 {
+		return 0, fmt.Errorf("FEEL duration of %v seconds must not be negative", seconds)
+	}
+	// converting a float beyond the range of int64 is not defined, so the
+	// saturation is applied before the conversion
+	if seconds >= float64(math.MaxInt64)/float64(time.Second) {
+		return time.Duration(math.MaxInt64), nil
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
+// shortDescriptionOf names an expression result an error message quotes: its
+// value and type, the value cut short, as an expression may produce a large
+// list or context, and a FEEL date or duration is an object of many fields.
+func shortDescriptionOf(value any) string {
+	const maxLength = 80
+	text := []rune(fmt.Sprintf("%v", value))
+	if len(text) > maxLength {
+		text = append(text[:maxLength], []rune("...")...)
+	}
+	return fmt.Sprintf("%s (%T)", string(text), value)
 }
 
 // backoffForAttempt is how long the job waits after its n-th failure: the

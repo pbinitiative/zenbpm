@@ -28,7 +28,29 @@ var ErrIncidentAlreadyResolved = errors.New("incident already resolved")
 type ResolveIncidentOption func(*incidentResolution)
 
 type incidentResolution struct {
-	jobRetries *operatorRetries
+	jobRetries     *operatorRetries
+	jobChangeFence JobChangeFence
+}
+
+// JobChangeFence tells whoever hands out the jobs of the engine that a job is
+// about to change, before the change reads it, and returns the function which
+// tells it the change is over. A delivery of the job which was about to leave
+// must not leave with the job as it was before the change; the fence withdraws
+// it, or waits for one already leaving.
+type JobChangeFence func(ctx context.Context, jobKey int64) (endChange func(), err error)
+
+// WithJobChangeFence makes the resolution announce the change of the job it
+// leaves waiting through fence: the resolution may move the job into a backoff
+// and changes its input variables, which a delivery of the job prepared before
+// must not overtake. The job is looked up before the lock of the process
+// instance is taken, since the fence may wait for a delivery of the job being
+// sent, and the change ends once the resolution is over. Should the incident
+// lead to another job under the lock, the resolution is refused with
+// ErrIncidentNotResolvable and may be repeated.
+func WithJobChangeFence(fence JobChangeFence) ResolveIncidentOption {
+	return func(resolution *incidentResolution) {
+		resolution.jobChangeFence = fence
+	}
 }
 
 // operatorRetries are the retries an operator sets for a job, and when it is
@@ -199,6 +221,12 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 		return incidentAlreadyResolved(incident)
 	}
 
+	fencedJobKey, endJobChange, err := engine.fenceJobOfIncident(ctx, resolution.jobChangeFence, incident)
+	if err != nil {
+		return err
+	}
+	defer endJobChange()
+
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return fmt.Errorf("%w: %w", newEngineErrorf("failed to find process instance with key %d", incident.ProcessInstanceKey), err)
@@ -254,6 +282,10 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 	job, err := jobOfIncident(jobs, incident)
 	if err != nil {
 		return err
+	}
+	if resolution.jobChangeFence != nil && job != nil && job.Key != fencedJobKey {
+		return fmt.Errorf("%w: the job incident %d leaves waiting changed while the incident was being resolved; resolve it again",
+			ErrIncidentNotResolvable, key)
 	}
 	if job != nil {
 		resoveIncidentSpan.SetAttributes(attribute.Int64(otelPkg.AttributeJobKey, job.Key))
@@ -337,6 +369,33 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
+}
+
+// fenceJobOfIncident announces the change of the job the incident leaves
+// waiting through fence, if one is given and the incident leaves a job
+// waiting, and returns the key of that job, 0 for none, and the function which
+// ends the change. It runs before the lock of the process instance is taken:
+// the fence may wait for a delivery of the job being sent, which must not wait
+// for that lock in turn.
+func (engine *Engine) fenceJobOfIncident(ctx context.Context, fence JobChangeFence, incident runtime.Incident) (jobKey int64, endChange func(), err error) {
+	noChange := func() {}
+	if fence == nil || incident.Token.Key == 0 {
+		return 0, noChange, nil
+	}
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: %w", newEngineErrorf("failed to find jobs of process instance %d", incident.ProcessInstanceKey), err)
+	}
+	job, err := jobOfIncident(jobs, incident)
+	if err != nil || job == nil {
+		// a job which cannot be told is refused under the lock, where it counts
+		return 0, noChange, nil
+	}
+	endChange, err = fence(ctx, job.Key)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to announce the change of job %d by the resolution of incident %d: %w", job.Key, incident.Key, err)
+	}
+	return job.Key, endChange, nil
 }
 
 // incidentAlreadyResolved is the refusal of a resolution of an incident which

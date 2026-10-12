@@ -946,8 +946,11 @@ type testLoader struct {
 	onRecord func(jobs []sql.Job)
 	// recordingRefusal, while set, fails every RecordDeliveries call
 	recordingRefusal error
-	// withdrawalRefusal, while set, fails every WithdrawDelivery call
+	// withdrawalRefusal, while set, fails every WithdrawDeliveries call
 	withdrawalRefusal error
+	// onWithdraw is an optional hook invoked with the jobs of every
+	// WithdrawDeliveries call before anything is taken back
+	onWithdraw func(jobs []sql.Job)
 }
 
 func (l *testLoader) addJobs(jobs ...sql.Job) {
@@ -1011,17 +1014,22 @@ func (l *testLoader) RecordDeliveries(jobs []sql.Job) ([]sql.Job, error) {
 	return recorded, nil
 }
 
-// WithdrawDelivery takes the token of a delivery back to the one before, as the
-// database does, while no other delivery was recorded since.
-func (l *testLoader) WithdrawDelivery(_ context.Context, jobKey int64, deliveryToken int64) error {
+// WithdrawDeliveries takes the token of every delivery back to the one before,
+// as the database does, while no other delivery of the job was recorded since.
+func (l *testLoader) WithdrawDeliveries(_ context.Context, jobs []sql.Job) error {
+	if l.onWithdraw != nil {
+		l.onWithdraw(jobs)
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.withdrawalRefusal != nil {
 		return l.withdrawalRefusal
 	}
-	for i := range l.jobsToSend {
-		if l.jobsToSend[i].Key == jobKey && l.jobsToSend[i].DeliveryToken == deliveryToken {
-			l.jobsToSend[i].DeliveryToken--
+	for _, job := range jobs {
+		for i := range l.jobsToSend {
+			if l.jobsToSend[i].Key == job.Key && l.jobsToSend[i].DeliveryToken == job.DeliveryToken {
+				l.jobsToSend[i].DeliveryToken--
+			}
 		}
 	}
 	return nil
@@ -1114,6 +1122,11 @@ type captureStream struct {
 	lastLockUntil int64
 	// lastDeliveryToken is the delivery token the last delivered job carried.
 	lastDeliveryToken int64
+	// onSent, when set, is called with the client and the key of every job
+	// sent, once the send is counted, outside the stream's lock
+	onSent func(client ClientID, jobKey int64)
+	// panicGate, when set, makes every job send panic once it is closed
+	panicGate chan struct{}
 }
 
 func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
@@ -1129,7 +1142,12 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 		return errors.New("transient send failure")
 	}
 	gate := s.sendGate
+	panicGate := s.panicGate
 	s.mu.Unlock()
+	if panicGate != nil {
+		<-panicGate
+		panic("the stream went wrong")
+	}
 	if gate != nil {
 		select {
 		case <-gate:
@@ -1138,11 +1156,15 @@ func (s *captureStream) Send(resp *proto.SubscribeJobResponse) error {
 		}
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.sent[ClientID(resp.GetClientId())]++
 	s.sentByType[resp.GetJobType()]++
 	s.lastLockUntil = resp.GetJob().GetLockUntil()
 	s.lastDeliveryToken = resp.GetJob().GetDeliveryToken()
+	onSent := s.onSent
+	s.mu.Unlock()
+	if onSent != nil {
+		onSent(ClientID(resp.GetClientId()), resp.GetJob().GetKey())
+	}
 	return nil
 }
 

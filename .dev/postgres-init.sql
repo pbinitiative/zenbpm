@@ -370,6 +370,7 @@ DECLARE
         'flow_element_instance',
         'incident',
         'job',
+        'job_failure',
         'message_subscription',
         'timer'
     ];

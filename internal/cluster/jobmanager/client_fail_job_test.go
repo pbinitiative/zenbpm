@@ -9,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,6 +125,19 @@ func TestClientFailJobTellsARefusalFromAnUnavailableLeader(t *testing.T) {
 		var invalid *InvalidJobRequestError
 		require.ErrorAs(t, err, &invalid)
 		assert.Equal(t, "retries of job must not be negative, got -1", invalid.Reason)
+	})
+	t.Run("a refusal is the engine's error of the same name", func(t *testing.T) {
+		// a check against the engine's name matches as well as one against the job manager's
+		leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: zenerr.Conflict(errors.New("job is already completed")).ToProtoError()}
+		err := clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, nil, nil, nil)
+		assert.ErrorIs(t, err, bpmn.ErrJobInTerminalState)
+
+		leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: zenerr.BadRequest(errors.New("retries of job must not be negative, got -1")).ToProtoError()}
+		defer func() { leaderGRPC.failJobResponse = nil }()
+		err = clientManager.FailJobReq(t.Context(), "client-1", jobKey, "down", nil, nil, new(int32(-1)), nil, nil)
+		assert.ErrorIs(t, err, bpmn.ErrInvalidJobRequest)
+		var invalid *bpmn.InvalidJobRequestError
+		assert.ErrorAs(t, err, &invalid)
 	})
 	t.Run("any other answer is none of them", func(t *testing.T) {
 		leaderGRPC.failJobResponse = &proto.FailJobResponse{Error: zenerr.TechnicalError(errors.New("disk full")).ToProtoError()}

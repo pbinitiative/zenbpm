@@ -2,9 +2,11 @@ package jobmanager
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,8 +29,10 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 		},
 	}
 	server, stream := newTestJobServer(t, loader, nil)
-	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{LockDuration: 2 * time.Second})
-	server.subscribeClient("node-2", "client-2", "test-job", SubscriptionSettings{LockDuration: 2 * time.Second})
+	// the lock outlasts the test, which lets it lapse by hand: a lock lapsing on
+	// its own on a slow runner would fail the check that it holds
+	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{LockDuration: time.Minute})
+	server.subscribeClient("node-2", "client-2", "test-job", SubscriptionSettings{LockDuration: time.Minute})
 	job := generateJobs(1)[0]
 	loader.addJobs(job)
 
@@ -42,9 +46,9 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "the job must be delivered once")
 	server.distributedJobsMu.Lock()
 	require.Len(t, server.distributedJobs, 1)
-	assert.WithinRange(t, theLockedJob(t, server).lockUntil, sentAt.Add(2*time.Second), time.Now().Add(2*time.Second),
+	assert.WithinRange(t, theLockedJob(t, server).lockUntil, sentAt.Add(time.Minute), time.Now().Add(time.Minute),
 		"the delivery is locked for the subscription's duration")
-	assert.Equal(t, 2*time.Second, theLockedJob(t, server).lockDuration)
+	assert.Equal(t, time.Minute, theLockedJob(t, server).lockDuration)
 	server.distributedJobsMu.Unlock()
 
 	require.Eventually(t, func() bool {
@@ -52,6 +56,9 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 		defer skipListMu.Unlock()
 		return len(skipLists) > 0 && slices.Contains(skipLists[len(skipLists)-1], job.Key)
 	}, 5*time.Second, 10*time.Millisecond, "a locked job stays in the skip list")
+	assert.Never(t, func() bool {
+		return stream.totalSent() > 1
+	}, 300*time.Millisecond, 10*time.Millisecond, "no other client gets the job while its lock holds")
 
 	// let the lock lapse without waiting for it
 	server.distributedJobsMu.Lock()
@@ -64,6 +71,89 @@ func TestServerReleasesJobAfterSubscriptionLockDuration(t *testing.T) {
 	cancel()
 	assert.Equal(t, 1, stream.sentTo("client-1"))
 	assert.Equal(t, 1, stream.sentTo("client-2"), "the redelivery goes to the next client in the round robin")
+}
+
+// TestCompetingClientsNeverHoldTheSameJob shows the exclusivity of a delivery
+// under contention: seven clients of one job type, each capped at three jobs,
+// compete for sixty jobs. While nobody completes a job, every client is handed
+// exactly its cap and nothing more. Then they complete the jobs they hold, each
+// after a while of work, so that the clients keep running full: every job
+// reaches exactly one client, and no client ever holds more than its cap.
+func TestCompetingClientsNeverHoldTheSameJob(t *testing.T) {
+	const clients, maxActiveJobs, jobCount = 7, 3, 60
+	loader := &testLoader{jobsToSend: []sql.Job{}, mu: &sync.RWMutex{}}
+	server, stream := newTestJobServer(t, loader, &testCompleter{loader: loader})
+	clientIDs := make([]ClientID, clients)
+	for i := range clients {
+		clientIDs[i] = ClientID(fmt.Sprintf("client-%d", i))
+		server.subscribeClient("node-2", clientIDs[i], "test-job",
+			SubscriptionSettings{LockDuration: time.Minute, MaxActiveJobs: maxActiveJobs})
+	}
+	loader.addJobs(generateJobs(jobCount)...)
+
+	var mu sync.Mutex
+	deliveries := map[int64][]ClientID{}
+	held := map[ClientID]int{}
+	mostHeld := 0
+	workStarts := make(chan struct{})
+	var completions sync.WaitGroup
+	completed := atomic.Int64{}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stream.onSent = func(client ClientID, jobKey int64) {
+		mu.Lock()
+		deliveries[jobKey] = append(deliveries[jobKey], client)
+		held[client]++
+		mostHeld = max(mostHeld, held[client])
+		mu.Unlock()
+		completions.Go(func() {
+			// the worker's processing time, which keeps its slots taken
+			select {
+			case <-workStarts:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case <-time.After(20 * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
+			// the slot is given up before the completion, which is the earliest
+			// the server may hand the client another job
+			mu.Lock()
+			held[client]--
+			mu.Unlock()
+			if err := server.completeJob(ctx, client, jobKey, nil); err == nil {
+				completed.Add(1)
+			}
+		})
+	}
+	server.startServer(ctx)
+
+	require.Eventually(t, func() bool {
+		return stream.totalSent() == clients*maxActiveJobs
+	}, 5*time.Second, 10*time.Millisecond, "every client is handed its cap")
+	assert.Never(t, func() bool {
+		return stream.totalSent() > clients*maxActiveJobs
+	}, 300*time.Millisecond, 10*time.Millisecond, "a client whose slots are all taken is handed nothing more")
+	for _, client := range clientIDs {
+		assert.Equal(t, maxActiveJobs, stream.sentTo(client), "%s holds its cap", client)
+	}
+	close(workStarts)
+
+	require.Eventually(t, func() bool {
+		return completed.Load() == jobCount
+	}, 10*time.Second, 10*time.Millisecond, "every job is completed")
+	cancel()
+	completions.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Len(t, deliveries, jobCount)
+	for jobKey, receivers := range deliveries {
+		assert.Len(t, receivers, 1, "job %d reached more than one client: %v", jobKey, receivers)
+	}
+	assert.Equal(t, maxActiveJobs, mostHeld, "no client holds more than its cap")
 }
 
 func TestServerExtendLockMovesTheDeadline(t *testing.T) {
@@ -80,20 +170,20 @@ func TestServerExtendLockMovesTheDeadline(t *testing.T) {
 	})
 
 	before := time.Now()
-	lockUntil, err := server.extendLock("client-1", jobKey, 5*time.Second)
+	lockUntil, err := server.extendLock("client-1", jobKey, 5*time.Second, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(5*time.Second), time.Now().Add(5*time.Second),
 		"the deadline is now plus the requested duration, whatever it was before")
 	assert.Equal(t, lockUntil, theLockedJob(t, server).lockUntil, "the answer is what the entry holds")
 
 	before = time.Now()
-	lockUntil, err = server.extendLock("client-1", jobKey, 0)
+	lockUntil, err = server.extendLock("client-1", jobKey, 0, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(2*time.Second), time.Now().Add(2*time.Second),
 		"no duration means the lock duration the job was delivered with")
 
 	before = time.Now()
-	lockUntil, err = server.extendLock("client-1", jobKey, time.Hour)
+	lockUntil, err = server.extendLock("client-1", jobKey, time.Hour, nil)
 	require.NoError(t, err)
 	assert.WithinRange(t, lockUntil, before.Add(10*time.Second), time.Now().Add(10*time.Second),
 		"a duration above the cap is capped")
@@ -105,14 +195,42 @@ func TestServerExtendLockOfUnknownOrForeignJob(t *testing.T) {
 	deadline := time.Now().Add(time.Minute)
 	lockJobs(server, distributedJob{client: "client-1", jobKey: heldKey, jobType: "test-job", lockUntil: deadline})
 
-	_, err := server.extendLock("client-1", gen.Generate().Int64(), time.Second)
+	_, err := server.extendLock("client-1", gen.Generate().Int64(), time.Second, nil)
 	assert.ErrorIs(t, err, ErrLockNotHeld)
 
-	_, err = server.extendLock("client-2", heldKey, time.Second)
+	_, err = server.extendLock("client-2", heldKey, time.Second, nil)
 	assert.ErrorIs(t, err, ErrLockHeldByOtherClient)
 
 	assert.Equal(t, deadline, theLockedJob(t, server).lockUntil, "a refused extension leaves the lock untouched")
 	assert.Len(t, server.distributedJobs, 1)
+}
+
+// TestServerExtendLockNamingADeliveryExtendsOnlyThatDelivery shows an extension
+// which names its delivery is refused as not held for the lock of another
+// delivery of the job to the same client, as after the named delivery's lock
+// lapsed and the job came back, and for a delivery still being written; an
+// extension naming none extends whatever the client holds.
+func TestServerExtendLockNamingADeliveryExtendsOnlyThatDelivery(t *testing.T) {
+	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
+	key := gen.Generate().Int64()
+	deadline := time.Now().Add(time.Minute)
+	lockJobs(server, distributedJob{client: "client-1", jobKey: key, jobType: "test-job", lockUntil: deadline, lockDuration: time.Minute, deliveryToken: 3})
+
+	for _, token := range []int64{2, 0, -1} {
+		_, err := server.extendLock("client-1", key, time.Hour, new(token))
+		assert.ErrorIs(t, err, ErrLockNotHeld, "token %d", token)
+	}
+	assert.Equal(t, deadline, theLockedJob(t, server).lockUntil, "a refused extension leaves the lock untouched")
+
+	_, err := server.extendLock("client-1", key, time.Hour, new(int64(3)))
+	require.NoError(t, err)
+	_, err = server.extendLock("client-1", key, time.Hour, nil)
+	require.NoError(t, err)
+
+	being := gen.Generate().Int64()
+	lockJobs(server, distributedJob{client: "client-1", jobKey: being, jobType: "test-job", lockUntil: deadline})
+	_, err = server.extendLock("client-1", being, time.Hour, new(int64(1)))
+	assert.ErrorIs(t, err, ErrLockNotHeld, "a delivery whose token is still being written reached nobody yet")
 }
 
 func TestServerExtendLockOfLapsedEntryIsRefused(t *testing.T) {
@@ -120,13 +238,13 @@ func TestServerExtendLockOfLapsedEntryIsRefused(t *testing.T) {
 	lapsedKey := gen.Generate().Int64()
 	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
 
-	_, err := server.extendLock("client-1", lapsedKey, time.Minute)
+	_, err := server.extendLock("client-1", lapsedKey, time.Minute, nil)
 
 	assert.ErrorIs(t, err, ErrLockNotHeld, "the published deadline decides, not the next cleanup round")
 	assert.Empty(t, server.distributedJobs, "a lapsed entry is dropped so the job is loadable again")
 
 	lockJobs(server, distributedJob{client: "client-1", jobKey: lapsedKey, jobType: "test-job", lockUntil: time.Now().Add(-time.Millisecond)})
-	_, err = server.extendLock("client-2", lapsedKey, time.Minute)
+	_, err = server.extendLock("client-2", lapsedKey, time.Minute, nil)
 	assert.ErrorIs(t, err, ErrLockNotHeld, "a lapsed lock is held by nobody, not by another client")
 }
 

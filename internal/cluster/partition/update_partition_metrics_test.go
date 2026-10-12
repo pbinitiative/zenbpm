@@ -62,6 +62,12 @@ func injectFakeMetrics(zpn *ZenPartitionNode) (jobsGauge, instancesGauge *fakeGa
 //	process_definition → process_instance (state=active) → job (state=waiting)
 func saveWaitingJob(t *testing.T, zpn *ZenPartitionNode, key int64) {
 	t.Helper()
+	saveWaitingJobWith(t, zpn, key, sql.NullInt64{})
+}
+
+// saveWaitingJobWith is saveWaitingJob for a job which is not handed out before retryAt.
+func saveWaitingJobWith(t *testing.T, zpn *ZenPartitionNode, key int64, retryAt sql.NullInt64) {
+	t.Helper()
 	ctx := context.Background()
 
 	if err := zpn.DB.Queries.SaveProcessDefinition(ctx, internalsql.SaveProcessDefinitionParams{
@@ -97,6 +103,7 @@ func saveWaitingJob(t *testing.T, zpn *ZenPartitionNode, key int64) {
 		InputVariables:     "{}",
 		ExecutionToken:     key,
 		Assignee:           sql.NullString{},
+		RetryAt:            retryAt,
 	}); err != nil {
 		t.Fatalf("saveWaitingJob/SaveJob: %v", err)
 	}
@@ -185,6 +192,24 @@ func TestUpdatePartitionMetrics_CountsReflectData(t *testing.T) {
 	if instancesMeasurements[0].value != 5 {
 		t.Errorf("active instances: want 5, got %d", instancesMeasurements[0].value)
 	}
+}
+
+// TestUpdatePartitionMetrics_CountsJobsWaitingOutABackoff shows jobs_waiting
+// is the backlog of active jobs, those waiting out a retry backoff included,
+// and not only the jobs deliverable at the moment.
+func TestUpdatePartitionMetrics_CountsJobsWaitingOutABackoff(t *testing.T) {
+	zpn, _, _, _, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, zpn.Stop()) }()
+
+	saveWaitingJob(t, zpn, 4001)
+	saveWaitingJobWith(t, zpn, 4002, sql.NullInt64{Int64: time.Now().Add(time.Hour).UnixMilli(), Valid: true})
+	jobsGauge, _ := injectFakeMetrics(zpn)
+
+	zpn.updatePartitionMetrics()
+
+	jobsMeasurements := jobsGauge.recorded()
+	require.Len(t, jobsMeasurements, 1)
+	require.Equal(t, int64(2), jobsMeasurements[0].value)
 }
 
 func TestUpdatePartitionMetrics_PartitionAttributeIsSet(t *testing.T) {

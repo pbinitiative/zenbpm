@@ -110,7 +110,7 @@ func TestResolveJobIncidentReevaluatesInputMappingsWithCurrentProcessVariables(t
 	require.Len(t, jobs, 1)
 	require.Equal(t, "original", jobs[0].InputVariables["workerValue"])
 
-	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil, nil, nil, nil))
 	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	require.NoError(t, err)
 	require.Len(t, incidents, 1)
@@ -174,7 +174,7 @@ func TestResolveMultiInstanceJobIncidentPreservesIterationVariable(t *testing.T)
 	}, time.Second, 10*time.Millisecond)
 	require.Equal(t, "first", jobs[0].InputVariables["testElementInput"])
 
-	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil, nil, nil, nil))
 	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), jobs[0].ProcessInstanceKey)
 	require.NoError(t, err)
 	require.Len(t, incidents, 1)
@@ -233,7 +233,7 @@ func TestResolveMultiInstanceJobIncidentReevaluatesMappingFromOriginalIterationV
 	}, time.Second, 10*time.Millisecond)
 	require.Equal(t, "first-mapped", jobs[0].InputVariables["item"])
 
-	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil))
+	require.NoError(t, engine.JobFailByKey(t.Context(), jobs[0].Key, "expected incident", nil, nil, nil, nil, nil))
 	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), jobs[0].ProcessInstanceKey)
 	require.NoError(t, err)
 	require.Len(t, incidents, 1)

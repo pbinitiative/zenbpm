@@ -836,10 +836,13 @@ type FlowElementHistoryPage struct {
 
 // Incident defines model for Incident.
 type Incident struct {
-	CreatedAt          time.Time  `json:"createdAt"`
-	ElementId          string     `json:"elementId"`
-	ElementInstanceKey int64      `json:"elementInstanceKey"`
-	ExecutionToken     int64      `json:"executionToken"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	ElementInstanceKey int64     `json:"elementInstanceKey"`
+	ExecutionToken     int64     `json:"executionToken"`
+
+	// JobKey The job the incident was created for; absent for incidents without a job.
+	JobKey             *int64     `json:"jobKey,omitempty"`
 	Key                int64      `json:"key"`
 	Message            string     `json:"message"`
 	ProcessInstanceKey int64      `json:"processInstanceKey"`
@@ -886,10 +889,16 @@ type InstanceCounts struct {
 // Job defines model for Job.
 type Job struct {
 	// Assignee Assignee (user assigned to this job)
-	Assignee           *string   `json:"assignee,omitempty"`
-	CreatedAt          time.Time `json:"createdAt"`
-	ElementId          string    `json:"elementId"`
-	ElementInstanceKey int64     `json:"elementInstanceKey"`
+	Assignee *string `json:"assignee,omitempty"`
+
+	// Attempts Failures without an error code since the job was created or its last incident was resolved.
+	Attempts  *int32    `json:"attempts,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeliveryToken Token of the latest delivery of the job over the job stream, raised with every delivery; `0` while it was never handed out. For inspection, the read may lag behind; a worker takes the token of its failure from its delivery.
+	DeliveryToken      *int64 `json:"deliveryToken,omitempty"`
+	ElementId          string `json:"elementId"`
+	ElementInstanceKey int64  `json:"elementInstanceKey"`
 
 	// ElementType BPMN element type that created the job
 	ElementType string `json:"elementType"`
@@ -898,19 +907,61 @@ type Job struct {
 	InputVariables map[string]interface{} `json:"inputVariables"`
 	Key            int64                  `json:"key"`
 
+	// LastFailureMessage Message of the latest failure without an error code.
+	LastFailureMessage *string `json:"lastFailureMessage,omitempty"`
+
 	// OutputVariables Output variables set on job completion or failure (full output before mapping)
 	OutputVariables    *map[string]interface{} `json:"outputVariables,omitempty"`
 	ProcessInstanceKey int64                   `json:"processInstanceKey"`
 
-	// Retries Remaining retries
-	Retries *int     `json:"retries,omitempty"`
-	State   JobState `json:"state"`
+	// Retries Attempts left: failures without an error code the job may still report; the one which leaves none creates an incident.
+	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryAt Before this moment an `active` job is not handed out, because it waits out a retry backoff. A job which ended during its backoff keeps the value.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// RetryBackoff Backoff policy of the task definition, fixed when the job was created (`PT10S,PT1M`); absent means `jobs.defaultRetryBackoff` applies.
+	RetryBackoff *string  `json:"retryBackoff,omitempty"`
+	State        JobState `json:"state"`
 
 	// TaskHeaders Static key/value task headers configured on the BPMN element (zenbpm:taskHeaders)
 	TaskHeaders *map[string]string `json:"taskHeaders,omitempty"`
 
 	// Type Configurable worker-routing type
 	Type string `json:"type"`
+}
+
+// JobFailure defines model for JobFailure.
+type JobFailure struct {
+	// Attempt 1-based number of the failure within the job's series of attempts.
+	Attempt  int32     `json:"attempt"`
+	FailedAt time.Time `json:"failedAt"`
+
+	// IncidentKey The incident this failure created because it exhausted the retries.
+	IncidentKey        *int64 `json:"incidentKey,omitempty"`
+	JobKey             int64  `json:"jobKey"`
+	Key                int64  `json:"key"`
+	Message            string `json:"message"`
+	ProcessInstanceKey int64  `json:"processInstanceKey"`
+
+	// RetryAt When the job was handed out again; absent when that was at once or this failure exhausted the retries.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+}
+
+// JobFailurePage defines model for JobFailurePage.
+type JobFailurePage struct {
+	// Count Number of items returned in the current page
+	Count int          `json:"count"`
+	Items []JobFailure `json:"items"`
+
+	// Page Current page number (1-based indexing)
+	Page int `json:"page"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
 }
 
 // JobPage defines model for JobPage.
@@ -1317,6 +1368,15 @@ type GetDmnResourceDefinitionsParamsSortBy string
 // GetDmnResourceDefinitionsParamsSortOrder defines parameters for GetDmnResourceDefinitions.
 type GetDmnResourceDefinitionsParamsSortOrder string
 
+// ResolveIncidentJSONBody defines parameters for ResolveIncident.
+type ResolveIncidentJSONBody struct {
+	// Retries Retries the job the incident leaves waiting has from now on, at most `jobs.maxRetries`. Absent, the resolution restores them from the task definition, unless retries were set for the job since its last series ended.
+	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryAt When that job is handed out next; only together with `retries`. Absent, or in the past, means at once; later than now plus `jobs.maxRetryBackoff` is refused.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+}
+
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
 	// ProcessInstanceKey Filter by process instance
@@ -1365,15 +1425,51 @@ type ExtendJobLockJSONBody struct {
 	// ClientId The client id of the job stream the job was delivered to.
 	ClientId string `json:"clientId"`
 
+	// DeliveryToken The `delivery_token` of the delivery whose lock to extend. Absent, the lock the client holds on the job is extended, whichever delivery it belongs to.
+	DeliveryToken *int64 `json:"deliveryToken,omitempty"`
+
 	// LockDuration ISO-8601 duration to lock the job for, counted from now. Absent means the subscription's lock duration.
 	LockDuration *string `json:"lockDuration,omitempty"`
 }
 
 // FailJobJSONBody defines parameters for FailJob.
 type FailJobJSONBody struct {
-	// ErrorCode The error code against which an error catch event is matched.
-	ErrorCode *string                 `json:"errorCode,omitempty"`
-	Variables *map[string]interface{} `json:"variables,omitempty"`
+	// ClientId The client id of the job stream the job was delivered to, whose lock the failure releases. Absent, a lock held on the job stands until it lapses.
+	ClientId *string `json:"clientId,omitempty"`
+
+	// DeliveryToken The delivery the failure belongs to - the `delivery_token` of the delivery over the job stream, taken from that delivery. A repeat of a recorded failure changes nothing, a failure of a superseded delivery is refused with `409`, and a token never handed out with `400`. Absent, every failure counts; a worker which never received the job over the stream sends none.
+	DeliveryToken *int64 `json:"deliveryToken,omitempty"`
+
+	// ErrorCode The error code against which an error catch event is matched. Absent or empty, the failure spends one of the job's retries.
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Message Why the job failed. Kept as `lastFailureMessage` on the job and, once the retries are exhausted, part of the incident message.
+	Message *string `json:"message,omitempty"`
+
+	// Retries Retries remaining after this failure. Absent means one less than now; a value above `jobs.maxRetries` is capped. Validated but otherwise ignored with an `errorCode`.
+	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryBackoff ISO-8601 duration (for example `PT10S`) the job waits before it is handed out again. Absent means the `retryBackoff` of the task definition, else `jobs.defaultRetryBackoff`; `PT0S` means at once. Capped by `jobs.maxRetryBackoff`. Validated but otherwise ignored with an `errorCode`.
+	RetryBackoff *string                 `json:"retryBackoff,omitempty"`
+	Variables    *map[string]interface{} `json:"variables,omitempty"`
+}
+
+// GetJobFailuresParams defines parameters for GetJobFailures.
+type GetJobFailuresParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 1000)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// UpdateJobRetriesJSONBody defines parameters for UpdateJobRetries.
+type UpdateJobRetriesJSONBody struct {
+	// Retries Retries the job has from now on, at most `jobs.maxRetries`.
+	Retries int32 `json:"retries"`
+
+	// RetryAt When the job is handed out next. Absent, or in the past, means at once; later than now plus `jobs.maxRetryBackoff` is refused.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
 }
 
 // PublishMessageJSONBody defines parameters for PublishMessage.
@@ -1638,6 +1734,9 @@ type UpdateProcessInstanceVariablesJSONBody struct {
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
+// ResolveIncidentJSONRequestBody defines body for ResolveIncident for application/json ContentType.
+type ResolveIncidentJSONRequestBody ResolveIncidentJSONBody
+
 // AssignJobJSONRequestBody defines body for AssignJob for application/json ContentType.
 type AssignJobJSONRequestBody AssignJobJSONBody
 
@@ -1649,6 +1748,9 @@ type ExtendJobLockJSONRequestBody ExtendJobLockJSONBody
 
 // FailJobJSONRequestBody defines body for FailJob for application/json ContentType.
 type FailJobJSONRequestBody FailJobJSONBody
+
+// UpdateJobRetriesJSONRequestBody defines body for UpdateJobRetries for application/json ContentType.
+type UpdateJobRetriesJSONRequestBody UpdateJobRetriesJSONBody
 
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
@@ -1758,8 +1860,10 @@ type ClientInterface interface {
 	// GetDmnResourceDefinition request
 	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ResolveIncident request
-	ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// ResolveIncidentWithBody request with any body
+	ResolveIncidentWithBody(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ResolveIncident(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetJobs request
 	GetJobs(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1786,6 +1890,14 @@ type ClientInterface interface {
 	FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetJobFailures request
+	GetJobFailures(ctx context.Context, jobKey int64, params *GetJobFailuresParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateJobRetriesWithBody request with any body
+	UpdateJobRetriesWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateJobRetries(ctx context.Context, jobKey int64, body UpdateJobRetriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1954,8 +2066,20 @@ func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefini
 	return c.Client.Do(req)
 }
 
-func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewResolveIncidentRequest(c.Server, incidentKey)
+func (c *Client) ResolveIncidentWithBody(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveIncidentRequestWithBody(c.Server, incidentKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveIncidentRequest(c.Server, incidentKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2076,6 +2200,42 @@ func (c *Client) FailJobWithBody(ctx context.Context, jobKey int64, contentType 
 
 func (c *Client) FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewFailJobRequest(c.Server, jobKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetJobFailures(ctx context.Context, jobKey int64, params *GetJobFailuresParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetJobFailuresRequest(c.Server, jobKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateJobRetriesWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateJobRetriesRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateJobRetries(ctx context.Context, jobKey int64, body UpdateJobRetriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateJobRetriesRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2866,8 +3026,19 @@ func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey 
 	return req, nil
 }
 
-// NewResolveIncidentRequest generates requests for ResolveIncident
-func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request, error) {
+// NewResolveIncidentRequest calls the generic ResolveIncident builder with application/json body
+func NewResolveIncidentRequest(server string, incidentKey int64, body ResolveIncidentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResolveIncidentRequestWithBody(server, incidentKey, "application/json", bodyReader)
+}
+
+// NewResolveIncidentRequestWithBody generates requests for ResolveIncident with any type of body
+func NewResolveIncidentRequestWithBody(server string, incidentKey int64, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2892,10 +3063,12 @@ func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request,
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -3241,6 +3414,126 @@ func NewFailJobRequestWithBody(server string, jobKey int64, contentType string, 
 	}
 
 	operationPath := fmt.Sprintf("/jobs/%s/fail", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetJobFailuresRequest generates requests for GetJobFailures
+func NewGetJobFailuresRequest(server string, jobKey int64, params *GetJobFailuresParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "jobKey", jobKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/failures", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "size", *params.Size, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateJobRetriesRequest calls the generic UpdateJobRetries builder with application/json body
+func NewUpdateJobRetriesRequest(server string, jobKey int64, body UpdateJobRetriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateJobRetriesRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewUpdateJobRetriesRequestWithBody generates requests for UpdateJobRetries with any type of body
+func NewUpdateJobRetriesRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "jobKey", jobKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/retries", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -4919,8 +5212,10 @@ type ClientWithResponsesInterface interface {
 	// GetDmnResourceDefinitionWithResponse request
 	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
 
-	// ResolveIncidentWithResponse request
-	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+	// ResolveIncidentWithBodyWithResponse request with any body
+	ResolveIncidentWithBodyWithResponse(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+
+	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
 
 	// GetJobsWithResponse request
 	GetJobsWithResponse(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*GetJobsResponse, error)
@@ -4947,6 +5242,14 @@ type ClientWithResponsesInterface interface {
 	FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
 
 	FailJobWithResponse(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
+
+	// GetJobFailuresWithResponse request
+	GetJobFailuresWithResponse(ctx context.Context, jobKey int64, params *GetJobFailuresParams, reqEditors ...RequestEditorFn) (*GetJobFailuresResponse, error)
+
+	// UpdateJobRetriesWithBodyWithResponse request with any body
+	UpdateJobRetriesWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateJobRetriesResponse, error)
+
+	UpdateJobRetriesWithResponse(ctx context.Context, jobKey int64, body UpdateJobRetriesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateJobRetriesResponse, error)
 
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
@@ -5252,6 +5555,9 @@ type ResolveIncidentResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5390,6 +5696,7 @@ type CompleteJobResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON413      *PayloadTooLarge
 	JSON415      *UnsupportedMediaType
 	JSON500      *Error
@@ -5467,6 +5774,7 @@ type FailJobResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON413      *PayloadTooLarge
 	JSON415      *UnsupportedMediaType
 	JSON500      *Error
@@ -5491,6 +5799,78 @@ func (r FailJobResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r FailJobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetJobFailuresResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JobFailurePage
+	JSON400      *Error
+	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetJobFailuresResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetJobFailuresResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetJobFailuresResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateJobRetriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON409      *Error
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateJobRetriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateJobRetriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateJobRetriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6396,9 +6776,17 @@ func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.C
 	return ParseGetDmnResourceDefinitionResponse(rsp)
 }
 
-// ResolveIncidentWithResponse request returning *ResolveIncidentResponse
-func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
-	rsp, err := c.ResolveIncident(ctx, incidentKey, reqEditors...)
+// ResolveIncidentWithBodyWithResponse request with arbitrary body returning *ResolveIncidentResponse
+func (c *ClientWithResponses) ResolveIncidentWithBodyWithResponse(ctx context.Context, incidentKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+	rsp, err := c.ResolveIncidentWithBody(ctx, incidentKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveIncidentResponse(rsp)
+}
+
+func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, body ResolveIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+	rsp, err := c.ResolveIncident(ctx, incidentKey, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -6489,6 +6877,32 @@ func (c *ClientWithResponses) FailJobWithResponse(ctx context.Context, jobKey in
 		return nil, err
 	}
 	return ParseFailJobResponse(rsp)
+}
+
+// GetJobFailuresWithResponse request returning *GetJobFailuresResponse
+func (c *ClientWithResponses) GetJobFailuresWithResponse(ctx context.Context, jobKey int64, params *GetJobFailuresParams, reqEditors ...RequestEditorFn) (*GetJobFailuresResponse, error) {
+	rsp, err := c.GetJobFailures(ctx, jobKey, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetJobFailuresResponse(rsp)
+}
+
+// UpdateJobRetriesWithBodyWithResponse request with arbitrary body returning *UpdateJobRetriesResponse
+func (c *ClientWithResponses) UpdateJobRetriesWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateJobRetriesResponse, error) {
+	rsp, err := c.UpdateJobRetriesWithBody(ctx, jobKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateJobRetriesResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateJobRetriesWithResponse(ctx context.Context, jobKey int64, body UpdateJobRetriesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateJobRetriesResponse, error) {
+	rsp, err := c.UpdateJobRetries(ctx, jobKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateJobRetriesResponse(rsp)
 }
 
 // PublishMessageWithBodyWithResponse request with arbitrary body returning *PublishMessageResponse
@@ -7159,6 +7573,27 @@ func ParseResolveIncidentResponse(rsp *http.Response) (*ResolveIncidentResponse,
 		}
 		response.JSON405 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7389,6 +7824,13 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 		}
 		response.JSON405 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7541,6 +7983,149 @@ func ParseFailJobResponse(rsp *http.Response) (*FailJobResponse, error) {
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetJobFailuresResponse parses an HTTP response from a GetJobFailuresWithResponse call
+func ParseGetJobFailuresResponse(rsp *http.Response) (*GetJobFailuresResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetJobFailuresResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JobFailurePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateJobRetriesResponse parses an HTTP response from a UpdateJobRetriesWithResponse call
+func ParseUpdateJobRetriesResponse(rsp *http.Response) (*UpdateJobRetriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateJobRetriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge

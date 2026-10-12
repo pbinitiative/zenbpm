@@ -306,6 +306,10 @@ func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return markTechnicalFailure(b.b.SaveJob(ctx, job))
 }
 
+func (b *EngineBatch) SaveJobFailure(ctx context.Context, failure bpmnruntime.JobFailure) error {
+	return markTechnicalFailure(b.b.SaveJobFailure(ctx, failure))
+}
+
 func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	return markTechnicalFailure(b.b.SaveMessageSubscription(ctx, subscription))
 }

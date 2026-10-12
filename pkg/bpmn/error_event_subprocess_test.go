@@ -18,7 +18,7 @@ func TestJobErrorCaughtByMatchingErrorEventSubprocess(t *testing.T) {
 	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-event-subprocess")
 	require.NotZero(t, job.Key, "expected to find the main service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
 	assert.Equal(t, "error-caught", completed.ProcessInstance().GetVariable("subProcessResult"))
@@ -37,7 +37,7 @@ func TestJobErrorWithNonMatchingCodeIsNotCaughtByErrorEventSubprocess(t *testing
 	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-event-subprocess")
 	require.NotZero(t, job.Key, "expected to find the main service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("99"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("99"), nil, nil, nil, nil))
 
 	persisted, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestJobErrorCaughtByCatchAllErrorEventSubprocess(t *testing.T) {
 	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-event-subprocess")
 	require.NotZero(t, job.Key, "expected to find the main service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("any-arbitrary-error"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("any-arbitrary-error"), nil, nil, nil, nil))
 
 	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
 	assert.Equal(t, "catch-all-caught", completed.ProcessInstance().GetVariable("subProcessResult"))
@@ -75,7 +75,7 @@ func TestErrorBoundaryEventPrioritizedOverErrorEventSubprocess(t *testing.T) {
 	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-boundary-priority")
 	require.NotZero(t, job.Key, "expected to find the main service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
 	assert.Equal(t, "boundary", completed.ProcessInstance().GetVariable("caughtBy"),
@@ -96,7 +96,7 @@ func TestSpecificErrorEventSubprocessPrioritizedOverCatchAll(t *testing.T) {
 	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-event-subprocess")
 	require.NotZero(t, job.Key, "expected to find the main service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
 	assert.Equal(t, "specific", completed.ProcessInstance().GetVariable("caughtBy"),
@@ -147,7 +147,7 @@ func TestNestedJobErrorCaughtByParentErrorEventSubprocess(t *testing.T) {
 		return job.Key != 0
 	}, time.Second, 20*time.Millisecond, "expected to find the nested service task job")
 
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
 	assert.Equal(t, "nested-job-error-caught", completed.ProcessInstance().GetVariable("subProcessResult"))

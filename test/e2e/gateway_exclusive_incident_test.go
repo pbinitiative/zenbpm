@@ -54,7 +54,7 @@ func TestExclusiveGatewayIncident(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, incidents, 1)
 
-		r, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key)
+		r, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusInternalServerError, r.StatusCode())
 		require.Contains(t, string(r.Body), "No default flow, nor matching expressions found")

@@ -35,7 +35,7 @@ func (engine *Engine) LoadFromBytes(ctx context.Context, xmlData []byte, key int
 }
 
 func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*runtime.ProcessDefinition, error) {
-	processInfo, err := parseProcessDefinition(xmlData, key)
+	processInfo, err := parseProcessDefinitionForDeployment(xmlData, key)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (engine *Engine) DeployProcessDefinition(ctx context.Context, xmlData []byt
 	if version < 1 {
 		return nil, fmt.Errorf("failed to deploy process definition %d: version must be positive, got %d", key, version)
 	}
-	processInfo, err := parseProcessDefinition(xmlData, key)
+	processInfo, err := parseProcessDefinitionForDeployment(xmlData, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process definition %d: %w", key, err)
 	}
@@ -203,9 +203,10 @@ type ProcessDefinitionIdentity struct {
 }
 
 // ParseProcessDefinitionIdentity reads the identity of a BPMN resource
-// without touching storage.
+// without touching storage. It is the first step of a deployment, so a
+// resource a deployment must refuse is refused here already.
 func ParseProcessDefinitionIdentity(xmlData []byte) (ProcessDefinitionIdentity, error) {
-	definition, err := parseProcessDefinition(xmlData, 0)
+	definition, err := parseProcessDefinitionForDeployment(xmlData, 0)
 	if err != nil {
 		return ProcessDefinitionIdentity{}, err
 	}
@@ -214,6 +215,21 @@ func ParseProcessDefinitionIdentity(xmlData []byte) (ProcessDefinitionIdentity, 
 		VersionTag: definition.VersionTag,
 		Checksum:   definition.BpmnChecksum,
 	}, nil
+}
+
+// parseProcessDefinitionForDeployment is parseProcessDefinition plus the checks
+// only a new deployment has to pass. The import of a definition another engine
+// stored (ImportProcessDefinition) parses without them: what is stored has to
+// keep loading whatever a later engine would refuse.
+func parseProcessDefinitionForDeployment(xmlData []byte, key int64) (runtime.ProcessDefinition, error) {
+	definition, err := parseProcessDefinition(xmlData, key)
+	if err != nil {
+		return runtime.ProcessDefinition{}, err
+	}
+	if err := definition.Definitions.ValidateForDeployment(); err != nil {
+		return runtime.ProcessDefinition{}, fmt.Errorf("failed to deploy process %s: %w", definition.BpmnProcessId, err)
+	}
+	return definition, nil
 }
 
 // parseProcessDefinition builds the definition record for xmlData under the

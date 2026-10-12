@@ -96,10 +96,24 @@ func WithJobType(jobType string, subOpts ...SubscriptionOption) WorkerOption {
 	}
 }
 
+// WorkerError is what a WorkerFunc returns for a job it could not finish.
+//
+// With an ErrorCode the failure is a BPMN error, caught by a matching error
+// event, and Variables are handed to it. Without one, the engine spends one of
+// the job's retries: while some remain it hands the job out again after the
+// backoff, at zero it creates an incident. Retries and RetryBackoff, when set,
+// override what remains (default: one less than now) and how long the job
+// waits (default: the task definition's retryBackoff, else the engine's).
+// The worker names the delivery token of the job, WaitingJob.GetDeliveryToken(),
+// in the failure it sends, so that the failure counts once however often it
+// reaches the engine, and changes nothing once the job was handed out again,
+// as after the lock of this delivery lapsed: the newer delivery decides.
 type WorkerError struct {
-	Err       error
-	ErrorCode string
-	Variables map[string]any
+	Err          error
+	ErrorCode    string
+	Variables    map[string]any
+	Retries      *int32
+	RetryBackoff *time.Duration
 }
 
 func (e *WorkerError) Error() string {
@@ -451,8 +465,9 @@ func (w *Worker) failPanickedJob(job *proto.WaitingJob, recovered any, send func
 	if err := send(&proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Fail{
 			Fail: &proto.JobFailRequest{
-				Key:     job.Key,
-				Message: new(fmt.Sprintf("handler panicked: %v", recovered)),
+				Key:           job.Key,
+				Message:       new(fmt.Sprintf("handler panicked: %v", recovered)),
+				DeliveryToken: job.DeliveryToken,
 			},
 		},
 	}); err != nil {
@@ -466,15 +481,21 @@ func (w *Worker) failWorkerJob(job *proto.WaitingJob, workerErr *WorkerError, se
 		w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
 	}
 
+	fail := &proto.JobFailRequest{
+		Key:           job.Key,
+		Message:       new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
+		Variables:     errVars,
+		Retries:       workerErr.Retries,
+		DeliveryToken: job.DeliveryToken,
+	}
+	if workerErr.ErrorCode != "" {
+		fail.ErrorCode = &workerErr.ErrorCode
+	}
+	if workerErr.RetryBackoff != nil {
+		fail.RetryBackoffMs = new(backoffMillis(*workerErr.RetryBackoff))
+	}
 	if err = send(&proto.JobStreamRequest{
-		Request: &proto.JobStreamRequest_Fail{
-			Fail: &proto.JobFailRequest{
-				Key:       job.Key,
-				Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
-				ErrorCode: &workerErr.ErrorCode,
-				Variables: errVars,
-			},
-		},
+		Request: &proto.JobStreamRequest_Fail{Fail: fail},
 	}); err != nil {
 		w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
 	}
@@ -516,7 +537,26 @@ type lockExtension struct {
 // with a deadline. An engine which predates lock extension answers the
 // request with a stream error naming no job; every pending call then fails
 // with an error saying so and the worker reopens its stream.
+//
+// ExtendLock extends whatever lock this worker holds on the job. A handler
+// which may still run after its lock lapsed, and the job came back to this
+// worker meanwhile, uses ExtendDeliveryLock instead.
 func (w *Worker) ExtendLock(ctx context.Context, jobKey int64, d time.Duration) (time.Time, error) {
+	return w.extendLock(ctx, jobKey, d, nil)
+}
+
+// ExtendDeliveryLock is ExtendLock for the lock of the delivery the handler
+// got, job. Once the job was handed out again, as after this delivery's lock
+// lapsed, it answers ErrLockNotHeld even when the next delivery went to this
+// worker: the handler learns that another delivery decides the job, instead of
+// keeping that delivery locked.
+func (w *Worker) ExtendDeliveryLock(ctx context.Context, job *proto.WaitingJob, d time.Duration) (time.Time, error) {
+	return w.extendLock(ctx, job.GetKey(), d, job.DeliveryToken)
+}
+
+// extendLock sends a lock extension, naming the delivery when deliveryToken is
+// given, and waits for the engine's answer.
+func (w *Worker) extendLock(ctx context.Context, jobKey int64, d time.Duration, deliveryToken *int64) (time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return time.Time{}, err
 	}
@@ -538,6 +578,7 @@ func (w *Worker) ExtendLock(ctx context.Context, jobKey int64, d time.Duration) 
 			ExtendLock: &proto.JobExtendLockRequest{
 				Key:            new(jobKey),
 				LockDurationMs: new(d.Milliseconds()),
+				DeliveryToken:  deliveryToken,
 			},
 		},
 	})
@@ -723,4 +764,16 @@ func activeJobsForWire(count int) int32 {
 		return 0
 	}
 	return int32(count)
+}
+
+// backoffMillis puts a backoff on the wire. Milliseconds are truncated towards
+// zero, which would turn a backoff just below zero into "at once"; a negative
+// backoff stays negative instead, so that the engine refuses it as it refuses
+// every other negative one.
+func backoffMillis(backoff time.Duration) int64 {
+	ms := backoff.Milliseconds()
+	if backoff < 0 && ms == 0 {
+		return -1
+	}
+	return ms
 }

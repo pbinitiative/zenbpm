@@ -41,11 +41,13 @@ type Controller struct {
 	// Cluster state change notifications run concurrently, and the decision
 	// whether the cluster is gated is re-read under this mutex, so an older
 	// notification can never undo the fence a newer one installed.
-	maintenanceMu           sync.Mutex
-	store                   ControlledStore
-	client                  *client.ClientManager
-	Config                  config.Cluster
-	persistenceConfig       config.Persistence
+	maintenanceMu     sync.Mutex
+	store             ControlledStore
+	client            *client.ClientManager
+	Config            config.Cluster
+	persistenceConfig config.Persistence
+	// jobRetryLimits are handed to every engine the controller creates.
+	jobRetryLimits          bpmn.JobRetryLimits
 	cdcConfig               config.CDC
 	mux                     *tcp.Mux
 	logger                  hclog.Logger
@@ -75,7 +77,17 @@ const (
 	maxInitializationAttempts = 8
 )
 
-func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
+// Option configures a Controller.
+type Option func(*Controller)
+
+// WithJobRetryLimits sets the retry limits of the engines the controller creates.
+func WithJobRetryLimits(limits bpmn.JobRetryLimits) Option {
+	return func(c *Controller) {
+		c.jobRetryLimits = limits
+	}
+}
+
+func NewController(mux *tcp.Mux, conf config.Cluster, opts ...Option) (*Controller, error) {
 	if conf.PartitionRetryDelay <= 0 {
 		conf.PartitionRetryDelay = defaultRetryDelay
 	}
@@ -94,6 +106,10 @@ func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 		initializationFailures:  make(map[uint32]uint),
 		lifecycleCtx:            lifecycleCtx,
 		lifecycleCancel:         lifecycleCancel,
+		jobRetryLimits:          bpmn.DefaultJobRetryLimits(),
+	}
+	for _, opt := range opts {
+		opt(&c)
 	}
 	return &c, nil
 }
@@ -883,10 +899,35 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 			c.Config.Engine.ReconciliationBatchSize,
 			!c.Config.Engine.ReconciliationScanDisabled,
 		),
+		bpmn.EngineWithJobRetryLimits(c.jobRetryLimits),
 		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
 			return db.Partition == clusterState().DefinitionSubscriptionPartition(definition.BpmnProcessId)
 		}),
 	)), nil
+}
+
+// JobRetryLimits turns the jobs section of the configuration into the retry
+// limits of an engine. Fields left at their zero value, as in a configuration
+// built in code, take their defaults, the way the job manager's limits do.
+func JobRetryLimits(jobs config.Jobs) (bpmn.JobRetryLimits, error) {
+	jobs = jobs.WithDefaults()
+	if err := jobs.Validate(); err != nil {
+		return bpmn.JobRetryLimits{}, err
+	}
+	defaultBackoff, err := jobs.DefaultRetryBackoffPolicy()
+	if err != nil {
+		return bpmn.JobRetryLimits{}, err
+	}
+	maxBackoff, err := jobs.MaxRetryBackoffDuration()
+	if err != nil {
+		return bpmn.JobRetryLimits{}, err
+	}
+	return bpmn.JobRetryLimits{
+		DefaultRetries:      jobs.DefaultRetries,
+		MaxRetries:          jobs.MaxRetries,
+		DefaultRetryBackoff: defaultBackoff,
+		MaxRetryBackoff:     maxBackoff,
+	}, nil
 }
 
 func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {

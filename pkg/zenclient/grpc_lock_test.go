@@ -76,6 +76,36 @@ func TestExtendLock_ReturnsTheDeadlineTheEngineAnswers(t *testing.T) {
 	assert.Zero(t, pendingLockWaiters(worker), "an answered call leaves no waiter behind")
 }
 
+// TestExtendDeliveryLock_NamesTheDeliveryOfTheHandler shows the extension of a
+// handler's own delivery names its delivery token, so that the engine refuses
+// it once the job was handed out again, and that ExtendLock names none.
+func TestExtendDeliveryLock_NamesTheDeliveryOfTheHandler(t *testing.T) {
+	stream := newFakeBidiStream()
+	worker := lockTestWorker(t, stream)
+	lockUntil := time.Now().Add(time.Minute).Truncate(time.Millisecond)
+	go func() {
+		for answered := 1; answered <= 2; answered++ {
+			assert.Eventually(t, func() bool { return len(stream.sentRequests()) == answered }, time.Second, 5*time.Millisecond)
+			stream.recvCh <- recvResult{resp: &proto.JobStreamResponse{
+				LockExtended: &proto.LockExtended{Key: new(int64(7)), LockUntil: new(lockUntil.UnixMilli())},
+			}}
+		}
+	}()
+
+	_, err := worker.ExtendDeliveryLock(context.Background(), &proto.WaitingJob{Key: new(int64(7)), DeliveryToken: new(int64(3))}, 0)
+	require.NoError(t, err)
+	_, err = worker.ExtendLock(context.Background(), 7, 0)
+	require.NoError(t, err)
+
+	sent := stream.sentRequests()
+	require.Len(t, sent, 2)
+	ofTheDelivery, ofTheJob := sent[0].GetExtendLock(), sent[1].GetExtendLock()
+	require.NotNil(t, ofTheDelivery)
+	require.NotNil(t, ofTheJob)
+	assert.Equal(t, new(int64(3)), ofTheDelivery.DeliveryToken)
+	assert.Nil(t, ofTheJob.DeliveryToken)
+}
+
 func TestExtendLock_MapsRefusalCodesToErrors(t *testing.T) {
 	tests := []struct {
 		name     string

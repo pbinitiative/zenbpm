@@ -97,7 +97,7 @@ type ZenPartitionNode struct {
 
 func (zpn *ZenPartitionNode) createMetrics() {
 	var err error
-	zpn.metrics.jobsWaiting, err = otel.Meter(partitionMeter).Int64Gauge("jobs_waiting", metric.WithDescription("Number of jobs waiting to be completed"))
+	zpn.metrics.jobsWaiting, err = otel.Meter(partitionMeter).Int64Gauge("jobs_waiting", metric.WithDescription("Number of active jobs waiting to be completed, those waiting out a retry backoff included"))
 	if err != nil {
 		zpn.logger.Error("Failed to register meter for jobsWaiting", "err", err)
 	}

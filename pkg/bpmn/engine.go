@@ -112,6 +112,9 @@ type Engine struct {
 	// Values <= 0 disable the check. Defaults to DefaultMaxProcessInstanceFlowNodeCount.
 	maxProcessInstanceFlowNodeCount int64
 
+	// jobRetryLimits are the defaults and caps of the retries of jobs. Defaults to DefaultJobRetryLimits.
+	jobRetryLimits JobRetryLimits
+
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
 
@@ -203,6 +206,7 @@ func newEngine(factories engineFactories, options ...EngineOption) Engine {
 		lifecycle:                       &engineLifecycle{},
 		maxProcessInstanceNestingDepth:  DefaultMaxProcessInstanceNestingDepth,
 		maxProcessInstanceFlowNodeCount: DefaultMaxProcessInstanceFlowNodeCount,
+		jobRetryLimits:                  DefaultJobRetryLimits(),
 		stopOnce:                        &sync.Once{},
 	}
 
@@ -1502,7 +1506,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	return runtime.ActivityStateCompleted, nil
 }
 
-// TODO: Implement Headers as worker parameters and Retries
+// TODO: Implement Headers as worker parameters
 func (engine *Engine) createExternalBusinessRuleTask(
 	ctx context.Context,
 	batch *EngineBatch,

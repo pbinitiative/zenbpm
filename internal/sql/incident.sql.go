@@ -33,7 +33,7 @@ func (q *Queries) DeleteProcessInstancesIncidents(ctx context.Context, keys []in
 
 const findIncidentByKey = `-- name: FindIncidentByKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type, job_key
 FROM
     incident
 WHERE
@@ -53,13 +53,14 @@ func (q *Queries) FindIncidentByKey(ctx context.Context, key int64) (Incident, e
 		&i.ResolvedAt,
 		&i.ExecutionToken,
 		&i.IncidentType,
+		&i.JobKey,
 	)
 	return i, err
 }
 
 const findIncidents = `-- name: FindIncidents :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type, job_key
 FROM
     incident
 WHERE
@@ -91,6 +92,7 @@ func (q *Queries) FindIncidents(ctx context.Context, arg FindIncidentsParams) ([
 			&i.ResolvedAt,
 			&i.ExecutionToken,
 			&i.IncidentType,
+			&i.JobKey,
 		); err != nil {
 			return nil, err
 		}
@@ -107,7 +109,7 @@ func (q *Queries) FindIncidents(ctx context.Context, arg FindIncidentsParams) ([
 
 const findIncidentsByExecutionTokenKey = `-- name: FindIncidentsByExecutionTokenKey :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type, job_key
 FROM
     incident
 WHERE
@@ -133,6 +135,7 @@ func (q *Queries) FindIncidentsByExecutionTokenKey(ctx context.Context, executio
 			&i.ResolvedAt,
 			&i.ExecutionToken,
 			&i.IncidentType,
+			&i.JobKey,
 		); err != nil {
 			return nil, err
 		}
@@ -149,7 +152,7 @@ func (q *Queries) FindIncidentsByExecutionTokenKey(ctx context.Context, executio
 
 const findIncidentsByProcessInstanceKey = `-- name: FindIncidentsByProcessInstanceKey :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type, job_key
 FROM
     incident
 WHERE
@@ -175,6 +178,7 @@ func (q *Queries) FindIncidentsByProcessInstanceKey(ctx context.Context, process
 			&i.ResolvedAt,
 			&i.ExecutionToken,
 			&i.IncidentType,
+			&i.JobKey,
 		); err != nil {
 			return nil, err
 		}
@@ -191,7 +195,7 @@ func (q *Queries) FindIncidentsByProcessInstanceKey(ctx context.Context, process
 
 const findIncidentsPageByProcessInstanceKey = `-- name: FindIncidentsPageByProcessInstanceKey :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type,
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token, incident_type, job_key,
     COUNT(*) OVER () AS total_count
 FROM
     incident
@@ -223,6 +227,7 @@ type FindIncidentsPageByProcessInstanceKeyRow struct {
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
 	IncidentType       string        `json:"incident_type"`
+	JobKey             sql.NullInt64 `json:"job_key"`
 	TotalCount         int64         `json:"total_count"`
 }
 
@@ -250,6 +255,7 @@ func (q *Queries) FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg
 			&i.ResolvedAt,
 			&i.ExecutionToken,
 			&i.IncidentType,
+			&i.JobKey,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -266,8 +272,8 @@ func (q *Queries) FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg
 }
 
 const saveIncident = `-- name: SaveIncident :exec
-INSERT INTO incident(key, element_id, element_instance_key, process_instance_key, incident_type, message, created_at, resolved_at, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO incident(key, element_id, element_instance_key, process_instance_key, incident_type, message, created_at, resolved_at, execution_token, job_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         resolved_at = excluded.resolved_at
@@ -283,6 +289,7 @@ type SaveIncidentParams struct {
 	CreatedAt          int64         `json:"created_at"`
 	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
 	ExecutionToken     int64         `json:"execution_token"`
+	JobKey             sql.NullInt64 `json:"job_key"`
 }
 
 func (q *Queries) SaveIncident(ctx context.Context, arg SaveIncidentParams) error {
@@ -296,6 +303,7 @@ func (q *Queries) SaveIncident(ctx context.Context, arg SaveIncidentParams) erro
 		arg.CreatedAt,
 		arg.ResolvedAt,
 		arg.ExecutionToken,
+		arg.JobKey,
 	)
 	return err
 }

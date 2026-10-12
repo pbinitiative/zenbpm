@@ -205,7 +205,7 @@ func TestNestedErrorEventSubProcessTracksNestingDepth(t *testing.T) {
 	assert.Equal(t, int64(1), subProcessChild.ProcessInstance().NestingDepth)
 
 	job := waitForPendingJob(t, subProcessChild.ProcessInstance().Key)
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	eventSubProcessChild := waitForChildInstanceOfType(t, subProcessChild.ProcessInstance().Key, runtime.ProcessTypeSubProcess, 5*time.Second)
 	assert.Equal(t, int64(2), eventSubProcessChild.ProcessInstance().NestingDepth)
@@ -290,6 +290,12 @@ func TestNestedMessageEventSubProcessExceedingMaxProcessInstanceNestingDepthCrea
 	require.NoError(t, err)
 	assert.Len(t, completedSubscriptions, 1)
 
+	err = engine.ResolveIncident(t.Context(), incident.Key, WithJobRetries(2, nil))
+	require.ErrorIs(t, err, ErrInvalidJobRequest, "an incident without a token leaves no job waiting to give retries to")
+	activeSubscriptions, err = store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
+	require.NoError(t, err)
+	assert.Empty(t, activeSubscriptions, "the refused resolution changes nothing")
+
 	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
 	activeSubscriptions, err = store.FindProcessInstanceMessageSubscriptions(t.Context(), subProcessChild.ProcessInstance().Key, runtime.ActivityStateActive)
 	require.NoError(t, err)
@@ -360,7 +366,7 @@ func TestNestedErrorEventSubProcessExceedingMaxProcessInstanceNestingDepthCreate
 
 	job := waitForPendingJobInStore(t, store, subProcessChild.ProcessInstance().Key)
 	// the error event subprocess would run at depth 2 (> maxNestingDepth); the job fail must succeed
-	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
+	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil, nil, nil, nil))
 
 	incident := waitForNestingDepthIncident(t, engine, store, 5*time.Second)
 	assert.Contains(t, incident.Message, fmt.Sprintf("maximum allowed process instance nesting depth of %d", maxNestingDepth))

@@ -9,6 +9,11 @@ jobManager:
   maxLockDurationMs: 86400000 #24h
   defaultMaxActiveJobs: 10
   maxActiveJobsCap: 1000
+jobs:
+  defaultRetries: 1 # one attempt: the first failure without an error code creates an incident
+  maxRetries: 100
+  defaultRetryBackoff: PT0S # ISO-8601 duration or a comma-separated list, one entry per failure
+  maxRetryBackoff: PT24H
 cluster:
   addr: localhost:8090
   adv: localhost:8090

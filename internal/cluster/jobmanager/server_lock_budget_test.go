@@ -14,7 +14,7 @@ import (
 )
 
 // TestServerNeverLocksMoreJobsThanOneQueryCanExclude shows the leader stops
-// delivering once the locked keys, the job types and the limit would exceed
+// delivering once the locked keys, the job types, the current time and the limit would exceed
 // the parameters one query may carry, whatever the subscriptions ask for,
 // and resumes as jobs complete. A query above the limit fails, which would
 // stall every delivery of the leader.
@@ -25,7 +25,7 @@ func TestServerNeverLocksMoreJobsThanOneQueryCanExclude(t *testing.T) {
 		jobsToSend: []sql.Job{},
 		mu:         &sync.RWMutex{},
 		onLoad: func(jobTypes []string, idsToSkip []int64, _ int64) {
-			if len(jobTypes)+len(idsToSkip)+1 > maxQueryParameters {
+			if len(jobTypes)+len(idsToSkip)+2 > maxQueryParameters {
 				oversizedQueries.Add(1)
 			}
 		},
@@ -33,8 +33,8 @@ func TestServerNeverLocksMoreJobsThanOneQueryCanExclude(t *testing.T) {
 	completer := &testCompleter{completedJobs: []int64{}, loader: loader}
 	server, stream := newTestJobServer(t, loader, completer)
 	server.maxQueryParameters = maxQueryParameters
-	// the job type and the limit take two parameters, six remain for locked keys
-	const lockBudget = maxQueryParameters - 2
+	// the job type, the current time and the limit take three parameters, five remain for locked keys
+	const lockBudget = maxQueryParameters - 3
 	server.subscribeClient("node-2", "client-1", "test-job", SubscriptionSettings{MaxActiveJobs: 100})
 	jobs := generateJobs(20)
 	loader.addJobs(jobs...)

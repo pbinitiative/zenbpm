@@ -38,7 +38,7 @@ func TestStartEventIncident(t *testing.T) {
 		require.Equal(t, "start_event", incidents[0].ElementId)
 		require.Contains(t, incidents[0].Message, "failed to evaluate StartEvent output mappings")
 
-		response, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key)
+		response, err := app.restClient.ResolveIncidentWithResponse(t.Context(), incidents[0].Key, zenclient.ResolveIncidentJSONRequestBody{})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusInternalServerError, response.StatusCode())
 		require.Contains(t, string(response.Body), "failed to evaluate StartEvent output mappings")

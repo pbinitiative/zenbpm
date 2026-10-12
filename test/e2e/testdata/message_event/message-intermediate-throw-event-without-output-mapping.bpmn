@@ -7,7 +7,7 @@
     <bpmn:sequenceFlow id="Flow_start_to_throw" sourceRef="start_event" targetRef="message_throw_event" />
     <bpmn:intermediateThrowEvent id="message_throw_event">
       <bpmn:extensionElements>
-        <zenbpm:taskDefinition type="message-intermediate-throw" retries="3" />
+        <zenbpm:taskDefinition type="message-intermediate-throw" />
         <zenbpm:ioMapping>
           <zenbpm:input source="=payload" target="messagePayload" />
           <zenbpm:input source="=correlationId" target="messageCorrelationId" />

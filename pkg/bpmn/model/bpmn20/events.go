@@ -124,6 +124,10 @@ func (endEvent TEndEvent) GetTaskType() string {
 	return endEvent.TaskDefinition.TypeName
 }
 
+func (endEvent TEndEvent) GetTaskDefinition() extensions.TTaskDefinition {
+	return endEvent.TaskDefinition
+}
+
 func (endEvent TEndEvent) GetInputMapping() []extensions.TIoMapping {
 	return endEvent.Input
 }
@@ -241,6 +245,11 @@ func (intermediateThrowEvent TIntermediateThrowEvent) GetOutputMapping() []exten
 // GetTaskType returns the task type configured for the intermediate throw event.
 func (intermediateThrowEvent TIntermediateThrowEvent) GetTaskType() string {
 	return intermediateThrowEvent.TaskDefinition.TypeName
+}
+
+// GetTaskDefinition returns the task definition configured for the intermediate throw event.
+func (intermediateThrowEvent TIntermediateThrowEvent) GetTaskDefinition() extensions.TTaskDefinition {
+	return intermediateThrowEvent.TaskDefinition
 }
 
 // UnmarshalXML decodes an intermediate throw event from its BPMN XML representation.

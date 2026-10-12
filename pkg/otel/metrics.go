@@ -2,6 +2,7 @@ package otel
 
 import (
 	"errors"
+	"slices"
 
 	"go.opentelemetry.io/otel/metric"
 )
@@ -15,6 +16,13 @@ var latencyBucketsMs = []float64{
 	1_000, 2_500, 5_000, 10_000, 30_000, 60_000,
 	300_000, 900_000, 3_600_000,
 }
+
+// retryBackoffBucketsMs are the latency buckets extended to a day, the
+// default cap of a retry backoff (jobs.maxRetryBackoff): a backoff of hours is
+// a policy, not an outlier to lump into +Inf.
+var retryBackoffBucketsMs = append(slices.Clone(latencyBucketsMs),
+	7_200_000, 21_600_000, 43_200_000, 86_400_000,
+)
 
 // LatencyBucketsMs returns a fresh copy of the shared latency histogram bucket
 // boundaries (in milliseconds) so that callers cannot mutate the canonical set.
@@ -30,7 +38,12 @@ type EngineMetrics struct {
 	ProcessesRunning metric.Int64UpDownCounter
 	JobsCreated      metric.Int64Counter
 	JobsCompleted    metric.Int64Counter
-	JobsFailed       metric.Int64Counter
+	// JobsFailed counts jobs which failed for good: with an error code or with no retries left.
+	JobsFailed metric.Int64Counter
+	// JobsRetried counts failures without an error code which left the job active for another attempt.
+	JobsRetried metric.Int64Counter
+	// JobRetryBackoff measures the backoff a retried job waits before it is handed out again, in ms.
+	JobRetryBackoff metric.Float64Histogram
 
 	// IncidentsCreated counts incidents raised by the engine.
 	IncidentsCreated metric.Int64Counter
@@ -74,6 +87,16 @@ func NewMetrics(meter metric.Meter) (*EngineMetrics, error) {
 	errJoin = errors.Join(errJoin, err)
 
 	jobsFailed, err := meter.Int64Counter("jobs_failed", metric.WithDescription("Number of jobs failed"))
+	errJoin = errors.Join(errJoin, err)
+
+	jobsRetried, err := meter.Int64Counter("jobs_retried", metric.WithDescription("Number of job failures without an error code which left retries for another attempt"))
+	errJoin = errors.Join(errJoin, err)
+
+	jobRetryBackoff, err := meter.Float64Histogram("job_retry_backoff",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Backoff a retried job waits before it is handed out again, milliseconds"),
+		metric.WithExplicitBucketBoundaries(retryBackoffBucketsMs...),
+	)
 	errJoin = errors.Join(errJoin, err)
 
 	incidentsCreated, err := meter.Int64Counter("incidents_created", metric.WithDescription("Number of incidents created"))
@@ -135,6 +158,8 @@ func NewMetrics(meter metric.Meter) (*EngineMetrics, error) {
 		JobsCreated:                   jobsCreated,
 		JobsCompleted:                 jobsCompleted,
 		JobsFailed:                    jobsFailed,
+		JobsRetried:                   jobsRetried,
+		JobRetryBackoff:               jobRetryBackoff,
 		IncidentsCreated:              incidentsCreated,
 		IncidentsResolved:             incidentsResolved,
 		ProcessInstanceDuration:       processInstanceDuration,

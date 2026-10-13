@@ -19,19 +19,14 @@ var (
 		"StartEvent_1",
 		"Flow_0xt1d7q",
 		"service_task",
+		"Event_15f0ox7",
 		"Flow_104hlf4",
 		"error_boundary_event_end",
 	}
-	parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure = []string{
+	parallelMultiInstanceChildErrorBoundaryHistory = []string{
 		"service_task",
 		"service_task",
 		"service_task",
-	}
-	parallelMultiInstanceChildErrorBoundaryHistoryAfterHandledFailure = []string{
-		"service_task",
-		"service_task",
-		"service_task",
-		"Event_15f0ox7",
 	}
 )
 
@@ -40,29 +35,29 @@ func TestParallelMultiInstanceErrorBoundaryFlow(t *testing.T) {
 		processInstance, multiInstanceProcess := createParallelMultiInstanceErrorBoundaryFlowInstance(t, "testdata/multi_instance/parallel_multi_instance_service_task_with_error_boundary_event.bpmn", "parallel-multi-instance-flow", 1)
 
 		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
-		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure)
+		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("44"), nil)
 
-		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryAfterHandledFailure, parallelMultiInstanceChildErrorBoundaryHistoryAfterHandledFailure, "error_boundary_event_end")
+		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryAfterHandledFailure, parallelMultiInstanceChildErrorBoundaryHistory, "error_boundary_event_end")
 	})
 
 	t.Run("Catch-all error boundary catches any code and completes handled parent path", func(t *testing.T) {
 		processInstance, multiInstanceProcess := createParallelMultiInstanceErrorBoundaryFlowInstance(t, "testdata/multi_instance/parallel_multi_instance_service_task_with_catch_all_error_boundary_event.bpmn", "parallel-multi-instance-flow-catch-all", 1)
 
 		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
-		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure)
+		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("any-error"), nil)
 
-		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryAfterHandledFailure, parallelMultiInstanceChildErrorBoundaryHistoryAfterHandledFailure, "error_boundary_event_end")
+		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryAfterHandledFailure, parallelMultiInstanceChildErrorBoundaryHistory, "error_boundary_event_end")
 	})
 
 	t.Run("Non-matching error boundary keeps parent and child active and creates child incident", func(t *testing.T) {
 		processInstance, multiInstanceProcess := createParallelMultiInstanceErrorBoundaryFlowInstance(t, "testdata/multi_instance/parallel_multi_instance_service_task_with_error_boundary_event.bpmn", "parallel-multi-instance-flow-unmatched", 1)
 
 		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
-		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure)
+		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 1, parallelMultiInstanceParentErrorBoundaryHistoryBeforeFailure, parallelMultiInstanceChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("99"), nil)
 
@@ -70,7 +65,7 @@ func TestParallelMultiInstanceErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenStates(t, multiInstanceProcess.Key, "service_task", runtime.TokenStateWaiting, parallelMultiInstanceServiceTaskCount)
 		assertProcessInstanceIncidentsLength(t, multiInstanceProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, multiInstanceProcess.Key)
-		assertExactProcessInstanceHistory(t, multiInstanceProcess.Key, parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure)
+		assertExactProcessInstanceHistory(t, multiInstanceProcess.Key, parallelMultiInstanceChildErrorBoundaryHistory)
 
 		assertProcessInstanceTokenState(t, processInstance.Key, "service_task", runtime.TokenStateWaiting)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
@@ -81,15 +76,14 @@ func TestParallelMultiInstanceErrorBoundaryFlow(t *testing.T) {
 	t.Run("Exact-match error boundary completes exact parent handler instead of catch-all path", func(t *testing.T) {
 		processInstance, multiInstanceProcess := createParallelMultiInstanceErrorBoundaryFlowInstance(t, "testdata/multi_instance/parallel_multi_instance_service_task_with_error_boundary_and_catch_all.bpmn", "parallel-multi-instance-flow-priority", 2)
 		parentBefore := []string{"StartEvent_1", "Flow_start_main", "service_task"}
-		parentAfter := []string{"StartEvent_1", "Flow_start_main", "service_task", "Flow_boundary_handled", "handled-end"}
-		childAfter := []string{"service_task", "service_task", "service_task", "boundary-error-main-task"}
+		parentAfter := []string{"StartEvent_1", "Flow_start_main", "service_task", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"}
 
 		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
-		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 2, parentBefore, parallelMultiInstanceChildErrorBoundaryHistoryBeforeFailure)
+		assertParallelMultiInstanceErrorBoundaryWaitingFlow(t, processInstance.Key, multiInstanceProcess.Key, 2, parentBefore, parallelMultiInstanceChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("44"), nil)
 
-		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 2, parentAfter, childAfter, "handled-end")
+		assertParallelMultiInstanceErrorBoundaryHandledFlow(t, processInstance.Key, multiInstanceProcess.Key, 2, parentAfter, parallelMultiInstanceChildErrorBoundaryHistory, "handled-end")
 	})
 }
 

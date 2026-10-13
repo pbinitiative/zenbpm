@@ -87,7 +87,7 @@ func deployCallActivityMessageBoundaryDefinitionsWithInterrupting(t testing.TB, 
 	t.Helper()
 
 	suffix := messageEventTestSuffix()
-	childProcessID := fmt.Sprintf("%s-%d", callActivityErrorBoundaryChildProcessId, suffix)
+	childProcessID := fmt.Sprintf("%s-%d", callActivityChildProcessID, suffix)
 	childJobType := fmt.Sprintf("call-activity-message-boundary-child-%d", suffix)
 	_, err := deployTestDataDefinitionWithJobType(
 		t,
@@ -107,7 +107,7 @@ func deployCallActivityMessageBoundaryDefinitionsWithInterrupting(t testing.TB, 
 	content = replaceInBPMNFixture(t, parentFilename, content,
 		fmt.Sprintf(`bpmn:process id="%s"`, baseProcessID), fmt.Sprintf(`bpmn:process id="%s"`, processID))
 	content = replaceInBPMNFixture(t, parentFilename, content,
-		fmt.Sprintf(`calledElement processId="%s"`, callActivityErrorBoundaryChildProcessId),
+		fmt.Sprintf(`calledElement processId="%s"`, callActivityChildProcessID),
 		fmt.Sprintf(`calledElement processId="%s"`, childProcessID))
 	content = replaceInBPMNFixture(t, parentFilename, content,
 		`name="message"`, fmt.Sprintf(`name="%s"`, messageName))

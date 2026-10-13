@@ -185,10 +185,12 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 		return nil, nil, fmt.Errorf("failed to save process instance %d after boundary error handling: %w", boundaryInstance.ProcessInstance().Key, err)
 	}
 
+	// The boundary event belongs to the process that declares it, not to the (possibly nested
+	// sub process or called) instance in which the error was thrown.
 	err = batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                boundaryEventKey,
-			ProcessInstanceKey: currentInstance.ProcessInstance().GetInstanceKey(),
+			ProcessInstanceKey: boundaryInstance.ProcessInstance().GetInstanceKey(),
 			ElementId:          match.event.TEvent.GetId(),
 			ElementType:        string(match.event.GetType()),
 			CreatedAt:          boundaryEventCreatedAt,

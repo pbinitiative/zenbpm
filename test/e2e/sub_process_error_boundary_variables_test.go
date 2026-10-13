@@ -24,7 +24,7 @@ func TestSubProcessErrorBoundaryVariables(t *testing.T) {
 		failJobForElementId(t, innerProcess.Key, "service_task", new("31"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, innerProcess.Key, "boundary_error_exact_match", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary_error_exact_match", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, jobVariables))
 	})
 
@@ -49,7 +49,7 @@ func TestSubProcessErrorBoundaryVariables(t *testing.T) {
 
 		expectedBoundaryVariables := map[string]any{"variable_name": "boundary_value"}
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, innerProcess.Key, "boundary_error_exact_match", expectedBoundaryVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary_error_exact_match", expectedBoundaryVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, expectedBoundaryVariables))
 	})
 
@@ -70,7 +70,7 @@ func TestSubProcessErrorBoundaryVariables(t *testing.T) {
 		failJobForElementId(t, innerProcess.Key, "service_task", new("any-error"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, innerProcess.Key, "boundary_error_catch_all", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary_error_catch_all", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, jobVariables))
 	})
 }

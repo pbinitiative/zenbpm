@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_call_activity_input_output_mapping" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="call-activity-with-input-output-mapping" name="Call Activity With Input Output Mapping" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_call</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_call" sourceRef="StartEvent_1" targetRef="call_activity" />
+    <bpmn:callActivity id="call_activity" name="Call activity">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="simple_task_for_call_activity_error_boundary_event" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=order_id" target="child_order_id" />
+          <zenbpm:output source="=variable_name" target="call_result" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_call</bpmn:incoming>
+      <bpmn:outgoing>Flow_call_completed</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:sequenceFlow id="Flow_call_completed" sourceRef="call_activity" targetRef="completed-end" />
+    <bpmn:endEvent id="completed-end" name="Completed end">
+      <bpmn:incoming>Flow_call_completed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="error_boundary" attachedToRef="call_activity">
+      <bpmn:outgoing>Flow_error_handled</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_call_activity" errorRef="Error_call_activity" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_error_handled" sourceRef="error_boundary" targetRef="handled-end" />
+    <bpmn:endEvent id="handled-end" name="Handled end">
+      <bpmn:incoming>Flow_error_handled</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="Error_call_activity" name="Call activity error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="call-activity-with-input-output-mapping">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="172" y="132" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="call_activity_di" bpmnElement="call_activity">
+        <dc:Bounds x="270" y="110" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="completed_end_di" bpmnElement="completed-end">
+        <dc:Bounds x="442" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="423" y="175" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="handled_end_di" bpmnElement="handled-end">
+        <dc:Bounds x="442" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="429" y="275" width="63" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error_boundary_di" bpmnElement="error_boundary">
+        <dc:Bounds x="352" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_call_di" bpmnElement="Flow_start_call">
+        <di:waypoint x="208" y="150" />
+        <di:waypoint x="270" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_call_completed_di" bpmnElement="Flow_call_completed">
+        <di:waypoint x="370" y="150" />
+        <di:waypoint x="442" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_handled_di" bpmnElement="Flow_error_handled">
+        <di:waypoint x="370" y="208" />
+        <di:waypoint x="370" y="250" />
+        <di:waypoint x="442" y="250" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

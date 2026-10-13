@@ -26,6 +26,7 @@ Reference the process to call in a `zenbpm:calledElement` extension element. Opt
 | `zenbpm:calledElement`               | `bindingType`      | no       | Set `bindingType="versionTag"` together with `versionTag="..."` for version-tag selection, or set `bindingType="latest"` to select the highest deployed numeric version. When omitted, `latest` is the default unless the direct `version` attribute is configured. |
 | `zenbpm:calledElement`               | `versionTag`       | with `bindingType="versionTag"` | The engine first looks for an exact match against the deployed process's stored `zenbpm:versionTag`. If no exact tag matches and the value has the form `v<positive-number>`, such as `v2`, the engine selects that exact numeric process-definition version. If neither definition exists, the Call Activity creates an incident; it does not fall back to the latest version. |
 | `zenbpm:calledElement`               | `version`          | no       | Selects an exact positive numeric process-definition version directly. Do not combine it with `bindingType`. |
+| `zenbpm:calledElement`               | `propagateAllChildVariables` | no | **Not supported** and ignored when present. Unlike Zeebe, where it defaults to `true`, ZenBPM never propagates all variables of the called instance; only output-mapped variables reach the parent. |
 | `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Initializes variables of the called instance. See [Variables](../../variable-mapping.md). |
 | `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps variables of the completed called instance back to the process scope. See [Variables](../../variable-mapping.md). |
 
@@ -42,8 +43,27 @@ Execution flow:
 1. A token arrives at the Call Activity and input mappings are evaluated. A direct numeric `version` selects that exact deployed process version. With `bindingType="versionTag"`, the engine first resolves an exact stored tag and then, only for an unmatched `versionTag="v<positive-number>"`, tries the corresponding numeric version. Without an explicit selection, the engine resolves the available version with the highest number. If all lookups applicable to an explicit selection fail, the activity creates an incident instead of falling back to the latest version.
 2. A new instance of the called process is created, linked to the parent and running on the same partition. It starts with a snapshot copy of the parent's variables plus the input-mapped values; changes inside the called instance do not write back to the parent. The parent token waits, and boundary events attached to the Call Activity are armed.
 3. The called instance executes like any other process instance.
-4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues.
-5. An error end event in the called process bubbles up to the parent and can be caught by an [error boundary event](../events/error-events.md#error-boundary-event) on the Call Activity — including across nested Call Activities. An uncaught error creates an incident.
+4. On completion, **only output-mapped variables are propagated to the parent scope**, and the parent token continues. An output mapping's source expression is evaluated against the called instance's variables. Without output mappings no variable of the called instance reaches the parent — not even one whose name already exists in the parent. Boundary event subscriptions that did not trigger are closed.
+
+## Error handling
+
+An error raised inside the called instance propagates up to the parent and can be caught there. Both error sources are supported:
+
+- an [error end event](../events/error-events.md#error-end-event) reached in the called process, and
+- a job worker reporting a business error, that is, failing a job in the called process with an error code.
+
+The engine looks for a handler in the called instance first. If the called instance has none, it looks at the Call Activity, where an [error boundary event](../events/error-events.md#error-boundary-event) referencing the error code takes precedence over a catch-all one, and then at the parent's error [event sub process](./event-sub-process.md). The search continues across nested Call Activities until a handler matches.
+
+When an error boundary event on the Call Activity catches the error:
+
+- The error boundary event is interrupting. The called instance, and every instance the error travelled through, is terminated, and the parent token leaves through the boundary event's outgoing flow.
+- The Call Activity's own output mappings are **not** evaluated. Data reaches the parent only as the error payload.
+- A business error from a failed job carries the job's variables as its payload. They are all propagated to the parent unless the boundary event defines `zenbpm:output` mappings, in which case only the mapped variables are (see [Variables](../../variable-mapping.md)). An error end event carries no payload.
+
+When nothing catches the error, an incident is recorded instead:
+
+- For a business error from a failed job, the incident belongs to that job in the called instance. The parent and the called instance stay active, and the parent token keeps waiting at the Call Activity.
+- For an error end event, the incident is recorded in the root process instance, on the element through which the error arrived there: the Call Activity, or an enclosing sub process or multi-instance activity. Unlike the job case, that element's token is completed and its boundary event subscriptions are closed, so the parent does not continue on its own. No instance is terminated or failed: the instances along the way stay active.
 
 ## Related documentation
 

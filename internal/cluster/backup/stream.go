@@ -22,7 +22,7 @@ const backupChunkSize = 1 << 20 // 1 MiB
 
 // BackupSource is the subset of *rqlite/store.Store used for backups.
 type BackupSource interface {
-	Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) error
+	Backup(ctx context.Context, br *rqcmd.BackupRequest, dst io.Writer) (int, error)
 }
 
 // chunkSendWriter adapts a chunk-send callback into an io.Writer,
@@ -59,7 +59,7 @@ func StreamPartitionBackup(ctx context.Context, src BackupSource, schemaVersion 
 		Vacuum:   true,
 		Compress: true,
 	}
-	if err := src.Backup(ctx, br, w); err != nil {
+	if _, err := src.Backup(ctx, br, w); err != nil {
 		return fmt.Errorf("partition backup failed: %w", err)
 	}
 	return send(&proto.BackupChunk{

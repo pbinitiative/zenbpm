@@ -65,8 +65,8 @@ func TestConfiguration(t *testing.T) {
 		if err := Init("test", "TEST"); err != nil {
 			t.Fatalf("initialize disabled reporting: %v", err)
 		}
-		if client := sentry.CurrentHub().Client(); client != nil {
-			t.Fatal("Sentry client is configured, want reporting disabled")
+		if sentry.CurrentHub().Client().IsEnabled() {
+			t.Fatal("Sentry client is enabled, want reporting disabled")
 		}
 		if eventID := CaptureUnexpected(context.Background(), "test.disabled", context.Canceled); eventID != nil {
 			t.Fatalf("captured event %v while reporting is disabled", eventID)
@@ -84,8 +84,8 @@ func TestConfiguration(t *testing.T) {
 		if err := Init("test", "TEST"); err != nil {
 			t.Fatalf("initialize reporting without a DSN: %v", err)
 		}
-		if client := sentry.CurrentHub().Client(); client != nil {
-			t.Fatal("Sentry client is configured, want reporting disabled")
+		if sentry.CurrentHub().Client().IsEnabled() {
+			t.Fatal("Sentry client is enabled, want reporting disabled")
 		}
 	})
 
@@ -100,8 +100,44 @@ func TestConfiguration(t *testing.T) {
 		if !strings.Contains(err.Error(), "SENTRY_ENABLED") {
 			t.Fatalf("error %q does not identify SENTRY_ENABLED", err)
 		}
-		if client := sentry.CurrentHub().Client(); client != nil {
-			t.Fatal("Sentry client is configured after invalid initialization")
+		if sentry.CurrentHub().Client().IsEnabled() {
+			t.Fatal("Sentry client is enabled after invalid initialization")
+		}
+	})
+
+	t.Run("enables reporting with a configured DSN", func(t *testing.T) {
+		restoreCurrentClientAfterTest(t)
+		t.Setenv("SENTRY_ENABLED", "true")
+		t.Setenv("SENTRY_DSN", "https://public@example.com/1")
+
+		if err := Init("test", "TEST"); err != nil {
+			t.Fatalf("initialize reporting: %v", err)
+		}
+		client := sentry.CurrentHub().Client()
+		t.Cleanup(func() { client.Close() })
+		if !client.IsEnabled() {
+			t.Fatal("Sentry client is disabled, want reporting enabled")
+		}
+	})
+
+	t.Run("rejects an invalid DSN and disables an existing client", func(t *testing.T) {
+		restoreCurrentClientAfterTest(t)
+		ctx, transport := newRecordingContext(t)
+		sentry.CurrentHub().BindClient(sentry.GetHubFromContext(ctx).Client())
+		t.Setenv("SENTRY_ENABLED", "true")
+		t.Setenv("SENTRY_DSN", "not-a-valid-dsn")
+
+		if err := Init("test", "TEST"); err == nil {
+			t.Fatal("expected an invalid SENTRY_DSN error")
+		}
+		if sentry.CurrentHub().Client().IsEnabled() {
+			t.Fatal("Sentry client is enabled after invalid initialization")
+		}
+		if eventID := CaptureUnexpected(context.Background(), "test.invalid_dsn", context.Canceled); eventID != nil {
+			t.Fatalf("captured event %v after invalid initialization", eventID)
+		}
+		if got := transport.eventCount(); got != 0 {
+			t.Fatalf("captured events = %d, want 0", got)
 		}
 	})
 }

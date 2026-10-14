@@ -46,7 +46,7 @@ func Init(release string, defaultEnvironment string) error {
 }
 
 func Flush(timeout time.Duration) bool {
-	if sentry.CurrentHub().Client() == nil {
+	if !sentry.CurrentHub().Client().IsEnabled() {
 		return true
 	}
 	return sentry.Flush(timeout)
@@ -119,7 +119,7 @@ func CaptureUnexpected(ctx context.Context, code string, err error) *sentry.Even
 func HTTPContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hub := currentHubForContext(r.Context())
-		if hub.Client() == nil {
+		if !hub.Client().IsEnabled() {
 			next.ServeHTTP(w, r)
 			return
 		}

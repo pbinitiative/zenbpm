@@ -214,6 +214,35 @@ func TestJobFailOnCallActivityWithMatchingErrorBoundaryIsCaught(t *testing.T) {
 	assertTokenElementIds(t, processInstance, []string{"handled-end"}, []string{"should-not-happen-end"})
 }
 
+func TestJobFailOnCallActivityRecordsBoundaryHistoryInParentInstance(t *testing.T) {
+	createdProcessInstance := createCallActivityProcessInstance(t, "call_activity_with_error_boundary_event.bpmn")
+	parentKey := createdProcessInstance.ProcessInstance().Key
+
+	var childInstance runtime.CallActivityInstance
+	require.Eventually(t, func() bool {
+		var found bool
+		childInstance, found = findCallActivityChildInstance(parentKey)
+		return found
+	}, time.Second, 20*time.Millisecond)
+	childKey := childInstance.ProcessInstance().Key
+
+	var job runtime.Job
+	require.Eventually(t, func() bool {
+		job = findJobForProcessInstance(childKey, "id")
+		return job.Key != 0
+	}, time.Second, 20*time.Millisecond, "expected to find child process job created for call activity")
+
+	errorCode := "42"
+	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil, nil, nil, nil))
+
+	// The boundary event is declared by the parent process, so its history belongs to the parent
+	// instance even though the error was thrown by a job of the called child instance.
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		assert.Contains(collect, flowElementInstanceElementIDs(t, parentKey), "boundary-error-main-task")
+	}, time.Second, 20*time.Millisecond)
+	assert.NotContains(t, flowElementInstanceElementIDs(t, childKey), "boundary-error-main-task")
+}
+
 func TestJobFailOnCallActivityWithMatchingErrorBoundaryPropagatesVariablesToCatchingScope(t *testing.T) {
 	createdProcessInstance := createCallActivityProcessInstance(t, "call_activity_with_error_boundary_event_and_output_mapping.bpmn")
 
@@ -707,6 +736,18 @@ func findDescendantProcessInstances(parentProcessInstanceKey int64) []runtime.Pr
 	}
 
 	return descendants
+}
+
+func flowElementInstanceElementIDs(t testing.TB, processInstanceKey int64) []string {
+	t.Helper()
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+	require.NoError(t, err)
+	ids := make([]string, 0, len(flowElements))
+	for _, flowElement := range flowElements {
+		ids = append(ids, flowElement.ElementId)
+	}
+	return ids
 }
 
 func tokenElementIDs(tokens []runtime.ExecutionToken) []string {

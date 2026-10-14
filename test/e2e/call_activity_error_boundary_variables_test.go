@@ -14,17 +14,11 @@ func TestCallActivityErrorBoundaryVariables(t *testing.T) {
 		}
 		jobVariables := map[string]any{"variable_name": "boundary_value"}
 
-		parentDefinitionKey := deployCallActivityErrorBoundaryTestDataProcessDefinitions(t, "testdata/call_activity/call_activity_with_error_boundary_event.bpmn")
-		processInstance := createProcessInstanceWithVariables(t, parentDefinitionKey, createInstanceVariables)
-		t.Cleanup(func() {
-			cleanupOwnedProcessInstance(t, processInstance.Key)
-		})
-
-		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
+		processInstance, childInstance := createCallActivityInstance(t, "testdata/call_activity/call_activity_with_error_boundary_event.bpmn", createInstanceVariables)
 		failJobForElementId(t, childInstance.Key, "id", new("42"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, childInstance.Key, "boundary-error-main-task", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, jobVariables))
 	})
 
@@ -38,18 +32,12 @@ func TestCallActivityErrorBoundaryVariables(t *testing.T) {
 			"ignored":               "ignored_value",
 		}
 
-		parentDefinitionKey := deployCallActivityErrorBoundaryTestDataProcessDefinitions(t, "testdata/call_activity/call_activity_with_error_boundary_event_and_output_mapping.bpmn")
-		processInstance := createProcessInstanceWithVariables(t, parentDefinitionKey, createInstanceVariables)
-		t.Cleanup(func() {
-			cleanupOwnedProcessInstance(t, processInstance.Key)
-		})
-
-		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
+		processInstance, childInstance := createCallActivityInstance(t, "testdata/call_activity/call_activity_with_error_boundary_event_and_output_mapping.bpmn", createInstanceVariables)
 		failJobForElementId(t, childInstance.Key, "id", new("42"), jobVariables)
 
 		expectedBoundaryVariables := map[string]any{"boundary_variable": "boundary_value"}
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, childInstance.Key, "boundary-error-main-task", expectedBoundaryVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", expectedBoundaryVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, expectedBoundaryVariables))
 	})
 
@@ -60,17 +48,11 @@ func TestCallActivityErrorBoundaryVariables(t *testing.T) {
 		}
 		jobVariables := map[string]any{"error_detail": "catch_all_value"}
 
-		parentDefinitionKey := deployCallActivityErrorBoundaryTestDataProcessDefinitions(t, "testdata/call_activity/call_activity_with_catch_all_error_boundary_event.bpmn")
-		processInstance := createProcessInstanceWithVariables(t, parentDefinitionKey, createInstanceVariables)
-		t.Cleanup(func() {
-			cleanupOwnedProcessInstance(t, processInstance.Key)
-		})
-
-		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
+		processInstance, childInstance := createCallActivityInstance(t, "testdata/call_activity/call_activity_with_catch_all_error_boundary_event.bpmn", createInstanceVariables)
 		failJobForElementId(t, childInstance.Key, "id", new("any-error"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, childInstance.Key, "boundary-error-main-task", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(createInstanceVariables, jobVariables))
 	})
 }

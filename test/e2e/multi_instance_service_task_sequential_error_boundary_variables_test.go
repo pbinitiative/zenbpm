@@ -24,7 +24,7 @@ func TestSequentialMultiInstanceErrorBoundaryVariables(t *testing.T) {
 		failJobForElementId(t, multiInstanceProcess.Key, "service_task", new("44"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, multiInstanceProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, multiInstanceProcess.Key, "Event_15f0ox7", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "Event_15f0ox7", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(multiInstanceErrorBoundaryExpectedBaseVariables(), jobVariables))
 	})
 
@@ -46,7 +46,7 @@ func TestSequentialMultiInstanceErrorBoundaryVariables(t *testing.T) {
 
 		expectedBoundaryVariables := map[string]any{"variable_name": "boundary_value"}
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, multiInstanceProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, multiInstanceProcess.Key, "Event_15f0ox7", expectedBoundaryVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "Event_15f0ox7", expectedBoundaryVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(multiInstanceErrorBoundaryExpectedBaseVariables(), expectedBoundaryVariables))
 	})
 
@@ -64,7 +64,7 @@ func TestSequentialMultiInstanceErrorBoundaryVariables(t *testing.T) {
 		failJobForElementId(t, multiInstanceProcess.Key, "service_task", new("any-error"), jobVariables)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, multiInstanceProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertFlowElementOutputVariables(t, multiInstanceProcess.Key, "Event_15f0ox7", jobVariables)
+		assertFlowElementOutputVariables(t, processInstance.Key, "Event_15f0ox7", jobVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, mergeMaps(multiInstanceErrorBoundaryExpectedBaseVariables(), jobVariables))
 	})
 }

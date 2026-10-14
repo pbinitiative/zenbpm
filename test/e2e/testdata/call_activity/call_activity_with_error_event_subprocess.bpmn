@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_call_activity_with_error_event_subprocess" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="call-activity-with-error-event-subprocess" name="Call Activity With Error Event Subprocess" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_call</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_call" sourceRef="StartEvent_1" targetRef="call_activity" />
+    <bpmn:callActivity id="call_activity" name="Call activity">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="simple_task_for_call_activity_error_boundary_event" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_call</bpmn:incoming>
+      <bpmn:outgoing>Flow_call_completed</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:sequenceFlow id="Flow_call_completed" sourceRef="call_activity" targetRef="completed-end" />
+    <bpmn:endEvent id="completed-end" name="Completed end">
+      <bpmn:incoming>Flow_call_completed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="error-event-subprocess" triggeredByEvent="true">
+      <bpmn:startEvent id="error-start-event">
+        <bpmn:outgoing>Flow_error_sub</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_event_subprocess" errorRef="Error_call_activity" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_error_sub" sourceRef="error-start-event" targetRef="event-subprocess-end" />
+      <bpmn:endEvent id="event-subprocess-end" name="Event sub process end">
+        <bpmn:incoming>Flow_error_sub</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:error id="Error_call_activity" name="Call activity error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="call-activity-with-error-event-subprocess">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="172" y="132" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="call_activity_di" bpmnElement="call_activity">
+        <dc:Bounds x="270" y="110" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="completed_end_di" bpmnElement="completed-end">
+        <dc:Bounds x="442" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="423" y="175" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error_event_subprocess_di" bpmnElement="error-event-subprocess" isExpanded="true">
+        <dc:Bounds x="160" y="320" width="360" height="140" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error_start_event_di" bpmnElement="error-start-event">
+        <dc:Bounds x="200" y="372" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="event_subprocess_end_di" bpmnElement="event-subprocess-end">
+        <dc:Bounds x="432" y="372" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="396" y="415" width="108" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_call_di" bpmnElement="Flow_start_call">
+        <di:waypoint x="208" y="150" />
+        <di:waypoint x="270" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_call_completed_di" bpmnElement="Flow_call_completed">
+        <di:waypoint x="370" y="150" />
+        <di:waypoint x="442" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_sub_di" bpmnElement="Flow_error_sub">
+        <di:waypoint x="236" y="390" />
+        <di:waypoint x="432" y="390" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

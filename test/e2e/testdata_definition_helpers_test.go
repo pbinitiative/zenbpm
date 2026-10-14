@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,52 +64,67 @@ func deployTestDataDefinition(t testing.TB, filename string, processId string, j
 		file = bytes.ReplaceAll(file, oldBytes, newBytes)
 	}
 
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/process-definitions").
-		WithMethod("POST").
-		WithBinaryBody(file).
-		DoOk()
+	resp, err := deployDefinitionFromBytes(t, file)
 	if err != nil {
-		return result, fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
+		return result, err
 	}
-	if err = json.Unmarshal(resp, &result); err != nil {
-		return result, fmt.Errorf("failed to unmarshal create definition response: %w", err)
+	switch {
+	case resp.JSON201 != nil:
+		result.ProcessDefinitionKey = resp.JSON201.ProcessDefinitionKey
+	case resp.JSON200 != nil:
+		result.ProcessDefinitionKey = resp.JSON200.ProcessDefinitionKey
+	default:
+		return result, fmt.Errorf("failed to deploy process definition %s: unexpected response %s", filename, resp.Status())
 	}
 	return result, nil
 }
 
-const callActivityErrorBoundaryChildProcessId = "simple_task_for_call_activity_error_boundary_event"
+const callActivityChildProcessID = "simple_task_for_call_activity_error_boundary_event"
 
-func deployCallActivityErrorBoundaryTestDataProcessDefinitions(t testing.TB, parentFilename string) int64 {
+func deployCallActivityTestDataProcessDefinitions(t testing.TB, parentFilename string) int64 {
 	t.Helper()
 
 	uniqueSuffix := time.Now().UnixNano()
-	childProcessId := fmt.Sprintf("%s-%d", callActivityErrorBoundaryChildProcessId, uniqueSuffix)
+	childProcessID := fmt.Sprintf("%s-%d", callActivityChildProcessID, uniqueSuffix)
 	childJobType := fmt.Sprintf("call-activity-child-%d", uniqueSuffix)
 
 	_, err := deployTestDataDefinitionWithJobType(
 		t,
 		"testdata/call_activity/call_activity_with_error_boundary_event_child_process.bpmn",
-		childProcessId,
+		childProcessID,
 		map[string]string{
 			"TestType": childJobType,
 		},
 	)
 	require.NoError(t, err)
 
-	parentProcessId := fmt.Sprintf("call-activity-error-boundary-parent-%d", uniqueSuffix)
+	parentProcessID := fmt.Sprintf("call-activity-parent-%d", uniqueSuffix)
 	parentDefinition, err := deployTestDataDefinition(
 		t,
 		parentFilename,
-		parentProcessId,
+		parentProcessID,
 		nil,
 		map[string]string{
-			callActivityErrorBoundaryChildProcessId: childProcessId,
+			callActivityChildProcessID: childProcessID,
 		},
 	)
 	require.NoError(t, err)
 	require.NotZero(t, parentDefinition.ProcessDefinitionKey)
 	return parentDefinition.ProcessDefinitionKey
+}
+
+// createCallActivityInstance deploys the parent fixture together with its called child process,
+// starts the parent with the given variables and waits for the called child instance.
+func createCallActivityInstance(t testing.TB, filename string, variables map[string]any) (zenclient.ProcessInstance, zenclient.ProcessInstancesSimple) {
+	t.Helper()
+
+	parentDefinitionKey := deployCallActivityTestDataProcessDefinitions(t, filename)
+	processInstance := createProcessInstanceWithVariables(t, parentDefinitionKey, variables)
+	t.Cleanup(func() {
+		cleanupOwnedProcessInstance(t, processInstance.Key)
+	})
+	childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
+	return processInstance, childInstance
 }
 
 func readE2ETestDataBPMN(filename string) ([]byte, error) {

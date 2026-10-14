@@ -13,7 +13,7 @@ var (
 		"Flow_start_main",
 		"subprocess",
 	}
-	subProcessChildErrorBoundaryHistoryBeforeFailure = []string{
+	subProcessChildErrorBoundaryHistory = []string{
 		"sub_process_start",
 		"Flow_1jotui9",
 		"service_task",
@@ -22,27 +22,17 @@ var (
 		"StartEvent_1",
 		"Flow_start_main",
 		"subprocess",
+		"boundary_error_exact_match",
 		"Flow_0xorbu0",
 		"exact_match_end",
-	}
-	subProcessChildExactErrorBoundaryHistoryAfterHandledFailure = []string{
-		"sub_process_start",
-		"Flow_1jotui9",
-		"service_task",
-		"boundary_error_exact_match",
 	}
 	subProcessParentCatchAllErrorBoundaryHistoryAfterHandledFailure = []string{
 		"StartEvent_1",
 		"Flow_start_main",
 		"subprocess",
+		"boundary_error_catch_all",
 		"Flow_boundary_handled",
 		"catch_all_end",
-	}
-	subProcessChildCatchAllErrorBoundaryHistoryAfterHandledFailure = []string{
-		"sub_process_start",
-		"Flow_1jotui9",
-		"service_task",
-		"boundary_error_catch_all",
 	}
 )
 
@@ -51,14 +41,14 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		processInstance, innerProcess := createSubProcessErrorBoundaryFlowInstance(t, "testdata/sub_process/subprocess_with_error_boundary_event.bpmn")
 
 		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
-		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistoryBeforeFailure)
+		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("31"), nil)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildErrorBoundaryHistory)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "exact_match_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
@@ -69,14 +59,14 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		processInstance, innerProcess := createSubProcessErrorBoundaryFlowInstance(t, "testdata/sub_process/subprocess_with_error_boundary_event_catch_all.bpmn")
 
 		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
-		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistoryBeforeFailure)
+		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("any-error"), nil)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildCatchAllErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildErrorBoundaryHistory)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "catch_all_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
@@ -87,7 +77,7 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		processInstance, innerProcess := createSubProcessErrorBoundaryFlowInstance(t, "testdata/sub_process/subprocess_with_error_boundary_event.bpmn")
 
 		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
-		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistoryBeforeFailure)
+		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 1, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("99"), nil)
 
@@ -95,7 +85,7 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateWaiting)
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactProcessInstanceHistory(t, innerProcess.Key, subProcessChildErrorBoundaryHistoryBeforeFailure)
+		assertExactProcessInstanceHistory(t, innerProcess.Key, subProcessChildErrorBoundaryHistory)
 
 		assertProcessInstanceTokenState(t, processInstance.Key, "subprocess", runtime.TokenStateWaiting)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
@@ -107,14 +97,14 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		processInstance, innerProcess := createSubProcessErrorBoundaryFlowInstance(t, "testdata/sub_process/subprocess_with_error_boundary_and_catch_all.bpmn")
 
 		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
-		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 2, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistoryBeforeFailure)
+		assertSubProcessErrorBoundaryWaitingFlow(t, processInstance.Key, innerProcess.Key, 2, subProcessParentErrorBoundaryHistoryBeforeFailure, subProcessChildErrorBoundaryHistory)
 
 		failJob(t, job.Key, new("31"), nil)
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", runtime.TokenStateCanceled)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
-		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildExactErrorBoundaryHistoryAfterHandledFailure)
+		assertExactCompletedProcessInstanceHistory(t, innerProcess.Key, subProcessChildErrorBoundaryHistory)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "exact_match_end")
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 2)
@@ -146,7 +136,7 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceVariables(t, serviceTaskProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, serviceTaskProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, serviceTaskProcess.Key)
-		assertProcessInstanceHistory(t, serviceTaskProcess.Key, []string{"Flow_0lr9l93", "Event_0vhkfv0", "service_task", "Event_0pbbln3"})
+		assertProcessInstanceHistory(t, serviceTaskProcess.Key, []string{"Flow_0lr9l93", "Event_0vhkfv0", "service_task"})
 
 		waitForProcessInstanceState(t, secondChildProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceVariables(t, secondChildProcess.Key, map[string]interface{}{"variable_name": "test-value"})
@@ -158,7 +148,7 @@ func TestSubProcessErrorBoundaryFlow(t *testing.T) {
 		assertProcessInstanceVariables(t, firstChildProcess.Key, map[string]interface{}{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, firstChildProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, firstChildProcess.Key, 0, 1)
-		assertProcessInstanceHistory(t, firstChildProcess.Key, []string{"Flow_1ijsfip", "start_subprocess_1", "subprocess_1", "Flow_1nd1fpn", "Event_09haznn"})
+		assertProcessInstanceHistory(t, firstChildProcess.Key, []string{"Flow_1ijsfip", "start_subprocess_1", "subprocess_1", "Event_0pbbln3", "Flow_1nd1fpn", "Event_09haznn"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "complete", runtime.TokenStateCompleted)

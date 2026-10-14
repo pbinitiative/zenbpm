@@ -15,7 +15,7 @@ openapi: 3.0.0
 info:
   title: ZenBPM System OpenAPI
   description: Operational REST API for ZenBPM (health, metrics, backup & restore)
-  version: 1.0.0
+  version: 1.9.0
   contact:
     name: API Support
     email: info@pbinitiative.org

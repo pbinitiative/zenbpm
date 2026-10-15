@@ -138,9 +138,14 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 // engine which did not read these attributes yet must keep loading, or its
 // running instances would be stuck and a corrected version of the process could
 // not be deployed. Such a definition is checked when a job is created. A FEEL
-// expression is only known then as well.
+// expression is only known then as well. A multi-instance completionCondition
+// is refused the same way: the engine does not evaluate it, so an already stored
+// definition runs every iteration as before.
 func (definitions *TDefinitions) ValidateForDeployment() error {
-	return validateTaskDefinitions(definitions.Process.internalTasksByID)
+	if err := validateTaskDefinitions(definitions.Process.internalTasksByID); err != nil {
+		return err
+	}
+	return validateMultiInstanceCompletionConditions(definitions.Process.flowNodesByID)
 }
 
 // validateTaskDefinitions is ValidateForDeployment over the indexed tasks. The
@@ -158,6 +163,26 @@ func validateTaskDefinitions(tasks map[string]InternalTask) error {
 			if _, err := extensions.ParseRetryBackoff(backoff); err != nil {
 				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
 			}
+		}
+	}
+	return nil
+}
+
+// validateMultiInstanceCompletionConditions refuses a multi-instance activity
+// whose completionCondition is not blank. The engine always waits for every iteration,
+// so a model relying on the condition to finish early would silently wait for
+// all of them instead. The elements are visited in the order of their ids, so
+// the same model always names the same element.
+func validateMultiInstanceCompletionConditions(flowNodes map[string]FlowNode) error {
+	for _, id := range slices.Sorted(maps.Keys(flowNodes)) {
+		activity, ok := flowNodes[id].(Activity)
+		if !ok || activity.GetMultiInstance() == nil {
+			continue
+		}
+		if strings.TrimSpace(activity.GetMultiInstance().CompletionCondition) != "" {
+			elementName := bpmnElementName(reflect.Indirect(reflect.ValueOf(activity)).Type().Name())
+			return fmt.Errorf("unsupported element configuration: %s id=%q has a multi-instance completionCondition: completion conditions are not supported, every iteration runs to completion",
+				elementName, id)
 		}
 	}
 	return nil

@@ -171,11 +171,19 @@ func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, err
 
 func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, error) {
 	t.Helper()
+	return getChildInstancesPage(t, key, nil)
+}
+
+// getChildInstancesPage reads the first page of the children of the process
+// instance; a nil size leaves the page size to the API default.
+func getChildInstancesPage(t testing.TB, key int64, size *int32) (zenclient.ProcessInstancePage, error) {
+	t.Helper()
 
 	includeChildProcesses := true
 	resp, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 		ParentProcessInstanceKey: &key,
 		IncludeChildProcesses:    &includeChildProcesses,
+		Size:                     size,
 	})
 	if err != nil {
 		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)

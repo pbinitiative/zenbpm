@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_mi_sub_process_parallel" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="MultiInstance_Parallel_Sub_Process" name="MultiInstance_Parallel_Sub_Process" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>flow_to_sub_process</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_to_sub_process" sourceRef="start_event" targetRef="sub_process" />
+    <bpmn:subProcess id="sub_process">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=reviewDecision" target="reviewOutcome" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_to_sub_process</bpmn:incoming>
+      <bpmn:outgoing>flow_to_end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
+        <bpmn:extensionElements>
+          <zenbpm:loopCharacteristics inputCollection="=items" inputElement="item" outputCollection="results" outputElement="={ item: item, outcome: reviewOutcome }" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+      <bpmn:startEvent id="sub_start_event">
+        <bpmn:outgoing>flow_to_review_task</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="flow_to_review_task" sourceRef="sub_start_event" targetRef="review_task" />
+      <bpmn:serviceTask id="review_task">
+        <bpmn:extensionElements>
+          <zenbpm:taskDefinition type="multi-instance-sub-process-review" />
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=decision" target="reviewDecision" />
+          </zenbpm:ioMapping>
+        </bpmn:extensionElements>
+        <bpmn:incoming>flow_to_review_task</bpmn:incoming>
+        <bpmn:outgoing>flow_to_sub_end</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="flow_to_sub_end" sourceRef="review_task" targetRef="sub_end_event" />
+      <bpmn:endEvent id="sub_end_event">
+        <bpmn:incoming>flow_to_sub_end</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="flow_to_end" sourceRef="sub_process" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="MultiInstance_Parallel_Sub_Process">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="152" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_process_di" bpmnElement="sub_process" isExpanded="true">
+        <dc:Bounds x="250" y="80" width="360" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_start_event_di" bpmnElement="sub_start_event">
+        <dc:Bounds x="282" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="review_task_di" bpmnElement="review_task">
+        <dc:Bounds x="380" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_end_event_di" bpmnElement="sub_end_event">
+        <dc:Bounds x="542" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="672" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_to_sub_process_di" bpmnElement="flow_to_sub_process">
+        <di:waypoint x="188" y="180" />
+        <di:waypoint x="250" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_to_review_task_di" bpmnElement="flow_to_review_task">
+        <di:waypoint x="318" y="180" />
+        <di:waypoint x="380" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_to_sub_end_di" bpmnElement="flow_to_sub_end">
+        <di:waypoint x="480" y="180" />
+        <di:waypoint x="542" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_to_end_di" bpmnElement="flow_to_end">
+        <di:waypoint x="610" y="180" />
+        <di:waypoint x="672" y="180" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

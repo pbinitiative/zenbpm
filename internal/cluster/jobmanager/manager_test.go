@@ -834,6 +834,7 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 	return &proto.FailJobResponse{}, nil
 }
 
+// receivedFailRequests is a copy of the FailJob requests received.
 func (s *grpcSrv) receivedFailRequests() []*proto.FailJobRequest {
 	s.requestsMu.Lock()
 	defer s.requestsMu.Unlock()

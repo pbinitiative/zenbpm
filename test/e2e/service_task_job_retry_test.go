@@ -369,6 +369,9 @@ func TestUpdateRetriesWithADeadlineThenResolveKeepsTheDeadline(t *testing.T) {
 	assert.True(t, retryAt.Equal(*resolved.RetryAt), "expected %s, got %s", retryAt, *resolved.RetryAt)
 }
 
+// TestJobEndpointsAnswerNotFoundForAKeyNamingNoJob shows every job endpoint
+// routed by the key answers not found for a key naming no job, whether its
+// partition exists or not.
 func TestJobEndpointsAnswerNotFoundForAKeyNamingNoJob(t *testing.T) {
 	keys := map[string]int64{
 		"no job in an existing partition":            int64(1) << int64(zenflake.StepBits),

@@ -50,6 +50,9 @@ func TestPartitionLeaderInitializedRequiresMatchingLeaderRole(t *testing.T) {
 	assert.True(t, clusterState.PartitionLeaderInitialized(1))
 }
 
+// TestPartitionAbsentOnlyOnceThePartitionsAreFormed shows a partition missing
+// from the state is absent only once every desired partition is formed, and
+// one which exists is never absent, with a leader or without.
 func TestPartitionAbsentOnlyOnceThePartitionsAreFormed(t *testing.T) {
 	formed := Cluster{
 		Config:     ClusterConfig{DesiredPartitions: 2},

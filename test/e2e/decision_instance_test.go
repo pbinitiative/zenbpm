@@ -227,6 +227,9 @@ func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 	})
 }
 
+// TestGetDecisionInstanceErrorResponses shows a decision instance key naming a
+// partition the cluster does not have and one naming no instance of an
+// existing partition are both not found.
 func TestGetDecisionInstanceErrorResponses(t *testing.T) {
 	t.Run("key with non-existing partition returns 404 NOT_FOUND", func(t *testing.T) {
 		// key -1 encodes partition 1023 which the test environment does not

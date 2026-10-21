@@ -923,6 +923,8 @@ func (node *ZenNode) deployProcessDefinitionToPartitionOnce(ctx context.Context,
 	return nil
 }
 
+// CompleteJob completes a job on the leader of its partition. A key naming a
+// partition the cluster does not have is not found (see keyPartition).
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
@@ -998,6 +1000,9 @@ func leaderCallFailure(ctx context.Context, err error) *zenerr.ZenError {
 	return zenerr.ClusterError(err)
 }
 
+// AssignJob assigns a job to assignee, an empty one clearing the assignment,
+// on the leader of its partition. A key naming a partition the cluster does
+// not have is not found (see keyPartition).
 func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
@@ -1709,6 +1714,9 @@ func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, process
 	return err
 }
 
+// DeleteProcessInstanceVariable deletes a variable of a process instance on
+// the leader of its partition. A key naming a partition the cluster does not
+// have is not found (see keyPartition).
 func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
@@ -1735,6 +1743,9 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 	return nil
 }
 
+// CancelProcessInstance cancels a process instance on the leader of its
+// partition. A key naming a partition the cluster does not have is not found
+// (see keyPartition).
 func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceKey int64) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
@@ -1760,6 +1771,10 @@ func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceK
 	return nil
 }
 
+// ModifyProcessInstance terminates element instances of a process instance,
+// starts new ones at elements and sets variables, on the leader of its
+// partition. A key naming a partition the cluster does not have is not found
+// (see keyPartition).
 func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
 	if err := node.rejectIfRestoring(); err != nil {
 		return nil, nil, err
@@ -1893,6 +1908,8 @@ func (node *ZenNode) getJobsForPartition(
 	return resp.Partitions, nil
 }
 
+// GetJob reads a job from a follower of its partition. A key naming a
+// partition the cluster does not have is not found (see keyPartition).
 func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, error) {
 	partitionID, err := node.keyPartition(jobKey, "job")
 	if err != nil {
@@ -2073,6 +2090,9 @@ func (node *ZenNode) GetChildProcessInstances(
 	return result, nil
 }
 
+// GetDecisionInstance reads a decision instance from a follower of its
+// partition. A key naming a partition the cluster does not have is not found
+// (see keyPartition).
 func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64) (*proto.DecisionInstance, error) {
 	partitionID, err := node.keyPartition(decisionInstanceKey, "decision instance")
 	if err != nil {

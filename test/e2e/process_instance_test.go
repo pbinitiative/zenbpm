@@ -670,6 +670,8 @@ func TestDeleteProcessInstanceVariable(t *testing.T) {
 	})
 }
 
+// TestGetProcessInstanceErrorResponse shows a process instance key naming a
+// partition the cluster does not have is not found.
 func TestGetProcessInstanceErrorResponse(t *testing.T) {
 	t.Run("read non existing process instance", func(t *testing.T) {
 		var nonExistingProcessInstanceKey int64 = -1

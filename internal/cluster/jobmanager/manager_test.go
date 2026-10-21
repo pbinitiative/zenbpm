@@ -786,9 +786,13 @@ func createClientNode(t *testing.T, store *testStore) *JobManager {
 type grpcSrv struct {
 	proto.UnimplementedZenServiceServer
 	jobManager *JobManager
+	// requestsMu guards the records of the job requests received
+	requestsMu sync.Mutex
 	// failRequests records every FailJob request as the wire carried it
-	failRequestsMu sync.Mutex
-	failRequests   []*proto.FailJobRequest
+	failRequests []*proto.FailJobRequest
+	// completeRequests and extendLockRequests count the CompleteJob and
+	// ExtendJobLock requests received
+	completeRequests, extendLockRequests int
 	// extendLockResponse, when set, is what every ExtendJobLock answers
 	extendLockResponse *proto.ExtendJobLockResponse
 	// failJobResponse, when set, is what every FailJob answers
@@ -798,6 +802,9 @@ type grpcSrv struct {
 }
 
 func (s *grpcSrv) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockRequest) (*proto.ExtendJobLockResponse, error) {
+	s.requestsMu.Lock()
+	s.extendLockRequests++
+	s.requestsMu.Unlock()
 	if s.extendLockResponse != nil {
 		return s.extendLockResponse, nil
 	}
@@ -809,9 +816,9 @@ func (s *grpcSrv) ExtendJobLock(ctx context.Context, req *proto.ExtendJobLockReq
 }
 
 func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
-	s.failRequestsMu.Lock()
+	s.requestsMu.Lock()
 	s.failRequests = append(s.failRequests, req)
-	s.failRequestsMu.Unlock()
+	s.requestsMu.Unlock()
 	if s.failJobResponse != nil {
 		return s.failJobResponse, nil
 	}
@@ -828,9 +835,17 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 }
 
 func (s *grpcSrv) receivedFailRequests() []*proto.FailJobRequest {
-	s.failRequestsMu.Lock()
-	defer s.failRequestsMu.Unlock()
+	s.requestsMu.Lock()
+	defer s.requestsMu.Unlock()
 	return slices.Clone(s.failRequests)
+}
+
+// receivedJobRequests is the number of CompleteJob, FailJob and ExtendJobLock
+// requests received.
+func (s *grpcSrv) receivedJobRequests() int {
+	s.requestsMu.Lock()
+	defer s.requestsMu.Unlock()
+	return s.completeRequests + len(s.failRequests) + s.extendLockRequests
 }
 
 func (s *grpcSrv) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {
@@ -838,6 +853,9 @@ func (s *grpcSrv) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJo
 }
 
 func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
+	s.requestsMu.Lock()
+	s.completeRequests++
+	s.requestsMu.Unlock()
 	if s.completeJobResponse != nil {
 		return s.completeJobResponse, nil
 	}

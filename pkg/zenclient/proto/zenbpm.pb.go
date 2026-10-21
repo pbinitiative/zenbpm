@@ -26,7 +26,7 @@ type JobStreamErrorCode int32
 
 const (
 	JobStreamErrorCode_JOB_STREAM_ERROR_CODE_UNSPECIFIED JobStreamErrorCode = 0
-	// The lock lapsed, the job was completed or failed, or it was never delivered to this stream.
+	// The lock lapsed, the job was completed or failed, it was never delivered to this stream, or no job has the key.
 	JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD JobStreamErrorCode = 1
 	// The job is currently locked for a different client id.
 	JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT JobStreamErrorCode = 2

@@ -676,10 +676,11 @@ func TestGetProcessInstanceErrorResponse(t *testing.T) {
 		var resp *zenclient.GetProcessInstanceResponse
 		resp, _ = app.restClient.GetProcessInstanceWithResponse(t.Context(), nonExistingProcessInstanceKey)
 
+		// key -1 encodes partition 1023, which the test environment does not have
 		assert.Nil(t, resp.JSON200)
-		assert.NotNil(t, resp.JSON502)
-		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
-		assert.Equal(t, "failed to get follower node to get process instance: partition not found", resp.JSON502.Message)
+		require.NotNil(t, resp.JSON404, "body: %s", string(resp.Body))
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Equal(t, "process instance -1 not found: its key names partition 1023, which the cluster does not have", resp.JSON404.Message)
 	})
 }
 

@@ -50,6 +50,34 @@ func TestPartitionLeaderInitializedRequiresMatchingLeaderRole(t *testing.T) {
 	assert.True(t, clusterState.PartitionLeaderInitialized(1))
 }
 
+func TestPartitionAbsentOnlyOnceThePartitionsAreFormed(t *testing.T) {
+	formed := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 2},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}, 2: {Id: 2}},
+	}
+	assert.True(t, formed.partitionsFormed())
+	assert.False(t, formed.PartitionAbsent(1), "a partition with a leader exists")
+	assert.False(t, formed.PartitionAbsent(2), "a partition without a leader at the moment exists all the same")
+	assert.True(t, formed.PartitionAbsent(0), "partition 0 is reserved for global resources")
+	assert.True(t, formed.PartitionAbsent(3), "a partition past the desired ones is never formed")
+
+	forming := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 2},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}},
+	}
+	assert.False(t, forming.partitionsFormed())
+	assert.False(t, forming.PartitionAbsent(2), "the partition may still be forming")
+	assert.False(t, forming.PartitionAbsent(0), "while the cluster forms, nothing is told absent")
+
+	starting := Cluster{Config: ClusterConfig{DesiredPartitions: 1}}
+	assert.False(t, starting.partitionsFormed())
+	assert.False(t, starting.PartitionAbsent(1), "a node which has not caught up knows no partitions yet")
+
+	unconfigured := Cluster{Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}}}
+	assert.False(t, unconfigured.partitionsFormed())
+	assert.False(t, unconfigured.PartitionAbsent(2), "without the desired count the state cannot tell")
+}
+
 func TestGetPartitionIdFromString(t *testing.T) {
 	partitions := make(map[uint32]Partition)
 	partitions[1] = Partition{

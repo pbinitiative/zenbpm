@@ -316,7 +316,7 @@ func (s *Server) extendLock(ctx context.Context, clientID jobmanager.ClientID, r
 	switch {
 	case errors.Is(err, jobmanager.ErrLockNotHeld):
 		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD
-		message = "Lock is not held: it lapsed, the job was completed or failed, or it was never delivered to this client"
+		message = "Lock is not held: it lapsed, the job was completed or failed, it was never delivered to this client, or no job has the key"
 	case errors.Is(err, jobmanager.ErrLockHeldByOtherClient):
 		code = proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT
 		message = "Lock is held by another client"

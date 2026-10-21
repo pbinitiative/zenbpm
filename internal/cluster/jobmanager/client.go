@@ -460,7 +460,8 @@ func activeJobsForWire(count int) int32 {
 
 // extendLock asks the leader of the job's partition to move the lock deadline
 // of the job to now plus duration. A refusal comes back as ErrLockNotHeld or
-// ErrLockHeldByOtherClient so the caller can report it by code. A leader
+// ErrLockHeldByOtherClient so the caller can report it by code, and so does a
+// key naming a partition the cluster does not have, as ErrLockNotHeld. A leader
 // which is not known, out of reach or too slow to answer, or which answers
 // that it does not lead the partition any more, comes back as
 // ErrLeaderUnavailable, so the caller can tell a leader change, which passes,
@@ -471,10 +472,14 @@ func (c *jobClient) extendLock(ctx context.Context, clientID ClientID, jobKey in
 	if err := ctx.Err(); err != nil {
 		return time.Time{}, fmt.Errorf("failed to extend lock of job %d from client: %w", jobKey, err)
 	}
-	partitionID := zenflake.GetPartitionId(jobKey)
-	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	partitionID, lClient, err := c.jobPartitionLeader(jobKey)
+	if errors.Is(err, ErrJobNotFound) {
+		// a lock of a job which does not exist is not held, as the leader
+		// answers for an unknown key of its own partition
+		return time.Time{}, fmt.Errorf("%w: %w", ErrLockNotHeld, err)
+	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
+		return time.Time{}, err
 	}
 	resp, err := lClient.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
 		Key:            new(jobKey),
@@ -514,15 +519,32 @@ func leaderOutOfReach(err error) bool {
 	return false
 }
 
+// jobPartitionLeader returns the partition of the job key and a client for its
+// leader. A key naming a partition the cluster does not have and is not going
+// to form (see state.Cluster.PartitionAbsent) names no job, and comes back as
+// ErrJobNotFound, which repeating the request does not change. A partition
+// without a known leader, during a leader change or before the cluster formed
+// its partitions, comes back as ErrLeaderUnavailable.
+func (c *jobClient) jobPartitionLeader(jobKey int64) (uint32, proto.ZenServiceClient, error) {
+	partitionID := zenflake.GetPartitionId(jobKey)
+	if c.store.ClusterState().PartitionAbsent(partitionID) {
+		return partitionID, nil, fmt.Errorf("%w: key %d names partition %d, which the cluster does not have", ErrJobNotFound, jobKey, partitionID)
+	}
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	if err != nil {
+		return partitionID, nil, fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
+	}
+	return partitionID, lClient, nil
+}
+
 // completeJob reports the completion of the job to the leader of its
 // partition. A refusal and an unavailable leader are told apart the way
 // failJob does it; a completion the leader did not confirm may have been
 // recorded all the same, and repeating it is safe.
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
-	partitionID := zenflake.GetPartitionId(jobKey)
-	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	partitionID, lClient, err := c.jobPartitionLeader(jobKey)
 	if err != nil {
-		return fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
+		return err
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -571,10 +593,9 @@ func refusalError(action string, jobKey int64, refusal *proto.ErrorResult) error
 // which is wrong from a cluster which is changing; in the latter case the
 // failure may have been recorded already.
 func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}, retries *int32, retryBackoff *time.Duration, deliveryToken *int64) error {
-	partitionId := zenflake.GetPartitionId(jobKey)
-	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
+	partitionID, lClient, err := c.jobPartitionLeader(jobKey)
 	if err != nil {
-		return fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionId, err)
+		return err
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -593,7 +614,7 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 	resp, err := lClient.FailJob(ctx, request)
 	if err != nil {
 		if ctx.Err() == nil && leaderOutOfReach(err) {
-			return fmt.Errorf("%w: the leader of partition %d did not answer the failure of job %d: %w", ErrLeaderUnavailable, partitionId, jobKey, err)
+			return fmt.Errorf("%w: the leader of partition %d did not answer the failure of job %d: %w", ErrLeaderUnavailable, partitionID, jobKey, err)
 		}
 		return fmt.Errorf("failed to fail job %d from client: %w", jobKey, err)
 	}

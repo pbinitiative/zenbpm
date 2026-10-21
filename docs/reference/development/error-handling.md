@@ -78,6 +78,26 @@ if err != nil {
 }
 ```
 
+## Keys of a partition the cluster does not have
+
+A key encodes the partition of its entity, and a request routed by it goes to that partition. A partition
+missing from the cluster state usually means no leader is known yet, a `CLUSTER_ERROR` (502) to retry; but
+a key naming a partition the cluster does not have and is not going to form, such as partition 0, can
+never name anything, and retrying it never passes. Route a client-supplied key through
+`ZenNode.keyPartition`, which answers `NOT_FOUND` for such a key once the cluster has formed its partitions
+(see `state.Cluster.PartitionAbsent`), before looking for the partition's leader or follower:
+
+```go
+partition, err := node.keyPartition(processInstanceKey, "process instance")
+if err != nil {
+    return err
+}
+client, err := node.client.PartitionLeader(partition)
+```
+
+An endpoint listing what belongs to the entity, which answers an unknown key of an existing partition
+with an empty page, answers such a key with an empty page as well.
+
 ## Errors originating outside of handlers
 
 Not every API error is produced by a handler. The OpenAPI request-validation

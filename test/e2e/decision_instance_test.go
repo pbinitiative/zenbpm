@@ -7,6 +7,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDecisionInstance(t *testing.T) {
@@ -227,15 +228,17 @@ func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 }
 
 func TestGetDecisionInstanceErrorResponses(t *testing.T) {
-	t.Run("key with non-existing partition returns 502 CLUSTER_ERROR", func(t *testing.T) {
-		// key -1 encodes partition 1023 which does not exist in the test environment
+	t.Run("key with non-existing partition returns 404 NOT_FOUND", func(t *testing.T) {
+		// key -1 encodes partition 1023 which the test environment does not
+		// have, so it can never name a decision instance: not found, not a
+		// cluster error to retry
 		var nonExistingPartitionKey int64 = -1
 		resp, err := app.restClient.GetDecisionInstanceWithResponse(t.Context(), nonExistingPartitionKey)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Nil(t, resp.JSON200)
-		assert.NotNil(t, resp.JSON502)
-		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
-		assert.NotEmpty(t, resp.JSON502.Message)
+		require.NotNil(t, resp.JSON404, "body: %s", string(resp.Body))
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Contains(t, resp.JSON404.Message, "partition 1023")
 	})
 
 	t.Run("valid partition key but non-existing instance returns 404 NOT_FOUND", func(t *testing.T) {

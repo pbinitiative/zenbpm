@@ -101,7 +101,7 @@ message LockExtended {
 // Values of ErrorResult.code. Zero means the error carries no code.
 enum JobStreamErrorCode {
   JOB_STREAM_ERROR_CODE_UNSPECIFIED = 0;
-  // The lock lapsed, the job was completed or failed, or it was never delivered to this stream.
+  // The lock lapsed, the job was completed or failed, it was never delivered to this stream, or no job has the key.
   JOB_STREAM_ERROR_CODE_LOCK_NOT_HELD = 1;
   // The job is currently locked for a different client id.
   JOB_STREAM_ERROR_CODE_LOCK_HELD_BY_OTHER_CLIENT = 2;

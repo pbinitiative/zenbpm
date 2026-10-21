@@ -392,6 +392,18 @@ func TestJobEndpointsAnswerNotFoundForAKeyNamingNoJob(t *testing.T) {
 			complete, err := app.restClient.CompleteJobWithResponse(t.Context(), key, zenclient.CompleteJobJSONRequestBody{})
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusNotFound, complete.StatusCode(), "complete body: %s", string(complete.Body))
+
+			job, err := app.restClient.GetJobWithResponse(t.Context(), key)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotFound, job.StatusCode(), "get body: %s", string(job.Body))
+
+			extend, err := app.restClient.ExtendJobLockWithResponse(t.Context(), key, zenclient.ExtendJobLockJSONRequestBody{ClientId: "nobody"})
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotFound, extend.StatusCode(), "extend body: %s", string(extend.Body))
+
+			assign, err := app.restClient.AssignJobWithResponse(t.Context(), key, zenclient.AssignJobJSONRequestBody{Assignee: "nobody"})
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotFound, assign.StatusCode(), "assign body: %s", string(assign.Body))
 		})
 	}
 }

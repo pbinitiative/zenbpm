@@ -136,6 +136,38 @@ func (c Cluster) ActivePartitionLeader(partitionID uint32) (addr string, nodeID 
 	return leader.Addr, leader.Id
 }
 
+// PartitionAbsent reports whether the cluster does not have the partition and
+// is not going to form it, so that a key routed to it names nothing and never
+// will: partition 0, which is reserved for global resources, or one past the
+// partitions the cluster formed. It only says so once every desired partition
+// has been formed (see partitionsFormed). Before that, a partition missing
+// from the state may still be forming, and a node which has not caught up with
+// the log does not know the partitions at all; neither can tell an absent
+// partition from one without a leader yet. A partition which exists but has
+// no leader at the moment is never absent.
+func (c Cluster) PartitionAbsent(partitionID uint32) bool {
+	if _, ok := c.Partitions[partitionID]; ok {
+		return false
+	}
+	return c.partitionsFormed()
+}
+
+// partitionsFormed reports whether the state knows the desired partition
+// count and every one of the partitions 1 to that count has been formed, that
+// is, has reported a leader into the state at least once. The cluster leader
+// forms them one by one in that order (see Controller.performLeaderOperations).
+func (c Cluster) partitionsFormed() bool {
+	if c.Config.DesiredPartitions == 0 {
+		return false
+	}
+	for partitionID := uint32(1); partitionID <= c.Config.DesiredPartitions; partitionID++ {
+		if _, ok := c.Partitions[partitionID]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // PartitionLeaderInitialized reports whether the recorded leader exists and
 // has completed its local partition initialization.
 func (c Cluster) PartitionLeaderInitialized(partitionID uint32) bool {

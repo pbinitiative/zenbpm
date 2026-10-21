@@ -61,7 +61,10 @@ func TestRunningTokenPages(t *testing.T) {
 		require.Len(t, startupPage, 1)
 		require.Equal(t, int64(20), startupPage[0].Key)
 
-		periodicPage, err := db.FindRecoverableRunningTokens(t.Context(), 0, time.Now(), 1)
+		// SaveToken stamps created_at with the writer's clock, often within the
+		// same millisecond as a cutoff taken right after it; the query wants
+		// created_at strictly before the cutoff, so leave a margin.
+		periodicPage, err := db.FindRecoverableRunningTokens(t.Context(), 0, time.Now().Add(time.Second), 1)
 		require.NoError(t, err)
 		require.Len(t, periodicPage, 1)
 		require.Equal(t, int64(20), periodicPage[0].Key)

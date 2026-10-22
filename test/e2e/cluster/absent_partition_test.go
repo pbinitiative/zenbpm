@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -105,21 +106,24 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 	restJobKey := activeJobOf(t, leader, CreateInstanceOnNode(t, leader, definitionKey, nil))
 	streamJobKey := activeJobOf(t, leader, CreateInstanceOnNode(t, leader, definitionKey, nil))
 
-	partitionLeaderID := partitionLeaderOf(t, leader, 1)
+	partitionLeader := partitionLeaderID(t, tc)
 	var survivor *TestNode
 	for _, n := range tc.RunningNodes() {
-		if n.ID != partitionLeaderID {
+		if n.ID != partitionLeader {
 			survivor = n
 			break
 		}
 	}
 	require.NotNil(t, survivor)
-	stream, closeStream := openRawJobStream(t, survivor)
-	defer closeStream()
+	conn := dialGrpc(t, survivor)
 
-	tc.KillNode(t, partitionLeaderID)
+	tc.KillNode(t, partitionLeader)
 
-	var notFound []string
+	// existingNotFound collects the completions of existing jobs answered as
+	// unknown, absentNotFound the answers about the key of partition 0 which
+	// were not; both must stay empty
+	var existingNotFound, absentNotFound []string
+	absentProbeErrors := 0
 	// retried counts the answers to retry by kind, lastRetried keeps the
 	// latest message of each kind for the log
 	retried, lastRetried := map[string]int{}, map[string]string{}
@@ -127,8 +131,12 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 	require.Eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if absent, err := survivor.RestClient.GetJobWithResponse(ctx, keyOfPartitionZero); err == nil && absent.StatusCode() != http.StatusNotFound {
-			notFound = append(notFound, fmt.Sprintf("the key of partition 0 answered %d, not 404: %s", absent.StatusCode(), string(absent.Body)))
+		absent, err := survivor.RestClient.GetJobWithResponse(ctx, keyOfPartitionZero)
+		switch {
+		case err != nil:
+			absentProbeErrors++
+		case absent.StatusCode() != http.StatusNotFound:
+			absentNotFound = append(absentNotFound, fmt.Sprintf("%d: %s", absent.StatusCode(), string(absent.Body)))
 		}
 		if !restCompleted {
 			response, err := survivor.RestClient.CompleteJobWithResponse(ctx, restJobKey, zenclient.CompleteJobJSONRequestBody{})
@@ -139,7 +147,7 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 			case response.StatusCode() == http.StatusCreated:
 				restCompleted = true
 			case response.StatusCode() == http.StatusNotFound:
-				notFound = append(notFound, fmt.Sprintf("REST completion answered 404: %s", string(response.Body)))
+				existingNotFound = append(existingNotFound, fmt.Sprintf("REST completion answered 404: %s", string(response.Body)))
 			default:
 				kind := fmt.Sprintf("REST %d", response.StatusCode())
 				retried[kind]++
@@ -147,7 +155,7 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 			}
 		}
 		if !streamCompleted {
-			refusal, err := completeOverStream(stream, streamJobKey)
+			refusal, err := completeOverStream(conn, streamJobKey)
 			switch {
 			case err != nil:
 				retried["stream error"]++
@@ -155,7 +163,7 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 			case refusal == nil:
 				streamCompleted = true
 			case refusal.GetCode() == uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_JOB_NOT_FOUND):
-				notFound = append(notFound, fmt.Sprintf("stream completion answered JOB_NOT_FOUND: %s", refusal.GetMessage()))
+				existingNotFound = append(existingNotFound, fmt.Sprintf("stream completion answered JOB_NOT_FOUND: %s", refusal.GetMessage()))
 			default:
 				kind := fmt.Sprintf("stream code %d", refusal.GetCode())
 				retried[kind]++
@@ -165,8 +173,9 @@ func TestJobOfAnExistingPartitionIsNeverNotFoundDuringPartitionLeaderFailover(t 
 		return restCompleted && streamCompleted
 	}, 120*time.Second, 200*time.Millisecond, "both completions must be confirmed once the partition has a new leader")
 
-	assert.Empty(t, notFound, "a job of a partition without a leader is not unknown")
-	t.Logf("answers retried before the completions were confirmed: %v; the latest of each: %v", retried, lastRetried)
+	assert.Empty(t, existingNotFound, "a job of a partition without a leader is not unknown")
+	assert.Empty(t, absentNotFound, "the key of partition 0 must stay not found whether the partition has a leader or not")
+	t.Logf("answers retried before the completions were confirmed: %v; the latest of each: %v; the key of partition 0 could not be asked %d times", retried, lastRetried, absentProbeErrors)
 }
 
 // askAboutPartitionZero reads the job with the key of partition 0 from the
@@ -186,43 +195,35 @@ func askAboutPartitionZero(n *TestNode) (int, bool, error) {
 	return response.StatusCode(), desired > 0 && int64(len(status.Partitions)) == desired, nil
 }
 
-// partitionLeaderOf returns the id of the node n reports as the leader of the partition.
-func partitionLeaderOf(t *testing.T, n *TestNode, partitionID int64) string {
-	t.Helper()
-	status, err := getStatus(n)
-	require.NoError(t, err)
-	for _, partition := range status.Partitions {
-		if partition.ID == partitionID && partition.LeaderID != "" {
-			return partition.LeaderID
-		}
-	}
-	require.Failf(t, "no partition leader", "node %s reports no leader of partition %d", n.ID, partitionID)
-	return ""
-}
-
-// openRawJobStream opens a job stream to the node without the Go client, which
-// only answers for the jobs it was handed, so a test can send requests for any
-// key. It subscribes to no job type, so all it receives are the answers.
-func openRawJobStream(t *testing.T, n *TestNode) (grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse], func()) {
+// dialGrpc opens a connection to the node's public gRPC endpoint, closed when
+// the test ends.
+func dialGrpc(t *testing.T, n *TestNode) *grpc.ClientConn {
 	t.Helper()
 	conn, err := grpc.NewClient(n.GrpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	stream, err := proto.NewZenBpmClient(conn).JobStream(ctx)
-	require.NoError(t, err)
-	return stream, func() {
-		assert.NoError(t, stream.CloseSend())
-		cancel()
-		assert.NoError(t, conn.Close())
-	}
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	return conn
 }
 
-// completeOverStream completes the job over the stream and returns the error
-// the completion was answered with, nil when it was carried out. A carried-out
-// completion is not answered, so a lock extension of the job follows it: the
-// stream answers requests in order, and the answer to the extension, whatever
-// it says, closes the answers to the completion.
-func completeOverStream(stream grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse], jobKey int64) (*proto.ErrorResult, error) {
+// completeOverStream completes the job over a job stream of its own, opened
+// without the Go client, which only answers for the jobs it was handed, and
+// returns the error the completion was answered with, nil when it was carried
+// out. A carried-out completion is not answered, so a lock extension of the
+// job follows it: the stream answers requests in order, and the answer to the
+// extension, whatever it says, closes the answers to the completion. The
+// stream subscribes to no job type, and is given ten seconds.
+func completeOverStream(conn *grpc.ClientConn, jobKey int64) (refusal *proto.ErrorResult, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	stream, err := proto.NewZenBpmClient(conn).JobStream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open job stream: %w", err)
+	}
+	defer func() {
+		if closeErr := stream.CloseSend(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close job stream: %w", closeErr))
+		}
+	}()
 	if err := stream.Send(&proto.JobStreamRequest{Request: &proto.JobStreamRequest_Complete{
 		Complete: &proto.JobCompleteRequest{Key: &jobKey},
 	}}); err != nil {
@@ -233,7 +234,6 @@ func completeOverStream(stream grpc.BidiStreamingClient[proto.JobStreamRequest, 
 	}}); err != nil {
 		return nil, fmt.Errorf("failed to send lock extension: %w", err)
 	}
-	var refusal *proto.ErrorResult
 	for {
 		response, err := stream.Recv()
 		if err != nil {

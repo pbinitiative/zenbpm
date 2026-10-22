@@ -351,13 +351,15 @@ func (c CDC) ResolveServiceID(advancedServiceID string) (string, error) {
 	return serviceID, nil
 }
 
-// ValidateDesiredPartitions ValidateCDC verifies that an enabled CDC output can be constructed.
 // ValidateDesiredPartitions rejects a partition count the cluster cannot
 // form. A cluster with more than one partition never finishes bootstrapping:
 // the controller assigns every partition beyond the first to a single node,
 // while that node's partition raft group inherits the cluster-wide
 // bootstrap-expect and waits for members that are never assigned. Until
 // partition membership is implemented the option is limited to one partition rather than accepted silently.
+// Lifting the limit also needs the count replicated: every node reads it from
+// its own configuration, and telling an absent partition from one still
+// forming relies on all nodes agreeing on it (see state.Cluster.PartitionAbsent).
 func (c Cluster) ValidateDesiredPartitions() error {
 	if c.DesiredPartitions > 1 {
 		return fmt.Errorf("cluster.desiredPartitions=%d is not supported yet: partitions beyond the first cannot bootstrap because partition membership is not implemented; use 1", c.DesiredPartitions)
@@ -365,6 +367,7 @@ func (c Cluster) ValidateDesiredPartitions() error {
 	return nil
 }
 
+// ValidateCDC verifies that an enabled CDC output can be constructed.
 func (c Cluster) ValidateCDC() error {
 	if !c.CDC.Enabled {
 		return nil

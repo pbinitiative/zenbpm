@@ -35,7 +35,8 @@ const (
 var (
 	// ErrLockNotHeld is returned by a lock extension for a job which is not
 	// distributed at the moment: its lock lapsed, it was completed or failed,
-	// or it was never delivered by this leader.
+	// it was never delivered by this leader, or no job has the key, such as a
+	// key naming a partition the cluster does not have.
 	ErrLockNotHeld = errors.New("job lock is not held")
 	// ErrLockHeldByOtherClient is returned by a lock extension for a job which
 	// is currently locked for a different client.

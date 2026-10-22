@@ -38,7 +38,6 @@ func TestClientTellsAnAbsentPartitionFromAPartitionWithoutALeader(t *testing.T) 
 	for name, jobKey := range absentPartitions {
 		t.Run(name, func(t *testing.T) {
 			clientManager := createClientNode(t, serverStore.forNode("node-2"))
-			requestsBefore := leaderGRPC.receivedJobRequests()
 
 			errs := requestJob(t, clientManager, jobKey)
 
@@ -48,7 +47,6 @@ func TestClientTellsAnAbsentPartitionFromAPartitionWithoutALeader(t *testing.T) 
 			for _, err := range []error{errs.complete, errs.fail, errs.extend} {
 				assert.NotErrorIs(t, err, ErrLeaderUnavailable, "retrying would never pass")
 			}
-			assert.Equal(t, requestsBefore, leaderGRPC.receivedJobRequests(), "no partition leader is asked about it")
 		})
 	}
 

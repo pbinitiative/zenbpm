@@ -902,6 +902,12 @@ func (c *ControllerTestStore) PartitionLeaderWithID(partition uint32) (string, s
 	return c.addr, c.id
 }
 
+// PartitionAbsent implements client.ClientStore: every partition this store
+// is asked about has a leader.
+func (c *ControllerTestStore) PartitionAbsent(uint32) bool {
+	return false
+}
+
 // Role implements ControlledStore.
 func (c *ControllerTestStore) Role() proto.Role {
 	if c.leader == true {

@@ -83,20 +83,27 @@ if err != nil {
 A key encodes the partition of its entity, and a request routed by it goes to that partition. A partition
 missing from the cluster state usually means no leader is known yet, a `CLUSTER_ERROR` (502) to retry; but
 a key naming a partition the cluster does not have and is not going to form, such as partition 0, can
-never name anything, and retrying it never passes. Route a client-supplied key through
-`ZenNode.keyPartition`, which answers `NOT_FOUND` for such a key once the cluster has formed its partitions
-(see `state.Cluster.PartitionAbsent`), before looking for the partition's leader or follower:
+never name anything, and retrying it never passes.
+
+Partition routing tells the two apart. `ClientManager.PartitionLeader` and `state.Cluster.GetPartitionFollower`
+fail with an error wrapping `zenerr.ErrPartitionAbsent` for a partition the cluster does not have and is
+not going to form (see `state.Cluster.PartitionAbsent`); they only check when they find no leader or
+follower, so routing a key costs nothing more. Classify the routing failure of a client-supplied key with
+`keyRoutingFailure`, which answers `NOT_FOUND` for an absent partition and `CLUSTER_ERROR` otherwise. Do not
+wrap the routing error in `zenerr.ClusterError` yourself: that turns an absent partition back into a 502 to
+retry forever.
 
 ```go
-partition, err := node.keyPartition(processInstanceKey, "process instance")
-if err != nil {
-    return err
-}
+partition := zenflake.GetPartitionId(processInstanceKey)
 client, err := node.client.PartitionLeader(partition)
+if err != nil {
+    return keyRoutingFailure("process instance", processInstanceKey, fmt.Errorf("failed to get client: %w", err))
+}
 ```
 
 An endpoint listing what belongs to the entity, which answers an unknown key of an existing partition
-with an empty page, answers such a key with an empty page as well.
+with an empty page, answers such a key with the same empty page: check
+`errors.Is(err, zenerr.ErrPartitionAbsent)` on the routing error.
 
 ## Errors originating outside of handlers
 

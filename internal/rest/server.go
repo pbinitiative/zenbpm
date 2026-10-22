@@ -1488,18 +1488,7 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request public.DeleteProcessInstanceVariableRequestObject) (public.DeleteProcessInstanceVariableResponseObject, error) {
 	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		var zerr *zenerr.ZenError
-		if errors.As(err, &zerr) {
-			switch zerr.Code {
-			case zenerr.ClusterErrorCode:
-				return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError()), nil
-			case zenerr.NotFoundCode:
-				return public.DeleteProcessInstanceVariable404JSONResponse(zerr.ToApiError()), nil
-			default:
-				return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zerr)), nil
-			}
-		}
-		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
+		return deleteProcessInstanceVariableError(ctx, err), nil
 	}
 	existingVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &existingVars)
@@ -1519,19 +1508,28 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 	}
 	err = s.node.DeleteProcessInstanceVariable(ctx, request.ProcessInstanceKey, request.VariableName)
 	if err != nil {
-		var zerr *zenerr.ZenError
-		if errors.As(err, &zerr) {
-			switch zerr.Code {
-			case zenerr.ClusterErrorCode:
-				return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError()), nil
-			default:
-				return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zerr)), nil
-			}
-		}
-		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err))), nil
+		return deleteProcessInstanceVariableError(ctx, err), nil
 	}
 
 	return public.DeleteProcessInstanceVariable204Response{}, nil
+}
+
+// deleteProcessInstanceVariableError answers a failure to look up the process
+// instance or to delete its variable by the error's code. The deletion can
+// meet an instance deleted since the lookup, which is not found as well.
+func deleteProcessInstanceVariableError(ctx context.Context, err error) public.DeleteProcessInstanceVariableResponseObject {
+	var zerr *zenerr.ZenError
+	if !errors.As(err, &zerr) {
+		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err)))
+	}
+	switch zerr.Code {
+	case zenerr.ClusterErrorCode:
+		return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError())
+	case zenerr.NotFoundCode:
+		return public.DeleteProcessInstanceVariable404JSONResponse(zerr.ToApiError())
+	default:
+		return public.DeleteProcessInstanceVariable500JSONResponse(trackInternalServerError(ctx, zerr))
+	}
 }
 
 func (s *Server) CancelProcessInstance(ctx context.Context, request public.CancelProcessInstanceRequestObject) (public.CancelProcessInstanceResponseObject, error) {

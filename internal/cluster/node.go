@@ -924,18 +924,15 @@ func (node *ZenNode) deployProcessDefinitionToPartitionOnce(ctx context.Context,
 }
 
 // CompleteJob completes a job on the leader of its partition. A key naming a
-// partition the cluster does not have is not found (see keyPartition).
+// partition the cluster does not have is not found (see keyRoutingFailure).
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(key, "job")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return keyRoutingFailure("job", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -958,19 +955,17 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 // ExtendJobLock moves the lock deadline of a job delivered over the job stream
 // to clientID to now plus duration (zero: the lock duration of the
 // subscription), only the lock of that delivery when deliveryToken names one. A
-// lock which is not held or is held by another client answers a conflict; the
+// lock which is not held or is held by another client answers a conflict, and
+// a key naming no job, whether its partition exists or not, is not found; the
 // job itself is untouched either way.
 func (node *ZenNode) ExtendJobLock(ctx context.Context, key int64, clientID string, duration time.Duration, deliveryToken *int64) (time.Time, error) {
 	if err := node.rejectIfRestoring(); err != nil {
 		return time.Time{}, err
 	}
-	partition, err := node.keyPartition(key, "job")
-	if err != nil {
-		return time.Time{}, err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return time.Time{}, zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return time.Time{}, keyRoutingFailure("job", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	resp, err := client.ExtendJobLock(ctx, &proto.ExtendJobLockRequest{
 		Key:            &key,
@@ -1002,18 +997,15 @@ func leaderCallFailure(ctx context.Context, err error) *zenerr.ZenError {
 
 // AssignJob assigns a job to assignee, an empty one clearing the assignment,
 // on the leader of its partition. A key naming a partition the cluster does
-// not have is not found (see keyPartition).
+// not have is not found (see keyRoutingFailure).
 func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(key, "job")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return keyRoutingFailure("job", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	resp, err := client.AssignJobToAssignee(ctx, &proto.AssignJobToAssigneeRequest{
 		Key:      &key,
@@ -1039,13 +1031,10 @@ func (node *ZenNode) FailJob(ctx context.Context, key int64, clientID string, me
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(key, "job")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return keyRoutingFailure("job", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -1076,13 +1065,10 @@ func (node *ZenNode) UpdateJobRetries(ctx context.Context, key int64, retries in
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(key, "job")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return keyRoutingFailure("job", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	request := &proto.UpdateJobRetriesRequest{
 		Key:     &key,
@@ -1104,13 +1090,10 @@ func (node *ZenNode) UpdateJobRetries(ctx context.Context, key int64, retries in
 // GetJobFailures reads a page of the failures of a job, newest first, from a
 // follower of the job's partition.
 func (node *ZenNode) GetJobFailures(ctx context.Context, jobKey int64, page int32, size int32) (*proto.GetJobFailuresResponse, error) {
-	partitionID, err := node.keyPartition(jobKey, "job")
-	if err != nil {
-		return nil, err
-	}
+	partitionID := zenflake.GetPartitionId(jobKey)
 	follower, err := node.store.ClusterState().GetPartitionFollower(partitionID)
 	if err != nil {
-		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get failures of job %d: %w", jobKey, err))
+		return nil, keyRoutingFailure("job", jobKey, fmt.Errorf("failed to get follower node to get failures of job %d: %w", jobKey, err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -1130,19 +1113,20 @@ func (node *ZenNode) GetJobFailures(ctx context.Context, jobKey int64, page int3
 	return resp, nil
 }
 
-// keyPartition returns the partition owning the key of a job, process
-// instance, incident or other kind of entity. A key naming a partition the
-// cluster does not have (partition 0 is reserved for global resources) can
-// never identify one, so it is not found rather than a transient cluster
-// failure to retry. Until the cluster formed its partitions this node cannot
-// tell, and the key is left to the routing to classify (see
-// state.Cluster.PartitionAbsent).
-func (node *ZenNode) keyPartition(key int64, kind string) (uint32, error) {
-	partition := zenflake.GetPartitionId(key)
-	if node.store.ClusterState().PartitionAbsent(partition) {
-		return 0, zenerr.NotFound(fmt.Errorf("%s %d not found: its key names partition %d, which the cluster does not have", kind, key, partition))
+// keyRoutingFailure classifies a failure to find the leader or a follower of
+// the partition a key of the kind of entity names, err saying what failed. A
+// key naming a partition the cluster does not have and is not going to form
+// (partition 0 is reserved for global resources) can never identify one, so
+// it is not found rather than a transient cluster failure to retry. Any other
+// routing failure, such as a partition without a leader at the moment or one
+// still forming, is such a cluster failure. Routing reports the absent
+// partition with zenerr.ErrPartitionAbsent, and only when it fails, so the
+// happy path pays nothing for the check.
+func keyRoutingFailure(kind string, key int64, err error) *zenerr.ZenError {
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
+		return zenerr.NotFound(fmt.Errorf("%s %d not found: its key names partition %d, which the cluster does not have", kind, key, zenflake.GetPartitionId(key)))
 	}
-	return partition, nil
+	return zenerr.ClusterError(err)
 }
 
 // ResolveIncident resolves an incident on the leader of its partition. Retries
@@ -1152,13 +1136,10 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64, retries *in
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(key, "incident")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+		return keyRoutingFailure("incident", key, fmt.Errorf("failed to get client: %w", err))
 	}
 	request := &proto.ResolveIncidentRequest{
 		IncidentKey: &key,
@@ -1716,18 +1697,15 @@ func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, process
 
 // DeleteProcessInstanceVariable deletes a variable of a process instance on
 // the leader of its partition. A key naming a partition the cluster does not
-// have is not found (see keyPartition).
+// have is not found (see keyRoutingFailure).
 func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(processInstanceKey, "process instance")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client to delete process instance variable: %w", err))
+		return keyRoutingFailure("process instance", processInstanceKey, fmt.Errorf("failed to get client to delete process instance variable: %w", err))
 	}
 
 	resp, err := client.DeleteProcessInstanceVariable(ctx, &proto.DeleteProcessInstanceVariableRequest{
@@ -1745,18 +1723,15 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 
 // CancelProcessInstance cancels a process instance on the leader of its
 // partition. A key naming a partition the cluster does not have is not found
-// (see keyPartition).
+// (see keyRoutingFailure).
 func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceKey int64) error {
 	if err := node.rejectIfRestoring(); err != nil {
 		return err
 	}
-	partition, err := node.keyPartition(processInstanceKey, "process instance")
-	if err != nil {
-		return err
-	}
+	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get client to cancel process instance: %d. %w", processInstanceKey, err))
+		return keyRoutingFailure("process instance", processInstanceKey, fmt.Errorf("failed to get client to cancel process instance: %d. %w", processInstanceKey, err))
 	}
 
 	resp, err := client.CancelProcessInstance(ctx, &proto.CancelProcessInstanceRequest{
@@ -1774,18 +1749,15 @@ func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceK
 // ModifyProcessInstance terminates element instances of a process instance,
 // starts new ones at elements and sets variables, on the leader of its
 // partition. A key naming a partition the cluster does not have is not found
-// (see keyPartition).
+// (see keyRoutingFailure).
 func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
 	if err := node.rejectIfRestoring(); err != nil {
 		return nil, nil, err
 	}
-	partition, err := node.keyPartition(processInstanceKey, "process instance")
-	if err != nil {
-		return nil, nil, err
-	}
+	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return nil, nil, zenerr.ClusterError(fmt.Errorf("failed to get client to modify process instance: %d. %w", processInstanceKey, err))
+		return nil, nil, keyRoutingFailure("process instance", processInstanceKey, fmt.Errorf("failed to get client to modify process instance: %d. %w", processInstanceKey, err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -1909,15 +1881,12 @@ func (node *ZenNode) getJobsForPartition(
 }
 
 // GetJob reads a job from a follower of its partition. A key naming a
-// partition the cluster does not have is not found (see keyPartition).
+// partition the cluster does not have is not found (see keyRoutingFailure).
 func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, error) {
-	partitionID, err := node.keyPartition(jobKey, "job")
-	if err != nil {
-		return nil, err
-	}
+	partitionID := zenflake.GetPartitionId(jobKey)
 	follower, err := node.store.ClusterState().GetPartitionFollower(partitionID)
 	if err != nil {
-		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get job: %w", err))
+		return nil, keyRoutingFailure("job", jobKey, fmt.Errorf("failed to get follower node to get job: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -2021,13 +1990,10 @@ func (node *ZenNode) getProcessInstancesForPartition(
 
 // GetProcessInstance will contact follower node of partition that contains process instance
 func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey int64) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
-	partitionID, err := node.keyPartition(processInstanceKey, "process instance")
-	if err != nil {
-		return nil, nil, err
-	}
+	partitionID := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := node.store.ClusterState().GetPartitionFollower(partitionID)
 	if err != nil {
-		return nil, nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get process instance: %w", err))
+		return nil, nil, keyRoutingFailure("process instance", processInstanceKey, fmt.Errorf("failed to get follower node to get process instance: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -2059,11 +2025,12 @@ func (node *ZenNode) GetChildProcessInstances(
 		return nil, zenerr.ClusterError(fmt.Errorf("parentInstanceKey is null"))
 	}
 	partitionID := zenflake.GetPartitionId(*request.ParentInstanceKey)
-	if state.PartitionAbsent(partitionID) {
-		// the key names no process instance, which has no children
-		return result, nil
-	}
 	follower, err := state.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
+		// the key names no process instance, which has no children: the
+		// same single empty partition an unknown key of an existing one gets
+		return append(result, &proto.PartitionedProcessInstances{PartitionId: &partitionID, TotalCount: new(int32(0))}), nil
+	}
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get child process instances: %w", err))
 	}
@@ -2092,15 +2059,12 @@ func (node *ZenNode) GetChildProcessInstances(
 
 // GetDecisionInstance reads a decision instance from a follower of its
 // partition. A key naming a partition the cluster does not have is not found
-// (see keyPartition).
+// (see keyRoutingFailure).
 func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64) (*proto.DecisionInstance, error) {
-	partitionID, err := node.keyPartition(decisionInstanceKey, "decision instance")
-	if err != nil {
-		return nil, err
-	}
+	partitionID := zenflake.GetPartitionId(decisionInstanceKey)
 	follower, err := node.store.ClusterState().GetPartitionFollower(partitionID)
 	if err != nil {
-		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get decision instance: %w", err))
+		return nil, keyRoutingFailure("decision instance", decisionInstanceKey, fmt.Errorf("failed to get follower node to get decision instance: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -2207,11 +2171,11 @@ func (node *ZenNode) getDecisionInstancesForPartition(
 func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetProcessInstanceJobsResponse, error) {
 	state := node.store.ClusterState()
 	partitionID := zenflake.GetPartitionId(processInstanceKey)
-	if state.PartitionAbsent(partitionID) {
+	follower, err := state.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		// the key names no process instance, which has nothing to list
 		return &proto.GetProcessInstanceJobsResponse{TotalCount: new(int32(0))}, nil
 	}
-	follower, err := state.GetPartitionFollower(partitionID)
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get process instance jobs: %w", err))
 	}
@@ -2323,11 +2287,11 @@ func (node *ZenNode) getProcessInstanceMessageSubscriptionsForPartition(
 func (node *ZenNode) GetProcessInstanceTimerSubscriptions(ctx context.Context, page int32, size int32, processInstanceKey int64, state *int64) (*proto.GetProcessInstanceTimerSubscriptionsResponse, error) {
 	clusterState := node.store.ClusterState()
 	partitionID := zenflake.GetPartitionId(processInstanceKey)
-	if clusterState.PartitionAbsent(partitionID) {
+	follower, err := clusterState.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		// the key names no process instance, which has nothing to list
 		return &proto.GetProcessInstanceTimerSubscriptionsResponse{TotalCount: new(int32(0))}, nil
 	}
-	follower, err := clusterState.GetPartitionFollower(partitionID)
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get timer subscriptions: %w", err))
 	}
@@ -2359,11 +2323,11 @@ func (node *ZenNode) GetProcessInstanceTimerSubscriptions(ctx context.Context, p
 func (node *ZenNode) GetProcessInstanceErrorSubscriptions(ctx context.Context, page int32, size int32, processInstanceKey int64, state *int64) (*proto.GetProcessInstanceErrorSubscriptionsResponse, error) {
 	clusterState := node.store.ClusterState()
 	partitionID := zenflake.GetPartitionId(processInstanceKey)
-	if clusterState.PartitionAbsent(partitionID) {
+	follower, err := clusterState.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		// the key names no process instance, which has nothing to list
 		return &proto.GetProcessInstanceErrorSubscriptionsResponse{TotalCount: new(int32(0))}, nil
 	}
-	follower, err := clusterState.GetPartitionFollower(partitionID)
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get error subscriptions: %w", err))
 	}
@@ -2395,11 +2359,11 @@ func (node *ZenNode) GetProcessInstanceErrorSubscriptions(ctx context.Context, p
 func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64, sort *sql.Sort) (*proto.GetFlowElementHistoryResponse, error) {
 	state := node.store.ClusterState()
 	partitionID := zenflake.GetPartitionId(processInstanceKey)
-	if state.PartitionAbsent(partitionID) {
+	follower, err := state.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		// the key names no process instance, which has nothing to list
 		return &proto.GetFlowElementHistoryResponse{TotalCount: new(int32(0))}, nil
 	}
-	follower, err := state.GetPartitionFollower(partitionID)
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get flow element history: %w", err))
 	}
@@ -2432,11 +2396,11 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size
 func (node *ZenNode) GetIncidents(ctx context.Context, page int32, size int32, processInstanceKey int64, state *string) (*proto.GetIncidentsResponse, error) {
 	clusterState := node.store.ClusterState()
 	partitionID := zenflake.GetPartitionId(processInstanceKey)
-	if clusterState.PartitionAbsent(partitionID) {
+	follower, err := clusterState.GetPartitionFollower(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		// the key names no process instance, which has nothing to list
 		return &proto.GetIncidentsResponse{TotalCount: new(int32(0))}, nil
 	}
-	follower, err := clusterState.GetPartitionFollower(partitionID)
 	if err != nil {
 		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get incidents: %w", err))
 	}

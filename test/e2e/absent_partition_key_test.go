@@ -99,10 +99,10 @@ func TestKeyRoutedEndpointsAnswerAKeyNamingNothingAlike(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, children.StatusCode(), "child instances body: %s", string(children.Body))
 			require.NotNil(t, children.JSON200)
-			for _, partition := range children.JSON200.Partitions {
-				assert.Empty(t, partition.Items, "child instances of partition %d", partition.Partition)
-				assert.Zero(t, partition.TotalCount, "child instances of partition %d", partition.Partition)
-			}
+			require.Len(t, children.JSON200.Partitions, 1, "the partition the key names, empty, whether it exists or not")
+			assert.Equal(t, int(zenflake.GetPartitionId(key)), children.JSON200.Partitions[0].Partition)
+			assert.Empty(t, children.JSON200.Partitions[0].Items)
+			assert.Zero(t, children.JSON200.Partitions[0].TotalCount)
 			assertEmptyPage(t, "child instances", page, size, children.JSON200.Page, children.JSON200.Size, children.JSON200.Count, children.JSON200.TotalCount)
 		})
 	}

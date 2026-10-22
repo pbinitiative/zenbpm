@@ -3,6 +3,7 @@ package state
 import (
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +80,24 @@ func TestPartitionAbsentOnlyOnceThePartitionsAreFormed(t *testing.T) {
 	unconfigured := Cluster{Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}}}
 	assert.False(t, unconfigured.partitionsFormed())
 	assert.False(t, unconfigured.PartitionAbsent(2), "without the desired count the state cannot tell")
+}
+
+// TestGetPartitionFollowerReportsAnAbsentPartition shows a partition the
+// formed cluster does not have is zenerr.ErrPartitionAbsent, while one still
+// forming is a plain error, so routing can tell the two apart from one
+// snapshot.
+func TestGetPartitionFollowerReportsAnAbsentPartition(t *testing.T) {
+	formed := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 1},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}},
+	}
+	_, err := formed.GetPartitionFollower(0)
+	assert.ErrorIs(t, err, zenerr.ErrPartitionAbsent)
+
+	forming := Cluster{Config: ClusterConfig{DesiredPartitions: 1}}
+	_, err = forming.GetPartitionFollower(1)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, zenerr.ErrPartitionAbsent, "a partition still forming is not absent")
 }
 
 func TestGetPartitionIdFromString(t *testing.T) {

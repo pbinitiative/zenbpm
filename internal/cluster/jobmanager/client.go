@@ -527,10 +527,10 @@ func leaderOutOfReach(err error) bool {
 // its partitions, comes back as ErrLeaderUnavailable.
 func (c *jobClient) jobPartitionLeader(jobKey int64) (uint32, proto.ZenServiceClient, error) {
 	partitionID := zenflake.GetPartitionId(jobKey)
-	if c.store.ClusterState().PartitionAbsent(partitionID) {
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
+	if errors.Is(err, zenerr.ErrPartitionAbsent) {
 		return partitionID, nil, fmt.Errorf("%w: key %d names partition %d, which the cluster does not have", ErrJobNotFound, jobKey, partitionID)
 	}
-	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
 	if err != nil {
 		return partitionID, nil, fmt.Errorf("%w: no client for the leader of partition %d: %w", ErrLeaderUnavailable, partitionID, err)
 	}

@@ -670,16 +670,19 @@ func TestDeleteProcessInstanceVariable(t *testing.T) {
 	})
 }
 
+// TestGetProcessInstanceErrorResponse shows a process instance key naming a
+// partition the cluster does not have is not found.
 func TestGetProcessInstanceErrorResponse(t *testing.T) {
 	t.Run("read non existing process instance", func(t *testing.T) {
 		var nonExistingProcessInstanceKey int64 = -1
 		var resp *zenclient.GetProcessInstanceResponse
 		resp, _ = app.restClient.GetProcessInstanceWithResponse(t.Context(), nonExistingProcessInstanceKey)
 
+		// key -1 encodes partition 1023, which the test environment does not have
 		assert.Nil(t, resp.JSON200)
-		assert.NotNil(t, resp.JSON502)
-		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
-		assert.Equal(t, "failed to get follower node to get process instance: partition not found", resp.JSON502.Message)
+		require.NotNil(t, resp.JSON404, "body: %s", string(resp.Body))
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Equal(t, "process instance -1 not found: its key names partition 1023, which the cluster does not have", resp.JSON404.Message)
 	})
 }
 

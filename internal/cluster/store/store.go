@@ -673,3 +673,16 @@ func (s *Store) PartitionLeaderWithID(partition uint32) (string, string) {
 	defer s.stateMu.RUnlock()
 	return s.state.ActivePartitionLeader(partition)
 }
+
+// PartitionAbsent reports whether the cluster does not have the partition and
+// is not going to form it (see state.Cluster.PartitionAbsent). Unlike
+// ClusterState it does not copy the state. A store which is not open cannot
+// tell, and does not report the partition absent.
+func (s *Store) PartitionAbsent(partition uint32) bool {
+	if !s.open.Load() {
+		return false
+	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.state.PartitionAbsent(partition)
+}

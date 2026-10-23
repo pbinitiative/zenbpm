@@ -1,3 +1,6 @@
+// Package e2e holds the end-to-end tests, which drive a single ZenBPM node
+// started by TestMain through its REST and gRPC APIs, and the Application
+// they share it through.
 package e2e
 
 import (

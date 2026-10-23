@@ -3,6 +3,7 @@ package state
 import (
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,6 +49,55 @@ func TestPartitionLeaderInitializedRequiresMatchingLeaderRole(t *testing.T) {
 	node.Partitions[1] = partition
 	clusterState.Nodes["node-1"] = node
 	assert.True(t, clusterState.PartitionLeaderInitialized(1))
+}
+
+// TestPartitionAbsentOnlyOnceThePartitionsAreFormed shows a partition missing
+// from the state is absent only once every desired partition is formed, and
+// one which exists is never absent, with a leader or without.
+func TestPartitionAbsentOnlyOnceThePartitionsAreFormed(t *testing.T) {
+	formed := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 2},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}, 2: {Id: 2}},
+	}
+	assert.True(t, formed.partitionsFormed())
+	assert.False(t, formed.PartitionAbsent(1), "a partition with a leader exists")
+	assert.False(t, formed.PartitionAbsent(2), "a partition without a leader at the moment exists all the same")
+	assert.True(t, formed.PartitionAbsent(0), "partition 0 is reserved for global resources")
+	assert.True(t, formed.PartitionAbsent(3), "a partition past the desired ones is never formed")
+
+	forming := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 2},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}},
+	}
+	assert.False(t, forming.partitionsFormed())
+	assert.False(t, forming.PartitionAbsent(2), "the partition may still be forming")
+	assert.False(t, forming.PartitionAbsent(0), "while the cluster forms, nothing is told absent")
+
+	starting := Cluster{Config: ClusterConfig{DesiredPartitions: 1}}
+	assert.False(t, starting.partitionsFormed())
+	assert.False(t, starting.PartitionAbsent(1), "a node which has not caught up knows no partitions yet")
+
+	unconfigured := Cluster{Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}}}
+	assert.False(t, unconfigured.partitionsFormed())
+	assert.False(t, unconfigured.PartitionAbsent(2), "without the desired count the state cannot tell")
+}
+
+// TestGetPartitionFollowerReportsAnAbsentPartition shows a partition the
+// formed cluster does not have is zenerr.ErrPartitionAbsent, while one still
+// forming is a plain error, so routing can tell the two apart from one
+// snapshot.
+func TestGetPartitionFollowerReportsAnAbsentPartition(t *testing.T) {
+	formed := Cluster{
+		Config:     ClusterConfig{DesiredPartitions: 1},
+		Partitions: map[uint32]Partition{1: {Id: 1, LeaderId: "node-1"}},
+	}
+	_, err := formed.GetPartitionFollower(0)
+	assert.ErrorIs(t, err, zenerr.ErrPartitionAbsent)
+
+	forming := Cluster{Config: ClusterConfig{DesiredPartitions: 1}}
+	_, err = forming.GetPartitionFollower(1)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, zenerr.ErrPartitionAbsent, "a partition still forming is not absent")
 }
 
 func TestGetPartitionIdFromString(t *testing.T) {

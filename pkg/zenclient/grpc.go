@@ -40,7 +40,7 @@ type WorkerFunc func(ctx context.Context, job *proto.WaitingJob) (map[string]any
 var (
 	// ErrLockNotHeld is returned by Worker.ExtendLock when the job is not
 	// locked for this worker any more: the lock lapsed, the job was completed
-	// or failed, or it was never delivered to this worker.
+	// or failed, it was never delivered to this worker, or no job has the key.
 	ErrLockNotHeld = errors.New("job lock is not held")
 	// ErrLockHeldByOtherClient is returned by Worker.ExtendLock when the job
 	// is currently locked for a different client id.

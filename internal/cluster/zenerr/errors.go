@@ -35,6 +35,12 @@ var (
 	// ErrResourceLimit is returned when a restore input exceeds a configured
 	// size limit.
 	ErrResourceLimit = errors.New("restore resource limit exceeded")
+
+	// ErrPartitionAbsent is returned by partition routing for a partition the
+	// cluster does not have and is not going to form (see
+	// state.Cluster.PartitionAbsent). A key routed to it names nothing, so a
+	// request for it is not found rather than a cluster failure to retry.
+	ErrPartitionAbsent = errors.New("the cluster does not have the partition")
 )
 
 type ZenErrorCode uint32

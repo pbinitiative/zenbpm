@@ -19,7 +19,10 @@ import (
 // information about currently active partition and Nodes in the cluster.
 // +k8s:deepcopy-gen=true
 type Cluster struct {
-	// Config stores desired cluster configuration. At the start of the cluster its picked up from app configuration and later updated by calling GRPC API.
+	// Config stores the desired cluster configuration. Each node seeds it from
+	// its own application configuration; no raft command writes it (the
+	// ConfigurationUpdate call is not implemented), so it is only replicated
+	// when a node restores a snapshot.
 	Config ClusterConfig `json:"clusterConfig"`
 	// Partitions stores current cluster partition state
 	Partitions map[uint32]Partition `json:"partitions"`
@@ -88,9 +91,14 @@ func (c Cluster) GetLeastStressedNode() (Node, error) {
 	return minNode, nil
 }
 
-// GetPartitionFollower preferably returns partition follower node and if it does not exist it returns the leader
+// GetPartitionFollower preferably returns partition follower node and if it
+// does not exist it returns the leader. A partition the cluster does not have
+// and is not going to form is zenerr.ErrPartitionAbsent.
 func (c Cluster) GetPartitionFollower(partition uint32) (Node, error) {
 	if _, ok := c.Partitions[partition]; !ok {
+		if c.PartitionAbsent(partition) {
+			return Node{}, fmt.Errorf("%w: partition %d", zenerr.ErrPartitionAbsent, partition)
+		}
 		return Node{}, fmt.Errorf("partition not found")
 	}
 
@@ -134,6 +142,44 @@ func (c Cluster) ActivePartitionLeader(partitionID uint32) (addr string, nodeID 
 		return "", ""
 	}
 	return leader.Addr, leader.Id
+}
+
+// PartitionAbsent reports whether the cluster does not have the partition and
+// is not going to form it, so that a key routed to it names nothing and never
+// will: partition 0, which is reserved for global resources, or one past the
+// partitions the cluster formed. It only says so once every desired partition
+// has been formed (see partitionsFormed). Before that, a partition missing
+// from the state may still be forming, and a node which has not caught up with
+// the log does not know the partitions at all; neither can tell an absent
+// partition from one without a leader yet. A partition which exists but has
+// no leader at the moment is never absent.
+func (c Cluster) PartitionAbsent(partitionID uint32) bool {
+	if _, ok := c.Partitions[partitionID]; ok {
+		return false
+	}
+	return c.partitionsFormed()
+}
+
+// partitionsFormed reports whether the state knows the desired partition
+// count and every one of the partitions 1 to that count has been formed, that
+// is, has reported a leader into the state at least once. The cluster leader
+// forms them one by one in that order (see Controller.performLeaderOperations).
+//
+// The desired count is the node's own (see Config), so this relies on every
+// node being configured with the same count. config.Cluster.ValidateDesiredPartitions
+// pins it to 1 today; a node with a smaller count would take a partition of
+// the cluster for absent, one with a larger count would never see the
+// partitions formed. Lifting that limit needs the count replicated first.
+func (c Cluster) partitionsFormed() bool {
+	if c.Config.DesiredPartitions == 0 {
+		return false
+	}
+	for partitionID := uint32(1); partitionID <= c.Config.DesiredPartitions; partitionID++ {
+		if _, ok := c.Partitions[partitionID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // PartitionLeaderInitialized reports whether the recorded leader exists and

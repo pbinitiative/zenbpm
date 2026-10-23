@@ -827,6 +827,7 @@ func (s *grpcSrv) FailJob(ctx context.Context, req *proto.FailJobRequest) (*prot
 	return &proto.FailJobResponse{}, nil
 }
 
+// receivedFailRequests is a copy of the FailJob requests received.
 func (s *grpcSrv) receivedFailRequests() []*proto.FailJobRequest {
 	s.failRequestsMu.Lock()
 	defer s.failRequestsMu.Unlock()
@@ -1074,6 +1075,12 @@ func (s *testStore) LeaderWithID() (string, string) {
 		}
 	}
 	return "", ""
+}
+
+func (s *testStore) PartitionAbsent(partition uint32) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state.PartitionAbsent(partition)
 }
 
 func (s *testStore) PartitionLeaderWithID(partition uint32) (string, string) {

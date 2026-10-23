@@ -1864,6 +1864,10 @@ func (c *testStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	return c.addr, c.id
 }
 
+func (c *testStore) PartitionAbsent(uint32) bool {
+	return false
+}
+
 func (c *testStore) Role() comproto.Role {
 	if c.leader == true {
 		return comproto.Role_ROLE_TYPE_LEADER

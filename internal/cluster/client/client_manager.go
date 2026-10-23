@@ -10,6 +10,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
@@ -32,9 +33,13 @@ type ClientManager struct {
 	store ClientStore
 }
 
+// ClientStore is the part of the cluster store a ClientManager routes by.
 type ClientStore interface {
 	LeaderWithID() (string, string)
 	PartitionLeaderWithID(partition uint32) (string, string)
+	// PartitionAbsent reports whether the cluster does not have the partition
+	// and is not going to form it (see state.Cluster.PartitionAbsent).
+	PartitionAbsent(partition uint32) bool
 }
 
 func NewClientManager(store ClientStore) *ClientManager {
@@ -76,10 +81,18 @@ func (c *ClientManager) PartitionLeader(partition uint32) (proto.ZenServiceClien
 	return client, err
 }
 
+// PartitionLeaderWithID returns a client for the leader of the partition and
+// the leader's node id. A partition without a known leader is an error, which
+// wraps zenerr.ErrPartitionAbsent when the cluster does not have the partition
+// and is not going to form it; otherwise the partition has no leader at the
+// moment, a transient condition.
 func (c *ClientManager) PartitionLeaderWithID(partition uint32) (proto.ZenServiceClient, string, error) {
 	leaderAddr, nodeId := c.store.PartitionLeaderWithID(partition)
 	var err error
 	if leaderAddr == "" {
+		if c.store.PartitionAbsent(partition) {
+			return nil, "", fmt.Errorf("failed to get leader address for cluster client: %w: partition %d", zenerr.ErrPartitionAbsent, partition)
+		}
 		return nil, "", fmt.Errorf("failed to get leader address for cluster client: no leader available")
 	}
 	c.mu.RLock()

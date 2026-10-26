@@ -6,7 +6,7 @@ require (
 	github.com/adhocore/gronx v1.20.5
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/dop251/goja v0.0.0-20251103141225-af2ceb9156d7
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2

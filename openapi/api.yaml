@@ -3356,8 +3356,9 @@ components:
           items:
             $ref: "#/components/schemas/EvaluatedDecision"
         decisionOutput:
+          nullable: true
           x-go-type: json.RawMessage
-          description: Final output of the requested decision, any JSON value
+          description: Final output of the requested decision, any JSON value including null
     EvaluatedDecision:
       type: object
       properties:

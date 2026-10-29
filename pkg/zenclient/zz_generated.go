@@ -583,7 +583,7 @@ func (e GetIncidentsParamsState) Valid() bool {
 
 // DecisionInstanceDetail defines model for DecisionInstanceDetail.
 type DecisionInstanceDetail struct {
-	// DecisionOutput Final output of the requested decision, any JSON value
+	// DecisionOutput Final output of the requested decision, any JSON value including null
 	DecisionOutput           *json.RawMessage    `json:"decisionOutput,omitempty"`
 	DmnResourceDefinitionKey int64               `json:"dmnResourceDefinitionKey"`
 	EvaluatedAt              time.Time           `json:"evaluatedAt"`

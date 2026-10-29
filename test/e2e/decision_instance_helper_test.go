@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,7 @@ func getDecisionInstance(t testing.TB, key int64) zenclient.DecisionInstanceDeta
 				DoOk()
 
 			require.NoError(t, err)
+			assertMatchesDecisionInstanceDetailSchema(t, resp)
 
 			decision := zenclient.DecisionInstanceDetail{}
 
@@ -46,6 +48,21 @@ func getDecisionInstance(t testing.TB, key int64) zenclient.DecisionInstanceDeta
 	require.Fail(t, "no decision instance found")
 
 	return zenclient.DecisionInstanceDetail{}
+}
+
+// assertMatchesDecisionInstanceDetailSchema validates a decision instance
+// detail as the server sent it against the published contract, so that every
+// output the engine produces (an object, a list, a bare value or null) is one
+// the spec allows.
+func assertMatchesDecisionInstanceDetailSchema(t testing.TB, body []byte) {
+	t.Helper()
+
+	spec, err := public.GetSpec()
+	require.NoError(t, err)
+
+	var value any
+	require.NoError(t, json.Unmarshal(body, &value))
+	assert.NoError(t, spec.Components.Schemas["DecisionInstanceDetail"].Value.VisitJSON(value), string(body))
 }
 
 func evaluatedDecisionsByID(evaluatedDecisions []zenclient.EvaluatedDecision) map[string]zenclient.EvaluatedDecision {

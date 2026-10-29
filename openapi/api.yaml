@@ -3395,7 +3395,8 @@ components:
         inputExpression:
           type: string
         inputValue:
-          description: The evaluated input value (any type)
+          nullable: true
+          description: The evaluated input value, any JSON value including null
     EvaluatedOutput:
       type: object
       properties:
@@ -3404,7 +3405,8 @@ components:
         outputName:
           type: string
         outputValue:
-          description: The output value (any type)
+          nullable: true
+          description: The output value, any JSON value including null
     MatchedRule:
       type: object
       properties:

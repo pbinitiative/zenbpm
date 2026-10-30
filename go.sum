@@ -246,8 +246,8 @@ github.com/navsmb/datetime v0.2.0/go.mod h1:LNXxMotg/mkXtgEeUHvwvwkxbwfqEje3LM4z
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=
-github.com/oapi-codegen/nethttp-middleware v1.2.0 h1:2tsVYoKyEWeeQT/niCbip414w9Q4xfVOKedhgC0hIDM=
-github.com/oapi-codegen/nethttp-middleware v1.2.0/go.mod h1:YF1jty00n7tKy9zH5kXixia0awaE+PgVzJyujqCH39A=
+github.com/oapi-codegen/nethttp-middleware v1.3.1 h1:EtgqCb0ebw6O8Gex65OWisNa2VdOclUrtUyOTvdteps=
+github.com/oapi-codegen/nethttp-middleware v1.3.1/go.mod h1:j/ahaBItEQnKZCLc8vG3FqiVL17/J6QSd1AnLU4fNIY=
 github.com/oapi-codegen/nullable v1.1.0 h1:eAh8JVc5430VtYVnq00Hrbpag9PFRGWLjxR1/3KntMs=
 github.com/oapi-codegen/nullable v1.1.0/go.mod h1:KUZ3vUzkmEKY90ksAmit2+5juDIhIZhfDl+0PwOQlFY=
 github.com/oapi-codegen/oapi-codegen/v2 v2.7.1 h1:a7Ab7YlpqkVG5HKrTaeFstm32Z5QOnyjnbsCO0jiMYM=

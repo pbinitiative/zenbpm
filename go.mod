@@ -131,5 +131,6 @@ require (
 
 replace (
 	github.com/armon/go-metrics => github.com/hashicorp/go-metrics v0.5.1
-	github.com/mattn/go-sqlite3 => github.com/rqlite/go-sqlite3 v1.51.0
+	// Match rqlite's SQLite fork because dependency replacements are not inherited.
+	github.com/mattn/go-sqlite3 => github.com/rqlite/go-sqlite3 v1.53.0
 )

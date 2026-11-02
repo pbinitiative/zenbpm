@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -198,17 +199,37 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 
 func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenPartitionNode, *servertest.TestServer) {
 	t.Helper()
-	ctx := context.Background()
-	mux, muxListener, err := network.NewNodeMux("")
+	fixture := prepareCDCPartitionTestFixture(t, t.TempDir(), "")
+	partition, err := fixture.start(context.Background(), cdcConfig)
 	require.NoError(t, err)
+	return partition, fixture.server
+}
+
+type cdcPartitionTestFixture struct {
+	address      string
+	server       *servertest.TestServer
+	start        func(context.Context, config.CDC) (*ZenPartitionNode, error)
+	closeNetwork func() error
+}
+
+func prepareCDCPartitionTestFixture(t *testing.T, dataPath, bindAddress string) cdcPartitionTestFixture {
+	t.Helper()
+	mux, muxListener, err := network.NewNodeMux(bindAddress)
+	require.NoError(t, err)
+	var closeOnce sync.Once
+	var closeErr error
+	closeNetwork := func() error {
+		closeOnce.Do(func() { closeErr = errors.Join(mux.Close(), muxListener.Close()) })
+		return closeErr
+	}
 	t.Cleanup(func() {
-		require.NoError(t, muxListener.Close())
+		require.NoError(t, closeNetwork())
 	})
 
 	rqLiteConfig := GetRqLiteDefaultConfig(
 		"test-rq-lite",
 		muxListener.Addr().String(),
-		t.TempDir(),
+		dataPath,
 		[]string{muxListener.Addr().String()},
 		1, // single-node test
 	)
@@ -245,32 +266,42 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 		require.NoError(t, clientManager.Close())
 	})
 
-	partition, err := startZenPartitionNodeWithCDCConfig(
-		ctx,
-		mux,
-		persistenceConfig,
-		cdcConfig,
-		clientManager,
-		1,
-		PartitionChangesCallbacks{},
-		func() state.Cluster {
-			return state.Cluster{
-				Config:     state.ClusterConfig{},
-				Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "node-1"}},
-				Nodes: map[string]state.Node{
-					"node-1": {
-						Id:         "node-1",
-						Addr:       "localhost:",
-						Partitions: map[uint32]state.NodePartition{},
+	start := func(ctx context.Context, cdcConfig config.CDC) (*ZenPartitionNode, error) {
+		partition, err := startZenPartitionNodeWithCDCConfig(
+			ctx,
+			mux,
+			persistenceConfig,
+			cdcConfig,
+			clientManager,
+			1,
+			PartitionChangesCallbacks{},
+			func() state.Cluster {
+				return state.Cluster{
+					Config:     state.ClusterConfig{},
+					Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "node-1"}},
+					Nodes: map[string]state.Node{
+						"node-1": {
+							Id:         "node-1",
+							Addr:       "localhost:",
+							Partitions: map[uint32]state.NodePartition{},
+						},
 					},
-				},
-			}
-		},
-		testDBOptions(),
-	)
-	require.NoError(t, err)
-	_, err = partition.WaitForLeader(5 * time.Second)
-	require.NoError(t, err)
-	require.NoError(t, partition.DB.RunMigrations(ctx))
-	return partition, server
+				}
+			},
+			testDBOptions(),
+		)
+		if err != nil {
+			return partition, err
+		}
+		if _, err := partition.WaitForLeader(5 * time.Second); err != nil {
+			return partition, err
+		}
+		return partition, partition.DB.RunMigrations(ctx)
+	}
+	return cdcPartitionTestFixture{
+		address:      muxListener.Addr().String(),
+		server:       server,
+		start:        start,
+		closeNetwork: closeNetwork,
+	}
 }

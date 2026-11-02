@@ -305,8 +305,8 @@ github.com/prometheus/procfs v0.22.0 h1:6q9+/JL9IKAPbCmBrv9n5O5Ty3NKnciV5X7YGw0o
 github.com/prometheus/procfs v0.22.0/go.mod h1:CvmFr/GVhIjIvWJZW3tgkODBQMRIf0EyWMQLHCHab58=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/rqlite/go-sqlite3 v1.51.0 h1:9b2AeiirIRLRyxxT9245yaKuNlQ/xEjhTXIjW91Jstk=
-github.com/rqlite/go-sqlite3 v1.51.0/go.mod h1:XIq9SQymduohsJwPy++jWepF9QJ5gT/S3SkUivYSVZ0=
+github.com/rqlite/go-sqlite3 v1.53.0 h1:JJu4qC/jyBwZozVMrDzhIP0oYZEBuRbWAGFDHXeoyMk=
+github.com/rqlite/go-sqlite3 v1.53.0/go.mod h1:XIq9SQymduohsJwPy++jWepF9QJ5gT/S3SkUivYSVZ0=
 github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48 h1:NZ62M+kT0JqhyFUMc8I4SMmfmD4NGJxhb2ePJQXjryc=
 github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48/go.mod h1:CRnsxgy5G8fAf5J+AM0yrsSdxXHKkIYOaq2sm+Q4DYc=
 github.com/rqlite/rqlite/v10 v10.6.5 h1:WRtlPrKZ3rXY3sycMERM5JvI1umInORBy+RraMiv2HE=

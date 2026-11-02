@@ -472,12 +472,12 @@ func (rq *DB) queryDatabaseAt(ctx context.Context, level proto.ConsistencyLevel,
 }
 
 type rqliteResult struct {
-	lastInsertId int64
+	lastInsertID int64
 	rowsAffected int64
 }
 
 func (r rqliteResult) LastInsertId() (int64, error) {
-	return r.lastInsertId, nil
+	return r.lastInsertID, nil
 }
 
 func (r rqliteResult) RowsAffected() (int64, error) {
@@ -521,7 +521,7 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 		return nil, err
 	}
 
-	lastInsertId, rowsAffected := int64(-1), int64(0)
+	lastInsertID, rowsAffected := int64(-1), int64(0)
 	for _, r := range result {
 		if message := statementErrorMessage(r); message != "" {
 			nErr := errors.New(message)
@@ -530,10 +530,10 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 			return nil, nErr
 		}
 		if e := r.GetE(); e != nil {
-			lastInsertId, rowsAffected = e.LastInsertId, e.RowsAffected+rowsAffected
+			lastInsertID, rowsAffected = e.LastInsertId, e.RowsAffected+rowsAffected
 		}
 	}
-	return rqliteResult{lastInsertId: lastInsertId, rowsAffected: rowsAffected}, nil
+	return rqliteResult{lastInsertID: lastInsertID, rowsAffected: rowsAffected}, nil
 }
 
 func (rq *DB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {

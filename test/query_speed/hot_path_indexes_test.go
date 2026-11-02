@@ -12,12 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	zensql "github.com/pbinitiative/zenbpm/internal/sql"
 	rqdb "github.com/rqlite/rqlite/v10/db"
 	"github.com/stretchr/testify/require"
 )
 
-const hotPathMigrationFilename = "0012_hot_path_indexes.up.sql"
+const (
+	hotPathMigrationFilename = "0012_hot_path_indexes.up.sql"
+	querySpeedDriverName     = "zenbpm-queryspeed-sqlite3"
+)
 
 var hotPathIndexNames = []string{
 	"idx_decision_instance_process_instance_key",
@@ -31,60 +35,70 @@ var hotPathIndexNames = []string{
 	"idx_process_instance_state",
 }
 
+func init() {
+	stdsql.Register(querySpeedDriverName, &sqlite3.SQLiteDriver{
+		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+			// Match the partition store's explicit WAL checkpoint lifecycle.
+			return conn.DBConfigNoCkptOnClose()
+		},
+	})
+}
+
 func TestHotPathIndexQuerySpeed(t *testing.T) {
-	rowCount := envInt(t, "ZENBPM_QUERY_SPEED_ROWS", 200_000)
-	iterations := envInt(t, "ZENBPM_QUERY_SPEED_ITERATIONS", 9)
-	require.GreaterOrEqual(t, rowCount, 10_000)
-	require.GreaterOrEqual(t, iterations, 3)
+	t.Run("compares queries with and without hot-path indexes", func(t *testing.T) {
+		rowCount := envInt(t, "ZENBPM_QUERY_SPEED_ROWS", 200_000)
+		iterations := envInt(t, "ZENBPM_QUERY_SPEED_ITERATIONS", 9)
+		require.GreaterOrEqual(t, rowCount, 10_000)
+		require.GreaterOrEqual(t, iterations, 3)
 
-	dbPath := t.TempDir() + "/hot-path-query-speed.db"
-	driver := rqdb.DefaultDriver()
-	db, err := stdsql.Open(driver.Name(), rqdb.MakeDSN(dbPath, false, true, true))
-	require.NoError(t, err)
-	defer db.Close()
-	db.SetMaxOpenConns(1)
+		dbPath := t.TempDir() + "/hot-path-query-speed.db"
+		db, err := stdsql.Open(querySpeedDriverName, rqdb.MakeDSN(dbPath, false, true, true))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, db.Close()) })
+		db.SetMaxOpenConns(1)
 
-	migration := applyMigrations(t, db)
+		migration := applyMigrations(t, db)
 
-	populateStarted := time.Now()
-	populateHotPathTables(t, db, rowCount)
-	populateDuration := time.Since(populateStarted)
+		populateStarted := time.Now()
+		populateHotPathTables(t, db, rowCount)
+		populateDuration := time.Since(populateStarted)
 
-	rollbackHotPathMigration(t, db, migration)
-	require.NoError(t, execSQL(db, "ANALYZE"))
+		rollbackHotPathMigration(t, db, migration)
+		require.NoError(t, execSQL(db, "ANALYZE"))
 
-	targetOrdinal := (rowCount / 2 / 1_000) * 1_000
-	targetToken := int64(1_000_000_000 + targetOrdinal)
-	tests := hotPathSpeedQueries(rowCount, targetOrdinal, targetToken)
+		targetOrdinal := (rowCount / 2 / 1_000) * 1_000
+		targetToken := int64(1_000_000_000 + targetOrdinal)
+		tests := hotPathSpeedQueries(rowCount, targetOrdinal, targetToken)
 
-	withoutIndexes := measureQueries(t, db, tests, iterations)
+		withoutIndexes := measureQueries(t, db, tests, iterations)
 
-	indexBuildStarted := time.Now()
-	require.NoError(t, execSQL(db, migration.SQL))
-	indexBuildDuration := time.Since(indexBuildStarted)
-	requireHotPathIndexes(t, db, true)
-	require.NoError(t, execSQL(db, "ANALYZE"))
+		indexBuildStarted := time.Now()
+		require.NoError(t, execSQL(db, migration.SQL))
+		indexBuildDuration := time.Since(indexBuildStarted)
+		requireHotPathIndexes(t, db, true)
+		require.NoError(t, execSQL(db, "ANALYZE"))
 
-	withIndexes := measureQueries(t, db, tests, iterations)
+		withIndexes := measureQueries(t, db, tests, iterations)
 
-	t.Logf("populated %d rows in each of 9 hot-path tables (%s)", rowCount, populateDuration.Round(time.Millisecond))
-	t.Logf("applied %s in %s", migration.Filename, indexBuildDuration.Round(time.Millisecond))
-	t.Log("warm-cache median query times:")
-	t.Logf("%-42s %12s %12s %10s %10s", "query", "down", "up", "speedup", "rows")
-	for i, test := range tests {
-		before := withoutIndexes[i]
-		after := withIndexes[i]
-		require.Equal(t, before.rows, after.rows, test.name)
+		t.Logf("populated %d rows in each of 9 hot-path tables (%s)", rowCount, populateDuration.Round(time.Millisecond))
+		t.Logf("applied %s in %s", migration.Filename, indexBuildDuration.Round(time.Millisecond))
+		t.Log("warm-cache median query times:")
+		t.Logf("%-42s %12s %12s %10s %10s", "query", "down", "up", "speedup", "rows")
+		for i, test := range tests {
+			before := withoutIndexes[i]
+			after := withIndexes[i]
+			require.Equal(t, before.rows, after.rows, test.name)
 
-		speedup := float64(before.median) / float64(after.median)
-		t.Logf("%-42s %12s %12s %9.1fx %10d",
-			test.name,
-			before.median.Round(time.Microsecond),
-			after.median.Round(time.Microsecond),
-			speedup,
-			before.rows,
-		)
-	}
+			speedup := float64(before.median) / float64(after.median)
+			t.Logf("%-42s %12s %12s %9.1fx %10d",
+				test.name,
+				before.median.Round(time.Microsecond),
+				after.median.Round(time.Microsecond),
+				speedup,
+				before.rows,
+			)
+		}
+	})
 }
 
 type speedQuery struct {

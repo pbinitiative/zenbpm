@@ -40,8 +40,8 @@ SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 34.1
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
-GOLANG_CROSS_VERSION ?= v1.26.3
-GOSEC_VERSION ?= v2.27.1
+GOLANG_CROSS_VERSION ?= v1.27.3
+GOSEC_VERSION ?= v2.30.0
 GOSEC_FLAGS ?= -exclude-generated -no-fail
 GOSEC_REPORT_DIR ?= gosec-reports
 GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
@@ -50,19 +50,19 @@ GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
 # When true, `make sast` exits non-zero if gosec reports any findings (used by sast-strict).
 GOSEC_FAIL_ON_FINDINGS ?= false
 
-STATICCHECK_VERSION ?= v0.7.0
+STATICCHECK_VERSION ?= v0.8.2
 STATICCHECK_REPORT_DIR ?= staticcheck-reports
 STATICCHECK_JSON_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.json
 STATICCHECK_SARIF_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.sarif
 STATICCHECK_HTML_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.html
 
-ERRCHECK_VERSION ?= v1.20.0
+ERRCHECK_VERSION ?= v1.30.0
 ERRCHECK_REPORT_DIR ?= errcheck-reports
 ERRCHECK_TEXT_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.txt
 ERRCHECK_SARIF_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.sarif
 ERRCHECK_HTML_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.html
 
-REVIVE_VERSION ?= v1.15.0
+REVIVE_VERSION ?= v1.17.1
 REVIVE_REPORT_DIR ?= revive-reports
 REVIVE_JSON_REPORT ?= $(REVIVE_REPORT_DIR)/revive.json
 REVIVE_SARIF_REPORT ?= $(REVIVE_REPORT_DIR)/revive.sarif
@@ -107,23 +107,30 @@ $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 
 .PHONY: gosec
 gosec: $(GOSEC) ## Download gosec locally if necessary.
+.PHONY: $(GOSEC)
 $(GOSEC): $(LOCALBIN)
-	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
+	@test -s "$@" && go version "$@" | grep -Fxq "$@: $$(go env GOVERSION)" && \
+	{ [ "$(GOSEC_VERSION)" = "latest" ] || go version -m "$@" | awk -v version="$(GOSEC_VERSION)" '$$1 == "mod" && $$3 == version { found = 1 } END { exit !found }'; } || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
 # Install rules for the static-analysis binaries. The user-facing run targets
 # (staticcheck/errcheck/revive below) depend on these, so there is intentionally
 # no separate download alias target sharing the same name.
+# Cached analyzers must match the active compiler to read its export data.
+.PHONY: $(STATICCHECK) $(ERRCHECK) $(REVIVE)
 $(STATICCHECK): $(LOCALBIN)
-	@test -s $(LOCALBIN)/staticcheck && { [ "$(STATICCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/staticcheck | grep -q $(STATICCHECK_VERSION); } || \
+	@test -s "$@" && go version "$@" | grep -Fxq "$@: $$(go env GOVERSION)" && \
+	{ [ "$(STATICCHECK_VERSION)" = "latest" ] || go version -m "$@" | awk -v version="$(STATICCHECK_VERSION)" '$$1 == "mod" && $$3 == version { found = 1 } END { exit !found }'; } || \
 	GOBIN=$(LOCALBIN) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 
 $(ERRCHECK): $(LOCALBIN)
-	@test -s $(LOCALBIN)/errcheck && { [ "$(ERRCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/errcheck | grep -q $(ERRCHECK_VERSION); } || \
+	@test -s "$@" && go version "$@" | grep -Fxq "$@: $$(go env GOVERSION)" && \
+	{ [ "$(ERRCHECK_VERSION)" = "latest" ] || go version -m "$@" | awk -v version="$(ERRCHECK_VERSION)" '$$1 == "mod" && $$3 == version { found = 1 } END { exit !found }'; } || \
 	GOBIN=$(LOCALBIN) go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
 
 $(REVIVE): $(LOCALBIN)
-	@test -s $(LOCALBIN)/revive && { [ "$(REVIVE_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/revive | grep -q $(REVIVE_VERSION); } || \
+	@test -s "$@" && go version "$@" | grep -Fxq "$@: $$(go env GOVERSION)" && \
+	{ [ "$(REVIVE_VERSION)" = "latest" ] || go version -m "$@" | awk -v version="$(REVIVE_VERSION)" '$$1 == "mod" && $$3 == version { found = 1 } END { exit !found }'; } || \
 	GOBIN=$(LOCALBIN) go install github.com/mgechev/revive@$(REVIVE_VERSION)
 
 .PHONY: codeql-cli

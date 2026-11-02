@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -217,6 +216,11 @@ func startZenPartitionNodeWithCDCConfig(ctx context.Context, mux *tcp.Mux, persi
 	}()
 	zpn.logger.Info(fmt.Sprintf("Starting partition %d node", partition))
 
+	cdcOutput, err := loadPartitionCDCConfig(cdcConfig, partition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure CDC: %w", err)
+	}
+
 	zpn.createMetrics()
 
 	raftLn := network.NewRqLiteRaftListener(partition, mux)
@@ -227,7 +231,7 @@ func startZenPartitionNodeWithCDCConfig(ctx context.Context, mux *tcp.Mux, persi
 	}
 	raftTn := tcp.NewLayer(raftLn, raftDialer)
 
-	str, err := zpn.createStore(cfg, raftTn, partition)
+	str, err := zpn.createStore(cfg, raftTn, partition, cdcOutput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
@@ -258,15 +262,10 @@ func startZenPartitionNodeWithCDCConfig(ctx context.Context, mux *tcp.Mux, persi
 			start := time.Now()
 			path, errOK, err := restore.DownloadFile(ctx, cfg.AutoRestoreFile)
 			if err != nil {
-				var b strings.Builder
-				b.WriteString(fmt.Sprintf("failed to download auto-restore file: %s", err.Error()))
-				if errOK {
-					b.WriteString(", continuing with node startup anyway")
-					zpn.logger.Info(b.String())
-				} else {
-					s := b.String()
-					return nil, fmt.Errorf(s, nil)
+				if !errOK {
+					return nil, fmt.Errorf("failed to download auto-restore file: %w", err)
 				}
+				zpn.logger.Info(fmt.Sprintf("failed to download auto-restore file: %s, continuing with node startup anyway", err.Error()))
 			} else {
 				zpn.logger.Info(fmt.Sprintf("auto-restore file downloaded in %s", time.Since(start)))
 				if err := str.SetRestorePath(path); err != nil {
@@ -299,8 +298,8 @@ func startZenPartitionNodeWithCDCConfig(ctx context.Context, mux *tcp.Mux, persi
 	}
 	zpn.clusterClient = clstrClient
 
-	if cdcConfig.Output != "" {
-		cdcService, err := zpn.createCDCService(cfg, cdcConfig, str, clstrServ, clstrClient, partition)
+	if cdcOutput != nil {
+		cdcService, err := zpn.createCDCService(cfg, cdcOutput, str, clstrServ, clstrClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CDC service: %w", err)
 		}
@@ -500,27 +499,33 @@ func (zpn *ZenPartitionNode) stop() error {
 	return stopErr
 }
 
-func (zpn *ZenPartitionNode) createCDCService(
-	cfg *config.RqLite,
-	cdcSettings config.CDC,
-	str *store.Store,
-	clstrServ *cluster.Service,
-	clstrClient *cluster.Client,
-	partition uint32,
-) (*cdc.Service, error) {
-	cdcConfig, err := cdc.NewConfig(cdcSettings.Output)
+func loadPartitionCDCConfig(settings config.CDC, partition uint32) (*cdc.Config, error) {
+	if settings.Output == "" {
+		return nil, nil
+	}
+
+	output, err := cdc.NewConfig(settings.Output)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load CDC output: %w", err)
 	}
 
-	baseServiceID, err := cdcSettings.ResolveServiceID(cdcConfig.ServiceID)
+	baseServiceID, err := settings.ResolveServiceID(output.ServiceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve CDC service ID: %w", err)
 	}
-	cdcConfig.ServiceID = partitionCDCServiceID(baseServiceID, partition)
+	output.ServiceID = partitionCDCServiceID(baseServiceID, partition)
+	return output, nil
+}
 
+func (zpn *ZenPartitionNode) createCDCService(
+	cfg *config.RqLite,
+	output *cdc.Config,
+	str *store.Store,
+	clstrServ *cluster.Service,
+	clstrClient *cluster.Client,
+) (*cdc.Service, error) {
 	cdcCluster := cdc.NewCDCCluster(str, clstrServ, clstrClient)
-	cdcService, err := cdc.NewService(cfg.NodeID, cfg.DataPath, cdcCluster, cdcConfig)
+	cdcService, err := cdc.NewService(cfg.NodeID, cfg.DataPath, cdcCluster, str.CDCEventsC(), output)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize CDC service: %w", err)
 	}
@@ -528,14 +533,6 @@ func (zpn *ZenPartitionNode) createCDCService(
 		return nil, fmt.Errorf("failed to start CDC service: %w", err)
 	}
 
-	var tableFilter *regexp.Regexp
-	if cdcConfig.TableFilter != nil {
-		tableFilter = cdcConfig.TableFilter.Regexp
-	}
-	if err := str.EnableCDC(cdcService.C(), tableFilter, cdcConfig.RowIDsOnly); err != nil {
-		cdcService.Stop()
-		return nil, fmt.Errorf("failed to enable CDC on store: %w", err)
-	}
 	return cdcService, nil
 }
 
@@ -575,14 +572,23 @@ func (zpn *ZenPartitionNode) startAutoBackups(ctx context.Context, cfg *config.R
 	return u, nil
 }
 
-func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, partition uint32) (*store.Store, error) {
+func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, partition uint32, cdcOutput *cdc.Config) (*store.Store, error) {
 	dbConf := store.NewDBConfig()
 	dbConf.FKConstraints = cfg.FKConstraints
+
+	var changes *store.CDCConfig
+	if cdcOutput != nil {
+		changes = &store.CDCConfig{RowIDsOnly: cdcOutput.RowIDsOnly}
+		if cdcOutput.TableFilter != nil {
+			changes.TableRe = cdcOutput.TableFilter.Regexp
+		}
+	}
 
 	str := store.New(&store.Config{
 		DBConf: dbConf,
 		Dir:    cfg.DataPath,
 		ID:     cfg.NodeID,
+		CDC:    changes,
 		Logger: hclog.Default().
 			Named(fmt.Sprintf("rqlite-partition-store-%d", partition)).
 			StandardLogger(&hclog.StandardLoggerOptions{

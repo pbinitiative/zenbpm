@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.26']
+        go: [ '1.27.3']
     name: Go ${{ matrix.go }} test
     steps:
       - name: checkout
@@ -31,9 +31,9 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/work/zenbpm/zenbpm/bin
-          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-golang-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-golang-
+            ${{ runner.os }}-golang-${{ matrix.go }}-
       - name: download modules
         run: go mod download
       - name: make localbin dir
@@ -44,6 +44,8 @@ jobs:
         run: make generate
       - name: check go mod tidy
         run: go mod tidy -diff
+      - name: compile query-speed tests
+        run: go test -tags=queryspeed ./test/query_speed -run '^$'
       - name: run tests
         run: make test
       - name: run e2e tests

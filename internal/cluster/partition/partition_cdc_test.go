@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,21 +128,108 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 			t.Fatal("timed out waiting for CDC event")
 		}
 	})
+
+	t.Run("captures only matching table row IDs", func(t *testing.T) {
+		received := make(chan cdcjson.CDCMessagesEnvelope, 1)
+		receiverErrors := make(chan error, 1)
+		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var envelope cdcjson.CDCMessagesEnvelope
+			if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+				select {
+				case receiverErrors <- err:
+				default:
+				}
+				http.Error(w, "invalid CDC payload", http.StatusBadRequest)
+				return
+			}
+			select {
+			case received <- envelope:
+			default:
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer receiver.Close()
+
+		cdcOutputPath := filepath.Join(t.TempDir(), "cdc-output.json")
+		cdcOutput := fmt.Sprintf(
+			`{"endpoint":%q,"table_filter":"^cdc_included$","row_ids_only":true,"max_batch_size":1}`,
+			receiver.URL,
+		)
+		require.NoError(t, os.WriteFile(cdcOutputPath, []byte(cdcOutput), 0o600))
+
+		partition, server := prepareCDCPartitionTestSetup(t, config.CDC{
+			Enabled:   true,
+			Output:    cdcOutputPath,
+			ServiceID: "row-id-source",
+		})
+		defer func() {
+			require.NoError(t, partition.Stop())
+			require.NoError(t, server.Close())
+		}()
+
+		_, err := partition.DB.ExecContext(context.Background(), `
+			CREATE TABLE cdc_excluded (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);
+			CREATE TABLE cdc_included (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);
+		`)
+		require.NoError(t, err)
+		_, err = partition.DB.ExecContext(context.Background(), `
+			INSERT INTO cdc_excluded(id, name) VALUES(1, 'excluded');
+			INSERT INTO cdc_included(id, name) VALUES(2, 'included');
+		`)
+		require.NoError(t, err)
+
+		select {
+		case err := <-receiverErrors:
+			t.Fatalf("CDC receiver failed: %v", err)
+		case envelope := <-received:
+			require.Len(t, envelope.Payload, 1)
+			require.Len(t, envelope.Payload[0].Events, 1)
+			event := envelope.Payload[0].Events[0]
+			require.Equal(t, "INSERT", event.Op)
+			require.Equal(t, "cdc_included", event.Table)
+			require.EqualValues(t, 2, event.NewRowID)
+			require.Empty(t, event.Error)
+			require.Nil(t, event.Before)
+			require.Nil(t, event.After)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for CDC event")
+		}
+	})
 }
 
 func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenPartitionNode, *servertest.TestServer) {
 	t.Helper()
-	ctx := context.Background()
-	mux, muxListener, err := network.NewNodeMux("")
+	fixture := prepareCDCPartitionTestFixture(t, t.TempDir(), "")
+	partition, err := fixture.start(context.Background(), cdcConfig)
 	require.NoError(t, err)
+	return partition, fixture.server
+}
+
+type cdcPartitionTestFixture struct {
+	address      string
+	server       *servertest.TestServer
+	start        func(context.Context, config.CDC) (*ZenPartitionNode, error)
+	closeNetwork func() error
+}
+
+func prepareCDCPartitionTestFixture(t *testing.T, dataPath, bindAddress string) cdcPartitionTestFixture {
+	t.Helper()
+	mux, muxListener, err := network.NewNodeMux(bindAddress)
+	require.NoError(t, err)
+	var closeOnce sync.Once
+	var closeErr error
+	closeNetwork := func() error {
+		closeOnce.Do(func() { closeErr = errors.Join(mux.Close(), muxListener.Close()) })
+		return closeErr
+	}
 	t.Cleanup(func() {
-		require.NoError(t, muxListener.Close())
+		require.NoError(t, closeNetwork())
 	})
 
 	rqLiteConfig := GetRqLiteDefaultConfig(
 		"test-rq-lite",
 		muxListener.Addr().String(),
-		t.TempDir(),
+		dataPath,
 		[]string{muxListener.Addr().String()},
 		1, // single-node test
 	)
@@ -178,32 +266,42 @@ func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenParti
 		require.NoError(t, clientManager.Close())
 	})
 
-	partition, err := startZenPartitionNodeWithCDCConfig(
-		ctx,
-		mux,
-		persistenceConfig,
-		cdcConfig,
-		clientManager,
-		1,
-		PartitionChangesCallbacks{},
-		func() state.Cluster {
-			return state.Cluster{
-				Config:     state.ClusterConfig{},
-				Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "node-1"}},
-				Nodes: map[string]state.Node{
-					"node-1": {
-						Id:         "node-1",
-						Addr:       "localhost:",
-						Partitions: map[uint32]state.NodePartition{},
+	start := func(ctx context.Context, cdcConfig config.CDC) (*ZenPartitionNode, error) {
+		partition, err := startZenPartitionNodeWithCDCConfig(
+			ctx,
+			mux,
+			persistenceConfig,
+			cdcConfig,
+			clientManager,
+			1,
+			PartitionChangesCallbacks{},
+			func() state.Cluster {
+				return state.Cluster{
+					Config:     state.ClusterConfig{},
+					Partitions: map[uint32]state.Partition{1: {Id: 1, LeaderId: "node-1"}},
+					Nodes: map[string]state.Node{
+						"node-1": {
+							Id:         "node-1",
+							Addr:       "localhost:",
+							Partitions: map[uint32]state.NodePartition{},
+						},
 					},
-				},
-			}
-		},
-		testDBOptions(),
-	)
-	require.NoError(t, err)
-	_, err = partition.WaitForLeader(5 * time.Second)
-	require.NoError(t, err)
-	require.NoError(t, partition.DB.RunMigrations(ctx))
-	return partition, server
+				}
+			},
+			testDBOptions(),
+		)
+		if err != nil {
+			return partition, err
+		}
+		if _, err := partition.WaitForLeader(5 * time.Second); err != nil {
+			return partition, err
+		}
+		return partition, partition.DB.RunMigrations(ctx)
+	}
+	return cdcPartitionTestFixture{
+		address:      muxListener.Addr().String(),
+		server:       server,
+		start:        start,
+		closeNetwork: closeNetwork,
+	}
 }

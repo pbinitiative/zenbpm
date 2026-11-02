@@ -167,8 +167,8 @@ func (rq *DB) RebuildMessageSubscriptionPointers(ctx context.Context, rows []*ze
 		return fmt.Errorf("failed to rebuild message subscription pointers: %w", err)
 	}
 	for _, res := range results {
-		if res != nil && res.GetError() != "" {
-			return fmt.Errorf("pointer rebuild statement failed: %s", res.GetError())
+		if message := statementErrorMessage(res); message != "" {
+			return fmt.Errorf("pointer rebuild statement failed: %s", message)
 		}
 	}
 	return nil

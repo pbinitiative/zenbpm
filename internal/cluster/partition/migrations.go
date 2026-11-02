@@ -95,6 +95,8 @@ func filterPendingMigrations(fileMigrations sql.Migrations, appliedMigrations []
 }
 
 func executeSingleMigration(ctx context.Context, db *DB, migration sql.MigrationData) error {
+
+	db.logger.Info(fmt.Sprintf("Migration started: %s", migration.Filename))
 	if migrationErr := executeUpMigration(ctx, db, migration); migrationErr != nil {
 		if err := executeRollbackMigration(ctx, db, migration); err != nil {
 			return err
@@ -175,7 +177,7 @@ func executeSQLStatement(ctx context.Context, db *DB, statementSQL string) error
 		return nil
 	}
 
-	if executeErr := results[0].GetError(); executeErr != "" {
+	if executeErr := statementErrorMessage(results[0]); executeErr != "" {
 		return errors.New(executeErr)
 	}
 

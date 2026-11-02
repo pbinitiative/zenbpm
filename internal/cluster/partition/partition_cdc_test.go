@@ -127,6 +127,73 @@ func TestZenPartitionNodeCDC(t *testing.T) {
 			t.Fatal("timed out waiting for CDC event")
 		}
 	})
+
+	t.Run("captures only matching table row IDs", func(t *testing.T) {
+		received := make(chan cdcjson.CDCMessagesEnvelope, 1)
+		receiverErrors := make(chan error, 1)
+		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var envelope cdcjson.CDCMessagesEnvelope
+			if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+				select {
+				case receiverErrors <- err:
+				default:
+				}
+				http.Error(w, "invalid CDC payload", http.StatusBadRequest)
+				return
+			}
+			select {
+			case received <- envelope:
+			default:
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer receiver.Close()
+
+		cdcOutputPath := filepath.Join(t.TempDir(), "cdc-output.json")
+		cdcOutput := fmt.Sprintf(
+			`{"endpoint":%q,"table_filter":"^cdc_included$","row_ids_only":true,"max_batch_size":1}`,
+			receiver.URL,
+		)
+		require.NoError(t, os.WriteFile(cdcOutputPath, []byte(cdcOutput), 0o600))
+
+		partition, server := prepareCDCPartitionTestSetup(t, config.CDC{
+			Enabled:   true,
+			Output:    cdcOutputPath,
+			ServiceID: "row-id-source",
+		})
+		defer func() {
+			require.NoError(t, partition.Stop())
+			require.NoError(t, server.Close())
+		}()
+
+		_, err := partition.DB.ExecContext(context.Background(), `
+			CREATE TABLE cdc_excluded (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);
+			CREATE TABLE cdc_included (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);
+		`)
+		require.NoError(t, err)
+		_, err = partition.DB.ExecContext(context.Background(), `
+			INSERT INTO cdc_excluded(id, name) VALUES(1, 'excluded');
+			INSERT INTO cdc_included(id, name) VALUES(2, 'included');
+		`)
+		require.NoError(t, err)
+
+		select {
+		case err := <-receiverErrors:
+			t.Fatalf("CDC receiver failed: %v", err)
+		case envelope := <-received:
+			require.Len(t, envelope.Payload, 1)
+			require.Len(t, envelope.Payload[0].Events, 1)
+			event := envelope.Payload[0].Events[0]
+			require.Equal(t, "INSERT", event.Op)
+			require.Equal(t, "cdc_included", event.Table)
+			require.EqualValues(t, 2, event.NewRowID)
+			require.Empty(t, event.Error)
+			require.Nil(t, event.Before)
+			require.Nil(t, event.After)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for CDC event")
+		}
+	})
 }
 
 func prepareCDCPartitionTestSetup(t *testing.T, cdcConfig config.CDC) (*ZenPartitionNode, *servertest.TestServer) {

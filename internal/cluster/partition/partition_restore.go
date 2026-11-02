@@ -180,7 +180,7 @@ func (rq *DB) ExecuteUnderFence(ctx context.Context, token RestoreToken, stateme
 			return err
 		}
 		for i, result := range results {
-			if msg := result.GetError(); msg != "" {
+			if msg := statementErrorMessage(result); msg != "" {
 				return fmt.Errorf("statement %d failed: %s", i, msg)
 			}
 		}

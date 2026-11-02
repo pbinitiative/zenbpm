@@ -18,7 +18,7 @@ permissions:
   security-events: write
 
 env:
-  GOSEC_VERSION: v2.27.1
+  GOSEC_VERSION: v2.30.0
 
 jobs:
   gosec:
@@ -30,7 +30,7 @@ jobs:
       - name: setup go with cache
         uses: ./.github/actions/setup-go-cache
         with:
-          cache-key: ${{ runner.os }}-gosec-${{ env.GOSEC_VERSION }}-${{ hashFiles('**/go.sum') }}
+          cache-key: ${{ runner.os }}-gosec-${{ env.GOSEC_VERSION }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-gosec-
 

@@ -1,6 +1,6 @@
 module github.com/pbinitiative/zenbpm
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/adhocore/gronx v1.20.5

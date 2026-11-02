@@ -334,6 +334,16 @@ func (rq *DB) executeStatementsUnfenced(ctx context.Context, statements []*proto
 	return results, nil
 }
 
+func statementErrorMessage(response *proto.ExecuteQueryResponse) string {
+	if message := response.GetError(); message != "" {
+		return message
+	}
+	if message := response.GetE().GetError(); message != "" {
+		return message
+	}
+	return response.GetQ().GetError()
+}
+
 func (rq *DB) generateStatement(sql string, parameters ...interface{}) (*proto.Statement, error) {
 	resultParams := make([]*proto.Parameter, 0, len(parameters))
 
@@ -511,11 +521,10 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 		return nil, err
 	}
 
-	lastInsertId, rowsAffected := int64(-1), int64(-1)
+	lastInsertId, rowsAffected := int64(-1), int64(0)
 	for _, r := range result {
-		err := r.GetError()
-		if err != "" {
-			nErr := errors.New(err)
+		if message := statementErrorMessage(r); message != "" {
+			nErr := errors.New(message)
 			execSpan.RecordError(nErr)
 			execSpan.SetStatus(codes.Error, nErr.Error())
 			return nil, nErr
@@ -2089,9 +2098,9 @@ func (rq *DB) RecordJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.Jo
 	}
 	recorded := make([]sql.Job, 0, len(jobs))
 	for i, result := range results {
-		if result.GetError() != "" {
+		if message := statementErrorMessage(result); message != "" {
 			// the statements run in one transaction, so none of them was applied
-			return nil, fmt.Errorf("failed to record the delivery of job %d on partition %d: %s", jobs[i].Key, rq.Partition, result.GetError())
+			return nil, fmt.Errorf("failed to record the delivery of job %d on partition %d: %s", jobs[i].Key, rq.Partition, message)
 		}
 		if result.GetE().GetRowsAffected() == 1 {
 			delivered := jobs[i]
@@ -2128,9 +2137,9 @@ func (rq *DB) WithdrawJobDeliveries(ctx context.Context, jobs []sql.Job) ([]sql.
 	}
 	withdrawn := make([]sql.Job, 0, len(jobs))
 	for i, result := range results {
-		if result.GetError() != "" {
+		if message := statementErrorMessage(result); message != "" {
 			// the statements run in one transaction, so none of them was applied
-			return nil, fmt.Errorf("failed to withdraw delivery %d of job %d on partition %d: %s", jobs[i].DeliveryToken, jobs[i].Key, rq.Partition, result.GetError())
+			return nil, fmt.Errorf("failed to withdraw delivery %d of job %d on partition %d: %s", jobs[i].DeliveryToken, jobs[i].Key, rq.Partition, message)
 		}
 		if result.GetE().GetRowsAffected() == 1 {
 			previous := jobs[i]
@@ -3287,8 +3296,8 @@ func (b *DBBatch) Flush(ctx context.Context) error {
 	}
 	var stmtErr error
 	for i, res := range resp {
-		if res.GetError() != "" {
-			stmtErr = errors.Join(fmt.Errorf("statement %d error: %s", i, res.GetError()))
+		if message := statementErrorMessage(res); message != "" {
+			stmtErr = errors.Join(fmt.Errorf("statement %d error: %s", i, message))
 		}
 	}
 	if stmtErr != nil {

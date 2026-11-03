@@ -15,6 +15,8 @@ import (
 type Storage interface {
 	ProcessDefinitionStorageReader
 	ProcessDefinitionStorageWriter
+	ProcessSuspensionStorageReader
+	ProcessSuspensionStorageWriter
 	ProcessInstanceStorageReader
 	ProcessInstanceStorageWriter
 	TimerStorageReader
@@ -133,6 +135,66 @@ type ProcessDefinitionStorageWriter interface {
 	// SaveProcessDefinition persists a ProcessDefinition
 	// and potentially overwrites prior data stored with the given ProcessKey
 	SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error
+}
+
+// ProcessSuspensionStorageReader reads the suspension of BPMN processes.
+type ProcessSuspensionStorageReader interface {
+	// IsProcessSuspended reports whether the BPMN process with the given id is suspended.
+	// A suspended process starts no new instance of any of its versions.
+	IsProcessSuspended(ctx context.Context, bpmnProcessId string) (bool, error)
+}
+
+// ProcessSuspension is the last change of the suspension of a BPMN process which a storage holds.
+type ProcessSuspension struct {
+	Suspended bool
+	// Version orders the changes of the process: it grows with every change.
+	Version int64
+}
+
+// ChangeProcessSuspensionOption changes how ChangeProcessSuspension takes its version.
+type ChangeProcessSuspensionOption func(*ProcessSuspensionChange)
+
+// ProcessSuspensionChange is what the options of ChangeProcessSuspension resolve to. It is exported only so that
+// the storage implementations, which live in other packages, can resolve the options with
+// NewProcessSuspensionChange.
+type ProcessSuspensionChange struct {
+	// MinVersion is the version the change has to exceed, besides the one the storage holds.
+	MinVersion int64
+}
+
+// AboveVersion makes the version of a change higher than the given one. A cluster needs it when another
+// partition holds a change with a higher version than this one (see ApplyProcessSuspension).
+func AboveVersion(minVersion int64) ChangeProcessSuspensionOption {
+	return func(change *ProcessSuspensionChange) {
+		change.MinVersion = minVersion
+	}
+}
+
+// NewProcessSuspensionChange resolves the options of ChangeProcessSuspension.
+func NewProcessSuspensionChange(options ...ChangeProcessSuspensionOption) ProcessSuspensionChange {
+	var change ProcessSuspensionChange
+	for _, option := range options {
+		option(&change)
+	}
+	return change
+}
+
+// ProcessSuspensionStorageWriter writes the suspension of BPMN processes.
+//
+// The suspension applies to every version of the process, including versions deployed later. Every change
+// has a version, which grows with each change of the process: a storage which is told about a change by
+// another storage (see ApplyProcessSuspension) keeps the change with the higher version, so that the
+// storages end up in the same state whatever order the changes reach them in.
+type ProcessSuspensionStorageWriter interface {
+	// ChangeProcessSuspension suspends (true) or resumes (false) the BPMN process with the given id and
+	// returns the version of the change, which is higher than the version of the last change the storage
+	// holds and, with AboveVersion, than that version too.
+	ChangeProcessSuspension(ctx context.Context, bpmnProcessId string, suspended bool, options ...ChangeProcessSuspensionOption) (version int64, err error)
+	// ApplyProcessSuspension records a change which another storage made under the given version (at least 1:
+	// the engine refuses any other), unless the storage already holds a change with the same or a higher
+	// version. It returns the change the storage holds afterwards, so that the caller can tell that its change
+	// was not taken.
+	ApplyProcessSuspension(ctx context.Context, bpmnProcessId string, suspended bool, version int64) (held ProcessSuspension, err error)
 }
 
 type ProcessInstanceStorageReader interface {

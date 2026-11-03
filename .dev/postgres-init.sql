@@ -35,6 +35,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS unique_name_correlation_key_waiting
     ON reporting.message_subscription_pointer (name, correlation_key)
     WHERE state = 1;
 
+CREATE TABLE IF NOT EXISTS reporting.process_suspension (
+    bpmn_process_id TEXT PRIMARY KEY,
+    suspended BIGINT NOT NULL,
+    version BIGINT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reporting.process_definition (
     key BIGINT PRIMARY KEY,
     version BIGINT NOT NULL,
@@ -371,6 +377,7 @@ DECLARE
         'incident',
         'job',
         'job_failure',
+        'process_suspension',
         'message_subscription',
         'timer'
     ];

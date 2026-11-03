@@ -1116,7 +1116,10 @@ type ProcessDefinitionDetail struct {
 	// BpmnProcessName Process name from BPMN
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
-	Version         int     `json:"version"`
+
+	// Suspended True while the process is suspended, which applies to all of its versions. A suspended process starts no new instances.
+	Suspended *bool `json:"suspended,omitempty"`
+	Version   int   `json:"version"`
 
 	// VersionTag Optional process version tag from `zenbpm:versionTag`
 	VersionTag *string `json:"versionTag,omitempty"`
@@ -1129,7 +1132,10 @@ type ProcessDefinitionSimple struct {
 	// BpmnProcessName Process name from BPMN
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
-	Version         int     `json:"version"`
+
+	// Suspended True while the process is suspended, which applies to all of its versions. A suspended process starts no new instances.
+	Suspended *bool `json:"suspended,omitempty"`
+	Version   int   `json:"version"`
 
 	// VersionTag Optional process version tag from `zenbpm:versionTag`
 	VersionTag *string `json:"versionTag,omitempty"`
@@ -1731,6 +1737,12 @@ type UpdateProcessInstanceVariablesJSONBody struct {
 	Variables map[string]interface{} `json:"variables"`
 }
 
+// SetProcessSuspensionJSONBody defines parameters for SetProcessSuspension.
+type SetProcessSuspensionJSONBody struct {
+	// Suspended True to suspend the process, false to resume it
+	Suspended bool `json:"suspended"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
@@ -1766,6 +1778,9 @@ type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
 
 // UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
 type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
+
+// SetProcessSuspensionJSONRequestBody defines body for SetProcessSuspension for application/json ContentType.
+type SetProcessSuspensionJSONRequestBody SetProcessSuspensionJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -1974,6 +1989,11 @@ type ClientInterface interface {
 
 	// DeleteProcessInstanceVariable request
 	DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProcessSuspensionWithBody request with any body
+	SetProcessSuspensionWithBody(ctx context.Context, bpmnProcessId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetProcessSuspension(ctx context.Context, bpmnProcessId string, body SetProcessSuspensionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStartPprofServer request
 	TestStartPprofServer(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2560,6 +2580,30 @@ func (c *Client) UpdateProcessInstanceVariables(ctx context.Context, processInst
 
 func (c *Client) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteProcessInstanceVariableRequest(c.Server, processInstanceKey, variableName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetProcessSuspensionWithBody(ctx context.Context, bpmnProcessId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProcessSuspensionRequestWithBody(c.Server, bpmnProcessId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetProcessSuspension(ctx context.Context, bpmnProcessId string, body SetProcessSuspensionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProcessSuspensionRequest(c.Server, bpmnProcessId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5081,6 +5125,53 @@ func NewDeleteProcessInstanceVariableRequest(server string, processInstanceKey i
 	return req, nil
 }
 
+// NewSetProcessSuspensionRequest calls the generic SetProcessSuspension builder with application/json body
+func NewSetProcessSuspensionRequest(server string, bpmnProcessId string, body SetProcessSuspensionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProcessSuspensionRequestWithBody(server, bpmnProcessId, "application/json", bodyReader)
+}
+
+// NewSetProcessSuspensionRequestWithBody generates requests for SetProcessSuspension with any type of body
+func NewSetProcessSuspensionRequestWithBody(server string, bpmnProcessId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "bpmnProcessId", bpmnProcessId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/processes/%s/suspension", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewTestStartPprofServerRequest generates requests for TestStartPprofServer
 func NewTestStartPprofServerRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
@@ -5326,6 +5417,11 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteProcessInstanceVariableWithResponse request
 	DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error)
+
+	// SetProcessSuspensionWithBodyWithResponse request with any body
+	SetProcessSuspensionWithBodyWithResponse(ctx context.Context, bpmnProcessId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProcessSuspensionResponse, error)
+
+	SetProcessSuspensionWithResponse(ctx context.Context, bpmnProcessId string, body SetProcessSuspensionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProcessSuspensionResponse, error)
 
 	// TestStartPprofServerWithResponse request
 	TestStartPprofServerWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartPprofServerResponse, error)
@@ -5883,6 +5979,7 @@ type PublishMessageResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON413      *PayloadTooLarge
 	JSON415      *UnsupportedMediaType
 	JSON500      *Error
@@ -5960,6 +6057,7 @@ type StartProcessInstanceOnElementsResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON413      *PayloadTooLarge
 	JSON415      *UnsupportedMediaType
 	JSON500      *Error
@@ -6208,6 +6306,7 @@ type CreateProcessInstanceResponse struct {
 	JSON400      *Error
 	JSON404      *Error
 	JSON405      *MethodNotAllowed
+	JSON409      *Error
 	JSON413      *PayloadTooLarge
 	JSON415      *UnsupportedMediaType
 	JSON500      *Error
@@ -6646,6 +6745,42 @@ func (r DeleteProcessInstanceVariableResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DeleteProcessInstanceVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProcessSuspensionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON405      *MethodNotAllowed
+	JSON413      *PayloadTooLarge
+	JSON415      *UnsupportedMediaType
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProcessSuspensionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProcessSuspensionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProcessSuspensionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7141,6 +7276,23 @@ func (c *ClientWithResponses) DeleteProcessInstanceVariableWithResponse(ctx cont
 		return nil, err
 	}
 	return ParseDeleteProcessInstanceVariableResponse(rsp)
+}
+
+// SetProcessSuspensionWithBodyWithResponse request with arbitrary body returning *SetProcessSuspensionResponse
+func (c *ClientWithResponses) SetProcessSuspensionWithBodyWithResponse(ctx context.Context, bpmnProcessId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProcessSuspensionResponse, error) {
+	rsp, err := c.SetProcessSuspensionWithBody(ctx, bpmnProcessId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProcessSuspensionResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetProcessSuspensionWithResponse(ctx context.Context, bpmnProcessId string, body SetProcessSuspensionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProcessSuspensionResponse, error) {
+	rsp, err := c.SetProcessSuspension(ctx, bpmnProcessId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProcessSuspensionResponse(rsp)
 }
 
 // TestStartPprofServerWithResponse request returning *TestStartPprofServerResponse
@@ -8195,6 +8347,13 @@ func ParsePublishMessageResponse(rsp *http.Response) (*PublishMessageResponse, e
 		}
 		response.JSON405 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8347,6 +8506,13 @@ func ParseStartProcessInstanceOnElementsResponse(rsp *http.Response) (*StartProc
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge
@@ -8771,6 +8937,13 @@ func ParseCreateProcessInstanceResponse(rsp *http.Response) (*CreateProcessInsta
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge
@@ -9475,6 +9648,74 @@ func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProc
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProcessSuspensionResponse parses an HTTP response from a SetProcessSuspensionWithResponse call
+func ParseSetProcessSuspensionResponse(rsp *http.Response) (*SetProcessSuspensionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProcessSuspensionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest MethodNotAllowed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

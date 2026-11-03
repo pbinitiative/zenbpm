@@ -37,17 +37,24 @@ type startEventInstanceCreationTrigger struct {
 	// transition is being written by markConsumed on the same batch. It lets timeCycle renewal see
 	// a consistent view of the cycle history even though the just-consumed timer is still persisted as Created.
 	inFlightTriggeredTimerKey *int64
+	// refuseWhenSuspended makes the activation fail with a *ProcessSuspendedError, leaving the trigger
+	// untouched, when the process is suspended. It is set for message triggers, so that the publisher is told
+	// and can send the message again once the process is resumed. Without it the trigger is consumed and
+	// renewed but no instance is created, which is what a timer needs to carry on with its cycle.
+	refuseWhenSuspended bool
 }
 
 // handleStartEventInstanceCreation is the shared implementation for activating a
 // process-definition-level start event (message or timer). It:
 //  1. serializes concurrent fires of the same trigger,
 //  2. re-validates the trigger via t.refresh (silently no-ops if already consumed),
-//  3. resolves the start event and evaluates its output mapping, leaving the trigger intact if the mapping fails,
-//  4. marks the original trigger as consumed in a batch,
-//  5. re-creates a fresh subscription/timer (Active/Created state) for the same start event so that the next event can fire another process instance,
-//  6. flushes the batch (so that even if instance creation later fails the trigger is not re-fired and the renewal is persisted), and
-//  7. creates the new process instance.
+//  3. checks that the process is not suspended: a message trigger is refused with a *ProcessSuspendedError and left
+//     intact, a timer trigger is consumed and renewed (steps 5 to 7) but creates no instance,
+//  4. resolves the start event and evaluates its output mapping, leaving the trigger intact if the mapping fails,
+//  5. marks the original trigger as consumed in a batch,
+//  6. re-creates a fresh subscription/timer (Active/Created state) for the same start event so that the next event can fire another process instance,
+//  7. flushes the batch (so that even if instance creation later fails the trigger is not re-fired and the renewal is persisted), and
+//  8. creates the new process instance, unless the process is suspended.
 func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t startEventInstanceCreationTrigger) error {
 	engine.runningInstances.lockInstance(t.triggerKey)
 	defer engine.runningInstances.unlockInstance(t.triggerKey)
@@ -67,6 +74,20 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 	var startEvent *bpmn20.TStartEvent
 	if pdErr == nil {
 		startEvent = findStartEventById(&processDefinition.Definitions.Process, t.elementId)
+	}
+
+	// A suspended process starts no instance. This is read under the trigger lock and before the trigger is
+	// consumed, so that a refused message is never lost.
+	var suspendedErr *ProcessSuspendedError
+	if pdErr == nil {
+		if checkErr := engine.ensureProcessNotSuspended(ctx, processDefinition.BpmnProcessId); checkErr != nil {
+			if !errors.As(checkErr, &suspendedErr) {
+				return checkErr
+			}
+			if t.refuseWhenSuspended {
+				return checkErr
+			}
+		}
 	}
 
 	// The output mapping is evaluated BEFORE the trigger is consumed. Evaluation is pure (it writes
@@ -112,11 +133,46 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return fmt.Errorf("failed to find start event %q on process definition %d", t.elementId, t.processDefinitionKey)
 	}
 
-	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, instanceVariables, nil); err != nil {
+	// The trigger stays consumed and renewed, so that a cycle timer carries on with its next repetition, but
+	// no instance is created.
+	if suspendedErr != nil {
+		if isOneShotTimerStartEvent(startEvent) {
+			// nothing makes it up later, so whoever suspended the process can find out afterwards
+			engine.logger.Warn("one-shot start event trigger dropped, process is suspended",
+				"bpmnProcessId", processDefinition.BpmnProcessId,
+				"processDefinition", t.processDefinitionKey,
+				"elementId", t.elementId,
+				"trigger", t.triggerKey,
+			)
+			return nil
+		}
+		// a cycle may fire every second
+		engine.logger.Debug("start event trigger skipped, process is suspended",
+			"bpmnProcessId", processDefinition.BpmnProcessId,
+			"processDefinition", t.processDefinitionKey,
+			"elementId", t.elementId,
+			"trigger", t.triggerKey,
+		)
+		return nil
+	}
+
+	// the suspension was checked above, so the check of the public call is not repeated
+	if _, err := engine.startInstanceOnElements(ctx, &processDefinition, []string{t.elementId}, instanceVariables); err != nil {
 		return fmt.Errorf("failed to create process instance for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
 	}
 
 	return nil
+}
+
+// isOneShotTimerStartEvent reports whether the start event is started by a timer which fires once (timeDate)
+// rather than by a cycle.
+func isOneShotTimerStartEvent(startEvent *bpmn20.TStartEvent) bool {
+	for _, eventDef := range startEvent.EventDefinitions {
+		if timerDef, ok := eventDef.(bpmn20.TTimerEventDefinition); ok && timerDef.TimeCycle == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (engine *Engine) mapStartEventTriggerVariables(startEvent bpmn20.TStartEvent, inputVariables map[string]any) (map[string]any, error) {
@@ -214,6 +270,7 @@ func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, mess
 		processDefinitionKey: message.ProcessDefinitionKey,
 		elementId:            message.ElementId,
 		inputVariables:       variables,
+		refuseWhenSuspended:  true,
 		refresh: func(ctx context.Context) (bool, error) {
 			// Re-fetch under the trigger lock to confirm we're the winner. If another publisher already
 			// consumed this subscription it will be Completed / Terminated / not found, in which case we

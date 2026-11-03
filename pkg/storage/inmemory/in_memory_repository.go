@@ -39,6 +39,8 @@ type Storage struct {
 	Incidents          map[int64]bpmnruntime.Incident
 	ErrorSubscriptions map[int64]bpmnruntime.ErrorSubscription
 	JobFailures        map[int64]bpmnruntime.JobFailure
+	// ProcessSuspensions holds the last change of the suspension of each BPMN process which was ever suspended.
+	ProcessSuspensions map[string]storage.ProcessSuspension
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -75,6 +77,7 @@ func NewStorage() *Storage {
 		Incidents:              make(map[int64]bpmnruntime.Incident),
 		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
 		JobFailures:            make(map[int64]bpmnruntime.JobFailure),
+		ProcessSuspensions:     make(map[string]storage.ProcessSuspension),
 	}
 }
 
@@ -96,6 +99,7 @@ func (mem *Storage) Copy() *Storage {
 	maps.Copy(c.Incidents, mem.Incidents)
 	maps.Copy(c.JobFailures, mem.JobFailures)
 	maps.Copy(c.ErrorSubscriptions, mem.ErrorSubscriptions)
+	maps.Copy(c.ProcessSuspensions, mem.ProcessSuspensions)
 	return c
 }
 
@@ -345,6 +349,37 @@ func (mem *Storage) FindProcessDefinitionsById(_ context.Context, processId stri
 	})
 
 	return res, nil
+}
+
+var _ storage.ProcessSuspensionStorageReader = &Storage{}
+
+// IsProcessSuspended reports whether the process is suspended.
+func (mem *Storage) IsProcessSuspended(_ context.Context, bpmnProcessId string) (bool, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	return mem.ProcessSuspensions[bpmnProcessId].Suspended, nil
+}
+
+var _ storage.ProcessSuspensionStorageWriter = &Storage{}
+
+// ChangeProcessSuspension takes the next version of the process, above the one asked for with AboveVersion.
+func (mem *Storage) ChangeProcessSuspension(_ context.Context, bpmnProcessId string, suspended bool, options ...storage.ChangeProcessSuspensionOption) (int64, error) {
+	change := storage.NewProcessSuspensionChange(options...)
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	version := max(mem.ProcessSuspensions[bpmnProcessId].Version, change.MinVersion) + 1
+	mem.ProcessSuspensions[bpmnProcessId] = storage.ProcessSuspension{Suspended: suspended, Version: version}
+	return version, nil
+}
+
+// ApplyProcessSuspension keeps the change when its version is higher than the one held and answers what is held.
+func (mem *Storage) ApplyProcessSuspension(_ context.Context, bpmnProcessId string, suspended bool, version int64) (storage.ProcessSuspension, error) {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	if version > mem.ProcessSuspensions[bpmnProcessId].Version {
+		mem.ProcessSuspensions[bpmnProcessId] = storage.ProcessSuspension{Suspended: suspended, Version: version}
+	}
+	return mem.ProcessSuspensions[bpmnProcessId], nil
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}

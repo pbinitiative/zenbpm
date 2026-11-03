@@ -67,6 +67,8 @@ Schedules process instance creation without any external trigger. A `timeDate` t
 
 A top-level timer start carries no payload and creates an instance with an empty root variable scope. It supports `zenbpm:output` mappings that initialize root variables from literals or expressions before the outgoing flow runs. A mapping evaluation failure creates an incident on the start event and leaves the root variables unchanged.
 
+While the process is [suspended](../../process-suspension.md), the timer start event fires and is consumed but creates no instance, and a cycle carries on with its next repetition. A skipped firing is used up: a cycle with a limited number of repetitions or an end date loses them, and a timer which fires once (`timeDate`) is gone for good. Nothing is made up for it when the process is resumed.
+
 A timer start event inside an [Event sub process](../activities/event-sub-process.md) additionally supports `timeDuration`, measured from when its containing scope becomes active.
 
 ### Timer intermediate catch event

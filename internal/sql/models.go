@@ -175,6 +175,12 @@ type ProcessInstance struct {
 	FlowNodeCount                         int64          `json:"flow_node_count"`
 }
 
+type ProcessSuspension struct {
+	BpmnProcessID string `json:"bpmn_process_id"`
+	Suspended     int64  `json:"suspended"`
+	Version       int64  `json:"version"`
+}
+
 type Timer struct {
 	Key                  int64         `json:"key"`
 	ElementInstanceKey   sql.NullInt64 `json:"element_instance_key"`

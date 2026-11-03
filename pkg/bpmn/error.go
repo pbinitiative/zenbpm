@@ -17,6 +17,17 @@ func newEngineErrorf(format string, a ...interface{}) error {
 	}
 }
 
+// ProcessSuspendedError is returned when a new instance is requested of a process which is suspended, by the
+// calls which create an instance and by those which publish the message of a start event of the process.
+// A call activity does not return it: the instance which makes the call exists and has an incident.
+type ProcessSuspendedError struct {
+	BpmnProcessId string
+}
+
+func (e *ProcessSuspendedError) Error() string {
+	return fmt.Sprintf("process %q is suspended, no new instance can be started", e.BpmnProcessId)
+}
+
 type BpmnEngineUnmarshallingError struct {
 	Msg string
 	Err error

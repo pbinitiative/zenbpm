@@ -695,6 +695,8 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 			switch zerr.Code {
 			case zenerr.NotFoundCode:
 				return public.PublishMessage404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.PublishMessage409JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ClusterErrorCode:
 				return public.PublishMessage502JSONResponse(zerr.ToApiError()), nil
 			default:
@@ -746,6 +748,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		if versionTag := p.GetVersionTag(); versionTag != "" {
 			processDefinitionSimple.VersionTag = &versionTag
 		}
+		processDefinitionSimple.Suspended = new(p.GetSuspended())
 		items[i] = processDefinitionSimple
 	}
 	result.Items = items
@@ -792,7 +795,41 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	if versionTag := definition.GetVersionTag(); versionTag != "" {
 		response.ProcessDefinitionSimple.VersionTag = &versionTag
 	}
+	suspended, err := s.node.IsProcessSuspended(ctx, definition.GetProcessId())
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if !errors.As(err, &zerr) {
+			zerr = zenerr.TechnicalError(err)
+		}
+		return public.GetProcessDefinition500JSONResponse(trackInternalServerError(ctx, zerr)), nil
+	}
+	response.ProcessDefinitionSimple.Suspended = &suspended
 	return response, nil
+}
+
+func (s *Server) SetProcessSuspension(ctx context.Context, request public.SetProcessSuspensionRequestObject) (public.SetProcessSuspensionResponseObject, error) {
+	if err := s.node.SetProcessSuspension(ctx, request.BpmnProcessId, request.Body.Suspended); err != nil {
+		return setProcessSuspensionError(ctx, err), nil
+	}
+	return public.SetProcessSuspension204Response{}, nil
+}
+
+// setProcessSuspensionError answers a failure to change the suspension of a process by its code.
+func setProcessSuspensionError(ctx context.Context, err error) public.SetProcessSuspensionResponseObject {
+	var zerr *zenerr.ZenError
+	if errors.As(err, &zerr) {
+		switch zerr.Code {
+		case zenerr.BadRequestCode:
+			return public.SetProcessSuspension400JSONResponse(zerr.ToApiError())
+		case zenerr.NotFoundCode:
+			return public.SetProcessSuspension404JSONResponse(zerr.ToApiError())
+		case zenerr.ClusterErrorCode, zenerr.UnavailableCode:
+			return public.SetProcessSuspension502JSONResponse(zerr.ToApiError())
+		default:
+			return public.SetProcessSuspension500JSONResponse(trackInternalServerError(ctx, zerr))
+		}
+	}
+	return public.SetProcessSuspension500JSONResponse(trackInternalServerError(ctx, zenerr.TechnicalError(err)))
 }
 
 func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, request public.GetProcessDefinitionElementStatisticsRequestObject) (public.GetProcessDefinitionElementStatisticsResponseObject, error) {
@@ -1027,6 +1064,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 				return public.CreateProcessInstance502JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.CreateProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.CreateProcessInstance409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CreateProcessInstance500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}
@@ -1094,6 +1133,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 				return public.StartProcessInstanceOnElements400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.StartProcessInstanceOnElements404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.StartProcessInstanceOnElements409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.StartProcessInstanceOnElements500JSONResponse(trackInternalServerError(ctx, zerr)), nil
 			}

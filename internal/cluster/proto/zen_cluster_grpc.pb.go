@@ -47,6 +47,7 @@ const (
 	ZenService_EvaluateDecision_FullMethodName                       = "/cluster.ZenService/EvaluateDecision"
 	ZenService_DeployDmnResourceDefinition_FullMethodName            = "/cluster.ZenService/DeployDmnResourceDefinition"
 	ZenService_DeployProcessDefinition_FullMethodName                = "/cluster.ZenService/DeployProcessDefinition"
+	ZenService_SetProcessSuspension_FullMethodName                   = "/cluster.ZenService/SetProcessSuspension"
 	ZenService_AllocateProcessDefinition_FullMethodName              = "/cluster.ZenService/AllocateProcessDefinition"
 	ZenService_GetProcessDefinitionVersions_FullMethodName           = "/cluster.ZenService/GetProcessDefinitionVersions"
 	ZenService_ActivateJob_FullMethodName                            = "/cluster.ZenService/ActivateJob"
@@ -137,6 +138,8 @@ type ZenServiceClient interface {
 	EvaluateDecision(ctx context.Context, in *EvaluateDecisionRequest, opts ...grpc.CallOption) (*EvaluatedDRDResult, error)
 	DeployDmnResourceDefinition(ctx context.Context, in *DeployDmnResourceDefinitionRequest, opts ...grpc.CallOption) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(ctx context.Context, in *DeployProcessDefinitionRequest, opts ...grpc.CallOption) (*DeployProcessDefinitionResponse, error)
+	// SetProcessSuspension suspends or resumes a BPMN process on one partition, which the receiving node must lead.
+	SetProcessSuspension(ctx context.Context, in *SetProcessSuspensionRequest, opts ...grpc.CallOption) (*SetProcessSuspensionResponse, error)
 	// AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
 	// deployment through the main raft log (recipient is the cluster leader).
 	AllocateProcessDefinition(ctx context.Context, in *AllocateProcessDefinitionRequest, opts ...grpc.CallOption) (*AllocateProcessDefinitionResponse, error)
@@ -484,6 +487,16 @@ func (c *zenServiceClient) DeployProcessDefinition(ctx context.Context, in *Depl
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeployProcessDefinitionResponse)
 	err := c.cc.Invoke(ctx, ZenService_DeployProcessDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) SetProcessSuspension(ctx context.Context, in *SetProcessSuspensionRequest, opts ...grpc.CallOption) (*SetProcessSuspensionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetProcessSuspensionResponse)
+	err := c.cc.Invoke(ctx, ZenService_SetProcessSuspension_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -923,6 +936,8 @@ type ZenServiceServer interface {
 	EvaluateDecision(context.Context, *EvaluateDecisionRequest) (*EvaluatedDRDResult, error)
 	DeployDmnResourceDefinition(context.Context, *DeployDmnResourceDefinitionRequest) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error)
+	// SetProcessSuspension suspends or resumes a BPMN process on one partition, which the receiving node must lead.
+	SetProcessSuspension(context.Context, *SetProcessSuspensionRequest) (*SetProcessSuspensionResponse, error)
 	// AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
 	// deployment through the main raft log (recipient is the cluster leader).
 	AllocateProcessDefinition(context.Context, *AllocateProcessDefinitionRequest) (*AllocateProcessDefinitionResponse, error)
@@ -1062,6 +1077,9 @@ func (UnimplementedZenServiceServer) DeployDmnResourceDefinition(context.Context
 }
 func (UnimplementedZenServiceServer) DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeployProcessDefinition not implemented")
+}
+func (UnimplementedZenServiceServer) SetProcessSuspension(context.Context, *SetProcessSuspensionRequest) (*SetProcessSuspensionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetProcessSuspension not implemented")
 }
 func (UnimplementedZenServiceServer) AllocateProcessDefinition(context.Context, *AllocateProcessDefinitionRequest) (*AllocateProcessDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AllocateProcessDefinition not implemented")
@@ -1641,6 +1659,24 @@ func _ZenService_DeployProcessDefinition_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).DeployProcessDefinition(ctx, req.(*DeployProcessDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_SetProcessSuspension_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetProcessSuspensionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).SetProcessSuspension(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_SetProcessSuspension_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).SetProcessSuspension(ctx, req.(*SetProcessSuspensionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2391,6 +2427,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeployProcessDefinition",
 			Handler:    _ZenService_DeployProcessDefinition_Handler,
+		},
+		{
+			MethodName: "SetProcessSuspension",
+			Handler:    _ZenService_SetProcessSuspension_Handler,
 		},
 		{
 			MethodName: "AllocateProcessDefinition",

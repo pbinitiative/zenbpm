@@ -1024,6 +1024,83 @@ paths:
         405:
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /processes/{bpmnProcessId}/suspension:
+    put:
+      operationId: setProcessSuspension
+      summary: Suspend or resume a process
+      description: |
+        Suspends or resumes the process with the given BPMN process id. The setting applies to every version
+        of the process, including versions deployed later.
+
+        A suspended process starts no new instances: starting an instance through the API and publishing the
+        message of a message start event or of an instantiating receive task are rejected with 409 (the message
+        is not kept), a timer start event which fires creates no instance (a cycle carries on with its next
+        repetition, but a firing which is skipped is lost: it is not made up on resume), and a call activity
+        calling it gets an incident. Instances which are already running are not affected (a call activity of
+        one of them which calls a suspended process, its own included, gets an incident), and a start which had
+        passed the check when the process was suspended can still create its instance.
+
+        The request is idempotent: suspending a suspended process or resuming a process which is not suspended
+        leaves it as it is. In a cluster the change is made on every partition; if the request fails with 502
+        after it reached some of them, the error usually names the partitions which did not get it, and sending
+        the request again brings them up to date.
+      tags:
+        - process-definition
+      parameters:
+        - name: bpmnProcessId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: loan-application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - suspended
+              properties:
+                suspended:
+                  type: boolean
+                  description: True to suspend the process, false to resume it
+            example:
+              suspended: true
+      responses:
+        204:
+          description: Process suspended or resumed
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found (e.g. no process definition with the given bpmnProcessId is deployed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: The change could not be made on every partition (e.g. a partition has no leader), or a partition leader runs a version without process suspension (nothing is changed when it leads the first partition, otherwise the partitions led by upgraded nodes have taken the change)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        405:
+          $ref: "#/components/responses/MethodNotAllowed"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   /process-instances:
     post:
       operationId: createProcessInstance
@@ -1086,6 +1163,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         404:
           description: Not found (e.g. process definition was not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict (the process is suspended)
           content:
             application/json:
               schema:
@@ -2917,6 +3000,12 @@ paths:
               example:
                 code: "NOT_FOUND"
                 message: "The requested resource was not found"
+        409:
+          description: Conflict (the process is suspended)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -3088,6 +3177,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         404:
           description: Not found (e.g. process definition with processDefinitionKey not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict (the process is suspended)
           content:
             application/json:
               schema:
@@ -3639,6 +3734,9 @@ components:
         versionTag:
           type: string
           description: Optional process version tag from `zenbpm:versionTag`
+        suspended:
+          type: boolean
+          description: True while the process is suspended, which applies to all of its versions. A suspended process starts no new instances.
     ProcessDefinitionDetail:
       type: object
       required:

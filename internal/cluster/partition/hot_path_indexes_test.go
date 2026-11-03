@@ -214,6 +214,14 @@ func newIndexUseCases() []newIndexUseCase {
 func pinnedIndexUseCases() []pinnedIndexUseCase {
 	return []pinnedIndexUseCase{
 		{
+			// Read on every instance start and every call activity: it has to be a lookup by the primary key.
+			name:        "the suspension of a process is a primary key lookup",
+			scanTargets: []string{"process_suspension"},
+			index:       "sqlite_autoindex_process_suspension_1",
+			query:       "SELECT EXISTS (SELECT 1 FROM process_suspension WHERE bpmn_process_id = ? AND suspended = 1)",
+			arguments:   []any{"process"},
+		},
+		{
 			name:        "running token reconciliation uses token history index",
 			scanTargets: []string{"token", "execution_token", "pi", "process_instance", "history", "flow_element_instance"},
 			index:       "idx_flow_element_instance_execution_token_key",

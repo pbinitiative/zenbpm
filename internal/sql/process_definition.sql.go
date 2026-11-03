@@ -348,6 +348,12 @@ SELECT
   pd.bpmn_process_id,
   pd.bpmn_process_name,
   pd.version_tag,
+  EXISTS (
+    SELECT 1
+    FROM process_suspension AS ps
+    WHERE ps.bpmn_process_id = pd.bpmn_process_id
+      AND ps.suspended = 1
+  ) AS suspended,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
@@ -404,6 +410,7 @@ type FindProcessDefinitionsRow struct {
 	BpmnProcessID   string `json:"bpmn_process_id"`
 	BpmnProcessName string `json:"bpmn_process_name"`
 	VersionTag      string `json:"version_tag"`
+	Suspended       int64  `json:"suspended"`
 	TotalCount      int64  `json:"total_count"`
 }
 
@@ -431,6 +438,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 			&i.BpmnProcessID,
 			&i.BpmnProcessName,
 			&i.VersionTag,
+			&i.Suspended,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

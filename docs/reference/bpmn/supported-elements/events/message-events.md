@@ -78,6 +78,8 @@ Starts a new process instance whenever a matching message is published. The subs
 
 Each published message is consumed by exactly one subscription: if several deployed processes subscribe to the same message name, one publish creates a single instance, not one per process.
 
+While the process is [suspended](../../process-suspension.md), publishing its message is rejected and the subscription stays active.
+
 A message start event inside an [Event sub process](../activities/event-sub-process.md) works differently: its subscription is created per instance of the containing scope and **does** use a correlation key.
 
 #### Message intermediate catch event

@@ -20,6 +20,8 @@ The engine uses a storage interface to interact with storage systems. ZenBPM pla
 
 See [Variables](./variable-mapping.md) for variable propagation and output mapping rules.
 
+See [Suspending a process](./process-suspension.md) for stopping a process from starting new instances.
+
 ## Node processing in the engine
 
 Internally the engine uses "Tokens" as a pointers that traverse the diagram and represent execution state.

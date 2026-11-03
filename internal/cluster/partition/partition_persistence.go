@@ -1164,6 +1164,93 @@ func (rq *DB) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.Proc
 	return res, nil
 }
 
+var _ storage.ProcessSuspensionStorageReader = &DB{}
+
+// IsProcessSuspended reports whether the process is suspended.
+func (rq *DB) IsProcessSuspended(ctx context.Context, bpmnProcessId string) (bool, error) {
+	suspended, err := rq.Queries.IsProcessSuspended(ctx, bpmnProcessId)
+	if err != nil {
+		return false, fmt.Errorf("failed to find out whether process %s is suspended: %w", bpmnProcessId, err)
+	}
+	return suspended != 0, nil
+}
+
+var _ storage.ProcessSuspensionStorageWriter = &DB{}
+
+// maxProcessSuspensionChangeAttempts bounds how often a change of a suspension is tried again after a
+// concurrent change took the version it was about to take. Every attempt a change loses is one that another
+// change wins, so the bound is only reached by that many changes of one process at the very same moment.
+const maxProcessSuspensionChangeAttempts = 50
+
+// ChangeProcessSuspension takes the next version of the process, above the one asked for with AboveVersion,
+// with a compare-and-set on the version it read, so that concurrent changes of one process never share a version.
+func (rq *DB) ChangeProcessSuspension(ctx context.Context, bpmnProcessId string, suspended bool, options ...storage.ChangeProcessSuspensionOption) (int64, error) {
+	minVersion := storage.NewProcessSuspensionChange(options...).MinVersion
+	for range maxProcessSuspensionChangeAttempts {
+		// a leader which has not applied everything it committed yet must not hand out a version from a stale read
+		held, err := rq.LinearizableQueries.GetProcessSuspension(ctx, bpmnProcessId)
+		if errors.Is(err, sql.ErrNoRows) {
+			created, err := rq.Queries.CreateProcessSuspension(ctx, sql.CreateProcessSuspensionParams{
+				BpmnProcessID: bpmnProcessId,
+				Suspended:     suspendedColumn(suspended),
+				Version:       minVersion + 1,
+			})
+			if err != nil {
+				return 0, fmt.Errorf("failed to change suspension of process %s: %w", bpmnProcessId, err)
+			}
+			if created == 1 {
+				return minVersion + 1, nil
+			}
+			continue
+		}
+		if err != nil {
+			return 0, fmt.Errorf("failed to read suspension of process %s: %w", bpmnProcessId, err)
+		}
+		current := held.Version
+		next := max(current, minVersion) + 1
+		updated, err := rq.Queries.UpdateProcessSuspension(ctx, sql.UpdateProcessSuspensionParams{
+			Suspended:       suspendedColumn(suspended),
+			Version:         next,
+			BpmnProcessID:   bpmnProcessId,
+			ExpectedVersion: current,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("failed to change suspension of process %s: %w", bpmnProcessId, err)
+		}
+		if updated == 1 {
+			return next, nil
+		}
+	}
+	return 0, fmt.Errorf("failed to change suspension of process %s: it keeps being changed concurrently", bpmnProcessId)
+}
+
+// suspendedColumn is the value of the suspended column of process_suspension.
+func suspendedColumn(suspended bool) int64 {
+	if suspended {
+		return 1
+	}
+	return 0
+}
+
+// ApplyProcessSuspension keeps the change when its version is higher than the one held and answers what is held.
+func (rq *DB) ApplyProcessSuspension(ctx context.Context, bpmnProcessId string, suspended bool, version int64) (storage.ProcessSuspension, error) {
+	err := rq.Queries.ApplyProcessSuspension(ctx, sql.ApplyProcessSuspensionParams{
+		BpmnProcessID: bpmnProcessId,
+		Suspended:     suspendedColumn(suspended),
+		Version:       version,
+	})
+	if err != nil {
+		return storage.ProcessSuspension{}, fmt.Errorf("failed to apply suspension of process %s: %w", bpmnProcessId, err)
+	}
+	// read in a statement of its own: it may be newer than the change which was just applied, which is what the
+	// caller wants to know
+	held, err := rq.Queries.GetProcessSuspension(ctx, bpmnProcessId)
+	if err != nil {
+		return storage.ProcessSuspension{}, fmt.Errorf("failed to read suspension of process %s: %w", bpmnProcessId, err)
+	}
+	return storage.ProcessSuspension{Suspended: held.Suspended != 0, Version: held.Version}, nil
+}
+
 var _ storage.ProcessDefinitionStorageWriter = &DB{}
 
 func (rq *DB) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {

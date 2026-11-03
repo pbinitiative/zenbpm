@@ -70,6 +70,7 @@ When nothing catches the error, an incident is recorded instead:
 - [Variables](../../variable-mapping.md) — variable scoping and output mapping propagation rules.
 - [Error boundary event](../events/error-events.md#error-boundary-event) — catching errors thrown by the called process.
 - [Multi-instance activity](./activity-multi-instance.md) — calling the process once per element of a collection.
+- [Suspending a process](../../process-suspension.md) — a call activity cannot start a suspended process; the calling instance gets an incident.
 
 ## XML example
 

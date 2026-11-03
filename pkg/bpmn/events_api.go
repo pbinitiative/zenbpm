@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// PublishMessageByName publishes the message of the active subscription. It returns a *ProcessSuspendedError, and
+// keeps the subscription, when the subscription starts a process which is suspended.
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
 	message, err := engine.persistence.FindMessageSubscriptionByName(ctx, name, correlationKey, runtime.ActivityStateActive)
 	if err != nil {
@@ -22,6 +24,8 @@ func (engine *Engine) PublishMessageByName(ctx context.Context, name string, cor
 	return engine.PublishMessage(ctx, message, variables)
 }
 
+// PublishMessageByKey publishes the message of the active subscription. It returns a *ProcessSuspendedError, and
+// keeps the subscription, when the subscription starts a process which is suspended.
 func (engine *Engine) PublishMessageByKey(ctx context.Context, subscriptionKey int64, variables map[string]any) error {
 	message, err := engine.persistence.FindMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
@@ -45,6 +49,7 @@ func (engine *Engine) recordMessageCorrelationFailure(ctx context.Context, name 
 }
 
 // PublishMessage publishes a message given by subscription key and also adds variables to the process instance, which fetches this event
+// It returns a *ProcessSuspendedError, and keeps the subscription, when the message starts a process which is suspended.
 func (engine *Engine) PublishMessage(ctx context.Context, message runtime.MessageSubscription, variables map[string]interface{}) (retErr error) {
 	defer func() {
 		if engine.metrics == nil {

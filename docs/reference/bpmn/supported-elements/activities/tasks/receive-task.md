@@ -23,6 +23,7 @@ A Receive Task references a message definition via its `messageRef` attribute; t
 ## Related documentation
 
 - [Message events](../../events/message-events.md#catching-message-events) — a Receive Task receives messages in nearly the same way as a message intermediate catch event, so everything about defining messages, subscribing to them, and correlating them to a waiting process instance is documented there and applies here as well.
+- [Suspending a process](../../../process-suspension.md) — while the process is suspended, the message of an instantiating Receive Task is rejected and the subscription stays active.
 
 ## XML example
 

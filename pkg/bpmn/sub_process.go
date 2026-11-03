@@ -217,6 +217,15 @@ func (engine *Engine) createCallActivity(
 	if err != nil {
 		return runtime.ActivityStateFailed, err
 	}
+	if err := engine.ensureProcessNotSuspended(ctx, processDefinition.BpmnProcessId); err != nil {
+		var suspendedErr *ProcessSuspendedError
+		if errors.As(err, &suspendedErr) {
+			// not the *ProcessSuspendedError itself: the instance which makes the call exists and has an incident,
+			// whereas that error tells the one who asked for an instance of the process that none was started
+			return runtime.ActivityStateFailed, newEngineErrorf("call activity %s cannot call process %q, it is suspended", element.GetId(), processDefinition.BpmnProcessId)
+		}
+		return runtime.ActivityStateFailed, err
+	}
 
 	calledProcessInstance, tokens, err := engine.createInstance(
 		ctx,

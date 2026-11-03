@@ -597,6 +597,8 @@ func endErrorSpan(tokenSpan trace.Span, err error) {
 
 // CreateInstanceById creates a new instance for a process with given process ID and uses latest version (if available)
 // Might return BpmnEngineError, when no process with given ID was found
+//
+// CreateInstanceById returns a *ProcessSuspendedError, and starts nothing, when the process is suspended.
 func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
@@ -613,6 +615,8 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 
 // CreateInstanceByKey creates a new instance for a process with given process definition key and runs it
 // Might return BpmnEngineError, when no process with given ID was found
+//
+// CreateInstanceByKey returns a *ProcessSuspendedError, and starts nothing, when the process is suspended.
 func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
 	if err != nil {
@@ -629,7 +633,13 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 
 // CreateInstance creates and runs the new process instance for a given process definition
 // Might return BpmnEngineError, if process key was not found
+//
+// CreateInstance returns a *ProcessSuspendedError, and starts nothing, when the process is suspended.
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
+	if err := engine.ensureProcessNotSuspended(ctx, process.BpmnProcessId); err != nil {
+		return nil, err
+	}
+
 	// Process definitions with an instantiating receive task (instantiate="true") cannot be started
 	// manually if they do not also expose a plain start event: a new instance is only created when the
 	// receive task's message is published. Mixed models with a plain start event remain manually startable.
@@ -668,12 +678,22 @@ func (engine *Engine) GetActiveTokensForProcessInstance(ctx context.Context, pro
 	return engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 }
 
+// CreateInstanceWithStartingElements returns a *ProcessSuspendedError, and starts nothing, when the process is suspended.
 func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
 	}
+	if err := engine.ensureProcessNotSuspended(ctx, processDefinition.BpmnProcessId); err != nil {
+		return nil, err
+	}
 
+	return engine.startInstanceOnElements(ctx, &processDefinition, startingElementIds, variableContext)
+}
+
+// startInstanceOnElements creates and runs an instance which starts on the given elements, without checking
+// whether the process is suspended: that is for the callers to do.
+func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefinition *runtime.ProcessDefinition, startingElementIds []string, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(startingElementIds))
 	for _, startingFlowNodeId := range startingElementIds {
 		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
@@ -685,7 +705,7 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 
 	batch := engine.persistence.NewBatch()
 
-	instance, executionTokens, err := engine.createInstanceWithStartingElements(ctx, batch, &processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), &runtime.DefaultProcessInstance{})
+	instance, executionTokens, err := engine.createInstanceWithStartingElements(ctx, batch, processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), &runtime.DefaultProcessInstance{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance on elements: %w", err)
 	}

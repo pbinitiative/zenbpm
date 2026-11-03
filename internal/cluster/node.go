@@ -857,6 +857,14 @@ var (
 // it succeeds, the context is cancelled, or the retry window elapses. The deploy
 // key is caller-assigned and deploys are idempotent on it, so retries are safe.
 func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) error {
+	return node.retryLeaderCall(ctx, "deploy", "deploy to", attempt)
+}
+
+// retryLeaderCall is retryDeploy for any call to a partition leader which is safe to repeat: the errors the caller
+// gets when the retries give up are "<action> cancelled ..." and "no leader available to <noLeaderTo> within ...".
+// What counts as transient (errTransientDeploy, transientDeployError) and the retry window (deployRetryFor,
+// deployRetryInterval) are the ones of the deploy, which first needed them; they are not specific to it.
+func (node *ZenNode) retryLeaderCall(ctx context.Context, action string, noLeaderTo string, attempt func() error) error {
 	deadline := time.Now().Add(deployRetryFor)
 	timer := time.NewTimer(deployRetryInterval)
 	defer timer.Stop()
@@ -869,18 +877,18 @@ func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) erro
 			return err
 		}
 		if ctx.Err() != nil {
-			return zenerr.ClusterError(fmt.Errorf("deploy cancelled while retrying a transient failure: %w", errors.Join(ctx.Err(), err)))
+			return zenerr.ClusterError(fmt.Errorf("%s cancelled while retrying a transient failure: %w", action, errors.Join(ctx.Err(), err)))
 		}
 		if !time.Now().Before(deadline) {
 			if errors.Is(err, errTransientDeploy) {
-				return zenerr.ClusterError(fmt.Errorf("no leader available to deploy to within %s: %w", deployRetryFor, err))
+				return zenerr.ClusterError(fmt.Errorf("no leader available to %s within %s: %w", noLeaderTo, deployRetryFor, err))
 			}
 			return err
 		}
 		timer.Reset(deployRetryInterval)
 		select {
 		case <-ctx.Done():
-			return zenerr.ClusterError(fmt.Errorf("deploy cancelled while waiting to retry: %w", errors.Join(ctx.Err(), err)))
+			return zenerr.ClusterError(fmt.Errorf("%s cancelled while waiting to retry: %w", action, errors.Join(ctx.Err(), err)))
 		case <-timer.C:
 		}
 	}
@@ -921,6 +929,272 @@ func (node *ZenNode) deployProcessDefinitionToPartitionOnce(ctx context.Context,
 	}
 
 	return nil
+}
+
+// SetProcessSuspension suspends (true) or resumes (false) the BPMN process with the given id on every
+// partition, so that every partition engine refuses (or accepts again) new instances of it.
+//
+// The change is idempotent and carries a version, so a request which failed half way can simply be sent again,
+// and the partitions agree whatever order concurrent requests reach them in (see processSuspender).
+func (node *ZenNode) SetProcessSuspension(ctx context.Context, bpmnProcessId string, suspended bool) error {
+	if bpmnProcessId == "" {
+		return zenerr.BadRequest(fmt.Errorf("bpmn process id must be set"))
+	}
+	if err := node.rejectIfRestoring(); err != nil {
+		return err
+	}
+	// The partitions are those of the cluster state at this point. Like for a deployment, the set only grows while
+	// the cluster forms, and no code copies the state of a process to a partition which is added later.
+	partitionIds := sortedPartitionIds(node.store.ClusterState())
+	if len(partitionIds) == 0 {
+		return zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
+	}
+	suspender := processSuspender{
+		partitionIds: partitionIds,
+		exists:       node.processExistsOnPartition,
+		set:          node.setProcessSuspensionOnPartition,
+	}
+	return suspender.Suspend(ctx, bpmnProcessId, suspended)
+}
+
+// processSuspender changes the suspension of a process on every partition. The steps are injected so that the
+// orchestration can be exercised against fake partitions.
+//
+// The first partition decides the order of the changes: it takes the version of a change, and only then are the
+// other partitions told of the change under that version. A partition keeps the change with the highest version,
+// so two requests which overlap leave every partition with the one which took the higher version on the first
+// partition, whatever order they reach the others in.
+//
+// The partitions can disagree about the versions, after a restore from backups which were taken at different
+// moments. A partition which holds a change with a higher version than the first partition keeps it and says so
+// in its answer, and the change is made again above that version.
+type processSuspender struct {
+	// partitionIds are the partitions of the cluster, in ascending order.
+	partitionIds []uint32
+	// exists reports whether the partition holds a version of the process.
+	exists func(ctx context.Context, partitionId uint32, bpmnProcessId string) (bool, error)
+	// set changes the suspension on the partition.
+	set func(ctx context.Context, partitionId uint32, bpmnProcessId string, call suspensionCall) (suspensionChange, error)
+}
+
+// suspensionCall is a change of a suspension which a partition is asked for.
+type suspensionCall struct {
+	suspended bool
+	// version zero asks the partition to take the next version of the process itself, which is higher than
+	// minVersion; another version is one the first partition took, which the partition keeps when it is newer than
+	// the one it holds.
+	version    int64
+	minVersion int64
+}
+
+// suspensionChange is what a partition answers to a change of a suspension.
+type suspensionChange struct {
+	// version is the version of the change.
+	version int64
+	// held is the change the partition holds afterwards.
+	held storage.ProcessSuspension
+}
+
+// suspensionFanOutTimeout bounds how long the other partitions are told of a change after the first one took it.
+const suspensionFanOutTimeout = 30 * time.Second
+
+// maxSuspensionRounds bounds how often a change is made again above the versions the other partitions hold.
+// One round is enough unless partitions were restored from different backups and a change raced another one.
+const maxSuspensionRounds = 3
+
+// Suspend changes the suspension of the process. A failure which names partitions says that the first partition
+// took the change and those did not. Any other failure may have come after the first partition took the change
+// (a call which timed out after the leader committed, a caller who went away): the first partition may hold it
+// and the others not, and nobody is told. Sending the request again is always safe and brings every partition up
+// to date.
+func (s processSuspender) Suspend(ctx context.Context, bpmnProcessId string, suspended bool) error {
+	first := s.partitionIds[0]
+	exists, err := s.exists(ctx, first, bpmnProcessId)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return zenerr.NotFound(fmt.Errorf("process definition with id %s not found", bpmnProcessId))
+	}
+
+	minVersion := int64(0)
+	for round := range maxSuspensionRounds {
+		// From the second round on the first partition has taken a change already, which is carried through even
+		// when the caller goes away (see below).
+		callCtx, cancelCall := ctx, func() {}
+		if round > 0 {
+			callCtx, cancelCall = context.WithTimeout(context.WithoutCancel(ctx), suspensionFanOutTimeout)
+		}
+		change, err := s.set(callCtx, first, bpmnProcessId, suspensionCall{suspended: suspended, minVersion: minVersion})
+		cancelCall()
+		if err != nil {
+			return err
+		}
+		if change.version <= 0 {
+			return zenerr.TechnicalError(fmt.Errorf("partition %d answered version %d for the change of the suspension of process %s", first, change.version, bpmnProcessId))
+		}
+
+		// The first partition took the change, so the others are told of it even when the caller goes away: a
+		// request which is abandoned half way would leave the partitions in different states, with nobody told.
+		fanOutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), suspensionFanOutTimeout)
+
+		var mu sync.Mutex
+		var held []storage.ProcessSuspension
+		err = onEveryPartition(fanOutCtx, s.partitionIds[1:], func(ctx context.Context, partitionId uint32) error {
+			other, err := s.set(ctx, partitionId, bpmnProcessId, suspensionCall{suspended: suspended, version: change.version})
+			if err == nil {
+				mu.Lock()
+				held = append(held, other.held)
+				mu.Unlock()
+			}
+			return err
+		})
+		if errors.Is(err, errPartitionLeaderOutdated) {
+			cancel()
+			return zenerr.ClusterError(fmt.Errorf("suspended=%t of process %s is set on partition %d but not on every partition; the partitions whose leader runs an older version need the upgrade to be finished, any others need the request to be sent again: %w", suspended, bpmnProcessId, first, err))
+		}
+		if err != nil {
+			cancel()
+			return zenerr.ClusterError(fmt.Errorf("suspended=%t of process %s is set on partition %d but not on every partition, send the request again: %w", suspended, bpmnProcessId, first, err))
+		}
+
+		floor, err := s.versionToExceed(fanOutCtx, first, bpmnProcessId, suspended, change, held)
+		cancel()
+		if err != nil {
+			return zenerr.ClusterError(fmt.Errorf("suspended=%t of process %s is set on every partition but they could not be checked against each other, send the request again: %w", suspended, bpmnProcessId, err))
+		}
+		if floor == 0 {
+			return nil
+		}
+		minVersion = floor
+	}
+	return zenerr.ClusterError(fmt.Errorf("the partitions keep disagreeing about the suspension of process %s, send the request again", bpmnProcessId))
+}
+
+// versionToExceed returns the version a change has to exceed to take the place of the changes some partitions
+// hold, or zero when no partition holds a change which the first partition does not know of.
+//
+// A partition which holds a higher version than the one of the change is not always ahead of the first
+// partition: another request may have taken a higher version there and reached it first. Only a partition
+// ahead of what the first partition holds now, or at its version but in another state, was left by something
+// the first partition did not decide.
+func (s processSuspender) versionToExceed(ctx context.Context, first uint32, bpmnProcessId string, suspended bool, change suspensionChange, held []storage.ProcessSuspension) (int64, error) {
+	taken := storage.ProcessSuspension{Suspended: suspended, Version: change.version}
+	if !slices.ContainsFunc(held, func(h storage.ProcessSuspension) bool { return h != taken }) {
+		return 0, nil
+	}
+	// what the first partition holds now, which a change which overlapped this one may have raised. It is asked
+	// with the version just taken: the first partition holds that version or a higher one, so it keeps what it
+	// holds, and the answer says what that is. This only happens when partitions disagree.
+	now, err := s.set(ctx, first, bpmnProcessId, suspensionCall{suspended: suspended, version: change.version})
+	if err != nil {
+		return 0, err
+	}
+	floor := int64(0)
+	for _, h := range held {
+		if h.Version > now.held.Version || (h.Version == now.held.Version && h.Suspended != now.held.Suspended) {
+			floor = max(floor, h.Version)
+		}
+	}
+	return floor, nil
+}
+
+// onEveryPartition runs set for every one of the partitions at the same time and waits for all of them, so that
+// a partition which fails does not keep the others from getting the change. It returns the failures, joined.
+func onEveryPartition(ctx context.Context, partitionIds []uint32, set func(ctx context.Context, partitionId uint32) error) error {
+	failures := make([]error, len(partitionIds))
+	var wg sync.WaitGroup
+	for i, partitionId := range partitionIds {
+		wg.Go(func() {
+			if err := set(ctx, partitionId); err != nil {
+				failures[i] = fmt.Errorf("partition %d: %w", partitionId, err)
+			}
+		})
+	}
+	wg.Wait()
+	return errors.Join(failures...)
+}
+
+// processExistsOnPartition reads on the leader of the partition, which unlike a replica has every deployment
+// the partition acknowledged.
+func (node *ZenNode) processExistsOnPartition(ctx context.Context, partitionId uint32, bpmnProcessId string) (bool, error) {
+	var exists bool
+	err := node.retryLeaderCall(ctx, "process suspension", "change the suspension of a process", func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return fmt.Errorf("%w: partition %d has no leader", errTransientDeploy, partitionId)
+		}
+		client, err := node.client.For(clusterState.Nodes[leaderId].Addr)
+		if err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("failed to get client: %w", err))
+		}
+		resp, err := client.GetProcessDefinitionVersions(ctx, &proto.GetProcessDefinitionVersionsRequest{
+			PartitionId:         new(partitionId),
+			ProcessId:           &bpmnProcessId,
+			LatestAndTaggedOnly: new(true),
+		})
+		if err != nil {
+			return leaderCallFailure(ctx, fmt.Errorf("client call to read process definition %s on partition %d failed: %w", bpmnProcessId, partitionId, err))
+		}
+		if resp.GetError() != nil {
+			return zenerr.ToZenError(resp.GetError(), fmt.Errorf("client call to read process definition %s on partition %d failed", bpmnProcessId, partitionId))
+		}
+		exists = len(resp.GetVersions()) > 0
+		return nil
+	})
+	return exists, err
+}
+
+// errPartitionLeaderOutdated marks a partition leader which runs a version that does not know the call to change
+// the suspension of a process, which no retry can help until the upgrade of the cluster is done.
+var errPartitionLeaderOutdated = errors.New("the partition leader runs a version without process suspension")
+
+// suspensionCallError is the error for a failed call which changes the suspension on a partition leader.
+func suspensionCallError(ctx context.Context, partitionId uint32, bpmnProcessId string, err error) error {
+	if status.Code(err) == codes.Unimplemented {
+		return zenerr.ClusterError(fmt.Errorf("partition %d: %w, finish upgrading the cluster: %w", partitionId, errPartitionLeaderOutdated, err))
+	}
+	return leaderCallFailure(ctx, fmt.Errorf("client call to set suspension of process %s on partition %d failed: %w", bpmnProcessId, partitionId, err))
+}
+
+// setProcessSuspensionOnPartition changes the suspension on the current leader of the partition, following
+// leadership changes like a deployment does.
+func (node *ZenNode) setProcessSuspensionOnPartition(ctx context.Context, partitionId uint32, bpmnProcessId string, call suspensionCall) (suspensionChange, error) {
+	var change suspensionChange
+	err := node.retryLeaderCall(ctx, "process suspension", "change the suspension of a process", func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return fmt.Errorf("%w: partition %d has no leader", errTransientDeploy, partitionId)
+		}
+		client, err := node.client.For(clusterState.Nodes[leaderId].Addr)
+		if err != nil {
+			return zenerr.TechnicalError(fmt.Errorf("failed to get client: %w", err))
+		}
+		resp, err := client.SetProcessSuspension(ctx, &proto.SetProcessSuspensionRequest{
+			PartitionId:   new(partitionId),
+			BpmnProcessId: &bpmnProcessId,
+			Suspended:     &call.suspended,
+			Version:       &call.version,
+			MinVersion:    &call.minVersion,
+		})
+		if err != nil {
+			return suspensionCallError(ctx, partitionId, bpmnProcessId, err)
+		}
+		if resp == nil {
+			return zenerr.TechnicalError(fmt.Errorf("failed to get response from partition leader %s, response is nil", leaderId))
+		}
+		if resp.Error != nil {
+			return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to set suspension of process %s on partition %d failed", bpmnProcessId, partitionId))
+		}
+		change = suspensionChange{
+			version: resp.GetVersion(),
+			held:    storage.ProcessSuspension{Suspended: resp.GetHeldSuspended(), Version: resp.GetHeldVersion()},
+		}
+		return nil
+	})
+	return change, err
 }
 
 // CompleteJob completes a job on the leader of its partition. A key naming a
@@ -1190,6 +1464,9 @@ func (node *ZenNode) publishCorrelatedMessageByName(ctx context.Context, name st
 				if zerr, ok := errors.AsType[*zenerr.ZenError](err); ok && zerr.Code == zenerr.NotFoundCode {
 					return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q (and correlationKey %q)", name, correlationKey))
 				}
+				if zenerr.IsConflict(err) {
+					return err
+				}
 				return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q (and correlationKey %q): %w", name, correlationKey, err))
 			}
 			return nil
@@ -1288,6 +1565,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 			ProcessId:   &def.BpmnProcessID,
 			ProcessName: &def.BpmnProcessName,
 			VersionTag:  &def.VersionTag,
+			Suspended:   new(def.Suspended != 0),
 		})
 	}
 	return proto.ProcessDefinitionsPage{
@@ -1297,6 +1575,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 }
 
 // GetLatestProcessDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+// It does not fill Suspended: use IsProcessSuspended.
 func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId string) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
@@ -1320,6 +1599,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 }
 
 // GetProcessDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+// It does not fill Suspended: use IsProcessSuspended.
 func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
@@ -1340,6 +1620,20 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 		ProcessName: &def.BpmnProcessName,
 		VersionTag:  &def.VersionTag,
 	}, nil
+}
+
+// IsProcessSuspended reports whether the BPMN process with the given id is suspended. Like the other reads of
+// process definitions it reads a replica of one partition, so it can briefly answer from before a change.
+func (node *ZenNode) IsProcessSuspended(ctx context.Context, bpmnProcessId string) (bool, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return false, zenerr.TechnicalError(fmt.Errorf("failed to get node db to read the suspension of process %s: %w", bpmnProcessId, err))
+	}
+	suspended, err := db.IsProcessSuspended(ctx, bpmnProcessId)
+	if err != nil {
+		return false, zenerr.TechnicalError(err)
+	}
+	return suspended, nil
 }
 
 // GetProcessDefinitionElementStatistics will contact follower nodes and return process definition element statistics from all partitions

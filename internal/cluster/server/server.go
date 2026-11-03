@@ -419,6 +419,8 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process definition %d not found: %w", req.GetDefinitionKey(), err))
+		} else if suspendedErr, ok := suspendedProcessError(err); ok {
+			zerr = zenerr.Conflict(suspendedErr)
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance: %w", err))
 		}
@@ -483,6 +485,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process definition %d not found: %w", req.GetDefinitionKey(), err))
+		} else if suspendedErr, ok := suspendedProcessError(err); ok {
+			zerr = zenerr.Conflict(suspendedErr)
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance on elements from process definition %d: %w", req.GetDefinitionKey(), err))
 		}
@@ -931,6 +935,62 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 		register = false
 	}
 	return &proto.DeployProcessDefinitionResponse{}, nil
+}
+
+// SetProcessSuspension suspends or resumes a BPMN process on the partition the
+// request addresses, which this node must lead. Without a version the partition
+// takes the next version of the process itself, with one it keeps the change
+// only when it is newer than the one it holds (see storage.ProcessSuspensionStorageWriter).
+func (s *Server) SetProcessSuspension(ctx context.Context, req *proto.SetProcessSuspensionRequest) (*proto.SetProcessSuspensionResponse, error) {
+	if req.GetPartitionId() == 0 {
+		return &proto.SetProcessSuspensionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("partition id must be set")).ToProtoError(),
+		}, nil
+	}
+	if req.GetBpmnProcessId() == "" {
+		return &proto.SetProcessSuspensionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("bpmn process id must be set")).ToProtoError(),
+		}, nil
+	}
+	if req.GetVersion() < 0 || req.GetMinVersion() < 0 {
+		return &proto.SetProcessSuspensionResponse{
+			Error: zenerr.BadRequest(fmt.Errorf("version and min version must not be negative, got %d and %d", req.GetVersion(), req.GetMinVersion())).ToProtoError(),
+		}, nil
+	}
+	engine, led := s.controller.Engines(ctx)[req.GetPartitionId()]
+	if !led {
+		// a leadership change since the sender resolved the leader is a
+		// transient condition it retries against the current leader
+		return &proto.SetProcessSuspensionResponse{
+			Error: zenerr.Unavailable(fmt.Errorf("partition %d is not led by this node", req.GetPartitionId())).ToProtoError(),
+		}, nil
+	}
+
+	version := req.GetVersion()
+	var held storage.ProcessSuspension
+	var err error
+	if version == 0 {
+		version, err = engine.SetProcessSuspended(ctx, req.GetBpmnProcessId(), req.GetSuspended(), storage.AboveVersion(req.GetMinVersion()))
+		held = storage.ProcessSuspension{Suspended: req.GetSuspended(), Version: version}
+	} else {
+		held, err = engine.ApplyProcessSuspension(ctx, req.GetBpmnProcessId(), req.GetSuspended(), version)
+	}
+	if err != nil {
+		zerr := zenerr.TechnicalError(err)
+		// a store which is not open yet, a partition fenced for a restore and a node which lost the lead or has not
+		// caught up are conditions which pass
+		if errors.Is(err, rqstore.ErrNotOpen) || errors.Is(err, partition.ErrPartitionFenced) ||
+			errors.Is(err, rqstore.ErrNotLeader) || errors.Is(err, rqstore.ErrNotReady) || errors.Is(err, rqstore.ErrStaleRead) {
+			zerr = zenerr.Unavailable(err)
+		}
+		return &proto.SetProcessSuspensionResponse{Error: zerr.ToProtoError()}, nil
+	}
+	if req.GetVersion() == 0 {
+		log.Info("process %s suspended=%t (version %d) on partition %d", req.GetBpmnProcessId(), req.GetSuspended(), version, req.GetPartitionId())
+	} else {
+		log.Debug("process %s suspended=%t (version %d) told to partition %d", req.GetBpmnProcessId(), req.GetSuspended(), version, req.GetPartitionId())
+	}
+	return &proto.SetProcessSuspensionResponse{Version: &version, HeldVersion: &held.Version, HeldSuspended: &held.Suspended}, nil
 }
 
 // deployError classifies a deploy failure: a partition store that is not open
@@ -1654,6 +1714,8 @@ func (s *Server) PublishMessageStartProcessInstance(ctx context.Context, req *pr
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("message subscription with messageName %s not found", req.GetMessageName()))
+		} else if suspendedErr, ok := suspendedProcessError(err); ok {
+			zerr = zenerr.Conflict(suspendedErr)
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to publish message event with messageName %s: %w", req.GetMessageName(), err))
 		}
@@ -1685,6 +1747,8 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("message subscription for key %d not found", req.GetKey()))
+		} else if suspendedErr, ok := suspendedProcessError(err); ok {
+			zerr = zenerr.Conflict(suspendedErr)
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to publish message event %d: %w", req.GetKey(), err))
 		}
@@ -2328,6 +2392,13 @@ func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*p
 
 func isErrNotFound(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound)
+}
+
+// suspendedProcessError returns the error which says that the requested process is suspended, so that it is
+// reported to the caller as a conflict instead of as a failure of the engine.
+func suspendedProcessError(err error) (*bpmn.ProcessSuspendedError, bool) {
+	var suspendedErr *bpmn.ProcessSuspendedError
+	return suspendedErr, errors.As(err, &suspendedErr)
 }
 
 func timerStateToActivityState(timerState int64) (int64, error) {

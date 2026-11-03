@@ -35,6 +35,9 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestProcessDefinitionStorageReaderBasic,
 		st.TestProcessDefinitionVersionTagLookup,
 		st.TestProcessDefinitionVersionTagIsUnique,
+		st.TestProcessSuspension,
+		st.TestProcessSuspensionKeepsTheNewestChange,
+		st.TestProcessSuspensionChangeIsHigherThanTheMinimumVersion,
 		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
@@ -268,6 +271,98 @@ func (st *StorageTester) TestProcessDefinitionVersionTagLookup(s storage.Storage
 
 		_, err = tagReader.FindLatestProcessDefinitionByIDAndVersionTag(t.Context(), processID, "missing")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
+	}
+}
+
+func (st *StorageTester) TestProcessSuspension(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		processID := fmt.Sprintf("suspended-process-%d", s.GenerateId())
+		otherProcessID := processID + "-other"
+
+		suspended, err := s.IsProcessSuspended(t.Context(), processID)
+		require.NoError(t, err)
+		assert.False(t, suspended, "a process is not suspended until it is suspended")
+
+		first, err := s.ChangeProcessSuspension(t.Context(), processID, true)
+		require.NoError(t, err)
+		suspended, err = s.IsProcessSuspended(t.Context(), processID)
+		require.NoError(t, err)
+		assert.True(t, suspended)
+
+		suspended, err = s.IsProcessSuspended(t.Context(), otherProcessID)
+		require.NoError(t, err)
+		assert.False(t, suspended, "suspending one process leaves the others alone")
+
+		// every change has a higher version than the one before, whatever it changes
+		second, err := s.ChangeProcessSuspension(t.Context(), processID, true)
+		require.NoError(t, err)
+		assert.Greater(t, second, first)
+		third, err := s.ChangeProcessSuspension(t.Context(), processID, false)
+		require.NoError(t, err)
+		assert.Greater(t, third, second)
+		suspended, err = s.IsProcessSuspended(t.Context(), processID)
+		require.NoError(t, err)
+		assert.False(t, suspended)
+	}
+}
+
+func (st *StorageTester) TestProcessSuspensionKeepsTheNewestChange(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		processID := fmt.Sprintf("suspension-versions-process-%d", s.GenerateId())
+		isSuspended := func() bool {
+			suspended, err := s.IsProcessSuspended(t.Context(), processID)
+			require.NoError(t, err)
+			return suspended
+		}
+		apply := func(suspended bool, version int64) storage.ProcessSuspension {
+			held, err := s.ApplyProcessSuspension(t.Context(), processID, suspended, version)
+			require.NoError(t, err)
+			return held
+		}
+
+		// the change of version 5 arrives before the change of version 4
+		assert.Equal(t, storage.ProcessSuspension{Suspended: false, Version: 5}, apply(false, 5))
+		held := apply(true, 4)
+		assert.Equal(t, storage.ProcessSuspension{Suspended: false, Version: 5}, held, "the answer tells that the older change was not taken")
+		assert.False(t, isSuspended(), "an older change must not replace a newer one")
+
+		// the same version again changes nothing
+		assert.Equal(t, storage.ProcessSuspension{Suspended: false, Version: 5}, apply(true, 5))
+		assert.False(t, isSuspended())
+
+		assert.Equal(t, storage.ProcessSuspension{Suspended: true, Version: 6}, apply(true, 6))
+		assert.True(t, isSuspended())
+
+		// a change made here continues after the newest one it was told about
+		version, err := s.ChangeProcessSuspension(t.Context(), processID, false)
+		require.NoError(t, err)
+		assert.Greater(t, version, int64(6))
+		assert.False(t, isSuspended())
+	}
+}
+
+func (st *StorageTester) TestProcessSuspensionChangeIsHigherThanTheMinimumVersion(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		processID := fmt.Sprintf("suspension-minimum-process-%d", s.GenerateId())
+
+		// a process the storage never heard of
+		version, err := s.ChangeProcessSuspension(t.Context(), processID, true, storage.AboveVersion(10))
+		require.NoError(t, err)
+		assert.Greater(t, version, int64(10))
+		// the storage holds the version it handed out: a late change with a lower version is not taken
+		held, err := s.ApplyProcessSuspension(t.Context(), processID, false, 1)
+		require.NoError(t, err)
+		assert.Equal(t, storage.ProcessSuspension{Suspended: true, Version: version}, held)
+
+		// the minimum counts when it is above what the storage holds ...
+		version, err = s.ChangeProcessSuspension(t.Context(), processID, false, storage.AboveVersion(20))
+		require.NoError(t, err)
+		assert.Greater(t, version, int64(20))
+		previous := version
+		// ... and not when it is below
+		version, err = s.ChangeProcessSuspension(t.Context(), processID, true, storage.AboveVersion(5))
+		require.NoError(t, err)
+		assert.Greater(t, version, previous)
 	}
 }
 

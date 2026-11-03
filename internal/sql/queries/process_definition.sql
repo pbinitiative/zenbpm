@@ -9,6 +9,12 @@ SELECT
   pd.bpmn_process_id,
   pd.bpmn_process_name,
   pd.version_tag,
+  EXISTS (
+    SELECT 1
+    FROM process_suspension AS ps
+    WHERE ps.bpmn_process_id = pd.bpmn_process_id
+      AND ps.suspended = 1
+  ) AS suspended,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE

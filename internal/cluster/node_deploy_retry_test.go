@@ -105,3 +105,47 @@ func TestZenErrorUnavailableRoundTrip(t *testing.T) {
 	assert.Equal(t, "UNAVAILABLE", back.Code.ToString())
 	var _ = proto.ErrorResult{}
 }
+
+func TestRetryLeaderCallNamesTheActionInWhatItGivesUpWith(t *testing.T) {
+	node := &ZenNode{}
+
+	t.Run("no leader within the retry window", func(t *testing.T) {
+		defer func(window, interval time.Duration) { deployRetryFor, deployRetryInterval = window, interval }(deployRetryFor, deployRetryInterval)
+		deployRetryFor, deployRetryInterval = 20*time.Millisecond, time.Millisecond
+
+		err := node.retryLeaderCall(t.Context(), "process suspension", "change the suspension of a process", func() error {
+			return fmt.Errorf("%w: partition 1 has no leader", errTransientDeploy)
+		})
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "no leader available to change the suspension of a process within")
+		assert.NotContains(t, err.Error(), "available to deploy", "the wording of the deploy is not the one of a suspension")
+	})
+
+	t.Run("cancelled while retrying", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		err := node.retryLeaderCall(ctx, "process suspension", "change the suspension of a process", func() error {
+			cancel()
+			return zenerr.Unavailable(errors.New("engine starting"))
+		})
+
+		require.ErrorIs(t, err, context.Canceled)
+		assert.ErrorContains(t, err, "process suspension cancelled")
+	})
+
+	t.Run("deploy keeps its wording", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		err := node.retryDeploy(ctx, func() error {
+			cancel()
+			return zenerr.Unavailable(errors.New("engine starting"))
+		})
+		assert.ErrorContains(t, err, "deploy cancelled while retrying a transient failure")
+
+		defer func(window, interval time.Duration) { deployRetryFor, deployRetryInterval = window, interval }(deployRetryFor, deployRetryInterval)
+		deployRetryFor, deployRetryInterval = 20*time.Millisecond, time.Millisecond
+		err = node.retryDeploy(t.Context(), func() error {
+			return fmt.Errorf("%w: partition 1 has no leader", errTransientDeploy)
+		})
+		assert.ErrorContains(t, err, "no leader available to deploy to within")
+	})
+}

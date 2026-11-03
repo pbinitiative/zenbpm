@@ -105,6 +105,16 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 		return fmt.Errorf("expected DefinitionMessageSubscription for key %d, got %T", message.Key, refreshed)
 	}
 
+	// A suspended process takes no message: refusing before the subscription is consumed keeps it intact, so the
+	// publisher can send the message again once the process is resumed.
+	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find process definition %d of instantiating receive task %s", defSub.ProcessDefinitionKey, defSub.ElementId), err)
+	}
+	if err := engine.ensureProcessNotSuspended(ctx, processDefinition.BpmnProcessId); err != nil {
+		return err
+	}
+
 	batch := engine.persistence.NewBatch()
 	defSub.State = runtime.ActivityStateCompleted
 	if err := batch.SaveMessageSubscription(ctx, defSub); err != nil {
@@ -114,7 +124,8 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 		return fmt.Errorf("failed to flush instantiating receive task consumption batch (subscription=%d, definition=%d): %w", defSub.Key, defSub.ProcessDefinitionKey, err)
 	}
 
-	instance, err := engine.CreateInstanceWithStartingElements(ctx, defSub.ProcessDefinitionKey, []string{defSub.ElementId}, variables, nil)
+	// the suspension was checked above, under the subscription lock, before the subscription was consumed
+	instance, err := engine.startInstanceOnElements(ctx, &processDefinition, []string{defSub.ElementId}, variables)
 	if err != nil {
 		processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
 		if pdErr != nil {

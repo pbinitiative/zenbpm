@@ -10,6 +10,7 @@ import (
 )
 
 type Querier interface {
+	ApplyProcessSuspension(ctx context.Context, arg ApplyProcessSuspensionParams) error
 	CompleteFlowElementInstance(ctx context.Context, arg CompleteFlowElementInstanceParams) error
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
 	// Pinned to idx_process_instance_parent_execution_token so the planner drives
@@ -22,6 +23,7 @@ type Querier interface {
 	// Counted apart from the page: a page beyond the last one has no row to carry a window count.
 	CountJobFailures(ctx context.Context, jobKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
+	CreateProcessSuspension(ctx context.Context, arg CreateProcessSuspensionParams) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
 	// Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
@@ -149,6 +151,7 @@ type Querier interface {
 	GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
+	GetProcessSuspension(ctx context.Context, bpmnProcessID string) (GetProcessSuspensionRow, error)
 	GetRecoverableRunningTokens(ctx context.Context, arg GetRecoverableRunningTokensParams) ([]ExecutionToken, error)
 	GetRunningTokensAfter(ctx context.Context, arg GetRunningTokensAfterParams) ([]ExecutionToken, error)
 	GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error)
@@ -163,6 +166,7 @@ type Querier interface {
 	// the failures of the job.
 	HasJobFailureOfDelivery(ctx context.Context, arg HasJobFailureOfDeliveryParams) (int64, error)
 	IncrementFlowNodeCount(ctx context.Context, processInstanceKey int64) error
+	IsProcessSuspended(ctx context.Context, bpmnProcessID string) (int64, error)
 	// Lists the versions of process definitions, ordered by process id and
 	// version, as a deployment observes them. bpmn_process_id restricts the
 	// answer to one process (NULL lists every process); latest_data (1/0)
@@ -196,6 +200,7 @@ type Querier interface {
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 	SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error
 	UpdateOutputFlowElementInstance(ctx context.Context, arg UpdateOutputFlowElementInstanceParams) error
+	UpdateProcessSuspension(ctx context.Context, arg UpdateProcessSuspensionParams) (int64, error)
 	// Takes back the token of a delivery the job manager recorded but never sent, so that the delivery
 	// before it counts again. Only while no other delivery was recorded since; the token was never handed
 	// out, so issuing it again later is harmless.

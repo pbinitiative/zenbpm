@@ -67,6 +67,8 @@ service ZenService {
   rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
   rpc DeployDmnResourceDefinition(DeployDmnResourceDefinitionRequest) returns (DeployDmnResourceDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
+  // SetProcessSuspension suspends or resumes a BPMN process on one partition, which the receiving node must lead.
+  rpc SetProcessSuspension(SetProcessSuspensionRequest) returns (SetProcessSuspensionResponse);
   // AllocateProcessDefinition decides the cluster-wide (version, key) of a BPMN
   // deployment through the main raft log (recipient is the cluster leader).
   rpc AllocateProcessDefinition(AllocateProcessDefinitionRequest) returns (AllocateProcessDefinitionResponse);
@@ -268,6 +270,9 @@ message ProcessDefinition {
   bytes definition = 4;
   string process_name = 5;
   string version_tag = 6;
+  // suspended is true while the BPMN process is suspended; it applies to every version of the process. Only the
+  // list of process definitions fills it: the other producers leave it false (see IsProcessSuspended).
+  bool suspended = 7;
 }
 
 message ProcessDefinitionsPage {
@@ -408,6 +413,31 @@ message DeployProcessDefinitionRequest {
 
 message DeployProcessDefinitionResponse {
   ErrorResult error = 1;
+}
+
+message SetProcessSuspensionRequest {
+  // partition_id is the partition the change is addressed to: the receiving node applies it on that
+  // partition only, which it must lead
+  uint32 partition_id = 1;
+  string bpmn_process_id = 2;
+  bool suspended = 3;
+  // version is the version which the first partition took for this change. Zero means that this is the first
+  // partition: it takes the next version of the process itself and answers with it. A partition keeps the
+  // change with the highest version.
+  int64 version = 4;
+  // min_version is the version the change which the partition takes itself (no version given) has to
+  // exceed, for when another partition holds a change with a higher version than this one.
+  int64 min_version = 5;
+}
+
+message SetProcessSuspensionResponse {
+  ErrorResult error = 1;
+  // version is the version of the change
+  int64 version = 2;
+  // held_version and held_suspended are the change the partition holds after the call, which is not the
+  // requested one when the partition already held a change with a higher version.
+  int64 held_version = 3;
+  bool held_suspended = 4;
 }
 
 message AllocateProcessDefinitionRequest {

@@ -71,9 +71,11 @@ func TestMultiInstanceManualTaskCompletesEveryIteration(t *testing.T) {
 	testCases := []struct {
 		name string
 		file string
+		// Only sequential iterations keep the order of the input collection.
+		ordered bool
 	}{
-		{name: "sequential", file: "manual-task-multi-instance-sequential.bpmn"},
-		{name: "parallel", file: "manual-task-multi-instance-parallel.bpmn"},
+		{name: "sequential", file: "manual-task-multi-instance-sequential.bpmn", ordered: true},
+		{name: "parallel", file: "manual-task-multi-instance-parallel.bpmn", ordered: false},
 	}
 
 	for _, testCase := range testCases {
@@ -90,10 +92,13 @@ func TestMultiInstanceManualTaskCompletesEveryIteration(t *testing.T) {
 			waitForProcessInstanceState(t, store, processInstanceKey, runtime.ActivityStateCompleted)
 			storedInstance, err := store.FindProcessInstanceByKey(t.Context(), processInstanceKey)
 			require.NoError(t, err)
-			assert.Equal(t,
-				[]any{"first-signed", "second-signed", "third-signed"},
-				storedInstance.ProcessInstance().VariableHolder.GetLocalVariable("signedContracts"),
-				"every iteration completes and contributes its output element")
+			expected := []any{"first-signed", "second-signed", "third-signed"}
+			actual := storedInstance.ProcessInstance().VariableHolder.GetLocalVariable("signedContracts")
+			if testCase.ordered {
+				assert.Equal(t, expected, actual, "every iteration contributes its output element in collection order")
+			} else {
+				assert.ElementsMatch(t, expected, actual, "every iteration contributes its output element")
+			}
 
 			manualTask := requireFlowElementInstance(t, engine, processInstanceKey, "manual-task")
 			assert.NotNil(t, manualTask.CompletedAt)

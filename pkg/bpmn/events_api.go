@@ -201,7 +201,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess, *bpmn20.TManualTask:
 		tokens, err := engine.handleBoundaryMessage(ctx, &batch, message, instance, variables)
 		if err != nil {
 			return handleMessagePublicationError(ctx, &batch, message, instance, err,

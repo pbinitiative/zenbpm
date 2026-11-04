@@ -129,6 +129,8 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder)
+	case *bpmn20.TManualTask:
+		activityResult, err = engine.completeManualTask(ctx, batch, instance, element, currentToken, variableHolder)
 	default:
 		return []runtime.ExecutionToken{}, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
 	}

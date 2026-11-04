@@ -1161,7 +1161,7 @@ func (engine *Engine) processFlowNode(
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
-	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess:
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess, *bpmn20.TManualTask:
 		if element, ok := element.(bpmn20.Activity); ok && element.GetMultiInstance() != nil {
 			tokens, err := engine.handleMultiInstanceActivity(ctx, batch, instance, element, activity, currentToken)
 			if err != nil {
@@ -1343,6 +1343,8 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder)
+	case *bpmn20.TManualTask:
+		activityResult, err = engine.completeManualTask(ctx, batch, instance, element, currentToken, variableHolder)
 	default:
 		return nil, fmt.Errorf("unsupported element type '%T' with id '%s': element is not supported by the engine", activity.Element(), activity.Element().GetId())
 	}

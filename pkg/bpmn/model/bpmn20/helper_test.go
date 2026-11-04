@@ -454,6 +454,9 @@ func buildAllFlowNodeTypesProcess() *TDefinitions {
 			ReceiveTask: []TReceiveTask{
 				{TActivity: TActivity{TFlowNode: TFlowNode{TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "P_receive"}}}}},
 			},
+			ManualTasks: []TManualTask{
+				{TTask: TTask{TActivity: TActivity{TFlowNode: TFlowNode{TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "P_manual"}}}}}},
+			},
 			ParallelGateway: []TParallelGateway{
 				{TGateway: TGateway{TFlowNode: TFlowNode{TFlowElement: TFlowElement{TBaseElement: TBaseElement{Id: "P_parallel"}}}}},
 			},
@@ -521,6 +524,7 @@ func TestGetFlowNodeByIdCoversEveryFlowNodeType(t *testing.T) {
 		{"P_businessRule", reflect.TypeOf((*TBusinessRuleTask)(nil))},
 		{"P_send", reflect.TypeOf((*TSendTask)(nil))},
 		{"P_receive", reflect.TypeOf((*TReceiveTask)(nil))},
+		{"P_manual", reflect.TypeOf((*TManualTask)(nil))},
 		{"P_parallel", reflect.TypeOf((*TParallelGateway)(nil))},
 		{"P_exclusive", reflect.TypeOf((*TExclusiveGateway)(nil))},
 		{"P_eventBased", reflect.TypeOf((*TEventBasedGateway)(nil))},
@@ -570,7 +574,7 @@ func TestGetInternalTaskByIdCoversEveryInternalTaskType(t *testing.T) {
 
 	for _, id := range []string{
 		"P_start", "P_parallel", "P_exclusive", "P_eventBased", "P_inclusive",
-		"P_intermediateCatch", "P_callActivity", "P_subProcess", "P_boundary",
+		"P_intermediateCatch", "P_callActivity", "P_subProcess", "P_boundary", "P_manual",
 	} {
 		assert.Nil(t, definitions.Process.GetInternalTaskById(id),
 			"id %q must not resolve to an internal task", id)

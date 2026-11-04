@@ -11,6 +11,7 @@ import (
 func TestActivityElementTypes(t *testing.T) {
 	assert.Equal(t, ElementType("CALL_ACTIVITY"), (&TCallActivity{}).GetType())
 	assert.Equal(t, ElementType("SUB_PROCESS"), (&TSubProcess{}).GetType())
+	assert.Equal(t, ElementType("MANUAL_TASK"), (&TManualTask{}).GetType())
 }
 
 // activityWithoutBusinessKey models an activity implemented by a downstream package.
@@ -25,6 +26,7 @@ func (activityWithoutBusinessKey) GetMultiInstance() *TMultiInstance {
 
 func TestAllInterfacesImplemented(t *testing.T) {
 	var _ Activity = (*activityWithoutBusinessKey)(nil)
+	var _ Activity = &TManualTask{}
 
 	var _ InternalTask = &TServiceTask{}
 	var _ InternalTask = &TUserTask{}
@@ -42,4 +44,5 @@ func TestAllInterfacesImplemented(t *testing.T) {
 	var _ BaseElement = &TInclusiveGateway{}
 	var _ BaseElement = &TCallActivity{}
 	var _ BaseElement = &TBusinessRuleTask{}
+	var _ BaseElement = &TManualTask{}
 }

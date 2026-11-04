@@ -11,6 +11,7 @@ type TFlowElementsContainer struct {
 	BusinessRuleTask       []TBusinessRuleTask       `xml:"businessRuleTask"`
 	SendTask               []TSendTask               `xml:"sendTask"`
 	ReceiveTask            []TReceiveTask            `xml:"receiveTask"`
+	ManualTasks            []TManualTask             `xml:"manualTask"`
 	ParallelGateway        []TParallelGateway        `xml:"parallelGateway"`
 	ExclusiveGateway       []TExclusiveGateway       `xml:"exclusiveGateway"`
 	EventBasedGateway      []TEventBasedGateway      `xml:"eventBasedGateway"`

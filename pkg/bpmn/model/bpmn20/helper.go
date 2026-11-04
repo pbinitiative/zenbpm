@@ -311,6 +311,9 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 	for i := range container.ReceiveTask {
 		register(container.ReceiveTask[i].GetId(), &container.ReceiveTask[i])
 	}
+	for i := range container.ManualTasks {
+		register(container.ManualTasks[i].GetId(), &container.ManualTasks[i])
+	}
 	for i := range container.ParallelGateway {
 		register(container.ParallelGateway[i].GetId(), &container.ParallelGateway[i])
 	}

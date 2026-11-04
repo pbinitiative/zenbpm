@@ -35,7 +35,13 @@ Execution flow:
 4. The task is recorded in the history of the process instance with the element type `MANUAL_TASK`, its creation and completion time, and its input and output variables, available via the `/process-instances/{key}/history` endpoint.
 5. If a mapping expression cannot be evaluated, the task fails.
 
-With a multi-instance marker, every iteration completes immediately as well, and `outputCollection` collects the result of each iteration as for any other activity. Since the task has no wait state, boundary events attached to it have no chance to trigger.
+With a multi-instance marker, every iteration completes immediately as well, and `outputCollection` collects the result of each iteration as for any other activity.
+
+Boundary events attached to a Manual Task:
+
+- **Without a multi-instance marker**, the task has no wait state, so its boundary events never trigger.
+- **With a multi-instance marker**, the parent token waits at the task until all iterations, which run in a separate child instance, have completed. During that time timer and message boundary events attached to the task are active and can trigger — for example when an iteration fails and the parent token keeps waiting. See [Multi-instance activity](../activity-multi-instance.md).
+- **Error boundary events** never trigger, because a Manual Task cannot throw a BPMN error. A mapping that cannot be evaluated fails the task instead, and an error boundary event does not catch that failure.
 
 ## Related documentation
 

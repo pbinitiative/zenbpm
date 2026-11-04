@@ -150,7 +150,7 @@ Boundary events come in two flavors, distinguished by the `cancelActivity` attri
 - **Interrupting** (solid border, the default) — the attached activity is cancelled, together with its jobs, child instances, and other boundary subscriptions, and the token moves along the boundary event's outgoing flow.
 - **Non-interrupting** (dashed border, `cancelActivity="false"`) — the activity keeps running and a new parallel token is created on the outgoing flow.
 
-Boundary events can be attached to Service tasks, Send tasks, User tasks, Business rule tasks, Receive tasks, Sub processes, and Call activities. Supported triggers are [message](./message-events.md#message-boundary-event), [timer](./timer-events.md#timer-boundary-event), and [error](./error-events.md#error-boundary-event) (error is always interrupting).
+Boundary events can be attached to Service tasks, Send tasks, User tasks, Business rule tasks, Receive tasks, Sub processes, and Call activities. They can be attached to a [Manual task](../activities/tasks/manual-task.md) as well, but only message and timer boundary events on a multi-instance Manual task can trigger, because a single Manual task completes at once. Supported triggers are [message](./message-events.md#message-boundary-event), [timer](./timer-events.md#timer-boundary-event), and [error](./error-events.md#error-boundary-event) (error is always interrupting).
 
 ## End events
 

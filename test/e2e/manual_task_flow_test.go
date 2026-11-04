@@ -20,8 +20,8 @@ func TestManualTaskFlow(t *testing.T) {
 
 		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service-task")
 
-		// User tasks are jobs as well, so no job means neither was created.
-		assertProcessInstanceHasNoActiveJobByElementId(t, processInstance.Key, "manual-task")
+		// User tasks are jobs as well, so no job in any state means neither was created.
+		assertProcessInstanceHasNoJobByElementID(t, processInstance.Key, "manual-task")
 		assertProcessInstanceTokenCount(t, processInstance.Key, "manual-task", 0)
 		assertExactProcessInstanceHistoryStates(t, processInstance.Key,
 			completedFlowElementHistory("start"),
@@ -52,6 +52,18 @@ func TestManualTaskFlow(t *testing.T) {
 			"end",
 		})
 	})
+}
+
+// assertProcessInstanceHasNoJobByElementID checks that the process instance has no
+// job for the element in any state, completed jobs included.
+func assertProcessInstanceHasNoJobByElementID(t testing.TB, processInstanceKey int64, elementID string) {
+	t.Helper()
+
+	jobs, err := getProcessInstanceJobs(t, processInstanceKey)
+	require.NoError(t, err)
+	for _, job := range jobs {
+		assert.NotEqual(t, elementID, job.ElementId, "process instance %d has job %d in state %s for element %s", processInstanceKey, job.Key, job.State, elementID)
+	}
 }
 
 // assertHistoryElementType checks the element type the public history API

@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -29,13 +30,20 @@ func TestManualTaskCompletesWithoutJobAndProcessContinues(t *testing.T) {
 	require.NoError(t, err)
 	processInstanceKey := instance.ProcessInstance().Key
 
-	// User tasks are jobs as well, so a single job proves the manual task created neither.
+	manualTask := requireFlowElementInstance(t, engine, processInstanceKey, "manual-task")
+
+	// User tasks are jobs as well, so no job of the manual task in any state proves
+	// it created neither. The token continues to the service task, so its job is
+	// the only one the token has.
+	tokenJobs, err := engine.persistence.GetJobsInStateByTokenKey(t.Context(), manualTask.ExecutionTokenKey, allActivityStates())
+	require.NoError(t, err)
+	require.Len(t, tokenJobs, 1, "only the service task after the manual task creates a job")
+	assert.Equal(t, "service-task", tokenJobs[0].ElementId)
+
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(t.Context(), processInstanceKey)
 	require.NoError(t, err)
-	require.Len(t, jobs, 1, "only the service task after the manual task creates a job")
-	assert.Equal(t, "service-task", jobs[0].Token.ElementId)
+	require.Len(t, jobs, 1)
 
-	manualTask := requireFlowElementInstance(t, engine, processInstanceKey, "manual-task")
 	assert.Equal(t, string(bpmn20.ElementTypeManualTask), manualTask.ElementType)
 	assert.False(t, manualTask.CreatedAt.IsZero(), "the manual task is activated")
 	assert.NotNil(t, manualTask.CompletedAt, "the manual task completes without external interaction")
@@ -102,8 +110,71 @@ func TestMultiInstanceManualTaskCompletesEveryIteration(t *testing.T) {
 
 			manualTask := requireFlowElementInstance(t, engine, processInstanceKey, "manual-task")
 			assert.NotNil(t, manualTask.CompletedAt)
+
+			iterations := requireMultiInstanceIterations(t, engine, store, processInstanceKey, "manual-task")
+			require.Len(t, iterations, 3, "every element of the collection runs one iteration")
+			for _, iteration := range iterations {
+				assert.NotNil(t, iteration.CompletedAt, "iteration %d is completed in history", iteration.Key)
+			}
 		})
 	}
+}
+
+func TestMessageBoundaryEventInterruptsWaitingMultiInstanceManualTask(t *testing.T) {
+	engine, store := newManualTaskTestEngine(t)
+	definition := deployManualTaskProcess(t, engine, "manual-task-multi-instance-message-boundary.bpmn")
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{
+		"contracts": []any{"first", "second"},
+	})
+	require.NoError(t, err)
+	processInstanceKey := instance.ProcessInstance().Key
+
+	require.Eventually(t, func() bool {
+		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+		if err != nil || len(tokens) != 1 || tokens[0].State != runtime.TokenStateWaiting {
+			return false
+		}
+		children, err := store.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+		return err == nil && len(children) == 1 && children[0].ProcessInstance().State == runtime.ActivityStateFailed
+	}, 5*time.Second, 20*time.Millisecond, "the parent token waits at the manual task after its iterations fail")
+
+	correlationKey := "manual-task-boundary"
+	require.NoError(t, engine.PublishMessageByName(t.Context(), "manual-task-boundary-message", &correlationKey, nil))
+
+	waitForProcessInstanceState(t, store, processInstanceKey, runtime.ActivityStateCompleted)
+	boundaryEvent := requireFlowElementInstance(t, engine, processInstanceKey, "boundary-message")
+	assert.NotNil(t, boundaryEvent.CompletedAt)
+	endEvent := requireFlowElementInstance(t, engine, processInstanceKey, "end-after-message")
+	assert.NotNil(t, endEvent.CompletedAt, "the process continues along the boundary event's outgoing flow")
+}
+
+func allActivityStates() []runtime.ActivityState {
+	states := make([]runtime.ActivityState, 0, runtime.ActivityStateWithdrawn)
+	for state := runtime.ActivityStateActive; state <= runtime.ActivityStateWithdrawn; state++ {
+		states = append(states, state)
+	}
+	return states
+}
+
+func requireMultiInstanceIterations(t *testing.T, engine *Engine, store *inmemory.Storage, processInstanceKey int64, elementID string) []runtime.FlowElementInstance {
+	t.Helper()
+	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	require.Len(t, tokens, 1)
+	children, err := store.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	require.NoError(t, err)
+	require.Len(t, children, 1, "the iterations run in one multi-instance child instance")
+
+	flowElementInstances, err := engine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), children[0].ProcessInstance().Key, true)
+	require.NoError(t, err)
+	iterations := make([]runtime.FlowElementInstance, 0, len(flowElementInstances))
+	for _, flowElementInstance := range flowElementInstances {
+		if flowElementInstance.ElementId == elementID {
+			iterations = append(iterations, flowElementInstance)
+		}
+	}
+	return iterations
 }
 
 func TestManualTaskInSubProcessCompletes(t *testing.T) {

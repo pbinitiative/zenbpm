@@ -432,12 +432,14 @@ Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Sign
         />
       </td>
       <td>
-        <img
-          className="bpmn-unsupported"
-          src={require("!url-loader!../../assets/bpmn/activities/manual-task.svg").default}
-          alt="Manual Task"
-          height="60"
-        />
+        <a href="./activities/tasks/manual-task">
+          <img
+            className="bpmn-supported"
+            src={require("!url-loader!../../assets/bpmn/activities/manual-task.svg").default}
+            alt="Manual Task"
+            height="60"
+          />
+        </a>
       </td>
       <td>
         <a href="./activities/call-activity">
@@ -473,7 +475,7 @@ Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Sign
   </tbody>
 </table>
 
-Unsupported activities: Script task, Manual task
+Unsupported activities: Script task
 
 ## Activity markers
 

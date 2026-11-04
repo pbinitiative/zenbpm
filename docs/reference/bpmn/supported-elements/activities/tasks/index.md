@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Tasks
 
-Tasks are the basic elements of BPMN processes — atomic units of work composed to create a meaningful result. When a token arrives at a task, execution pauses until the work is completed; the token then continues along the outgoing sequence flow. The granularity of a task depends on the process design — a step can be modeled as a single task or split into several smaller tasks.
+Tasks are the basic elements of BPMN processes — atomic units of work composed to create a meaningful result. When a token arrives at a task, execution pauses until the work is completed — except for a Manual task, which completes immediately; the token then continues along the outgoing sequence flow. The granularity of a task depends on the process design — a step can be modeled as a single task or split into several smaller tasks.
 
 ## Key characteristics
 
@@ -50,6 +50,11 @@ Green icons are supported and link to their documentation.
       <td><a href="./receive-task">Receive task</a></td>
       <td><a href="./receive-task"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive Task" height="70" /></a></td>
       <td>Pauses the process and waits until a specific named message is received, then continues execution.</td>
+    </tr>
+    <tr>
+      <td><a href="./manual-task">Manual task</a></td>
+      <td><a href="./manual-task"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/activities/manual-task.svg').default} alt="Manual Task" height="70" /></a></td>
+      <td>Work performed by a person outside the engine. It completes immediately and records the step in the process history without waiting.</td>
     </tr>
   </tbody>
 </table>

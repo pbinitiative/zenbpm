@@ -8,6 +8,7 @@
     <bpmn:manualTask id="manual-task" name="Sign each contract">
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
+          <!-- Deliberately invalid FEEL: every iteration fails, keeping the parent waiting so its boundary events can interrupt it. -->
           <zenbpm:input source="=iban: &#34;DE456&#34;	" target="signedContract" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
@@ -31,8 +32,21 @@
     <bpmn:endEvent id="end-after-message">
       <bpmn:incoming>flow-boundary-message-to-end</bpmn:incoming>
     </bpmn:endEvent>
+    <bpmn:boundaryEvent id="boundary-unused-message" attachedToRef="manual-task">
+      <bpmn:outgoing>flow-unused-boundary-to-end</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="boundary-unused-message-definition" messageRef="manual-task-unused-boundary-message-id" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="flow-unused-boundary-to-end" sourceRef="boundary-unused-message" targetRef="end-after-unused-message" />
+    <bpmn:endEvent id="end-after-unused-message">
+      <bpmn:incoming>flow-unused-boundary-to-end</bpmn:incoming>
+    </bpmn:endEvent>
   </bpmn:process>
   <bpmn:message id="manual-task-boundary-message-id" name="manual-task-boundary-message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=&#34;manual-task-boundary&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="manual-task-unused-boundary-message-id" name="manual-task-unused-boundary-message">
     <bpmn:extensionElements>
       <zenbpm:subscription correlationKey="=&#34;manual-task-boundary&#34;" />
     </bpmn:extensionElements>
@@ -49,7 +63,7 @@
         <dc:Bounds x="392" y="82" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="boundary-message_di" bpmnElement="boundary-message">
-        <dc:Bounds x="272" y="122" width="36" height="36" />
+        <dc:Bounds x="244" y="122" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="end-after-message_di" bpmnElement="end-after-message">
         <dc:Bounds x="392" y="192" width="36" height="36" />
@@ -63,9 +77,21 @@
         <di:waypoint x="392" y="100" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="flow-boundary-message-to-end_di" bpmnElement="flow-boundary-message-to-end">
-        <di:waypoint x="290" y="158" />
-        <di:waypoint x="290" y="210" />
+        <di:waypoint x="262" y="158" />
+        <di:waypoint x="262" y="210" />
         <di:waypoint x="392" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="boundary-unused-message_di" bpmnElement="boundary-unused-message">
+        <dc:Bounds x="298" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end-after-unused-message_di" bpmnElement="end-after-unused-message">
+        <dc:Bounds x="512" y="262" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow-unused-boundary-to-end_di" bpmnElement="flow-unused-boundary-to-end">
+        <di:waypoint x="316" y="158" />
+        <di:waypoint x="316" y="170" />
+        <di:waypoint x="530" y="170" />
+        <di:waypoint x="530" y="262" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

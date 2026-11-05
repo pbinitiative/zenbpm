@@ -12,6 +12,7 @@ const (
 	ElementTypeSequenceFlow ElementType = "SEQUENCE_FLOW"
 	ElementBusinessRuleTask ElementType = "BUSINESS_RULE_TASK"
 	ElementTypeReceiveTask  ElementType = "RECEIVE_TASK"
+	ElementTypeManualTask   ElementType = "MANUAL_TASK"
 	ElementTypeCallActivity ElementType = "CALL_ACTIVITY"
 	ElementTypeSubProcess   ElementType = "SUB_PROCESS"
 )
@@ -179,6 +180,15 @@ type TReceiveTask struct {
 }
 
 func (receiveTask TReceiveTask) GetType() ElementType { return ElementTypeReceiveTask }
+
+// TManualTask is work performed by a person outside the engine. The engine
+// treats it as a pass-through activity: it completes as soon as it is reached,
+// without creating a job or a user task.
+type TManualTask struct {
+	TTask
+}
+
+func (manualTask TManualTask) GetType() ElementType { return ElementTypeManualTask }
 
 type TUserTask struct {
 	TTask

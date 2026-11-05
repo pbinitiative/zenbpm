@@ -26,6 +26,11 @@ func TestMultiInstanceCompletionConditionIsRefusedForDeployment(t *testing.T) {
 			expectedElement: `userTask id="mi-activity"`,
 		},
 		{
+			name:            "manual task",
+			process:         multiInstanceActivityXML("manualTask", "mi-activity", `<bpmn:completionCondition xsi:type="bpmn:tFormalExpression">=true</bpmn:completionCondition>`, ""),
+			expectedElement: `manualTask id="mi-activity"`,
+		},
+		{
 			name: "sub process",
 			process: multiInstanceActivityXML("subProcess", "mi-activity", `<bpmn:completionCondition xsi:type="bpmn:tFormalExpression">=true</bpmn:completionCondition>`,
 				`<bpmn:startEvent id="inner-start" />`),

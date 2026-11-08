@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
@@ -141,17 +140,6 @@ func TestDeploymentRefusesAStartListenerOutsideItsContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode(), string(response.Body))
 	assert.Contains(t, string(response.Body), `execution listener eventType=\"end\" on start event id=\"listener-start\" is not supported where it sits`)
-}
-
-func TestSystemStatusListsTheListenerFeatures(t *testing.T) {
-	response, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
-	require.NoError(t, err)
-
-	status := struct {
-		Features []string `json:"features"`
-	}{}
-	require.NoError(t, json.Unmarshal(response, &status))
-	assert.Contains(t, status.Features, state.FeatureExecutionListenerStartEventEnd)
 }
 
 // listenerProcess is a deployment of listener-process.bpmn under a process id

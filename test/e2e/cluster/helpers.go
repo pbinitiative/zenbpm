@@ -22,7 +22,6 @@ import (
 
 // clusterStatus is used to unmarshal the /system/status JSON response.
 type clusterStatus struct {
-	Features      []string `json:"features"`
 	ClusterConfig struct {
 		DesiredPartitions int64 `json:"desiredPartitions"`
 	} `json:"clusterConfig"`

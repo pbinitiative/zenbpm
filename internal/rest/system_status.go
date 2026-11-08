@@ -11,11 +11,6 @@ type systemStatusResponse struct {
 	Git    systemStatusGit     `json:"git"`
 	Build  systemStatusBuild   `json:"build"`
 	Health clusterStatusHealth `json:"health"`
-	// Features are the features every member of the cluster carries (see
-	// state.CurrentFeatures and cluster.ZenNode.Features). A client asks for a feature here instead of
-	// comparing versions: the answering node's own build says nothing of the
-	// nodes leading the partitions.
-	Features []string `json:"features"`
 	clusterStatusView
 }
 
@@ -29,10 +24,7 @@ type systemStatusBuild struct {
 	Time    string `json:"time"`
 }
 
-func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster, features []string, healthy bool, reasons []string) systemStatusResponse {
-	if features == nil {
-		features = []string{}
-	}
+func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster, healthy bool, reasons []string) systemStatusResponse {
 	if reasons == nil {
 		reasons = []string{}
 	}
@@ -46,7 +38,6 @@ func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster, feature
 			Time:    info.BuildTime,
 		},
 		Health:            clusterStatusHealth{OK: healthy, Reasons: reasons},
-		Features:          features,
 		clusterStatusView: buildClusterStatusView(cluster),
 	}
 }

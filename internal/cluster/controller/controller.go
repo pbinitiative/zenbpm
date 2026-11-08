@@ -66,13 +66,6 @@ type Controller struct {
 	// failed protocol version announcement (see scheduleProtocolVersionRetry)
 	announceRetryScheduled bool
 	announceAttempts       uint
-	// othersFeatureChanges holds the state.Node.FeatureChanges the cluster
-	// state recorded for the other nodes at the last look, and
-	// announcementOwed whether one of them changed its features since this
-	// node announced (see announcementOwedToOthers)
-	featuresMu             sync.Mutex
-	othersFeatureChanges   map[string]uint64
-	announcementOwed       bool
 	initializationFailures map[uint32]uint
 	lifecycleCtx           context.Context
 	lifecycleCancel        context.CancelFunc
@@ -215,18 +208,15 @@ func (c *Controller) performLeaderOperations(ctx context.Context) {
 }
 
 // announceProtocolVersion tells the cluster leader which protocol version this
-// binary implements, and which features it carries (see
-// state.CurrentFeatures), when the cluster state does not record them yet: after the
+// binary implements when the cluster state does not record it yet: after the
 // node joined or came back (a shutdown clears the recorded version), and after
 // the state was replaced by a snapshot taken by a binary that did not know the
-// field. It announces as well when owedToOthers: another node's state may lack
-// this node's announcement (see announcementOwedToOthers). The leader commits
-// commands of a protocol version only once every member announced it (see
-// state.CurrentProtocolVersion). A failed announcement is retried on the next
-// cluster state change; until it lands, such commands are refused, not lost.
-func (c *Controller) announceProtocolVersion(currentNode state.Node, owedToOthers bool) {
-	announced := currentNode.ProtocolVersion >= state.CurrentProtocolVersion && currentNode.AnnouncedCurrentFeatures()
-	if (announced && !owedToOthers) || c.lifecycleCtx.Err() != nil {
+// field. The leader commits commands of a protocol version only once every
+// member announced it (see state.CurrentProtocolVersion). A failed
+// announcement is retried on the next cluster state change; until it lands,
+// such commands are refused, not lost.
+func (c *Controller) announceProtocolVersion(currentNode state.Node) {
+	if currentNode.ProtocolVersion >= state.CurrentProtocolVersion || c.lifecycleCtx.Err() != nil {
 		return
 	}
 	if currentNode.State == state.NodeStateShutdown {
@@ -243,51 +233,7 @@ func (c *Controller) announceProtocolVersion(currentNode state.Node, owedToOther
 	c.retryMu.Lock()
 	c.announceAttempts = 0
 	c.retryMu.Unlock()
-	c.featuresMu.Lock()
-	c.announcementOwed = false
-	c.featuresMu.Unlock()
-	if announced {
-		// only repeated for the others (see announcementOwedToOthers), which
-		// every node does whenever another one joins or comes back
-		c.logger.Debug("Announced the protocol version to the cluster leader again", "protocolVersion", state.CurrentProtocolVersion)
-		return
-	}
 	c.logger.Info("Announced the protocol version to the cluster leader", "protocolVersion", state.CurrentProtocolVersion)
-}
-
-// announcementOwedToOthers reports whether this node owes the cluster another
-// announcement of itself because another node's features changed since this
-// node last looked and the node carries features now. A node's own record can
-// be complete while another node's state lacks it: a node restoring a
-// snapshot that a binary without features took records no features for
-// anybody, and nothing else would make the other nodes announce again. Such a
-// node announces its own features once it runs the new binary, and the others
-// answer that change by announcing theirs. The change is read from the
-// counter state.Node.FeatureChanges, not from the features themselves, since
-// a look follows a state change only now and then: features lost and gained
-// back between two looks are equal at both, while the counter has moved. An
-// announcement which changes nothing moves no counter, so this ends. The
-// first look owes nothing.
-//
-// The rule cannot tell that case from an ordinary join or a return from
-// shutdown, where the newcomer replays the leader's log and needs nobody to
-// repeat themselves, so every node start costs one NodeChange entry per other
-// node. That is bounded and cheaper than recognising a stale snapshot.
-func (c *Controller) announcementOwedToOthers(cs state.Cluster) bool {
-	c.featuresMu.Lock()
-	defer c.featuresMu.Unlock()
-	seen := make(map[string]uint64, len(cs.Nodes))
-	for id, node := range cs.Nodes {
-		if id == c.store.ID() {
-			continue
-		}
-		seen[id] = node.FeatureChanges
-		if c.othersFeatureChanges != nil && node.FeatureChanges != c.othersFeatureChanges[id] && len(node.Features) > 0 {
-			c.announcementOwed = true
-		}
-	}
-	c.othersFeatureChanges = seen
-	return c.announcementOwed
 }
 
 func (c *Controller) sendProtocolVersion() error {
@@ -300,7 +246,7 @@ func (c *Controller) sendProtocolVersion() error {
 	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
 		Type: proto.Command_TYPE_NODE_CHANGE.Enum(),
 		Request: &proto.Command_NodeChange{NodeChange: &proto.NodeChange{
-			NodeId: new(c.store.ID()), ProtocolVersion: new(state.CurrentProtocolVersion), Features: state.CurrentFeatures(),
+			NodeId: new(c.store.ID()), ProtocolVersion: new(state.CurrentProtocolVersion),
 		}},
 	})
 	return err
@@ -398,7 +344,7 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
 		return
 	}
-	c.announceProtocolVersion(currentNode, c.announcementOwedToOthers(cs))
+	c.announceProtocolVersion(currentNode)
 	for partitionId, partition := range currentNode.Partitions {
 		partitionOp := c.partitionOperationMutex(partitionId)
 		partitionOp.Lock()

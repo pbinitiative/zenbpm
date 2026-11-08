@@ -361,15 +361,8 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	// comes back with an older binary (which announces nothing) is not mistaken for the one that left
 	if node.State == state.NodeStateShutdown {
 		node.ProtocolVersion = 0
-		node.SetFeatures(nil)
 	} else if version := nodeChangeCommand.GetProtocolVersion(); version > 0 {
-		// only the node's own binary sends its protocol version (its
-		// announcement, or its claim of leadership), and with it every
-		// feature that binary carries: one which lists none, such as a
-		// binary older than features, clears the features of the binary
-		// before
 		node.ProtocolVersion = version
-		node.SetFeatures(nodeChangeCommand.GetFeatures())
 	}
 	if resuming {
 		for partitionId, np := range node.Partitions {

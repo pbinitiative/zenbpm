@@ -77,43 +77,6 @@ func TestFsmRestoreMigratesLegacySnapshot(t *testing.T) {
 	assert.False(t, s.ClusterState().RestoreInProgress())
 }
 
-// TestFollowerRestoredFromAnOlderSnapshotRecordsTheFeaturesAnnouncedAgain
-// verifies the follower's side of recovering from a snapshot that a leader
-// rolled back to a binary without features took: the restored state records
-// no features for anybody, and the entries the others send afterwards (the
-// rolled-back node's announcement once it runs the newer binary, and the
-// announcement a peer owes for that change, see the controller's
-// announcementOwedToOthers) bring every feature back.
-func TestFollowerRestoredFromAnOlderSnapshotRecordsTheFeaturesAnnouncedAgain(t *testing.T) {
-	s, _ := newMustTestStore(t, config.Cluster{NodeId: "follower", Raft: config.ClusterRaft{Dir: t.TempDir()}})
-	fsm := NewFSM(s)
-	members := []string{"follower", "rolled-back", "peer"}
-	olderNode := func(id string) map[string]any {
-		// the shape an older binary writes: no features, no feature changes
-		return map[string]any{"id": id, "state": int(state.NodeStateStarted), "partitions": map[string]any{}, "protocolVersion": state.CurrentProtocolVersion}
-	}
-	older := map[string]any{"clusterState": map[string]any{
-		"clusterConfig": map[string]any{"desiredPartitions": 1},
-		"partitions":    map[string]any{},
-		"nodes":         map[string]any{"follower": olderNode("follower"), "rolled-back": olderNode("rolled-back"), "peer": olderNode("peer")},
-	}}
-	raw, err := json.Marshal(older)
-	require.NoError(t, err)
-	require.NoError(t, fsm.Restore(io.NopCloser(bytes.NewReader(raw))))
-	assert.Empty(t, s.ClusterState().CommonFeatures(members), "the restored state records no features for anybody")
-
-	announce := func(id string) {
-		fsm.applyNodeChange(&proto.NodeChange{NodeId: new(id), ProtocolVersion: new(state.CurrentProtocolVersion), Features: state.CurrentFeatures()})
-	}
-	announce("follower")
-	announce("rolled-back")
-	assert.Empty(t, s.ClusterState().CommonFeatures(members), "the peer's features are still missing")
-	assert.Equal(t, uint64(1), s.ClusterState().Nodes["rolled-back"].FeatureChanges, "the change the peers answer")
-
-	announce("peer")
-	assert.Equal(t, state.CurrentFeatures(), s.ClusterState().CommonFeatures(members), "the peer's repeated announcement completes the follower's state")
-}
-
 func TestWriteRestoreChangeHonoursCancelledContext(t *testing.T) {
 	s, _ := newMustTestStore(t, config.Cluster{NodeId: "ctx", Raft: config.ClusterRaft{Dir: t.TempDir()}})
 	ctx, cancel := context.WithCancel(context.Background())

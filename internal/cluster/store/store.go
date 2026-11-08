@@ -310,46 +310,16 @@ func (s *Store) requireMemberProtocolVersion(required int32) error {
 		// below it. A member restarting cannot make existing entries optional.
 		return nil
 	}
-	members, err := s.memberIDs()
-	if err != nil {
-		return fmt.Errorf("failed to check the members' protocol versions: %w", err)
-	}
-	return cs.RequireProtocolVersion(members, required)
-}
-
-// MemberFeatures answers the features every server of the raft configuration
-// announced (see state.Cluster.CommonFeatures). A node which left the
-// configuration, such as a reaped one, which the cluster state still records,
-// does not count; a member the state does not record yet leaves none. A node
-// which knows no leader, such as one cut off from the others, lists none: it
-// cannot tell whether its state still is the cluster's.
-func (s *Store) MemberFeatures() ([]string, error) {
-	if !s.open.Load() {
-		return nil, zenerr.ErrNotOpen
-	}
-	if !s.HasLeader() {
-		return []string{}, nil
-	}
-	members, err := s.memberIDs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list the features of the members: %w", err)
-	}
-	return s.ClusterState().CommonFeatures(members), nil
-}
-
-// memberIDs answers the ids of the servers of the raft configuration, voters
-// or not: every one of them applies the log.
-func (s *Store) memberIDs() ([]string, error) {
 	f := s.raft.GetConfiguration()
 	if err := f.Error(); err != nil {
-		return nil, fmt.Errorf("failed to get raft configuration: %w", err)
+		return fmt.Errorf("failed to get raft configuration to check the members' protocol versions: %w", err)
 	}
 	servers := f.Configuration().Servers
 	members := make([]string, 0, len(servers))
 	for _, server := range servers {
 		members = append(members, string(server.ID))
 	}
-	return members, nil
+	return cs.RequireProtocolVersion(members, required)
 }
 
 // applyCommand writes command to the raft log and returns the FSM response:
@@ -683,7 +653,6 @@ func (s *Store) selfLeaderChange(leader bool) error {
 		Role:            proto.Role_ROLE_TYPE_LEADER.Enum(),
 		Suffrage:        proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),
 		ProtocolVersion: new(state.CurrentProtocolVersion),
-		Features:        state.CurrentFeatures(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to send NodeChange - leadership change message: %w", err)

@@ -36,28 +36,7 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
-The REST response includes build metadata, and the `features` every member of the cluster runs. A
-feature is listed only once every member of the raft configuration runs a binary which carries it
-and has announced it, so during a rolling upgrade a feature appears when the last node is upgraded.
-A member which the cluster holds for shut down (its heartbeats failed) hides every feature until it
-is back and has announced again; a node removed from the cluster, such as a reaped one, no longer
-counts. A node which knows no leader, such as one cut off from the others, lists no features, since
-it cannot tell whether its view of the cluster is current. The one feature so far is `executionListener.startEventEnd` (see
-[Execution listeners](./bpmn/execution-listeners.md)). A feature name never changes its meaning; a
-client relies on it instead of comparing versions.
-
-A node announces its features when the cluster does not record exactly those of its binary, and
-once more whenever the features of another node change and that node carries features, so that a
-node which restored a snapshot written by an older binary records the others' features again. Every
-change of a node's features is counted in the cluster state, so features lost and regained between
-two looks at the state still count as a change.
-
-To roll a node back to a binary without a feature, keep it stopped until the cluster has marked it
-shut down (longer than the heartbeat timeout) before starting the older binary, or remove it from
-the cluster first. A node restarted on an older binary before it was marked shut down writes nothing
-the cluster could tell the restart by: it keeps the features of the binary before, and the cluster
-goes on listing them, until the older binary takes leadership or announces its protocol version,
-either of which, listing no features, clears them.
+The REST response includes build metadata:
 
 ```json
 {
@@ -69,7 +48,6 @@ either of which, listing no features, clears them.
     "version": "v1.5.0",
     "time": "2026-08-07T12:13:14Z"
   },
-  "features": ["executionListener.startEventEnd"],
   "clusterConfig": {},
   "partitions": {},
   "nodes": {}

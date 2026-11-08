@@ -131,11 +131,8 @@ expression raises an incident on its start event instead of creating a job. When
 restored, the engine logs one line for each restored definition whose start events carry
 listeners; a definition which only an upgrade brings to this version is not logged.
 
-## Is the cluster ready for listeners?
+## Upgrading a cluster
 
-`GET /system/status` lists `features` which every member of the cluster runs, here
-`executionListener.startEventEnd`. A feature is listed only once every member runs a binary which
-carries it and has announced it, so during a rolling upgrade the feature appears only when the last
-node is upgraded. A client which relies on listeners checks this name instead of comparing
-versions. [Cluster](../cluster.md) says when a feature disappears again, and how to roll a node
-back.
+A node running an earlier version ignores start event listeners: an instance started on a
+partition which such a node leads runs without the listener's job. Upgrade every node of the
+cluster before deploying processes which rely on their listeners.

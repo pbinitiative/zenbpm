@@ -53,13 +53,6 @@ message NodeChange {
   // a member running an older binary, which would stop on a command it does
   // not know, is never sent one.
   int32 protocol_version = 6;
-  // features are the features the node's binary carries (see
-  // state.CurrentFeatures), announced together with protocol_version. A
-  // change carrying a protocol_version replaces the recorded features, so one
-  // without features, as an older binary sends it, clears them; a change
-  // without a protocol_version leaves them unchanged. A node recorded as shut
-  // down holds none.
-  repeated string features = 7;
 }
 
 

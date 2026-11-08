@@ -190,6 +190,28 @@ func TestDeploymentRefusesAStartListenerOutsideItsContainers(t *testing.T) {
 	}
 }
 
+func TestDeploymentRefusesAListenerOfAStartEventOutsideTheProcessFlow(t *testing.T) {
+	hiddenStartEvent := `<bpmn:startEvent id="hidden"><bpmn:extensionElements>` +
+		listenersOf("zeebe", `eventType="end" type="t"`) + `</bpmn:extensionElements></bpmn:startEvent>`
+	cases := map[string]string{
+		"in the extension elements of the process": hiddenStartEvent,
+		"in an extension element of the process":   `<zeebe:properties>` + hiddenStartEvent + `</zeebe:properties>`,
+	}
+	for name, processExtensions := range cases {
+		t.Run(name, func(t *testing.T) {
+			model := listenerModel("zeebe", processExtensions, "", "")
+			definitions := parseListenerModel(t, model)
+			assert.False(t, definitions.HasExecutionListeners(), "the model drops a start event outside the process flow")
+
+			err := ValidateListenerPositions([]byte(model))
+
+			require.Error(t, err)
+			assert.Equal(t, `execution listener eventType="end" on start event id="hidden" is not supported where the start event sits: `+
+				`an element with a listener has to sit directly in a process or a sub process`, err.Error())
+		})
+	}
+}
+
 func TestListenerOfASubProcessStartEventPassesThePositionCheckForTheModelCheck(t *testing.T) {
 	model := listenerModel("zeebe", "", "", subProcessWith("", listenersOf("zeebe", `eventType="end" type="t"`)))
 

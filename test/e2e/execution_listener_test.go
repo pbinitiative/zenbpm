@@ -104,11 +104,17 @@ func TestMessageStartListenerAnswersThePublisherBeforeItsJobIsCompleted(t *testi
 	instance, err := getProcessInstance(t, job.ProcessInstanceKey)
 	require.NoError(t, err)
 	assert.Equal(t, zenclient.ProcessInstanceStateActive, instance.State)
+	waiting := getFlowElementByElementId(t, job.ProcessInstanceKey, "listener-message-start-event")
+	assert.Nil(t, waiting.CompletedAt, "the start event stays active while its listener's job waits")
+	assert.Equal(t, "order-7", waiting.OutputVariables["orderFromMessage"], "the history shows the start event's outputs while the job waits")
 
 	completion, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, completion.StatusCode(), string(completion.Body))
 	waitForProcessInstanceState(t, job.ProcessInstanceKey, zenclient.ProcessInstanceStateCompleted)
+	completed := getFlowElementByElementId(t, job.ProcessInstanceKey, "listener-message-start-event")
+	assert.NotNil(t, completed.CompletedAt)
+	assert.Equal(t, "order-7", completed.OutputVariables["orderFromMessage"], "completing the job keeps the start event's outputs")
 }
 
 func TestDeploymentRefusesAListenerTheEngineDoesNotRun(t *testing.T) {

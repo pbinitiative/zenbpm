@@ -41,7 +41,8 @@ feature is listed only once every member of the raft configuration runs a binary
 and has announced it, so during a rolling upgrade a feature appears when the last node is upgraded.
 A member which the cluster holds for shut down (its heartbeats failed) hides every feature until it
 is back and has announced again; a node removed from the cluster, such as a reaped one, no longer
-counts. The one feature so far is `executionListener.startEventEnd` (see
+counts. A node which knows no leader, such as one cut off from the others, lists no features, since
+it cannot tell whether its view of the cluster is current. The one feature so far is `executionListener.startEventEnd` (see
 [Execution listeners](./bpmn/execution-listeners.md)). A feature name never changes its meaning; a
 client relies on it instead of comparing versions.
 
@@ -51,8 +52,10 @@ by an older binary records the others' features again.
 
 To roll a node back to a binary without a feature, keep it stopped until the cluster has marked it
 shut down (longer than the heartbeat timeout) before starting the older binary, or remove it from
-the cluster first. An older binary announces nothing, so a node restarted on it before it was marked
-shut down keeps the features of the binary before, and the cluster goes on listing them.
+the cluster first. A node restarted on an older binary before it was marked shut down writes nothing
+the cluster could tell the restart by: it keeps the features of the binary before, and the cluster
+goes on listing them, until the older binary takes leadership or announces its protocol version,
+either of which, listing no features, clears them.
 
 ```json
 {

@@ -616,8 +616,10 @@ type NodeChange struct {
 	// not know, is never sent one.
 	ProtocolVersion *int32 `protobuf:"varint,6,opt,name=protocol_version,json=protocolVersion" json:"protocol_version,omitempty"`
 	// features are the features the node's binary carries (see
-	// state.CurrentFeatures), announced together with protocol_version. An
-	// empty list leaves the recorded features unchanged; a node recorded as shut
+	// state.CurrentFeatures), announced together with protocol_version. A
+	// change carrying a protocol_version replaces the recorded features, so one
+	// without features, as an older binary sends it, clears them; a change
+	// without a protocol_version leaves them unchanged. A node recorded as shut
 	// down holds none.
 	Features      []string `protobuf:"bytes,7,rep,name=features" json:"features,omitempty"`
 	unknownFields protoimpl.UnknownFields

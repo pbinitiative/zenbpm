@@ -104,6 +104,7 @@ A deployment is answered `400`, with a message naming the element, for:
 |---|---|
 | a start event directly under `<process>` | a listener of another event type than `end`, or more than one listener |
 | a start event | a listener outside `extensionElements` > `executionListeners`, such as one without the `executionListeners` element or one in the shape of Camunda 7 |
+| a start event which does not sit directly in a process or a sub-process, such as one inside extension elements | any listener |
 | an embedded or event sub-process, and its start events | any listener |
 | any other element | any listener |
 | any element | any task listener (`taskListeners`) |

@@ -451,8 +451,9 @@ func TestNodeChangeRecordsProtocolVersionUntilShutdown(t *testing.T) {
 
 // TestNodeChangeRecordsFeaturesUntilShutdown verifies that a node's announced
 // features are recorded beside its protocol version, kept by changes that do
-// not carry any, and cleared when the node shuts down, so that a node coming
-// back with an older binary, which announces none, carries none.
+// not carry a protocol version, replaced by every one that does, and cleared
+// when the node shuts down, so that a node coming back with an older binary,
+// which announces none, carries none.
 func TestNodeChangeRecordsFeaturesUntilShutdown(t *testing.T) {
 	s := newBootstrappedTestStore(t)
 	peerID := "peer-1"
@@ -464,14 +465,20 @@ func TestNodeChangeRecordsFeaturesUntilShutdown(t *testing.T) {
 	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a", "b"}}))
 	assert.Equal(t, []string{"a", "b"}, s.ClusterState().Nodes[peerID].Features)
 	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), Addr: new("127.0.0.1:9")}))
-	assert.Equal(t, []string{"a", "b"}, s.ClusterState().Nodes[peerID].Features, "a change without features keeps the announced ones")
+	assert.Equal(t, []string{"a", "b"}, s.ClusterState().Nodes[peerID].Features, "a change without a protocol version keeps the announced features")
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a"}}))
+	assert.Equal(t, []string{"a"}, s.ClusterState().Nodes[peerID].Features, "an announcement replaces the features recorded before")
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1))}))
+	assert.Empty(t, s.ClusterState().Nodes[peerID].Features,
+		"an older binary, whose announcement and claim of leadership carry a protocol version but no features, clears them")
 
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a", "b"}}))
 	require.NoError(t, s.shutdownNode(raft.ServerID(peerID)))
 	assert.Empty(t, s.ClusterState().Nodes[peerID].Features, "a shutdown clears the announced features")
-	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), Features: []string{"a"}}))
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a"}}))
 	assert.Empty(t, s.ClusterState().Nodes[peerID].Features, "an announcement in flight does not survive the shutdown")
 	require.NoError(t, s.resumeNode(raft.ServerID(peerID)))
-	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), Features: []string{"a"}}))
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a"}}))
 	assert.Equal(t, []string{"a"}, s.ClusterState().Nodes[peerID].Features, "the resumed node announced again")
 
 	assert.Equal(t, state.CurrentFeatures(), s.ClusterState().Nodes[s.raftID].Features, "the leader announced its own features when it took leadership")
@@ -502,6 +509,55 @@ func TestMemberFeaturesCountOnlyTheMembers(t *testing.T) {
 
 	assert.Empty(t, s.ClusterState().CommonFeatures([]string{s.raftID, "member-not-recorded-yet"}),
 		"a member the state does not record yet hides them")
+}
+
+// TestMemberFeaturesAreNoneWhileAMemberAnnouncedNone verifies that a member of
+// the raft configuration which runs, but announced no features, as a binary
+// older than features does, hides every feature of the others.
+func TestMemberFeaturesAreNoneWhileAMemberAnnouncedNone(t *testing.T) {
+	s := newBootstrappedTestStore(t)
+	require.Eventually(t, func() bool {
+		return s.ClusterState().Nodes[s.raftID].AnnouncedCurrentFeatures()
+	}, 5*time.Second, 50*time.Millisecond, "the leader announces its own features")
+	olderID := "older-binary-node"
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{
+		NodeId: new(olderID), State: proto.NodeState_NODE_STATE_STARTED.Enum(), Role: proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+		ProtocolVersion: new(state.CurrentProtocolVersion),
+	}))
+	// a non-voter leaves the leader its quorum
+	require.NoError(t, s.raft.AddNonvoter(raft.ServerID(olderID), raft.ServerAddress("127.0.0.1:1"), 0, 0).Error())
+
+	require.True(t, s.HasLeader())
+	features, err := s.MemberFeatures()
+	require.NoError(t, err)
+	assert.Empty(t, features)
+}
+
+// TestMemberFeaturesAreNoneWithoutALeader verifies that a node which knows no
+// leader lists no features, though its state records them for every member:
+// it cannot tell whether that state is still the cluster's.
+func TestMemberFeaturesAreNoneWithoutALeader(t *testing.T) {
+	s := newBootstrappedTestStore(t)
+	require.Eventually(t, func() bool {
+		return s.ClusterState().Nodes[s.raftID].AnnouncedCurrentFeatures()
+	}, 5*time.Second, 50*time.Millisecond, "the leader announces its own features")
+	unreachableID := "unreachable-node"
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{
+		NodeId: new(unreachableID), State: proto.NodeState_NODE_STATE_STARTED.Enum(), Role: proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+		ProtocolVersion: new(state.CurrentProtocolVersion), Features: state.CurrentFeatures(),
+	}))
+
+	// a second voter which never answers costs the leader its quorum
+	s.raft.AddVoter(raft.ServerID(unreachableID), raft.ServerAddress("127.0.0.1:1"), 0, 0)
+	require.Eventually(t, func() bool {
+		return !s.HasLeader()
+	}, 10*time.Second, 50*time.Millisecond, "the node loses its leader")
+
+	assert.Equal(t, state.CurrentFeatures(), s.ClusterState().CommonFeatures([]string{s.raftID, unreachableID}),
+		"the state still records the features of both members")
+	features, err := s.MemberFeatures()
+	require.NoError(t, err)
+	assert.Empty(t, features)
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot

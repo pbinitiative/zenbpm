@@ -320,10 +320,15 @@ func (s *Store) requireMemberProtocolVersion(required int32) error {
 // MemberFeatures answers the features every server of the raft configuration
 // announced (see state.Cluster.CommonFeatures). A node which left the
 // configuration, such as a reaped one, which the cluster state still records,
-// does not count; a member the state does not record yet leaves none.
+// does not count; a member the state does not record yet leaves none. A node
+// which knows no leader, such as one cut off from the others, lists none: it
+// cannot tell whether its state still is the cluster's.
 func (s *Store) MemberFeatures() ([]string, error) {
 	if !s.open.Load() {
 		return nil, zenerr.ErrNotOpen
+	}
+	if !s.HasLeader() {
+		return []string{}, nil
 	}
 	members, err := s.memberIDs()
 	if err != nil {

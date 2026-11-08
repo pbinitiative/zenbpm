@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -362,7 +361,7 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	// comes back with an older binary (which announces nothing) is not mistaken for the one that left
 	if node.State == state.NodeStateShutdown {
 		node.ProtocolVersion = 0
-		node.Features = nil
+		node.SetFeatures(nil)
 	} else if version := nodeChangeCommand.GetProtocolVersion(); version > 0 {
 		// only the node's own binary sends its protocol version (its
 		// announcement, or its claim of leadership), and with it every
@@ -370,7 +369,7 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 		// binary older than features, clears the features of the binary
 		// before
 		node.ProtocolVersion = version
-		node.Features = slices.Clone(nodeChangeCommand.GetFeatures())
+		node.SetFeatures(nodeChangeCommand.GetFeatures())
 	}
 	if resuming {
 		for partitionId, np := range node.Partitions {

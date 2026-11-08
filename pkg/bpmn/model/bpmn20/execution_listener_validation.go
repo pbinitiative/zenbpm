@@ -20,17 +20,31 @@ const listenerPositionRule = `only a start event directly under the process take
 const listenerPathRule = `a listener has to sit in an executionListeners element directly inside the extensionElements of its element`
 
 // listenerOwnerPathRule tells the modeller where the element of a listener sits.
-const listenerOwnerPathRule = `an element with a listener has to sit directly in a process or a sub process`
+const listenerOwnerPathRule = `an element with a listener has to sit directly in a process or in a sub process of its flow`
 
-// flowElementContainers are the XML elements whose model reads the flow nodes
-// directly inside them (TFlowElementsContainer); a flow node anywhere else,
-// such as inside extension elements, is dropped by the model.
-var flowElementContainers = []string{"process", "subProcess"}
+// sitsInTheProcessFlow reports whether an element inside the given open
+// elements is read by the model: one directly in a process of the
+// definitions, or in sub-processes nested directly in one
+// (TFlowElementsContainer). A flow node anywhere else, such as inside
+// extension elements, is dropped by the model, together with any sub-process
+// holding it there.
+func sitsInTheProcessFlow(ancestors []openElement) bool {
+	if len(ancestors) < 2 || ancestors[0].name != "definitions" || ancestors[1].name != "process" {
+		return false
+	}
+	for _, ancestor := range ancestors[2:] {
+		if ancestor.name != "subProcess" {
+			return false
+		}
+	}
+	return true
+}
 
 // ValidateListenerPositions refuses an execution listener on an element whose
 // model does not read listeners, one which does not sit where the model reads
 // it (extensionElements > executionListeners > executionListener), one on an
-// element outside a process or sub-process, and every task listener. Such a listener would be dropped without a word, so the raw
+// element outside the flow of a process (see sitsInTheProcessFlow), and every
+// task listener. Such a listener would be dropped without a word, so the raw
 // XML is scanned; a listener the model reads is checked by
 // ValidateForDeployment instead. A listener on the process element is left
 // alone, wherever it sits in it: the engine neither runs nor refuses it, as
@@ -84,7 +98,7 @@ func validateListenerPosition(open []openElement, listener xml.StartElement) err
 	if depth < 3 || open[depth-1].name != "executionListeners" || open[depth-2].name != "extensionElements" || open[depth-3] != owner {
 		return fmt.Errorf("%s is not supported where it sits: %s", where, listenerPathRule)
 	}
-	if depth < 4 || !slices.Contains(flowElementContainers, open[depth-4].name) {
+	if !sitsInTheProcessFlow(open[:depth-3]) {
 		return fmt.Errorf("%s is not supported where the %s sits: %s", where, xmlNameInWords(owner.name), listenerOwnerPathRule)
 	}
 	return nil

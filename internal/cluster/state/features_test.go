@@ -22,6 +22,21 @@ func TestCommonFeaturesListsWhatEveryMemberAnnounced(t *testing.T) {
 	assert.Empty(t, c.CommonFeatures(nil))
 }
 
+func TestSetFeaturesCountsOnlyChanges(t *testing.T) {
+	var node Node
+	node.SetFeatures([]string{"a", "b"})
+	assert.Equal(t, uint64(1), node.FeatureChanges)
+	node.SetFeatures([]string{"b", "a"})
+	assert.Equal(t, uint64(1), node.FeatureChanges, "the same features in another order are no change")
+	node.SetFeatures(nil)
+	node.SetFeatures([]string{"a", "b"})
+	assert.Equal(t, uint64(3), node.FeatureChanges, "features lost and regained count twice, though they read the same")
+	assert.Equal(t, []string{"a", "b"}, node.Features)
+	node.SetFeatures(nil)
+	node.SetFeatures([]string{})
+	assert.Equal(t, uint64(4), node.FeatureChanges, "no features and an empty list are the same")
+}
+
 func TestCurrentFeaturesNameTheStartEventListener(t *testing.T) {
 	assert.ElementsMatch(t, []string{"executionListener.startEventEnd"}, CurrentFeatures())
 	assert.True(t, Node{Features: CurrentFeatures()}.AnnouncedCurrentFeatures())

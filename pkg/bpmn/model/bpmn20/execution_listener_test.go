@@ -194,8 +194,10 @@ func TestDeploymentRefusesAListenerOfAStartEventOutsideTheProcessFlow(t *testing
 	hiddenStartEvent := `<bpmn:startEvent id="hidden"><bpmn:extensionElements>` +
 		listenersOf("zeebe", `eventType="end" type="t"`) + `</bpmn:extensionElements></bpmn:startEvent>`
 	cases := map[string]string{
-		"in the extension elements of the process": hiddenStartEvent,
-		"in an extension element of the process":   `<zeebe:properties>` + hiddenStartEvent + `</zeebe:properties>`,
+		"in the extension elements of the process":          hiddenStartEvent,
+		"in an extension element of the process":            `<zeebe:properties>` + hiddenStartEvent + `</zeebe:properties>`,
+		"in a sub process in the extension elements":        `<bpmn:subProcess id="hidden-sub">` + hiddenStartEvent + `</bpmn:subProcess>`,
+		"in a sub process of a sub process in an extension": `<zeebe:properties><bpmn:subProcess id="outer"><bpmn:subProcess id="inner">` + hiddenStartEvent + `</bpmn:subProcess></bpmn:subProcess></zeebe:properties>`,
 	}
 	for name, processExtensions := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -207,18 +209,27 @@ func TestDeploymentRefusesAListenerOfAStartEventOutsideTheProcessFlow(t *testing
 
 			require.Error(t, err)
 			assert.Equal(t, `execution listener eventType="end" on start event id="hidden" is not supported where the start event sits: `+
-				`an element with a listener has to sit directly in a process or a sub process`, err.Error())
+				`an element with a listener has to sit directly in a process or in a sub process of its flow`, err.Error())
 		})
 	}
 }
 
 func TestListenerOfASubProcessStartEventPassesThePositionCheckForTheModelCheck(t *testing.T) {
-	model := listenerModel("zeebe", "", "", subProcessWith("", listenersOf("zeebe", `eventType="end" type="t"`)))
+	subProcess := subProcessWith("", listenersOf("zeebe", `eventType="end" type="t"`))
+	cases := map[string]string{
+		"in a sub process":                  subProcess,
+		"in a sub process of a sub process": `<bpmn:subProcess id="outer">` + subProcess + `</bpmn:subProcess>`,
+	}
+	for name, other := range cases {
+		t.Run(name, func(t *testing.T) {
+			model := listenerModel("zeebe", "", "", other)
 
-	require.NoError(t, ValidateListenerPositions([]byte(model)), "the model reads the listeners of every start event")
-	definitions := parseListenerModel(t, model)
-	assert.True(t, definitions.HasExecutionListeners())
-	assert.Error(t, definitions.ValidateForDeployment())
+			require.NoError(t, ValidateListenerPositions([]byte(model)), "the model reads the listeners of every start event in the flow")
+			definitions := parseListenerModel(t, model)
+			assert.True(t, definitions.HasExecutionListeners())
+			assert.Error(t, definitions.ValidateForDeployment())
+		})
+	}
 }
 
 func TestListenerOnTheProcessElementIsNeitherRunNorRefused(t *testing.T) {

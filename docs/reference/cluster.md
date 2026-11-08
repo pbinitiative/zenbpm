@@ -47,8 +47,10 @@ it cannot tell whether its view of the cluster is current. The one feature so fa
 client relies on it instead of comparing versions.
 
 A node announces its features when the cluster does not record exactly those of its binary, and
-once more whenever another node gains a feature, so that a node which restored a snapshot written
-by an older binary records the others' features again.
+once more whenever the features of another node change and that node carries features, so that a
+node which restored a snapshot written by an older binary records the others' features again. Every
+change of a node's features is counted in the cluster state, so features lost and regained between
+two looks at the state still count as a change.
 
 To roll a node back to a binary without a feature, keep it stopped until the cluster has marked it
 shut down (longer than the heartbeat timeout) before starting the older binary, or remove it from

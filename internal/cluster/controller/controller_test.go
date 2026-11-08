@@ -392,12 +392,53 @@ func TestControllerAnnouncesAgainWhenAnotherNodeGainsFeatures(t *testing.T) {
 	assert.Zero(t, tStore.nodeChangeWrites(), "a complete record is not announced again")
 
 	tStore.setNode(state.Node{Id: "upgraded-node", State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion,
-		Features: state.CurrentFeatures(), Partitions: map[uint32]state.NodePartition{}})
+		Features: state.CurrentFeatures(), FeatureChanges: 1, Partitions: map[uint32]state.NodePartition{}})
 	controller.ClusterStateChangeNotification(t.Context())
 	assert.Equal(t, 1, tStore.nodeChangeWrites(), "the other node gained features, so this node announces again")
 
 	controller.ClusterStateChangeNotification(t.Context())
 	assert.Equal(t, 1, tStore.nodeChangeWrites(), "nothing gained since, nothing announced")
+}
+
+// TestControllerAnnouncesAgainWhenAnotherNodeRegainedFeaturesBetweenTwoLooks
+// verifies that a node announces again when another node lost its features
+// and gained them back while this node did not look at the state: a look
+// follows a state change only now and then, and a later change cancels the
+// look of an earlier one, so the loss may never be seen.
+func TestControllerAnnouncesAgainWhenAnotherNodeRegainedFeaturesBetweenTwoLooks(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+	tStore.leader = false
+	tStore.leaderAddr, tStore.leaderID = tStore.addr, "test-leader"
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft:   config.ClusterRaft{Dir: t.TempDir()},
+	})
+	require.NoError(t, err)
+	tStore.setNode(state.Node{Id: tStore.id, Addr: tStore.addr, State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion,
+		Features: state.CurrentFeatures(), Partitions: map[uint32]state.NodePartition{}})
+	rolledBack := state.Node{Id: "rolled-back-node", State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion,
+		Partitions: map[uint32]state.NodePartition{}}
+	rolledBack.SetFeatures(state.CurrentFeatures())
+	tStore.setNode(rolledBack)
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Zero(t, tStore.nodeChangeWrites(), "the first look owes nothing")
+
+	// an older binary of the node takes leadership, which clears its features,
+	// and the node comes back on the newer binary; no look in between
+	rolledBack.SetFeatures(nil)
+	rolledBack.SetFeatures(state.CurrentFeatures())
+	tStore.setNode(rolledBack)
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, 1, tStore.nodeChangeWrites(), "the other node's features changed, though they read the same, so this node announces again")
+
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, 1, tStore.nodeChangeWrites(), "nothing changed since, nothing announced")
 }
 
 // TestControllerRetriesProtocolVersionAnnouncement verifies that an

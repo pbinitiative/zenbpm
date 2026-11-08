@@ -30,6 +30,15 @@ func (n Node) AnnouncedCurrentFeatures() bool {
 	return slices.Equal(sortedFeatures(n.Features), sortedFeatures(CurrentFeatures()))
 }
 
+// SetFeatures records the node's features and, when they differ from the
+// recorded ones, counts the change in FeatureChanges.
+func (n *Node) SetFeatures(features []string) {
+	if !slices.Equal(sortedFeatures(n.Features), sortedFeatures(features)) {
+		n.FeatureChanges++
+	}
+	n.Features = slices.Clone(features)
+}
+
 func sortedFeatures(features []string) []string {
 	return slices.Compact(slices.Sorted(slices.Values(features)))
 }

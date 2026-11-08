@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,11 +66,12 @@ type Controller struct {
 	// failed protocol version announcement (see scheduleProtocolVersionRetry)
 	announceRetryScheduled bool
 	announceAttempts       uint
-	// othersFeatures holds the features the cluster state recorded for the
-	// other nodes at the last look, and announcementOwed whether one of them
-	// gained a feature since this node announced (see announcementOwedToOthers)
+	// othersFeatureChanges holds the state.Node.FeatureChanges the cluster
+	// state recorded for the other nodes at the last look, and
+	// announcementOwed whether one of them changed its features since this
+	// node announced (see announcementOwedToOthers)
 	featuresMu             sync.Mutex
-	othersFeatures         map[string][]string
+	othersFeatureChanges   map[string]uint64
 	announcementOwed       bool
 	initializationFailures map[uint32]uint
 	lifecycleCtx           context.Context
@@ -256,14 +256,18 @@ func (c *Controller) announceProtocolVersion(currentNode state.Node, owedToOther
 }
 
 // announcementOwedToOthers reports whether this node owes the cluster another
-// announcement of itself because another node gained a feature since this
-// node last looked. A node's own record can be complete while another node's
-// state lacks it: a node restoring a snapshot that a binary without features
-// took records no features for anybody, and nothing else would make the other
-// nodes announce again. Such a node announces its own features once it runs
-// the new binary, and the others answer that gain by announcing theirs. An
-// announcement which changes nothing gains nothing, so this ends. The first
-// look owes nothing.
+// announcement of itself because another node's features changed since this
+// node last looked and the node carries features now. A node's own record can
+// be complete while another node's state lacks it: a node restoring a
+// snapshot that a binary without features took records no features for
+// anybody, and nothing else would make the other nodes announce again. Such a
+// node announces its own features once it runs the new binary, and the others
+// answer that change by announcing theirs. The change is read from the
+// counter state.Node.FeatureChanges, not from the features themselves, since
+// a look follows a state change only now and then: features lost and gained
+// back between two looks are equal at both, while the counter has moved. An
+// announcement which changes nothing moves no counter, so this ends. The
+// first look owes nothing.
 //
 // The rule cannot tell that case from an ordinary join or a return from
 // shutdown, where the newcomer replays the leader's log and needs nobody to
@@ -272,22 +276,17 @@ func (c *Controller) announceProtocolVersion(currentNode state.Node, owedToOther
 func (c *Controller) announcementOwedToOthers(cs state.Cluster) bool {
 	c.featuresMu.Lock()
 	defer c.featuresMu.Unlock()
-	seen := make(map[string][]string, len(cs.Nodes))
+	seen := make(map[string]uint64, len(cs.Nodes))
 	for id, node := range cs.Nodes {
 		if id == c.store.ID() {
 			continue
 		}
-		seen[id] = node.Features
-		if c.othersFeatures == nil {
-			continue
-		}
-		for _, feature := range node.Features {
-			if !slices.Contains(c.othersFeatures[id], feature) {
-				c.announcementOwed = true
-			}
+		seen[id] = node.FeatureChanges
+		if c.othersFeatureChanges != nil && node.FeatureChanges != c.othersFeatureChanges[id] && len(node.Features) > 0 {
+			c.announcementOwed = true
 		}
 	}
-	c.othersFeatures = seen
+	c.othersFeatureChanges = seen
 	return c.announcementOwed
 }
 

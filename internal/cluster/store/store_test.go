@@ -468,9 +468,13 @@ func TestNodeChangeRecordsFeaturesUntilShutdown(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, s.ClusterState().Nodes[peerID].Features, "a change without a protocol version keeps the announced features")
 	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a"}}))
 	assert.Equal(t, []string{"a"}, s.ClusterState().Nodes[peerID].Features, "an announcement replaces the features recorded before")
+	changes := s.ClusterState().Nodes[peerID].FeatureChanges
+	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a"}}))
+	assert.Equal(t, changes, s.ClusterState().Nodes[peerID].FeatureChanges, "an announcement of the same features counts no change")
 	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1))}))
 	assert.Empty(t, s.ClusterState().Nodes[peerID].Features,
 		"an older binary, whose announcement and claim of leadership carry a protocol version but no features, clears them")
+	assert.Equal(t, changes+1, s.ClusterState().Nodes[peerID].FeatureChanges, "clearing the features counts a change")
 
 	require.NoError(t, s.WriteNodeChange(&proto.NodeChange{NodeId: new(peerID), ProtocolVersion: new(int32(1)), Features: []string{"a", "b"}}))
 	require.NoError(t, s.shutdownNode(raft.ServerID(peerID)))

@@ -334,6 +334,10 @@ type Node struct {
 	// them together with its protocol version; none while it has not, and
 	// none once it is shut down. See CurrentFeatures.
 	Features []string `json:"features,omitempty"`
+	// FeatureChanges counts the changes of Features (see SetFeatures), so that
+	// a node which looks at the state now and then can tell that another
+	// node's features changed even when they changed back meanwhile.
+	FeatureChanges uint64 `json:"featureChanges,omitempty"`
 	// TODO: add zones
 }
 

@@ -58,6 +58,10 @@ func (task *ListenerTask) EventType() string { return task.listener.EventType }
 // Element answers the element the listener belongs to.
 func (task *ListenerTask) Element() FlowNode { return task.element }
 
+// The methods below make the listener's task read as its element (a
+// BaseElement and FlowNode), so that the job of the listener is created,
+// handed out and resolved as the job of a task on that element.
+
 func (task *ListenerTask) GetId() string                     { return task.element.GetId() }
 func (task *ListenerTask) GetDocumentation() []Documentation { return task.element.GetDocumentation() }
 func (task *ListenerTask) GetName() string                   { return task.element.GetName() }

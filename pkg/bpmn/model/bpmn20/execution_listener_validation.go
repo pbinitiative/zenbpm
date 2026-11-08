@@ -188,6 +188,11 @@ func validateExecutionListeners(process *TProcess) error {
 	return nil
 }
 
+// validateListenersOf refuses the listeners of one owner which the engine
+// does not run there: a listener of an event type outside runnableEventTypes
+// (none outside the positions of TProcess.RunnableListenerEventTypes), more
+// than one listener, and a listener whose attributes are not literals (see
+// ValidateListenerLiterals).
 func validateListenersOf(owner ExecutionListenerOwner, runnableEventTypes []string) error {
 	where := fmt.Sprintf("%s id=%q", elementTypeInWords(owner.GetType()), owner.GetId())
 	rule := listenerPositionRule

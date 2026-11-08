@@ -105,6 +105,9 @@ func (engine *Engine) JobFailByKey(
 		}
 		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
 	}
+	if errorCode != nil && isListenerJob(job) {
+		return invalidJobRequestf("job %d is the job of an execution listener, and a listener job cannot throw a BPMN error: fail it without an error code", jobKey)
+	}
 	if deliveryToken != nil {
 		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
 			return err
@@ -393,7 +396,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	variableHolder.SetLocalVariables(job.InputVariables)
 
-	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+	task := taskOfJob(instance, job)
 	if task == nil {
 		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
 	}
@@ -401,15 +404,21 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}
-	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                job.Token.ElementInstanceKey,
-		ProcessInstanceKey: job.ProcessInstanceKey,
-		ElementId:          job.Token.ElementId,
-		ElementType:        string(task.GetType()),
-		ExecutionTokenKey:  job.Token.Key,
-		OutputVariables:    outputVariables,
-		CompletedAt:        new(time.Now()),
-	})
+	// the element the token leaves by: the task itself, or the element of a listener
+	var transitionElement bpmn20.FlowNode = task
+	if listener, isListener := task.(*bpmn20.ListenerTask); isListener {
+		transitionElement, err = engine.completeListenerElement(ctx, &batch, job, listener)
+	} else {
+		err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                job.Token.ElementInstanceKey,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			ElementId:          job.Token.ElementId,
+			ElementType:        string(task.GetType()),
+			ExecutionTokenKey:  job.Token.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
+		})
+	}
 	if err != nil {
 		return err
 	}
@@ -419,7 +428,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	tokens, err := engine.handleElementTransition(ctx, &batch, instance, task, job.Token)
+	tokens, err := engine.handleElementTransition(ctx, &batch, instance, transitionElement, job.Token)
 	if err != nil {
 		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}

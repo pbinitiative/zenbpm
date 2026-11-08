@@ -112,9 +112,8 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 }
 
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
-	element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(job.ElementId)
-	task, ok := element.(bpmn20.InternalTask)
-	if !ok {
+	task := taskOfJob(instance, *job)
+	if task == nil {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
 	}
 
@@ -124,7 +123,7 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if activity, ok := element.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
+	if activity, ok := task.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
 		inputElementName := activity.GetMultiInstance().LoopCharacteristics.InputElementName
 		inputElement, ok := flowElementInstance.InputVariables[inputElementName]
 		if !ok {
@@ -166,7 +165,7 @@ func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, incide
 		return nil
 	}
 	job.RetryAt = nil
-	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.ElementId)
+	task := taskOfJob(instance, *job)
 	if task == nil {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
 	}

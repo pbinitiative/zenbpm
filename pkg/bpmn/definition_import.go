@@ -35,6 +35,12 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 		return nil, fmt.Errorf("failed to import process definition %d: %w", key, err)
 	}
 	definition.Version = version
+	if definition.Definitions.HasExecutionListeners() {
+		// such a definition was stored without the checks of a deployment, so
+		// its listeners may sit where the engine does not run them
+		engine.logger.Info("imported process definition carries execution listeners: those on a start event of the process run for new instances",
+			"processDefinition", key, "bpmnProcessId", definition.BpmnProcessId, "version", version)
+	}
 
 	engine.definitionMu.Lock()
 	defer engine.definitionMu.Unlock()

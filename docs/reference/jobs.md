@@ -20,6 +20,15 @@ If you are using the engine as a library you can register your handlers and they
 
 External jobs are jobs that require interaction with one of the ZenBPM's public APIs (REST or GRPC) by a 3rd party application.
 
+## Listener jobs
+
+An [execution listener](./bpmn/execution-listeners.md) on a start event creates an external job as
+well, when a token reaches the start event. A worker serves it as any other job, and tells it from a
+task's job by `listenerEventType` (`end`, REST) or `listener_event_type` (the gRPC job stream),
+which a task's job does not carry. Its `elementType` is `START_EVENT`. A listener job is never handed to an internal task
+handler, its completion changes no variable, and a failure with an error code is refused with
+`400`, because a listener cannot throw a BPMN error.
+
 ## Working with external jobs
 
 ### REST API

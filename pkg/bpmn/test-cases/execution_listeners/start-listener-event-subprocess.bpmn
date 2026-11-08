@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_start-listener-event-subprocess" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="start-listener-event-subprocess-process" isExecutable="true">
+    <bpmn:startEvent id="start-listener-esp-start">
+      <bpmn:extensionElements>
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="end" type="start-listener-esp-job" />
+        </zeebe:executionListeners>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="start-listener-esp-start" targetRef="start-listener-esp-end" />
+    <bpmn:endEvent id="start-listener-esp-end">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="start-listener-esp" triggeredByEvent="true">
+      <bpmn:startEvent id="start-listener-esp-message-start" isInterrupting="true">
+        <bpmn:outgoing>Flow_esp</bpmn:outgoing>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_esp" messageRef="Message_esp" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_esp" sourceRef="start-listener-esp-message-start" targetRef="start-listener-esp-message-end" />
+      <bpmn:endEvent id="start-listener-esp-message-end">
+        <bpmn:incoming>Flow_esp</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:message id="Message_esp" name="start-listener-esp-message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="start-listener-event-subprocess-process">
+      <bpmndi:BPMNShape id="start-listener-esp-start_di" bpmnElement="start-listener-esp-start">
+        <dc:Bounds x="160" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-listener-esp-end_di" bpmnElement="start-listener-esp-end">
+        <dc:Bounds x="256" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-listener-esp_di" bpmnElement="start-listener-esp" isExpanded="true">
+        <dc:Bounds x="160" y="166" width="200" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-listener-esp-message-start_di" bpmnElement="start-listener-esp-message-start">
+        <dc:Bounds x="190" y="196" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-listener-esp-message-end_di" bpmnElement="start-listener-esp-message-end">
+        <dc:Bounds x="286" y="196" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_esp_di" bpmnElement="Flow_esp">
+        <di:waypoint x="226" y="214" />
+        <di:waypoint x="286" y="214" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="196" y="98" />
+        <di:waypoint x="256" y="98" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

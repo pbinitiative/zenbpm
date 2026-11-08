@@ -36,7 +36,23 @@ The state of the cluster can be queried through the system API:
 - REST: `/system/status`
 - GRPC: TODO: add grpc endpoint as well
 
-The REST response includes build metadata:
+The REST response includes build metadata, and the `features` every member of the cluster runs. A
+feature is listed only once every member of the raft configuration runs a binary which carries it
+and has announced it, so during a rolling upgrade a feature appears when the last node is upgraded.
+A member which the cluster holds for shut down (its heartbeats failed) hides every feature until it
+is back and has announced again; a node removed from the cluster, such as a reaped one, no longer
+counts. The one feature so far is `executionListener.startEventEnd` (see
+[Execution listeners](./bpmn/execution-listeners.md)). A feature name never changes its meaning; a
+client relies on it instead of comparing versions.
+
+A node announces its features when the cluster does not record exactly those of its binary, and
+once more whenever another node gains a feature, so that a node which restored a snapshot written
+by an older binary records the others' features again.
+
+To roll a node back to a binary without a feature, keep it stopped until the cluster has marked it
+shut down (longer than the heartbeat timeout) before starting the older binary, or remove it from
+the cluster first. An older binary announces nothing, so a node restarted on it before it was marked
+shut down keeps the features of the binary before, and the cluster goes on listing them.
 
 ```json
 {
@@ -48,6 +64,7 @@ The REST response includes build metadata:
     "version": "v1.5.0",
     "time": "2026-08-07T12:13:14Z"
   },
+  "features": ["executionListener.startEventEnd"],
   "clusterConfig": {},
   "partitions": {},
   "nodes": {}

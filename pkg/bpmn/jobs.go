@@ -33,7 +33,17 @@ func (engine *Engine) createInternalTask(
 	if provider, ok := element.(bpmn20.TaskHeaderProvider); ok {
 		taskHeaders = provider.GetTaskHeaders()
 	}
-	handler := engine.findTaskHandler(element)
+	// a listener's job is for external workers only: a handler registered for
+	// the id of the listener's element must not complete it inline
+	listener, isListener := element.(*bpmn20.ListenerTask)
+	var handler func(job ActivatedJob)
+	if isListener {
+		if err := ensureListenerTypeIsLiteral(listener); err != nil {
+			return runtime.ActivityStateFailed, err
+		}
+	} else {
+		handler = engine.findTaskHandler(element)
+	}
 	// retries are spent by external workers only: a handler in the engine fails
 	// the job with an incident at once, so an expression which cannot be
 	// evaluated must not fail a task which never reads it. Resolving such an

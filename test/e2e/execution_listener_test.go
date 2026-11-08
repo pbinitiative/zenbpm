@@ -1,0 +1,216 @@
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math/rand"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+func TestStartListenerJobsReachWorkersOverTheJobStream(t *testing.T) {
+	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	worker := zenclient.NewGrpc(conn)
+	register := func(jobType string, handle func(job *proto.WaitingJob)) {
+		_, err := worker.RegisterWorker(t.Context(), jobType, func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+			handle(job)
+			return nil, nil
+		}, jobType)
+		require.NoError(t, err)
+	}
+	process := deployListenerProcess(t)
+	var startJobs, workJobs atomic.Int32
+	register(process.startJobType, func(job *proto.WaitingJob) {
+		assert.Equal(t, "end", job.GetListenerEventType())
+		assert.Equal(t, "START_EVENT", job.GetElementType())
+		startJobs.Add(1)
+	})
+	register(process.workJobType, func(job *proto.WaitingJob) {
+		assert.Nil(t, job.ListenerEventType, "an ordinary job carries no listener event type")
+		workJobs.Add(1)
+	})
+
+	instance, err := createProcessInstance(t, &process.definitionKey, nil)
+	require.NoError(t, err)
+
+	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+	assert.Equal(t, int32(1), startJobs.Load())
+	assert.Equal(t, int32(1), workJobs.Load())
+}
+
+func TestStartListenerHoldsAnInstanceCreatedOverRest(t *testing.T) {
+	process := deployListenerProcess(t)
+
+	instance, err := createProcessInstance(t, &process.definitionKey, map[string]any{"order": "o-2"})
+	require.NoError(t, err)
+	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
+
+	assert.Equal(t, zenclient.ProcessInstanceStateActive, instance.State)
+	job := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "listener-start")
+	assert.Equal(t, process.startJobType, job.Type)
+	assert.Equal(t, "START_EVENT", job.ElementType)
+	require.NotNil(t, job.ListenerEventType)
+	assert.Equal(t, public.JobListenerEventTypeEnd, *job.ListenerEventType)
+	assert.Equal(t, "o-2", job.InputVariables["order"])
+
+	refused, err := app.restClient.FailJobWithResponse(t.Context(), job.Key, zenclient.FailJobJSONRequestBody{ErrorCode: new("listener-error")})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, refused.StatusCode(), "a listener job cannot throw a BPMN error: %s", string(refused.Body))
+
+	response, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+
+	work := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "listener-work")
+	assert.Nil(t, work.ListenerEventType, "absent for the job of a task")
+}
+
+func TestMessageStartListenerAnswersThePublisherBeforeItsJobIsCompleted(t *testing.T) {
+	suffix := fmt.Sprintf("%d", rand.Int63())
+	messageName := "listener-start-message-" + suffix
+	jobType := "listener-message-start-job-" + suffix
+	deployListenerFixture(t, "listener-message-start.bpmn", map[string]string{
+		`id="listener-message-start"`:       `id="listener-message-start-` + suffix + `"`,
+		`name="listener-start-message"`:     `name="` + messageName + `"`,
+		`type="listener-message-start-job"`: `type="` + jobType + `"`,
+	})
+
+	response, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
+		MessageName: messageName,
+		Variables:   &map[string]any{"orderId": "order-7"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+
+	job := waitForActiveJobOfType(t, jobType)
+	require.NotNil(t, job.ListenerEventType)
+	assert.Equal(t, public.JobListenerEventTypeEnd, *job.ListenerEventType)
+	assert.Equal(t, "order-7", job.InputVariables["orderFromMessage"])
+	instance, err := getProcessInstance(t, job.ProcessInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, zenclient.ProcessInstanceStateActive, instance.State)
+
+	completion, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, completion.StatusCode(), string(completion.Body))
+	waitForProcessInstanceState(t, job.ProcessInstanceKey, zenclient.ProcessInstanceStateCompleted)
+}
+
+func TestDeploymentRefusesAListenerTheEngineDoesNotRun(t *testing.T) {
+	model, err := readE2ETestDataBPMN("execution_listener/listener-refused.bpmn")
+	require.NoError(t, err)
+	model = []byte(strings.ReplaceAll(string(model), `id="listener-refused"`, fmt.Sprintf(`id="listener-refused-%d"`, rand.Int63())))
+
+	response, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", strings.NewReader(string(model)))
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, response.StatusCode(), string(response.Body))
+	assert.Contains(t, string(response.Body), `execution listener eventType=\"start\" on service task id=\"listener-refused-task\" is not supported`)
+}
+
+func TestDeploymentRefusesAStartListenerOutsideItsContainer(t *testing.T) {
+	model, err := readE2ETestDataBPMN("execution_listener/listener-process.bpmn")
+	require.NoError(t, err)
+	text := strings.ReplaceAll(string(model), `id="listener-process"`, fmt.Sprintf(`id="listener-misplaced-%d"`, rand.Int63()))
+	text = strings.Replace(text, "<zeebe:executionListeners>", "", 1)
+	text = strings.Replace(text, "</zeebe:executionListeners>", "", 1)
+
+	response, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", strings.NewReader(text))
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, response.StatusCode(), string(response.Body))
+	assert.Contains(t, string(response.Body), `execution listener eventType=\"end\" on start event id=\"listener-start\" is not supported where it sits`)
+}
+
+func TestSystemStatusListsTheListenerFeatures(t *testing.T) {
+	response, err := app.NewRequest(nil).WithPath("/system/status").DoOk()
+	require.NoError(t, err)
+
+	status := struct {
+		Features []string `json:"features"`
+	}{}
+	require.NoError(t, json.Unmarshal(response, &status))
+	assert.Contains(t, status.Features, state.FeatureExecutionListenerStartEventEnd)
+}
+
+// listenerProcess is a deployment of listener-process.bpmn under a process id
+// and job types of its own.
+type listenerProcess struct {
+	definitionKey int64
+	processID     string
+	startJobType  string
+	workJobType   string
+}
+
+func deployListenerProcess(t *testing.T) listenerProcess {
+	t.Helper()
+	suffix := fmt.Sprintf("%d", rand.Int63())
+	process := listenerProcess{
+		processID:    "listener-process-" + suffix,
+		startJobType: "listener-start-job-" + suffix,
+		workJobType:  "listener-work-job-" + suffix,
+	}
+	process.definitionKey = deployListenerFixture(t, "listener-process.bpmn", map[string]string{
+		`id="listener-process"`:     `id="` + process.processID + `"`,
+		`type="listener-start-job"`: `type="` + process.startJobType + `"`,
+		`type="listener-work-job"`:  `type="` + process.workJobType + `"`,
+	})
+	return process
+}
+
+func deployListenerFixture(t *testing.T, file string, replacements map[string]string) int64 {
+	t.Helper()
+	model, err := readE2ETestDataBPMN("execution_listener/" + file)
+	require.NoError(t, err)
+	text := string(model)
+	for old, replacement := range replacements {
+		text = strings.ReplaceAll(text, old, replacement)
+	}
+	response := deployProcessDefinitionContent(t, []byte(text))
+	definition := public.CreateProcessDefinition201JSONResponse{}
+	require.NoError(t, json.Unmarshal(response.Body, &definition))
+	return definition.ProcessDefinitionKey
+}
+
+func waitForActiveJobOfType(t *testing.T, jobType string) public.Job {
+	t.Helper()
+	var found public.Job
+	require.Eventually(t, func() bool {
+		active := zenclient.JobStateActive
+		response, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: &jobType, State: &active})
+		if err != nil || response.StatusCode() != http.StatusOK {
+			return false
+		}
+		page := struct {
+			Partitions []struct {
+				Items []public.Job `json:"items"`
+			} `json:"partitions"`
+		}{}
+		if json.Unmarshal(response.Body, &page) != nil {
+			return false
+		}
+		for _, partition := range page.Partitions {
+			if len(partition.Items) > 0 {
+				found = partition.Items[0]
+				return true
+			}
+		}
+		return false
+	}, 10*time.Second, 50*time.Millisecond, "an active job of type %s waits", jobType)
+	return found
+}

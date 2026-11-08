@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -361,8 +362,14 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	// comes back with an older binary (which announces nothing) is not mistaken for the one that left
 	if node.State == state.NodeStateShutdown {
 		node.ProtocolVersion = 0
-	} else if version := nodeChangeCommand.GetProtocolVersion(); version > 0 {
-		node.ProtocolVersion = version
+		node.Features = nil
+	} else {
+		if version := nodeChangeCommand.GetProtocolVersion(); version > 0 {
+			node.ProtocolVersion = version
+		}
+		if features := nodeChangeCommand.GetFeatures(); len(features) > 0 {
+			node.Features = slices.Clone(features)
+		}
 	}
 	if resuming {
 		for partitionId, np := range node.Partitions {

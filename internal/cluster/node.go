@@ -2437,6 +2437,21 @@ func (node *ZenNode) GetStatus() state.Cluster {
 	return node.store.ClusterState()
 }
 
+// Features answers the features every member of the cluster announced (see
+// state.CurrentFeatures), or none while the members cannot be read: every
+// doubt falls on the side of too few features.
+func (node *ZenNode) Features() []string {
+	if node.store == nil {
+		return []string{}
+	}
+	features, err := node.store.MemberFeatures()
+	if err != nil {
+		node.logger.Warn("Failed to read the features of the cluster members; listing none", "err", err)
+		return []string{}
+	}
+	return features
+}
+
 // Health evaluates the readiness of this node in the cluster. Cluster-wide
 // partition health is deliberately excluded: making every node unready when a
 // remote partition is degraded would remove the entire cluster from a load

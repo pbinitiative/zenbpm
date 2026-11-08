@@ -70,6 +70,11 @@ func (in *Node) DeepCopyInto(out *Node) {
 			(*out)[key] = val
 		}
 	}
+	if in.Features != nil {
+		in, out := &in.Features, &out.Features
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

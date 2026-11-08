@@ -30,6 +30,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 // engineLifecycle owns the background managers started by an Engine. NewEngine
@@ -537,6 +538,10 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, elementId := range startingElementIds {
 		var flowNode = processInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(elementId)
+		if flowNode == nil {
+			return nil, fmt.Errorf("cannot start a token at element %q of process instance %d: the process has no flow node with that id",
+				elementId, processInstance.ProcessInstance().Key)
+		}
 		executionToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
@@ -1145,6 +1150,9 @@ func (engine *Engine) processFlowNode(
 		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)
+		}
+		if listener := runnableListenerOf(instance, element, extensions.ExecutionListenerEventTypeEnd); listener != nil {
+			return engine.holdTokenAtEndListener(ctx, batch, instance, listener, currentToken, outputVariables)
 		}
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {

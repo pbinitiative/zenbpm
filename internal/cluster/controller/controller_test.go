@@ -334,6 +334,72 @@ func TestControllerAnnouncesProtocolVersion(t *testing.T) {
 	assert.Zero(t, tStore.ClusterState().Nodes[tStore.id].ProtocolVersion)
 }
 
+// TestControllerAnnouncesFeaturesOfAnUpgradedBinary verifies that a node
+// whose recorded protocol version is current but whose recorded features are
+// not, as after an upgrade to a binary which carries new features without new
+// commands, announces again, and that every announcement carries the features.
+func TestControllerAnnouncesFeaturesOfAnUpgradedBinary(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+	tStore.leader = false
+	tStore.leaderAddr, tStore.leaderID = tStore.addr, "test-leader"
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft:   config.ClusterRaft{Dir: t.TempDir()},
+	})
+	require.NoError(t, err)
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
+
+	tStore.setNode(state.Node{Id: tStore.id, Addr: tStore.addr, State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion, Partitions: map[uint32]state.NodePartition{}})
+	controller.ClusterStateChangeNotification(t.Context())
+	testPoll(t, func() bool {
+		return tStore.ClusterState().Nodes[tStore.id].AnnouncedCurrentFeatures()
+	}, 50*time.Millisecond, 5*time.Second, "the node announces the features of its binary")
+
+	writes := tStore.nodeChangeWrites()
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, writes, tStore.nodeChangeWrites(), "recorded features are not announced again")
+}
+
+// TestControllerAnnouncesAgainWhenAnotherNodeGainsFeatures verifies that a
+// node whose own record is complete announces once more when another node
+// gains a feature, so that a node whose state lost this node's features (a
+// snapshot of a binary without features) records them again, and that it does
+// not announce for a look at an unchanged state.
+func TestControllerAnnouncesAgainWhenAnotherNodeGainsFeatures(t *testing.T) {
+	tStore, clientMgr, mux := setupControllerTestCluster(t)
+	tStore.leader = false
+	tStore.leaderAddr, tStore.leaderID = tStore.addr, "test-leader"
+	controller, err := NewController(mux, config.Cluster{
+		NodeId: tStore.id,
+		Addr:   tStore.addr,
+		Adv:    tStore.addr,
+		Raft:   config.ClusterRaft{Dir: t.TempDir()},
+	})
+	require.NoError(t, err)
+	tStore.setNode(state.Node{Id: tStore.id, Addr: tStore.addr, State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion,
+		Features: state.CurrentFeatures(), Partitions: map[uint32]state.NodePartition{}})
+	tStore.setNode(state.Node{Id: "upgraded-node", State: state.NodeStateStarted, Partitions: map[uint32]state.NodePartition{}})
+	require.NoError(t, controller.Start(tStore, clientMgr))
+	t.Cleanup(func() {
+		assert.NoError(t, controller.Stop())
+	})
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Zero(t, tStore.nodeChangeWrites(), "a complete record is not announced again")
+
+	tStore.setNode(state.Node{Id: "upgraded-node", State: state.NodeStateStarted, ProtocolVersion: state.CurrentProtocolVersion,
+		Features: state.CurrentFeatures(), Partitions: map[uint32]state.NodePartition{}})
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, 1, tStore.nodeChangeWrites(), "the other node gained features, so this node announces again")
+
+	controller.ClusterStateChangeNotification(t.Context())
+	assert.Equal(t, 1, tStore.nodeChangeWrites(), "nothing gained since, nothing announced")
+}
+
 // TestControllerRetriesProtocolVersionAnnouncement verifies that an
 // announcement the leader could not receive is repeated on the node's own
 // initiative: an idle cluster produces no further state change, and until

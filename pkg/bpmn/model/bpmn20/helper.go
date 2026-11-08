@@ -141,8 +141,17 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 // expression is only known then as well. A multi-instance completionCondition
 // is refused the same way: the engine does not evaluate it, so an already stored
 // definition runs every iteration as before.
+//
+// Execution listeners are refused the same way where the engine does not run
+// them, and where their type, retries or retryBackoff is not a literal. A
+// definition stored before keeps running its start event listeners;
+// ValidateListenerPositions covers the elements whose model does not read
+// listeners.
 func (definitions *TDefinitions) ValidateForDeployment() error {
 	if err := validateTaskDefinitions(definitions.Process.internalTasksByID); err != nil {
+		return err
+	}
+	if err := validateExecutionListeners(&definitions.Process); err != nil {
 		return err
 	}
 	return validateMultiInstanceCompletionConditions(definitions.Process.flowNodesByID)

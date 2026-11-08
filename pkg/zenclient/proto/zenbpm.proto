@@ -152,6 +152,9 @@ message WaitingJob {
   // out issues no tokens, as during a rolling upgrade; the failure then names none, and a client
   // which copies the field whether or not it is present sends 0, which names none as well.
   int64 delivery_token = 12;
+  // The event type of the execution listener whose job this is: "end" for a listener on a
+  // start event. Absent for the job of a task.
+  string listener_event_type = 13;
 }
 
 message ErrorResult {

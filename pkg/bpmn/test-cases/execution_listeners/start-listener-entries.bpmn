@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_start-listener-entries" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="start-listener-entries-process" isExecutable="true">
+    <bpmn:startEvent id="entries-first-start">
+      <bpmn:extensionElements>
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="end" type="entries-first-job" />
+        </zeebe:executionListeners>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_first</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:startEvent id="entries-second-start">
+      <bpmn:extensionElements>
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="end" type="entries-second-job" />
+        </zeebe:executionListeners>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_second</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:receiveTask id="entries-receive" messageRef="Message_entries" instantiate="true">
+      <bpmn:outgoing>Flow_received</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sequenceFlow id="Flow_first" sourceRef="entries-first-start" targetRef="entries-task" />
+    <bpmn:sequenceFlow id="Flow_second" sourceRef="entries-second-start" targetRef="entries-task" />
+    <bpmn:sequenceFlow id="Flow_received" sourceRef="entries-receive" targetRef="entries-task" />
+    <bpmn:serviceTask id="entries-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="entries-work" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_first</bpmn:incoming>
+      <bpmn:incoming>Flow_second</bpmn:incoming>
+      <bpmn:incoming>Flow_received</bpmn:incoming>
+      <bpmn:outgoing>Flow_done</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
+        <bpmn:extensionElements>
+          <zenbpm:loopCharacteristics inputCollection="=[1, 2]" inputElement="item" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_done" sourceRef="entries-task" targetRef="entries-end" />
+    <bpmn:endEvent id="entries-end">
+      <bpmn:incoming>Flow_done</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_entries" name="start-listener-entries-message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=&#34;start-listener-entries&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="start-listener-entries-process">
+      <bpmndi:BPMNShape id="entries-first-start_di" bpmnElement="entries-first-start">
+        <dc:Bounds x="192" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="entries-second-start_di" bpmnElement="entries-second-start">
+        <dc:Bounds x="192" y="166" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="entries-receive_di" bpmnElement="entries-receive">
+        <dc:Bounds x="160" y="252" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="entries-task_di" bpmnElement="entries-task">
+        <dc:Bounds x="320" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="entries-end_di" bpmnElement="entries-end">
+        <dc:Bounds x="480" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_first_di" bpmnElement="Flow_first">
+        <di:waypoint x="228" y="98" />
+        <di:waypoint x="274" y="98" />
+        <di:waypoint x="274" y="120" />
+        <di:waypoint x="320" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_second_di" bpmnElement="Flow_second">
+        <di:waypoint x="228" y="184" />
+        <di:waypoint x="274" y="184" />
+        <di:waypoint x="274" y="120" />
+        <di:waypoint x="320" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_received_di" bpmnElement="Flow_received">
+        <di:waypoint x="260" y="292" />
+        <di:waypoint x="290" y="292" />
+        <di:waypoint x="290" y="120" />
+        <di:waypoint x="320" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_done_di" bpmnElement="Flow_done">
+        <di:waypoint x="420" y="120" />
+        <di:waypoint x="450" y="120" />
+        <di:waypoint x="450" y="98" />
+        <di:waypoint x="480" y="98" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

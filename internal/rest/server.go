@@ -32,6 +32,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
@@ -149,7 +150,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 		// semantics live exclusively on /system/health/ready below.
 		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
 			healthy, reasons := node.Health()
-			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus(), healthy, reasons), "", " ")
+			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus(), node.Features(), healthy, reasons), "", " ")
 			if err != nil {
 				restLogger.Error("failed to marshal status", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)
@@ -2171,10 +2172,16 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		taskHeaders = &headers
 	}
 
+	var listenerEventType *public.JobListenerEventType
+	if eventType := bpmn20.ListenerEventTypeOfJob(job.GetElementType()); eventType != "" {
+		listenerEventType = new(public.JobListenerEventType(eventType))
+	}
+
 	return public.Job{
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
 		ElementType:        job.GetElementType(),
+		ListenerEventType:  listenerEventType,
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
 		ElementInstanceKey: job.GetElementInstanceKey(),

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_listener-message-start" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="listener-message-start" isExecutable="true">
+    <bpmn:startEvent id="listener-message-start-event">
+      <bpmn:extensionElements>
+        <zenbpm:executionListeners>
+          <zenbpm:executionListener eventType="end" type="listener-message-start-job" />
+        </zenbpm:executionListeners>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=orderId" target="orderFromMessage" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_1" messageRef="Message_start" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="listener-message-start-event" targetRef="listener-message-end" />
+    <bpmn:endEvent id="listener-message-end">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_start" name="listener-start-message" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="listener-message-start">
+      <bpmndi:BPMNShape id="listener-message-start-event_di" bpmnElement="listener-message-start-event">
+        <dc:Bounds x="160" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="listener-message-end_di" bpmnElement="listener-message-end">
+        <dc:Bounds x="256" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="196" y="98" />
+        <di:waypoint x="256" y="98" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

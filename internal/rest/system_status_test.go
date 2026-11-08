@@ -26,6 +26,7 @@ func TestNewSystemStatusResponse(t *testing.T) {
 				},
 				Nodes: map[string]state.Node{},
 			},
+			nil,
 			true,
 			nil,
 		)
@@ -42,10 +43,19 @@ func TestNewSystemStatusResponse(t *testing.T) {
 				"time": "2026-08-07T12:13:14Z"
 			},
 			"health": {"ok": true, "reasons": []},
+			"features": [],
 			"clusterConfig": {"desiredPartitions": 3},
 			"partitions": {"1": {"id": 1, "leaderId": "node-1"}},
 			"nodes": {}
 		}`, string(encoded))
+	})
+
+	t.Run("lists the features of the members", func(t *testing.T) {
+		response := newSystemStatusResponse(buildinfo.Info{}, state.Cluster{}, []string{state.FeatureExecutionListenerStartEventEnd}, true, nil)
+
+		encoded, err := json.Marshal(response)
+		require.NoError(t, err)
+		assert.Contains(t, string(encoded), `"features":["executionListener.startEventEnd"]`)
 	})
 
 	t.Run("preserves a commit ID that is already short", func(t *testing.T) {

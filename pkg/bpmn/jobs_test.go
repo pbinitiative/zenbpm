@@ -537,6 +537,24 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	assert.Equal(t, 1, len(incidents))
 }
 
+func TestJobCompletionFailingOnItsOutputMappingNamesTheCause(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-invalid-output.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
+
+	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to map output variables for job")
+	assert.Contains(t, err.Error(), `failed to evaluate expression iban: "DE456"`, "the error carries its cause")
+}
+
 // TestCustomUserTaskJobTypePreservesBPMNElementType asserts that a User Task configured with zenbpm:taskDefinition persists both the configured worker-routing Type and the BPMN ElementType ("USER_TASK") on the created Job.
 func TestCustomUserTaskJobTypePreservesBPMNElementType(t *testing.T) {
 	store := inmemory.NewStorage()

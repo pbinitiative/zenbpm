@@ -41,7 +41,28 @@ func TestElementsWithoutListenersAnswerNone(t *testing.T) {
 
 	assert.Nil(t, ListenerTaskOf(&definitions.Process.StartEvents[0], "end"))
 	assert.Nil(t, definitions.Process.TaskOfJob("start", "end"))
-	assert.False(t, definitions.HasExecutionListeners())
+	assert.False(t, modelReadsAListener(&definitions))
+	assert.False(t, definitions.RunsExecutionListeners())
+}
+
+func TestOnlyAnEndListenerOfAStartEventOfTheProcessIsRun(t *testing.T) {
+	cases := []struct {
+		name       string
+		startEvent string
+		other      string
+		runs       bool
+	}{
+		{name: "an end listener on a start event of the process", startEvent: listenersOf("zeebe", `eventType="end" type="t"`), runs: true},
+		{name: "a start listener on a start event of the process", startEvent: listenersOf("zeebe", `eventType="start" type="t"`)},
+		{name: "an end listener on a start event of a sub-process", other: subProcessWith("", listenersOf("zeebe", `eventType="end" type="t"`))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			definitions := parseListenerModel(t, listenerModel("zeebe", "", tc.startEvent, tc.other))
+
+			assert.Equal(t, tc.runs, definitions.RunsExecutionListeners())
+		})
+	}
 }
 
 func TestTaskOfJobAnswersTheListenerOfAStartEvent(t *testing.T) {
@@ -127,6 +148,13 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 			errorMessage: `execution listener eventType="start" on service task id="listened-task" is not supported: only a start event directly under the process takes an execution listener, with eventType="end"`,
 		},
 		{
+			name: "a listener on a start event of a sub-process sharing its id with a start event of the process",
+			other: `<bpmn:subProcess id="sub"><bpmn:startEvent id="start"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) +
+				`</bpmn:extensionElements><bpmn:outgoing>sub-flow</bpmn:outgoing></bpmn:startEvent>` +
+				`<bpmn:sequenceFlow id="sub-flow" sourceRef="start" targetRef="sub-end" /><bpmn:endEvent id="sub-end"><bpmn:incoming>sub-flow</bpmn:incoming></bpmn:endEvent></bpmn:subProcess>`,
+			errorMessage: `start event id="start" carries an execution listener, but another element of the process has the same id: give every element a unique id`,
+		},
+		{
 			name:         "a task listener",
 			other:        `<bpmn:userTask id="listened-user-task"><bpmn:extensionElements><zeebe:taskListeners><zeebe:taskListener eventType="creating" type="t" /></zeebe:taskListeners></bpmn:extensionElements></bpmn:userTask>`,
 			errorMessage: `task listener on user task id="listened-user-task" is not supported: the engine runs no task listeners`,
@@ -146,6 +174,19 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.errorMessage)
 		})
 	}
+}
+
+func TestDeploymentRefusesAListenerOnAStartEventWithoutAnOutgoingFlow(t *testing.T) {
+	model := listenerModel("zeebe", "", listenersOf("zeebe", `eventType="end" type="t"`), "")
+	model = strings.Replace(model, `<bpmn:outgoing>flow-1</bpmn:outgoing></bpmn:startEvent>`, `</bpmn:startEvent>`, 1)
+	model = strings.Replace(model, `<bpmn:sequenceFlow id="flow-1" sourceRef="start" targetRef="task" />`, "", 1)
+	model = strings.Replace(model, `<bpmn:incoming>flow-1</bpmn:incoming>`, "", 1)
+	definitions := parseListenerModel(t, model)
+
+	err := definitions.ValidateForDeployment()
+
+	require.Error(t, err)
+	assert.Equal(t, `start event id="start" has an execution listener but no outgoing sequence flow: the token could not leave it when the listener's job is completed`, err.Error())
 }
 
 func TestDeploymentRefusesAStartListenerOutsideItsContainers(t *testing.T) {
@@ -179,7 +220,7 @@ func TestDeploymentRefusesAStartListenerOutsideItsContainers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			model := withStartEventContent(listenerModel("zeebe", "", "", ""), tc.startEvent)
 			definitions := parseListenerModel(t, model)
-			assert.False(t, definitions.HasExecutionListeners(), "the model drops a listener in this shape")
+			assert.False(t, modelReadsAListener(&definitions), "the model drops a listener in this shape")
 
 			err := ValidateListenerPositions([]byte(model))
 
@@ -203,7 +244,7 @@ func TestDeploymentRefusesAListenerOfAStartEventOutsideTheProcessFlow(t *testing
 		t.Run(name, func(t *testing.T) {
 			model := listenerModel("zeebe", processExtensions, "", "")
 			definitions := parseListenerModel(t, model)
-			assert.False(t, definitions.HasExecutionListeners(), "the model drops a start event outside the process flow")
+			assert.False(t, modelReadsAListener(&definitions), "the model drops a start event outside the process flow")
 
 			err := ValidateListenerPositions([]byte(model))
 
@@ -226,7 +267,7 @@ func TestListenerOfASubProcessStartEventPassesThePositionCheckForTheModelCheck(t
 
 			require.NoError(t, ValidateListenerPositions([]byte(model)), "the model reads the listeners of every start event in the flow")
 			definitions := parseListenerModel(t, model)
-			assert.True(t, definitions.HasExecutionListeners())
+			assert.True(t, modelReadsAListener(&definitions))
 			assert.Error(t, definitions.ValidateForDeployment())
 		})
 	}
@@ -238,10 +279,13 @@ func TestListenerOnTheProcessElementIsNeitherRunNorRefused(t *testing.T) {
 	assert.NoError(t, ValidateListenerPositions([]byte(model)))
 	definitions := parseListenerModel(t, model)
 	assert.NoError(t, definitions.ValidateForDeployment())
-	assert.False(t, definitions.HasExecutionListeners(), "the model of the process reads no listeners")
+	assert.False(t, modelReadsAListener(&definitions), "the model of the process reads no listeners")
 
 	withoutContainer := listenerModel("zeebe", `<zeebe:executionListener eventType="cancel" type="t" />`, "", "")
 	assert.NoError(t, ValidateListenerPositions([]byte(withoutContainer)), "a listener on the process is left alone wherever it sits in it")
+
+	inAnotherExtension := listenerModel("zeebe", `<zeebe:properties>`+listenersOf("zeebe", `eventType="start" type="t"`)+`</zeebe:properties>`, "", "")
+	assert.NoError(t, ValidateListenerPositions([]byte(inAnotherExtension)), "a listener on the process is left alone inside another extension element")
 }
 
 func TestDeploymentRefusesListenersWithoutLiterals(t *testing.T) {
@@ -289,7 +333,18 @@ func TestStoredDefinitionWithARefusedListenerStillParses(t *testing.T) {
 	definitions := parseListenerModel(t, model)
 
 	assert.Error(t, definitions.ValidateForDeployment(), "a deployment refuses it")
-	assert.True(t, definitions.HasExecutionListeners(), "parsing alone, as an import does, keeps it")
+	assert.True(t, modelReadsAListener(&definitions), "parsing alone, as an import does, keeps it")
+}
+
+// modelReadsAListener reports whether an element of the process, at any depth,
+// carries an execution listener the model reads.
+func modelReadsAListener(definitions *TDefinitions) bool {
+	for _, owner := range listenerOwnersOf(&definitions.Process.TFlowElementsContainer) {
+		if len(owner.GetExecutionListeners()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func parseListenerModel(t *testing.T, model string) TDefinitions {

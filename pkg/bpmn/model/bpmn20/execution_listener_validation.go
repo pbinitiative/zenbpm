@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"unicode"
@@ -47,12 +46,17 @@ func sitsInTheProcessFlow(ancestors []openElement) bool {
 // task listener. Such a listener would be dropped without a word, so the raw
 // XML is scanned; a listener the model reads is checked by
 // ValidateForDeployment instead. A listener on the process element is left
-// alone, wherever it sits in it: the engine neither runs nor refuses it, as
-// before execution listeners were supported. Every namespace prefix is read
-// alike, as for every other extension element. The listeners are visited in
-// document order, so the same model always names the same element. Malformed
-// XML is left to the parser.
+// alone, wherever it sits in its extensionElements: the engine neither runs
+// nor refuses it, as before execution listeners were supported. Every
+// namespace prefix is read alike, as for every other extension element. The
+// listeners are visited in document order, so the same model always names the
+// same element. Malformed XML is left to the parser.
 func ValidateListenerPositions(xmlData []byte) error {
+	// every listener element's local name contains the word, whatever its
+	// prefix, so a model without one is not scanned
+	if !bytes.Contains(xmlData, []byte("Listener")) {
+		return nil
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(xmlData))
 	var open []openElement
 	for {
@@ -138,12 +142,22 @@ type openElement struct {
 	id   string
 }
 
-// ownerOfListener walks up from a listener through the elements which hold
-// listeners (extensionElements and the listener containers) to the BPMN
-// element owning it.
+// ownerOfListener walks up from a listener to the BPMN element owning it: the
+// first element whose model reads listeners, or else the element of the first
+// extensionElements on the way, however deep in other extension elements the
+// listener sits. A listener outside both belongs to the element holding it,
+// past the listener containers.
 func ownerOfListener(open []openElement) openElement {
+	for i := len(open) - 1; i >= 0; i-- {
+		if modelReadsListenersOf(open[i].name) {
+			return open[i]
+		}
+		if open[i].name == "extensionElements" && i > 0 {
+			return open[i-1]
+		}
+	}
 	i := len(open) - 1
-	for i >= 0 && slices.Contains([]string{"extensionElements", "executionListeners", "taskListeners"}, open[i].name) {
+	for i >= 0 && slices.Contains([]string{"executionListeners", "taskListeners"}, open[i].name) {
 		i--
 	}
 	if i < 0 {
@@ -169,23 +183,43 @@ func xmlNameInWords(name string) string {
 }
 
 // validateExecutionListeners checks the listeners of every element whose
-// model reads them, in the order of the element ids, so the same model always
-// names the same element. It refuses a listener the engine does not run there
-// (see TProcess.RunnableListenerEventTypes), more than one listener, and a
+// model reads them, in document order within each container, so the same
+// model always names the same element. It refuses a listener on an element
+// whose id another element of the process shares, since the engine finds the
+// element of a listener by its id; a listener the engine does not run there
+// (see TProcess.RunnableListenerEventTypes); more than one listener; and a
 // type, retries or retryBackoff which is not a literal the engine reads.
 // Literals only, so that creating a listener's job never fails on an
 // expression.
 func validateExecutionListeners(process *TProcess) error {
-	for _, id := range slices.Sorted(maps.Keys(process.flowNodesByID)) {
-		owner, ok := process.flowNodesByID[id].(ExecutionListenerOwner)
-		if !ok || len(owner.GetExecutionListeners()) == 0 {
+	for _, owner := range listenerOwnersOf(&process.TFlowElementsContainer) {
+		if len(owner.GetExecutionListeners()) == 0 {
 			continue
+		}
+		if process.GetFlowNodeById(owner.GetId()) != FlowNode(owner) {
+			return fmt.Errorf("%s id=%q carries an execution listener, but another element of the process has the same id: give every element a unique id",
+				elementTypeInWords(owner.GetType()), owner.GetId())
 		}
 		if err := validateListenersOf(owner, process.RunnableListenerEventTypes(owner)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// listenerOwnersOf answers every element of the container, its sub-processes
+// included, whose model reads execution listeners (see
+// modelReadsListenersOf). The containers are walked, not the id index of the
+// process, which holds only one element of an id that several elements share.
+func listenerOwnersOf(container *TFlowElementsContainer) []ExecutionListenerOwner {
+	owners := make([]ExecutionListenerOwner, 0, len(container.StartEvents))
+	for i := range container.StartEvents {
+		owners = append(owners, &container.StartEvents[i])
+	}
+	for i := range container.SubProcess {
+		owners = append(owners, listenerOwnersOf(&container.SubProcess[i].TFlowElementsContainer)...)
+	}
+	return owners
 }
 
 // validateListenersOf refuses the listeners of one owner which the engine
@@ -207,6 +241,9 @@ func validateListenersOf(owner ExecutionListenerOwner, runnableEventTypes []stri
 	}
 	if len(listeners) > 1 {
 		return fmt.Errorf("%s has %d execution listeners, which is not supported: %s", where, len(listeners), rule)
+	}
+	if len(owner.GetOutgoingAssociation()) == 0 {
+		return fmt.Errorf("%s has an execution listener but no outgoing sequence flow: the token could not leave it when the listener's job is completed", where)
 	}
 	for _, listener := range listeners {
 		if err := ValidateListenerLiterals(listener); err != nil {
@@ -233,31 +270,24 @@ func ValidateListenerLiterals(listener extensions.TExecutionListener) error {
 	if extensions.IsExpression(listener.Type) {
 		return fmt.Errorf("its type %q is an expression: a listener's type must be a literal", listener.Type)
 	}
-	if retries := strings.TrimSpace(listener.Retries); retries != "" {
-		if extensions.IsExpression(retries) {
-			return fmt.Errorf("its retries %q is an expression: a listener's retries must be a literal", listener.Retries)
-		}
-		if _, err := extensions.ParseRetries(retries); err != nil {
-			return err
-		}
+	if extensions.IsExpression(strings.TrimSpace(listener.Retries)) {
+		return fmt.Errorf("its retries %q is an expression: a listener's retries must be a literal", listener.Retries)
 	}
-	if backoff := strings.TrimSpace(listener.RetryBackoff); backoff != "" {
-		if extensions.IsExpression(backoff) {
-			return fmt.Errorf("its retryBackoff %q is an expression: a listener's retryBackoff must be a literal", listener.RetryBackoff)
-		}
-		if _, err := extensions.ParseRetryBackoff(backoff); err != nil {
-			return err
-		}
+	if extensions.IsExpression(strings.TrimSpace(listener.RetryBackoff)) {
+		return fmt.Errorf("its retryBackoff %q is an expression: a listener's retryBackoff must be a literal", listener.RetryBackoff)
 	}
-	return nil
+	return validateRetryLiterals(listener.Retries, listener.RetryBackoff)
 }
 
-// HasExecutionListeners reports whether an element of the process, at any
-// depth, carries an execution listener the model reads.
-func (definitions *TDefinitions) HasExecutionListeners() bool {
-	for _, node := range definitions.Process.flowNodesByID {
-		if owner, ok := node.(ExecutionListenerOwner); ok && len(owner.GetExecutionListeners()) > 0 {
-			return true
+// RunsExecutionListeners reports whether the process carries a listener the
+// engine runs (see TProcess.RunnableListenerEventTypes).
+func (definitions *TDefinitions) RunsExecutionListeners() bool {
+	process := &definitions.Process
+	for _, owner := range listenerOwnersOf(&process.TFlowElementsContainer) {
+		for _, eventType := range process.RunnableListenerEventTypes(owner) {
+			if ListenerTaskOf(owner, eventType) != nil {
+				return true
+			}
 		}
 	}
 	return false

@@ -144,9 +144,10 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 //
 // Execution listeners are refused the same way where the engine does not run
 // them, and where their type, retries or retryBackoff is not a literal. A
-// definition stored before keeps running its start event listeners;
-// ValidateListenerPositions covers the elements whose model does not read
-// listeners.
+// definition stored before is not checked: from this version on, its start
+// event listeners run (an earlier engine ignored them), and its other ones
+// stay ignored. ValidateListenerPositions covers the elements whose model
+// does not read listeners.
 func (definitions *TDefinitions) ValidateForDeployment() error {
 	if err := validateTaskDefinitions(definitions.Process.internalTasksByID); err != nil {
 		return err
@@ -163,15 +164,25 @@ func (definitions *TDefinitions) ValidateForDeployment() error {
 func validateTaskDefinitions(tasks map[string]InternalTask) error {
 	for _, id := range slices.Sorted(maps.Keys(tasks)) {
 		taskDefinition := tasks[id].GetTaskDefinition()
-		if retries := strings.TrimSpace(taskDefinition.Retries); retries != "" && !extensions.IsExpression(retries) {
-			if _, err := extensions.ParseRetries(retries); err != nil {
-				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
-			}
+		if err := validateRetryLiterals(taskDefinition.Retries, taskDefinition.RetryBackoff); err != nil {
+			return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
 		}
-		if backoff := strings.TrimSpace(taskDefinition.RetryBackoff); backoff != "" && !extensions.IsExpression(backoff) {
-			if _, err := extensions.ParseRetryBackoff(backoff); err != nil {
-				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
-			}
+	}
+	return nil
+}
+
+// validateRetryLiterals refuses a retries or retryBackoff literal which does
+// not parse. A blank value takes the engine's default, and an expression is
+// only evaluated when its job is created.
+func validateRetryLiterals(retries string, retryBackoff string) error {
+	if retries = strings.TrimSpace(retries); retries != "" && !extensions.IsExpression(retries) {
+		if _, err := extensions.ParseRetries(retries); err != nil {
+			return err
+		}
+	}
+	if retryBackoff = strings.TrimSpace(retryBackoff); retryBackoff != "" && !extensions.IsExpression(retryBackoff) {
+		if _, err := extensions.ParseRetryBackoff(retryBackoff); err != nil {
+			return err
 		}
 	}
 	return nil

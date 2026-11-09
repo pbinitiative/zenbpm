@@ -14,23 +14,12 @@ import (
 // The run time of execution listeners. A listener's job is created and
 // handed out as the job of a task (createInternalTask with a
 // bpmn20.ListenerTask); what differs is when it is created and what its
-// completion does, and both live here:
-//
-//   - an "end" listener is created when its element's own work is done, and
-//     holds the token on the element (holdTokenAtEndListener); its completion
-//     ends the element and lets the token leave it (completeListenerElement).
-//
-// The "end" listener of a start event is the only one the engine runs so far
-// (see bpmn20.TProcess.RunnableListenerEventTypes). Another "end" listener of
-// a flow node adds its position there and calls holdTokenAtEndListener where
-// the element's work is done. Other listeners need more than another case:
-// a "start" listener holds the token before the element's work, so its
-// completion has to resume that work rather than leave the element, and a
-// listener on the process has no flow node to own it or for a token to leave
-// (an ExecutionListenerOwner is a flow node, and completeListenerElement
-// answers one). Both, and a listener on an element which also creates task
-// jobs, need the listener's event type stored with the job (see the TODO on
-// bpmn20.ListenerEventTypeOfJob).
+// completion does, and both live here: an "end" listener is created when its
+// element's own work is done and holds the token on the element
+// (holdTokenAtEndListener); its completion ends the element and lets the
+// token leave it (completeListenerElement). The "end" listener of a start
+// event is the only one the engine runs so far (see
+// bpmn20.TProcess.RunnableListenerEventTypes).
 
 // runnableListenerOf answers the listener of the given event type which the
 // engine runs on the owner in this instance, or nil. Where a listener runs is
@@ -52,7 +41,8 @@ func runnableListenerOf(instance runtime.ProcessInstance, owner bpmn20.Execution
 // "end" listener. The element's outputs, already evaluated by the caller, are
 // written first to its history row, which processFlowNode saved before, so
 // the row shows them while the job waits; the row is completed, and the token
-// moves on, when the job is completed (completeListenerElement).
+// moves on, when the job is completed (completeListenerElement). The row
+// copies no input variables: the job carries them.
 func (engine *Engine) holdTokenAtEndListener(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -61,15 +51,10 @@ func (engine *Engine) holdTokenAtEndListener(
 	currentToken runtime.ExecutionToken,
 	outputVariables map[string]any,
 ) ([]runtime.ExecutionToken, error) {
-	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                currentToken.ElementInstanceKey,
-		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
-		ElementId:          listener.GetId(),
-		ElementType:        string(listener.GetType()),
-		ExecutionTokenKey:  currentToken.Key,
-		OutputVariables:    outputVariables,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to write the outputs of %s %s: %w", listener.GetType(), listener.GetId(), err)
+	if outputVariables != nil {
+		if err := saveFlowElementOutputs(ctx, batch, instance, listener.Element(), currentToken, outputVariables, nil); err != nil {
+			return nil, fmt.Errorf("failed to write the outputs of %s %s: %w", listener.GetType(), listener.GetId(), err)
+		}
 	}
 	jobVariables := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	state, err := engine.createInternalTask(ctx, batch, instance, listener, currentToken, jobVariables)
@@ -116,15 +101,15 @@ func isListenerJob(job runtime.Job) bool {
 	return bpmn20.ListenerEventTypeOfJob(job.ElementType) != ""
 }
 
-// ensureListenerTypeIsLiteral refuses to create a listener's job without a
-// literal type. A deployment refuses such a listener; a definition stored
-// before is imported without that check, and a job of type "" or of an
-// expression would wait for a worker which never comes.
-func ensureListenerTypeIsLiteral(listener *bpmn20.ListenerTask) error {
-	taskType := listener.GetTaskType()
-	if taskType == "" || extensions.IsExpression(taskType) {
-		return fmt.Errorf("execution listener eventType=%q on %s id=%q has the type %q: a listener needs the job type as a literal; deploy a corrected version of the process",
-			listener.EventType(), listener.GetType(), listener.GetId(), listener.GetTaskType())
+// ensureListenerIsLiteral refuses to create a listener's job unless its type,
+// retries and retryBackoff are literals, as a deployment does. A definition
+// stored before is imported without that check: a job of type "" or of an
+// expression would wait for a worker which never comes, and the literals-only
+// rule promises that creating a listener's job never evaluates an expression.
+func ensureListenerIsLiteral(listener *bpmn20.ListenerTask) error {
+	if err := listener.ValidateLiterals(); err != nil {
+		return fmt.Errorf("execution listener eventType=%q on %s id=%q: %w; deploy a corrected version of the process",
+			listener.EventType(), listener.GetType(), listener.GetId(), err)
 	}
 	return nil
 }

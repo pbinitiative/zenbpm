@@ -35,12 +35,6 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 		return nil, fmt.Errorf("failed to import process definition %d: %w", key, err)
 	}
 	definition.Version = version
-	if definition.Definitions.HasExecutionListeners() {
-		// such a definition was stored without the checks of a deployment, so
-		// its listeners may sit where the engine does not run them
-		engine.logger.Info("imported process definition carries execution listeners: those on a start event of the process run for new instances",
-			"processDefinition", key, "bpmnProcessId", definition.BpmnProcessId, "version", version)
-	}
 
 	engine.definitionMu.Lock()
 	defer engine.definitionMu.Unlock()
@@ -70,6 +64,12 @@ func (engine *Engine) ImportProcessDefinition(ctx context.Context, xmlData []byt
 	previousLatest := latestProcessDefinition(existing)
 	if _, err := engine.storeProcessDefinitionVersion(ctx, definition, existing); err != nil {
 		return nil, fmt.Errorf("failed to import process definition %d: %w", key, err)
+	}
+	if definition.Definitions.RunsExecutionListeners() {
+		// stored without the checks of a deployment, perhaps by an engine
+		// which ignored its listeners
+		engine.logger.Info("imported process definition carries start event listeners: they run for new instances",
+			"processDefinition", key, "bpmnProcessId", definition.BpmnProcessId, "version", version)
 	}
 	latest := previousLatest == nil || previousLatest.Version < version
 	if !registerSubscriptions || !latest {

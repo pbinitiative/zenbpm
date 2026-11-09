@@ -105,9 +105,6 @@ func (engine *Engine) JobFailByKey(
 		}
 		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
 	}
-	if errorCode != nil && isListenerJob(job) {
-		return invalidJobRequestf("job %d is the job of an execution listener, and a listener job cannot throw a BPMN error: fail it without an error code", jobKey)
-	}
 	if deliveryToken != nil {
 		if answered, err := engine.answerFailureNotToRecord(ctx, job, *deliveryToken); answered {
 			return err
@@ -152,6 +149,11 @@ func (engine *Engine) JobFailByKey(
 			return err
 		}
 		job.FailedDeliveryToken = *deliveryToken
+	}
+	// refused only for a failure the job would record: an ended job answers
+	// as every ended job does, and a repeated delivery as every repeated one
+	if errorCode != nil && isListenerJob(job) {
+		return invalidJobRequestf("job %d is the job of an execution listener, and a listener job cannot throw a BPMN error: fail it without an error code", jobKey)
 	}
 
 	failJobSpan.SetAttributes(
@@ -402,7 +404,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 	outputVariables, err := variableHolder.PropagateOnlyMappedOutputs(task.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
+		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job), err)
 	}
 	// the element the token leaves by: the task itself, or the element of a listener
 	var transitionElement bpmn20.FlowNode = task

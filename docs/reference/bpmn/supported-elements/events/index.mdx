@@ -132,7 +132,7 @@ At the top level, none and timer start events can use `zenbpm:output` mappings t
 
 For a top-level message start event, output mappings evaluate against the message payload before the instance is created. Without mappings, the full payload becomes the instance's initial variables; with mappings, only the mapped values do. Start events do not support `zenbpm:input` mappings; variables supplied through the create-instance API already belong to the root process scope. A process started by a call activity does not apply the output mappings of its start event; its variables are those the call activity passes in.
 
-A top-level start event can carry an `end` [execution listener](../../execution-listeners.md#a-listener-on-a-start-event): the token then waits at the start event until the listener's job is completed, so a worker learns about every started instance before anything behind the start event runs.
+A top-level start event can carry an `end` [execution listener](../../execution-listeners.md#a-listener-on-a-start-event): the token then waits at the start event until the listener's job is completed, so a worker learns about an instance started at that start event before anything behind it runs. An instance started at another element, or by an instantiating receive task, creates no listener job (see the listener page for every exception).
 
 Start events also appear inside an [Event sub process](../activities/event-sub-process.md), where message, timer, and error triggers are supported and the start event may be non-interrupting.
 

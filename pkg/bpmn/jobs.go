@@ -23,7 +23,13 @@ func (engine *Engine) createInternalTask(
 	currentToken runtime.ExecutionToken,
 	jobVarHolder runtime.VariableHolder,
 ) (state runtime.ActivityState, retErr error) {
-	flowElementInput := jobVarHolder.ExecutionScopeSnapshot()
+	// the element of a listener saved its history row before, and the
+	// listener's job carries the variables the row would copy
+	listener, isListener := element.(*bpmn20.ListenerTask)
+	var flowElementInput map[string]any
+	if !isListener {
+		flowElementInput = jobVarHolder.ExecutionScopeSnapshot()
+	}
 	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
@@ -35,10 +41,9 @@ func (engine *Engine) createInternalTask(
 	}
 	// a listener's job is for external workers only: a handler registered for
 	// the id of the listener's element must not complete it inline
-	listener, isListener := element.(*bpmn20.ListenerTask)
 	var handler func(job ActivatedJob)
 	if isListener {
-		if err := ensureListenerTypeIsLiteral(listener); err != nil {
+		if err := ensureListenerIsLiteral(listener); err != nil {
 			return runtime.ActivityStateFailed, err
 		}
 	} else {
@@ -103,19 +108,21 @@ func (engine *Engine) createInternalTask(
 		return job.State, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                currentToken.ElementInstanceKey,
-		ProcessInstanceKey: instance.ProcessInstance().Key,
-		ElementId:          element.GetId(),
-		ElementType:        string(element.GetType()),
-		CreatedAt:          time.Now(),
-		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     flowElementInput,
-		OutputVariables:    nil,
-	})
-	if err != nil {
-		job.State = runtime.ActivityStateFailed
-		return job.State, err
+	if !isListener {
+		err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  currentToken.Key,
+			InputVariables:     flowElementInput,
+			OutputVariables:    nil,
+		})
+		if err != nil {
+			job.State = runtime.ActivityStateFailed
+			return job.State, err
+		}
 	}
 
 	if handler == nil {

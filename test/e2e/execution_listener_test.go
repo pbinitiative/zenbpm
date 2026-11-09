@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
@@ -96,9 +95,9 @@ func TestMessageStartListenerAnswersThePublisherBeforeItsJobIsCompleted(t *testi
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
 
-	job := waitForActiveJobOfType(t, jobType)
+	job := waitForActiveJobByType(t, jobType)
 	require.NotNil(t, job.ListenerEventType)
-	assert.Equal(t, public.JobListenerEventTypeEnd, *job.ListenerEventType)
+	assert.Equal(t, zenclient.JobListenerEventTypeEnd, *job.ListenerEventType)
 	assert.Equal(t, "order-7", job.InputVariables["orderFromMessage"])
 	instance, err := getProcessInstance(t, job.ProcessInstanceKey)
 	require.NoError(t, err)
@@ -179,32 +178,4 @@ func deployListenerFixture(t *testing.T, file string, replacements map[string]st
 	definition := public.CreateProcessDefinition201JSONResponse{}
 	require.NoError(t, json.Unmarshal(response.Body, &definition))
 	return definition.ProcessDefinitionKey
-}
-
-func waitForActiveJobOfType(t *testing.T, jobType string) public.Job {
-	t.Helper()
-	var found public.Job
-	require.Eventually(t, func() bool {
-		active := zenclient.JobStateActive
-		response, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: &jobType, State: &active})
-		if err != nil || response.StatusCode() != http.StatusOK {
-			return false
-		}
-		page := struct {
-			Partitions []struct {
-				Items []public.Job `json:"items"`
-			} `json:"partitions"`
-		}{}
-		if json.Unmarshal(response.Body, &page) != nil {
-			return false
-		}
-		for _, partition := range page.Partitions {
-			if len(partition.Items) > 0 {
-				found = partition.Items[0]
-				return true
-			}
-		}
-		return false
-	}, 10*time.Second, 50*time.Millisecond, "an active job of type %s waits", jobType)
-	return found
 }

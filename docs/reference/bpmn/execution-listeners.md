@@ -72,12 +72,11 @@ A listener job is never handed to a task handler registered in the engine, even 
 the id of the start event: it is for external workers only.
 
 A listener job cannot throw a BPMN error: a failure with an error code is answered `400`, and the
-job stays as it was. A failure without one spends the retries as for every job (see
+job stays as it was. A failure of an ended job, or of a delivery whose failure was recorded
+already, is answered as for every job, with or without an error code. A failure without an error
+code spends the retries as for every job (see
 [Jobs](../jobs.md#failures-and-retries)). When they are gone, the incident stands on the start
 event, and resolving it hands out the job again.
-
-The start event's history row stores the instance's variables as its input variables, so the
-history grows by one copy of them for each instance started behind a listener.
 
 ## Attributes
 
@@ -102,7 +101,8 @@ A deployment is answered `400`, with a message naming the element, for:
 
 | Where | Refused |
 |---|---|
-| a start event directly under `<process>` | a listener of another event type than `end`, or more than one listener |
+| a start event directly under `<process>` | a listener of another event type than `end`, more than one listener, or a listener on a start event without an outgoing sequence flow |
+| a start event whose `id` another element of the process shares | any listener |
 | a start event | a listener outside `extensionElements` > `executionListeners`, such as one without the `executionListeners` element or one in the shape of Camunda 7 |
 | a start event outside the flow of a process, that is neither directly in a process nor in a sub-process nested in its flow, such as one inside extension elements | any listener |
 | an embedded or event sub-process, and its start events | any listener |
@@ -118,21 +118,30 @@ execution listener eventType="start" on service task id="ship" is not supported:
 
 Until this version, ZenBPM deployed such a model and silently never ran its listeners. A model drawn
 for Camunda 8 with listeners on tasks, gateways or other events is refused from this version on.
-A listener on the `<process>` element is still deployed and not run, as before, wherever it sits in
-the element.
+This holds for a repeated deployment of a model stored before as well: one which reached only some
+partitions before the upgrade cannot be completed by deploying it again, but only by deploying it
+without the refused listeners. A listener on the `<process>` element is still deployed and not
+run, as before, wherever it sits in the element's `extensionElements`, inside another extension
+element too.
 
 ## Definitions deployed before
 
 A definition stored by an earlier version is loaded without the checks of a deployment, so that it
 keeps running. Its start event listeners run for every instance started from this version on;
 instances which passed their start events before are not affected. Its listeners in any other
-position are not run, as before. A stored start event listener whose `type` is blank or an
-expression raises an incident on its start event instead of creating a job. When a backup is
-restored, the engine logs one line for each restored definition whose start events carry
-listeners; a definition which only an upgrade brings to this version is not logged.
+position are not run, as before. A stored start event listener which a deployment would refuse
+for its attributes, such as one whose `type` is blank or whose `type`, `retries` or
+`retryBackoff` is a FEEL expression, raises an incident on its start event instead of creating a
+job. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
+line for each copied definition whose start event listeners run. A definition a partition
+restores from its own backup, or which only an upgrade brings to this version, is not logged.
 
 ## Upgrading a cluster
 
 A node running an earlier version ignores start event listeners: an instance started on a
-partition which such a node leads runs without the listener's job. Upgrade every node of the
-cluster before deploying processes which rely on their listeners.
+partition which such a node leads runs without the listener's job. Such a node does not know the
+job of a listener either, so while it leads a partition, a listener job which an upgraded node
+created there cannot be completed and its incident cannot be resolved, and a failure with an error
+code is taken as a BPMN error, which an error event sub-process may catch. The instance waits at
+its start event until an upgraded node leads the partition again. Upgrade every node of the
+cluster before deploying processes with start event listeners.

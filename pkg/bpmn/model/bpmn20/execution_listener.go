@@ -64,9 +64,13 @@ func (task *ListenerTask) ValidateLiterals() error { return ValidateListenerLite
 // GetTaskType answers the listener's job type, without surrounding
 // whitespace, which a worker could not tell apart.
 func (task *ListenerTask) GetTaskType() string { return strings.TrimSpace(task.listener.Type) }
+
+// GetInputMapping answers none: a listener job carries its instance's variables.
 func (task *ListenerTask) GetInputMapping() []extensions.TIoMapping {
 	return nil
 }
+
+// GetOutputMapping answers none: a listener's completion changes no variable.
 func (task *ListenerTask) GetOutputMapping() []extensions.TIoMapping {
 	return nil
 }

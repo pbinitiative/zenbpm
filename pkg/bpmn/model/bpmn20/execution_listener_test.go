@@ -152,13 +152,25 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 			other: `<bpmn:subProcess id="sub"><bpmn:startEvent id="start"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) +
 				`</bpmn:extensionElements><bpmn:outgoing>sub-flow</bpmn:outgoing></bpmn:startEvent>` +
 				`<bpmn:sequenceFlow id="sub-flow" sourceRef="start" targetRef="sub-end" /><bpmn:endEvent id="sub-end"><bpmn:incoming>sub-flow</bpmn:incoming></bpmn:endEvent></bpmn:subProcess>`,
-			errorMessage: `start event id="start" carries an execution listener, but another element of the process has the same id: give every element a unique id`,
+			errorMessage: `start event id="start" carries an execution listener, but another flow node of the process has the same id: give every element a unique id`,
 		},
 		{
 			name: "a listener on a later start event of the process sharing its id with an earlier one",
 			other: `<bpmn:startEvent id="start"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) +
 				`</bpmn:extensionElements><bpmn:outgoing>flow-1</bpmn:outgoing></bpmn:startEvent>`,
-			errorMessage: `start event id="start" carries an execution listener, but another element of the process has the same id: give every element a unique id`,
+			errorMessage: `start event id="start" carries an execution listener, but another flow node of the process has the same id: give every element a unique id`,
+		},
+		{
+			name:         "a listener on a start event sharing its id with a boundary event",
+			other:        `<bpmn:boundaryEvent id="start" attachedToRef="task"><bpmn:outgoing>boundary-flow</bpmn:outgoing></bpmn:boundaryEvent>` + `<bpmn:sequenceFlow id="boundary-flow" sourceRef="start" targetRef="end" />`,
+			startEvent:   listenersOf("zeebe", `eventType="end" type="t"`),
+			errorMessage: `start event id="start" carries an execution listener, but another flow node of the process has the same id: give every element a unique id`,
+		},
+		{
+			name: "a listener on a start event without an id",
+			other: `<bpmn:startEvent><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) +
+				`</bpmn:extensionElements><bpmn:outgoing>flow-1</bpmn:outgoing></bpmn:startEvent>`,
+			errorMessage: `start event without an id carries an execution listener: give every element a unique id`,
 		},
 		{
 			name:         "a task listener",

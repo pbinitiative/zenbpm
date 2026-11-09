@@ -102,7 +102,7 @@ A deployment is answered `400`, with a message naming the element, for:
 | Where | Refused |
 |---|---|
 | a start event directly under `<process>` | a listener of another event type than `end`, more than one listener, or a listener on a start event without an outgoing sequence flow |
-| a start event whose `id` another element of the process shares | any listener |
+| a start event without an `id`, or whose `id` another flow node of the process shares, a boundary event included | any listener |
 | a start event | a listener outside `extensionElements` > `executionListeners`, such as one without the `executionListeners` element or one in the shape of Camunda 7 |
 | a start event outside the flow of a process, that is neither directly in a process nor in a sub-process nested in its flow, such as one inside extension elements | any listener |
 | an embedded or event sub-process, and its start events | any listener |
@@ -130,9 +130,10 @@ A definition stored by an earlier version is loaded without the checks of a depl
 keeps running. Its start event listeners run for every instance started from this version on;
 instances which passed their start events before are not affected. Its listeners in any other
 position are not run, as before. A stored start event listener which a deployment would refuse
-for its attributes, such as one whose `type` is blank or whose `type`, `retries` or
-`retryBackoff` is a FEEL expression, or for a start event without an outgoing sequence flow,
-raises an incident on its start event instead of creating a job. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
+raises an incident on its start event instead of creating a job: one whose `type` is blank or
+whose `type`, `retries` or `retryBackoff` is a FEEL expression, one beside another listener of
+its start event, one on a start event without an outgoing sequence flow, and one on a start event
+whose `id` another flow node shares, where every token at that `id` raises the incident. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
 line for each copied definition whose start event listeners run. A definition a partition
 restores from its own backup, or which only an upgrade brings to this version, is not logged.
 

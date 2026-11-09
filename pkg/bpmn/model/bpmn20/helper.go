@@ -361,6 +361,12 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 		sp := &container.SubProcess[i]
 		register(sp.GetId(), sp)
 	}
+	// boundary events stay out of the index, but count for an id they share
+	for i := range container.BoundaryEvent {
+		if id := container.BoundaryEvent[i].GetId(); id != "" {
+			container.flowNodeIDCounts[id]++
+		}
+	}
 	for i := range container.SubProcess {
 		sp := &container.SubProcess[i]
 		populateContainerIndex(&sp.TFlowElementsContainer)

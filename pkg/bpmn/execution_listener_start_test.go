@@ -411,6 +411,56 @@ func TestStoredListenerOnAStartEventWithoutAnOutgoingFlowRaisesAnIncident(t *tes
 	assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
 }
 
+func TestStoredListenerTheDeploymentWouldRefuseRaisesAnIncident(t *testing.T) {
+	listener := `<zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
+	cases := []struct {
+		name         string
+		old          string
+		replacement  string
+		errorMessage string
+	}{
+		{
+			name:         "two listeners on the start event",
+			old:          listener,
+			replacement:  listener + `<zeebe:executionListener eventType="end" type="second-job" />`,
+			errorMessage: "the element has 2 execution listeners, and the engine runs only one",
+		},
+		{
+			name:         "a start event sharing its id with a later one",
+			old:          `<bpmn:sequenceFlow id="Flow_1"`,
+			replacement:  `<bpmn:startEvent id="start-listener-start"><bpmn:outgoing>Flow_1</bpmn:outgoing></bpmn:startEvent><bpmn:sequenceFlow id="Flow_1"`,
+			errorMessage: `start event id="start-listener-start" shares its id with another flow node, and one of them carries an execution listener`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			engine, store := newListenerTestEngine(t)
+			fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")
+			require.NoError(t, err)
+			require.Contains(t, string(fixture), tc.old)
+			model := strings.Replace(string(fixture), tc.old, tc.replacement, 1)
+			// stored definitions are imported without the checks of a deployment
+			definition, err := engine.ImportProcessDefinition(t.Context(), []byte(model), engine.generateKey(), 1, false)
+			require.NoError(t, err)
+
+			instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+			require.Error(t, err)
+			require.NotNil(t, instance)
+
+			incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+			require.NoError(t, err)
+			require.NotEmpty(t, incidents, "every token at the start event raises an incident")
+			for _, incident := range incidents {
+				assert.Nil(t, incident.ResolvedAt)
+				assert.Equal(t, "start-listener-start", incident.ElementId)
+				assert.Contains(t, incident.Message, tc.errorMessage)
+			}
+			assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key), "no job is created, and nothing behind the start event runs")
+			assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
+		})
+	}
+}
+
 func TestDeploymentRefusesAListenerTheEngineDoesNotRunButAnImportKeepsIt(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")

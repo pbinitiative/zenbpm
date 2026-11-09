@@ -196,8 +196,11 @@ func validateExecutionListeners(process *TProcess) error {
 		if len(owner.GetExecutionListeners()) == 0 {
 			continue
 		}
+		if owner.GetId() == "" {
+			return fmt.Errorf("%s without an id carries an execution listener: give every element a unique id", elementTypeInWords(owner.GetType()))
+		}
 		if process.flowNodeIDCounts[owner.GetId()] > 1 {
-			return fmt.Errorf("%s id=%q carries an execution listener, but another element of the process has the same id: give every element a unique id",
+			return fmt.Errorf("%s id=%q carries an execution listener, but another flow node of the process has the same id: give every element a unique id",
 				elementTypeInWords(owner.GetType()), owner.GetId())
 		}
 		if err := validateListenersOf(owner, process.RunnableListenerEventTypes(owner)); err != nil {
@@ -205,6 +208,22 @@ func validateExecutionListeners(process *TProcess) error {
 		}
 	}
 	return nil
+}
+
+// ListenerOwnerIDIsAmbiguous reports whether several flow nodes of the process
+// have the id, and one of them carries an execution listener. A token at such
+// an id cannot tell which element it is at, so its listener could run for the
+// other element, or not at all. A deployment refuses such a model.
+func (p *TProcess) ListenerOwnerIDIsAmbiguous(id string) bool {
+	if p.flowNodeIDCounts[id] < 2 {
+		return false
+	}
+	for _, owner := range listenerOwnersOf(&p.TFlowElementsContainer) {
+		if owner.GetId() == id && len(owner.GetExecutionListeners()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // listenerOwnersOf answers every element of the container, its sub-processes

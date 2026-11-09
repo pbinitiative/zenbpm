@@ -1147,6 +1147,9 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
+		if err := ensureStartEventIsUnambiguous(instance, element); err != nil {
+			return nil, err
+		}
 		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)

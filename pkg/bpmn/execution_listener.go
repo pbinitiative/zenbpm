@@ -90,6 +90,20 @@ func (engine *Engine) completeListenerElement(ctx context.Context, batch *Engine
 	}
 }
 
+// ensureStartEventIsUnambiguous refuses to run a start event whose id another
+// flow node shares where one of them carries an execution listener (see
+// bpmn20.TProcess.ListenerOwnerIDIsAmbiguous). A deployment refuses such a
+// model; a definition stored before is imported without that check, and its
+// token could run the listener of the other element, or none. The refusal
+// raises an incident instead.
+func ensureStartEventIsUnambiguous(instance runtime.ProcessInstance, startEvent *bpmn20.TStartEvent) error {
+	if instance.ProcessInstance().Definition.Definitions.Process.ListenerOwnerIDIsAmbiguous(startEvent.GetId()) {
+		return fmt.Errorf("start event id=%q shares its id with another flow node, and one of them carries an execution listener, so the engine cannot tell which one the token is at; deploy a corrected version of the process",
+			startEvent.GetId())
+	}
+	return nil
+}
+
 // taskOfJob answers the task a job belongs to: a listener of its element, or
 // the element's own task.
 func taskOfJob(instance runtime.ProcessInstance, job runtime.Job) bpmn20.InternalTask {
@@ -102,14 +116,20 @@ func isListenerJob(job runtime.Job) bool {
 }
 
 // ensureListenerCanRun refuses to create a listener's job where a deployment
-// refuses the listener: on an element without an outgoing sequence flow, and
-// unless its type, retries and retryBackoff are literals. A definition stored
-// before is imported without those checks: the token could not leave an
-// element without an outgoing flow, so every completion of the job would
-// fail; a job of type "" or of an expression would wait for a worker which
-// never comes; and the literals-only rule promises that creating a listener's
-// job never evaluates an expression. The refusal raises an incident instead.
+// refuses the listener: beside another listener of its element, on an element
+// without an outgoing sequence flow, and unless its type, retries and
+// retryBackoff are literals. A definition stored before is imported without
+// those checks: the second listener would be dropped without a word; the
+// token could not leave an element without an outgoing flow, so every
+// completion of the job would fail; a job of type "" or of an expression
+// would wait for a worker which never comes; and the literals-only rule
+// promises that creating a listener's job never evaluates an expression. The
+// refusal raises an incident instead.
 func ensureListenerCanRun(listener *bpmn20.ListenerTask) error {
+	if owner, ok := listener.Element().(bpmn20.ExecutionListenerOwner); ok && len(owner.GetExecutionListeners()) > 1 {
+		return fmt.Errorf("execution listener eventType=%q on %s id=%q: the element has %d execution listeners, and the engine runs only one; deploy a corrected version of the process",
+			listener.EventType(), listener.GetType(), listener.GetId(), len(owner.GetExecutionListeners()))
+	}
 	if len(listener.GetOutgoingAssociation()) == 0 {
 		return fmt.Errorf("execution listener eventType=%q on %s id=%q: the element has no outgoing sequence flow, so the token could not leave it; deploy a corrected version of the process",
 			listener.EventType(), listener.GetType(), listener.GetId())

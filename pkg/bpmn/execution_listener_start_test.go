@@ -62,7 +62,8 @@ func TestStartListenerJobCompletionChangesNoVariableButPatchedOnesStay(t *testin
 	require.NoError(t, err)
 	job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
 
-	_, _, err = engine.ModifyInstance(t.Context(), instance.ProcessInstance().Key, nil, nil, map[string]any{"patched": "before completion"})
+	_, _, err = engine.ModifyInstance(t.Context(), instance.ProcessInstance().Key, nil, nil,
+		map[string]any{"patched": "before completion", "mappedAtStart": "patched mapping"})
 	require.NoError(t, err)
 	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, map[string]any{"completionVariable": "dropped"}))
 
@@ -70,6 +71,7 @@ func TestStartListenerJobCompletionChangesNoVariableButPatchedOnesStay(t *testin
 	read := readInstance(t, engine, store, instance)
 	variables := read.VariableHolder.LocalVariables()
 	assert.Equal(t, "before completion", variables["patched"])
+	assert.Equal(t, "patched mapping", variables["mappedAtStart"], "the completion does not apply the start event's output mappings again")
 	assert.NotContains(t, variables, "completionVariable")
 }
 
@@ -387,6 +389,26 @@ func TestStoredListenerWithoutLiteralsRaisesAnIncident(t *testing.T) {
 			assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
 		})
 	}
+}
+
+func TestStoredListenerOnAStartEventWithoutAnOutgoingFlowRaisesAnIncident(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")
+	require.NoError(t, err)
+	model := strings.Replace(string(fixture), `<bpmn:outgoing>Flow_1</bpmn:outgoing>`, "", 1)
+	// stored definitions are imported without the checks of a deployment
+	definition, err := engine.ImportProcessDefinition(t.Context(), []byte(model), engine.generateKey(), 1, false)
+	require.NoError(t, err)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+	require.Error(t, err)
+	require.NotNil(t, instance)
+
+	incident := onlyOpenIncident(t, engine, instance.ProcessInstance().Key)
+	assert.Equal(t, "start-listener-start", incident.ElementId)
+	assert.Contains(t, incident.Message, "has no outgoing sequence flow")
+	assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key), "no job is created whose completion could only fail")
+	assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
 }
 
 func TestDeploymentRefusesAListenerTheEngineDoesNotRunButAnImportKeepsIt(t *testing.T) {

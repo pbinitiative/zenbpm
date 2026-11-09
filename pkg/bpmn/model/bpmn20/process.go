@@ -29,6 +29,9 @@ type TFlowElementsContainer struct {
 	// unchanged afterward. Boundary events are intentionally excluded.
 	flowNodesByID     map[string]FlowNode
 	internalTasksByID map[string]InternalTask
+	// flowNodeIDCounts counts the flow nodes of the subtree per id: the index
+	// above holds one of several flow nodes sharing an id.
+	flowNodeIDCounts map[string]int
 }
 
 // TUnknownElement captures any XML element not explicitly handled by TFlowElementsContainer.

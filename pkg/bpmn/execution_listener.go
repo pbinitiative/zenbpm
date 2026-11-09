@@ -101,12 +101,19 @@ func isListenerJob(job runtime.Job) bool {
 	return bpmn20.ListenerEventTypeOfJob(job.ElementType) != ""
 }
 
-// ensureListenerIsLiteral refuses to create a listener's job unless its type,
-// retries and retryBackoff are literals, as a deployment does. A definition
-// stored before is imported without that check: a job of type "" or of an
-// expression would wait for a worker which never comes, and the literals-only
-// rule promises that creating a listener's job never evaluates an expression.
-func ensureListenerIsLiteral(listener *bpmn20.ListenerTask) error {
+// ensureListenerCanRun refuses to create a listener's job where a deployment
+// refuses the listener: on an element without an outgoing sequence flow, and
+// unless its type, retries and retryBackoff are literals. A definition stored
+// before is imported without those checks: the token could not leave an
+// element without an outgoing flow, so every completion of the job would
+// fail; a job of type "" or of an expression would wait for a worker which
+// never comes; and the literals-only rule promises that creating a listener's
+// job never evaluates an expression. The refusal raises an incident instead.
+func ensureListenerCanRun(listener *bpmn20.ListenerTask) error {
+	if len(listener.GetOutgoingAssociation()) == 0 {
+		return fmt.Errorf("execution listener eventType=%q on %s id=%q: the element has no outgoing sequence flow, so the token could not leave it; deploy a corrected version of the process",
+			listener.EventType(), listener.GetType(), listener.GetId())
+	}
 	if err := listener.ValidateLiterals(); err != nil {
 		return fmt.Errorf("execution listener eventType=%q on %s id=%q: %w; deploy a corrected version of the process",
 			listener.EventType(), listener.GetType(), listener.GetId(), err)

@@ -299,11 +299,13 @@ type resolvableFunc func(refs *map[string]BaseElement) error
 func populateContainerIndex(container *TFlowElementsContainer) {
 	container.flowNodesByID = make(map[string]FlowNode)
 	container.internalTasksByID = make(map[string]InternalTask)
+	container.flowNodeIDCounts = make(map[string]int)
 
 	register := func(id string, node FlowNode) {
 		if id == "" {
 			return
 		}
+		container.flowNodeIDCounts[id]++
 		container.flowNodesByID[id] = node
 		if task, ok := node.(InternalTask); ok {
 			container.internalTasksByID[id] = task
@@ -371,6 +373,9 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 			if _, exists := container.internalTasksByID[k]; !exists {
 				container.internalTasksByID[k] = v
 			}
+		}
+		for k, n := range sp.flowNodeIDCounts {
+			container.flowNodeIDCounts[k] += n
 		}
 	}
 }

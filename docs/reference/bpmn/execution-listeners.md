@@ -131,8 +131,8 @@ keeps running. Its start event listeners run for every instance started from thi
 instances which passed their start events before are not affected. Its listeners in any other
 position are not run, as before. A stored start event listener which a deployment would refuse
 for its attributes, such as one whose `type` is blank or whose `type`, `retries` or
-`retryBackoff` is a FEEL expression, raises an incident on its start event instead of creating a
-job. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
+`retryBackoff` is a FEEL expression, or for a start event without an outgoing sequence flow,
+raises an incident on its start event instead of creating a job. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
 line for each copied definition whose start event listeners run. A definition a partition
 restores from its own backup, or which only an upgrade brings to this version, is not logged.
 
@@ -145,3 +145,9 @@ created there cannot be completed and its incident cannot be resolved, and a fai
 code is taken as a BPMN error, which an error event sub-process may catch. The instance waits at
 its start event until an upgraded node leads the partition again. Upgrade every node of the
 cluster before deploying processes with start event listeners.
+
+Not deploying is not enough for a process deployed before the upgrade whose start events
+already carry listeners: from the first upgraded node on, its listeners run wherever an upgraded
+node leads, and nowhere else. Where every instance has to reach the listener's worker, hold back
+every start of such a process (by the API, by a message, by a call activity, and its timer
+starts) until every node runs this version.

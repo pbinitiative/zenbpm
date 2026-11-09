@@ -155,6 +155,12 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 			errorMessage: `start event id="start" carries an execution listener, but another element of the process has the same id: give every element a unique id`,
 		},
 		{
+			name: "a listener on a later start event of the process sharing its id with an earlier one",
+			other: `<bpmn:startEvent id="start"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) +
+				`</bpmn:extensionElements><bpmn:outgoing>flow-1</bpmn:outgoing></bpmn:startEvent>`,
+			errorMessage: `start event id="start" carries an execution listener, but another element of the process has the same id: give every element a unique id`,
+		},
+		{
 			name:         "a task listener",
 			other:        `<bpmn:userTask id="listened-user-task"><bpmn:extensionElements><zeebe:taskListeners><zeebe:taskListener eventType="creating" type="t" /></zeebe:taskListeners></bpmn:extensionElements></bpmn:userTask>`,
 			errorMessage: `task listener on user task id="listened-user-task" is not supported: the engine runs no task listeners`,

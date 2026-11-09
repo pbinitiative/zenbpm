@@ -196,7 +196,7 @@ func validateExecutionListeners(process *TProcess) error {
 		if len(owner.GetExecutionListeners()) == 0 {
 			continue
 		}
-		if process.GetFlowNodeById(owner.GetId()) != FlowNode(owner) {
+		if process.flowNodeIDCounts[owner.GetId()] > 1 {
 			return fmt.Errorf("%s id=%q carries an execution listener, but another element of the process has the same id: give every element a unique id",
 				elementTypeInWords(owner.GetType()), owner.GetId())
 		}

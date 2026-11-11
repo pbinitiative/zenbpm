@@ -108,20 +108,17 @@ func (task *ListenerTask) GetTaskDefinition() extensions.TTaskDefinition {
 	}
 }
 
-// TaskOfJob answers the task a job belongs to: the listener of the given
-// event type on the element, or the element's own internal task where the
-// event type is "", as a job which no listener created says. The answer is
-// nil when the element no longer has what created the job.
-func (p *TProcess) TaskOfJob(elementID string, listenerEventType string) InternalTask {
-	if listenerEventType == "" {
-		return p.GetInternalTaskById(elementID)
-	}
+// ListenerTaskOf answers the task of the element's listener of the given
+// event type and job type, which a job of that listener names, or nil when
+// the element has no such listener. A deployment refuses two listeners of an
+// element which share both.
+func (p *TProcess) ListenerTaskOf(elementID string, eventType string, jobType string) InternalTask {
 	element := p.GetFlowNodeById(elementID)
 	if element == nil {
 		return nil
 	}
 	for _, listener := range element.GetExecutionListeners() {
-		if listener.EventType == listenerEventType {
+		if listener.EventType == eventType && strings.TrimSpace(listener.Type) == jobType {
 			return NewListenerTask(element, listener)
 		}
 	}

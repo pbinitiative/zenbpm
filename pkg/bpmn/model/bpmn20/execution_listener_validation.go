@@ -200,7 +200,8 @@ func validateExecutionListeners(process *TProcess) error {
 // run as the model says: on an element without an id, or whose id another
 // flow node shares, since the engine finds the element of a listener by its
 // id; a listener of an event type the engine does not run there (see
-// ListenerEventTypesRunOn); more than one listener; on an element without an
+// ListenerEventTypesRunOn); two listeners of the same event type and job
+// type, whose jobs could not be told apart; on an element without an
 // outgoing sequence flow, which the token could not leave; and a type,
 // retries or retryBackoff which is not a literal the engine reads. Literals
 // only, so that creating a listener's job never fails on an expression. A
@@ -222,15 +223,20 @@ func (p *TProcess) CheckListeners(node FlowNode) error {
 	runnableEventTypes := p.ListenerEventTypesRunOn(node)
 	rule := listenerPositionRule
 	if len(runnableEventTypes) > 0 {
-		rule = fmt.Sprintf("a %s takes one listener with eventType=%q", element, strings.Join(runnableEventTypes, `" or "`))
+		rule = fmt.Sprintf("a %s takes listeners with eventType=%q", element, strings.Join(runnableEventTypes, `" or "`))
 	}
 	for _, listener := range listeners {
 		if !slices.Contains(runnableEventTypes, listener.EventType) {
 			return fmt.Errorf("execution listener eventType=%q on %s is not supported: %s", listener.EventType, where, rule)
 		}
 	}
-	if len(listeners) > 1 {
-		return fmt.Errorf("%s has %d execution listeners, which is not supported: %s", where, len(listeners), rule)
+	for i, listener := range listeners {
+		for _, earlier := range listeners[:i] {
+			if earlier.EventType == listener.EventType && strings.TrimSpace(earlier.Type) == strings.TrimSpace(listener.Type) {
+				return fmt.Errorf("%s has two execution listeners with eventType=%q and type=%q: the listeners of one event type need different types",
+					where, listener.EventType, strings.TrimSpace(listener.Type))
+			}
+		}
 	}
 	if len(node.GetOutgoingAssociation()) == 0 {
 		return fmt.Errorf("%s has an execution listener but no outgoing sequence flow: the token could not leave it when the listener's job is completed", where)

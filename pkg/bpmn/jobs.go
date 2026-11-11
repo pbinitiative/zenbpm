@@ -76,11 +76,7 @@ func (engine *Engine) createJob(
 	// a listener's job is for external workers only: a handler registered for
 	// the id of the listener's element must not complete it inline
 	var handler func(job ActivatedJob)
-	if isListener {
-		if err := ensureListenerCanRun(instance, listener); err != nil {
-			return failed, err
-		}
-	} else {
+	if !isListener {
 		handler = engine.findTaskHandler(element)
 	}
 	// retries are spent by external workers only: a handler in the engine fails

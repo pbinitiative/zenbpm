@@ -41,7 +41,7 @@ func TestElementsWithoutListenersAnswerNone(t *testing.T) {
 
 	assert.Empty(t, definitions.Process.RunnableListenersOf(&definitions.Process.StartEvents[0], "end"))
 	assert.False(t, definitions.Process.RunsListenersOn(&definitions.Process.StartEvents[0]))
-	assert.Nil(t, definitions.Process.TaskOfJob("start", "end"))
+	assert.Nil(t, definitions.Process.ListenerTaskOf("start", "end", "on-start"))
 	assert.False(t, modelReadsAListener(&definitions))
 	assert.False(t, definitions.RunsExecutionListeners())
 }
@@ -66,12 +66,12 @@ func TestOnlyAnEndListenerOfAStartEventOfTheProcessIsRun(t *testing.T) {
 	}
 }
 
-func TestTaskOfJobAnswersTheListenerOfAStartEvent(t *testing.T) {
+func TestListenerTaskOfAnswersTheListenerAJobNames(t *testing.T) {
 	definitions := parseListenerModel(t, listenerModel("zeebe", "",
-		listenersOf("zeebe", `eventType="end" type="on-start" retries="2"`), ""))
+		listenersOf("zeebe", `eventType="end" type="on-start" retries="2"`, `eventType="end" type="then"`), ""))
 	process := &definitions.Process
 
-	start, ok := process.TaskOfJob("start", "end").(*ListenerTask)
+	start, ok := process.ListenerTaskOf("start", "end", "on-start").(*ListenerTask)
 	require.True(t, ok)
 	assert.Equal(t, "end", start.EventType())
 	assert.Equal(t, "on-start", start.GetTaskType())
@@ -81,21 +81,30 @@ func TestTaskOfJobAnswersTheListenerOfAStartEvent(t *testing.T) {
 	assert.Nil(t, start.GetOutputMapping())
 	assert.Len(t, start.GetOutgoingAssociation(), 1, "the start event's own sequence flows")
 	assert.Equal(t, &definitions.Process.StartEvents[0], start.Element())
-	assert.Nil(t, process.TaskOfJob("unknown", "end"))
-	assert.Nil(t, process.TaskOfJob("start", "start"), "the start event has no listener of that event type")
-	assert.Nil(t, process.TaskOfJob("task", "end"), "the service task has no listener")
+	assert.Equal(t, "then", process.ListenerTaskOf("start", "end", "then").GetTaskType(), "the job type tells the listeners of one event type apart")
+	assert.Nil(t, process.ListenerTaskOf("unknown", "end", "on-start"))
+	assert.Nil(t, process.ListenerTaskOf("start", "start", "on-start"), "the start event has no listener of that event type")
+	assert.Nil(t, process.ListenerTaskOf("start", "end", "gone"), "the start event has no listener of that job type")
+	assert.Nil(t, process.ListenerTaskOf("task", "end", "work"), "the service task has no listener")
+}
 
-	task := process.TaskOfJob("task", "")
-	require.NotNil(t, task)
-	assert.Equal(t, "work", task.GetTaskType())
+func TestSeveralListenersOfOneEventTypeAreKeptInTheOrderOfTheModel(t *testing.T) {
+	definitions := parseListenerModel(t, listenerModel("zeebe", "",
+		listenersOf("zeebe", `eventType="end" type="first"`, `eventType="end" type="second"`, `eventType="end" type="third"`), ""))
+	require.NoError(t, definitions.ValidateForDeployment())
+
+	listeners := definitions.Process.RunnableListenersOf(&definitions.Process.StartEvents[0], "end")
+
+	assert.Equal(t, []extensions.TExecutionListener{{EventType: "end", Type: "first"}, {EventType: "end", Type: "second"}, {EventType: "end", Type: "third"}}, listeners)
+	assert.Empty(t, definitions.Process.RunnableListenersOf(&definitions.Process.StartEvents[0], "start"))
 }
 
 func TestListenerJobTypeIsTrimmed(t *testing.T) {
 	definitions := parseListenerModel(t, listenerModel("zeebe", "", listenersOf("zeebe", `eventType="end" type=" on-start "`), ""))
 	require.NoError(t, definitions.ValidateForDeployment())
 
-	start := definitions.Process.TaskOfJob("start", "end")
-	require.NotNil(t, start)
+	start := definitions.Process.ListenerTaskOf("start", "end", "on-start")
+	require.NotNil(t, start, "a job names the type as its listener's job got it, without the whitespace")
 	assert.Equal(t, "on-start", start.GetTaskType(), "a worker of type on-start gets the job")
 	assert.Equal(t, "on-start", start.GetTaskDefinition().TypeName)
 }
@@ -190,12 +199,12 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 		{
 			name:         "a start listener of another event type",
 			startEvent:   listenersOf("zeebe", `eventType="start" type="t"`),
-			errorMessage: `execution listener eventType="start" on start event id="start" is not supported: a start event takes one listener with eventType="end"`,
+			errorMessage: `execution listener eventType="start" on start event id="start" is not supported: a start event takes listeners with eventType="end"`,
 		},
 		{
-			name:         "two listeners on a start event",
-			startEvent:   listenersOf("zeebe", `eventType="end" type="a"`, `eventType="end" type="b"`),
-			errorMessage: `start event id="start" has 2 execution listeners, which is not supported: a start event takes one listener with eventType="end"`,
+			name:         "two listeners of the same event type and job type",
+			startEvent:   listenersOf("zeebe", `eventType="end" type="a"`, `eventType="end" type="b"`, `eventType="end" type=" a "`),
+			errorMessage: `start event id="start" has two execution listeners with eventType="end" and type="a": the listeners of one event type need different types`,
 		},
 		{
 			name:         "a listener on a sub-process",

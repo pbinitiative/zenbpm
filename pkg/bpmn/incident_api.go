@@ -111,10 +111,26 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 	return engine.createStartEventSubscriptions(ctx, batch, subProcess.TProcess, *processDefinition, &instance)
 }
 
+// reevaluateJobInputVariables rebuilds the variables of a job from the
+// variables its instance has now, so that a correction made while the job's
+// incident was open reaches the worker. The job of an element which keeps a
+// scope is rebuilt from the scope (see refreshElementScope); every other job
+// from the input mappings of its task, and its element's history row shows
+// the variables they were evaluated from.
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
 	task := taskOfJob(instance, *job)
 	if task == nil {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
+	}
+
+	scope, keepsScope, err := engine.refreshElementScope(ctx, batch, instance, job.ElementId, job.ElementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to evaluate input variables for job %d: %w", job.Key, err)
+	}
+	if keepsScope {
+		variables := scope.VariableHolder(&instance.ProcessInstance().VariableHolder)
+		job.InputVariables = variables.LocalVariables()
+		return nil
 	}
 
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
@@ -338,6 +354,11 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			return err
 		}
 	} else {
+		// the element is entered again, or, where it keeps a scope, goes on
+		// from it with its input mappings evaluated again
+		if _, _, err := engine.refreshElementScope(ctx, &batch, instance, incident.Token.ElementId, incident.Token.ElementInstanceKey); err != nil {
+			return errors.Join(ErrIncidentNotResolvable, err)
+		}
 		incident.Token.State = runtime.TokenStateRunning
 	}
 	err = batch.SaveToken(ctx, incident.Token)

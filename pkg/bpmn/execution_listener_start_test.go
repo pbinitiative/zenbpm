@@ -121,6 +121,81 @@ func TestStartListenerJobFailureCountsDownRetriesAndRaisesIncidentOnStartEvent(t
 	assert.Equal(t, runtime.ActivityStateActive, resolved.State)
 	assert.Equal(t, true, resolved.InputVariables["fixed"], "the job's variables are rebuilt from the instance")
 	assert.Equal(t, runtime.ActivityStateActive, readInstance(t, engine, store, instance).State)
+	history, err := engine.persistence.GetFlowElementInstanceByKey(t.Context(), job.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Nil(t, history.InputVariables, "resolving the incident of a listener's job leaves the history row of its element alone")
+}
+
+func TestSeveralEndListenersOfAStartEventRunInTheOrderOfTheModel(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")
+	require.NoError(t, err)
+	first := `<zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
+	require.Contains(t, string(fixture), first)
+	model := strings.Replace(string(fixture), first, first+
+		`<zeebe:executionListener eventType="end" type="second-listener-job" /><zeebe:executionListener eventType="end" type="third-listener-job" />`, 1)
+	definition, err := engine.LoadFromBytes(t.Context(), []byte(model), engine.generateKey())
+	require.NoError(t, err, "a deployment takes several listeners of one event type")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"input": "given"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+
+	firstJob := requireSinglePendingJob(t, store, instanceKey)
+	require.Equal(t, "start-listener-job", firstJob.Type, "only the first listener's job exists while it waits")
+	scope, err := store.FindElementScope(t.Context(), firstJob.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ElementPhaseCompleting, scope.Phase)
+	assert.Zero(t, scope.ListenerIndex)
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), firstJob.Key, map[string]any{"fromFirst": "seen by later listeners", "input": "hidden for them"}))
+	secondJob := waitForPendingJobOfType(t, engine, instanceKey, "second-listener-job")
+	assert.Equal(t, firstJob.ElementInstanceKey, secondJob.ElementInstanceKey, "the token stays in the same start event")
+	assert.Equal(t, "end", secondJob.ListenerEventType)
+	assert.Equal(t, map[string]any{"input": "hidden for them", "mappedAtStart": "mapped", "fromFirst": "seen by later listeners"}, secondJob.InputVariables,
+		"a later listener sees what an earlier one was completed with")
+	instanceData := readInstance(t, engine, store, instance)
+	assert.Equal(t, map[string]any{"input": "given", "mappedAtStart": "mapped"}, instanceData.VariableHolder.LocalVariables(),
+		"what a listener is completed with never reaches the instance")
+	history, err := engine.persistence.GetFlowElementInstanceByKey(t.Context(), firstJob.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Nil(t, history.CompletedAt, "the start event stays active between its listeners")
+	scope, err = store.FindElementScope(t.Context(), firstJob.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, 1, scope.ListenerIndex)
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), secondJob.Key, nil))
+	thirdJob := waitForPendingJobOfType(t, engine, instanceKey, "third-listener-job")
+	assert.Len(t, pendingJobs(t, engine, instanceKey), 1)
+	assert.Equal(t, "seen by later listeners", thirdJob.InputVariables["fromFirst"])
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), thirdJob.Key, nil))
+	next := waitForPendingJobOfType(t, engine, instanceKey, "start-listener-after")
+	assert.Equal(t, map[string]any{"input": "given", "mappedAtStart": "mapped"}, next.InputVariables,
+		"the variables of a start event's listeners end with the start event")
+	history, err = engine.persistence.GetFlowElementInstanceByKey(t.Context(), firstJob.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.NotNil(t, history.CompletedAt)
+	_, err = store.FindElementScope(t.Context(), firstJob.ElementInstanceKey)
+	assert.ErrorIs(t, err, storage.ErrNotFound, "the scope of the start event is deleted when the token leaves it")
+}
+
+func TestACompletionOfAnEarlierListenersJobIsNotTakenForTheWaitingOne(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	definition := loadListenerFixture(t, engine, "start-listener.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+	require.NoError(t, err)
+	job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
+	scope, err := store.FindElementScope(t.Context(), job.ElementInstanceKey)
+	require.NoError(t, err)
+	// as if the element instance had moved on behind the back of the job
+	scope.ListenerIndex = 1
+	require.NoError(t, store.SaveElementScope(t.Context(), scope))
+
+	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not the one its element instance")
+	assert.Equal(t, runtime.ActivityStateActive, reloadJob(t, store, job.Key).State, "the job keeps waiting")
 }
 
 func TestStartListenerJobRefusesBpmnError(t *testing.T) {
@@ -212,6 +287,8 @@ func TestCancelWhileStartListenerWaitsTerminatesItsJob(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store, job.Key).State)
 	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
 	require.ErrorIs(t, err, ErrJobInTerminalState)
+	_, err = store.FindElementScope(t.Context(), job.ElementInstanceKey)
+	assert.NoError(t, err, "the scope of a cancelled element instance stays until the history of its instance is cleaned up")
 }
 
 func TestMessageStartEventWithListenerWaitsBehindItsJob(t *testing.T) {
@@ -424,10 +501,10 @@ func TestStoredListenerTheDeploymentWouldRefuseRaisesAnIncident(t *testing.T) {
 		errorMessage string
 	}{
 		{
-			name:         "two listeners on the start event",
+			name:         "two listeners of the same event type and job type on the start event",
 			old:          listener,
-			replacement:  listener + `<zeebe:executionListener eventType="end" type="second-job" />`,
-			errorMessage: `start event id="start-listener-start" has 2 execution listeners, which is not supported`,
+			replacement:  listener + `<zeebe:executionListener eventType="end" type=" start-listener-job " />`,
+			errorMessage: `start event id="start-listener-start" has two execution listeners with eventType="end" and type="start-listener-job"`,
 		},
 		{
 			name:         "a start event sharing its id with a later one",
@@ -473,7 +550,7 @@ func TestDeploymentRefusesAListenerTheEngineDoesNotRunButAnImportKeepsIt(t *test
 
 	_, err = engine.LoadFromBytes(t.Context(), model, engine.generateKey())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `execution listener eventType="start" on start event id="start-listener-start" is not supported: a start event takes one listener with eventType="end"`)
+	assert.Contains(t, err.Error(), `execution listener eventType="start" on start event id="start-listener-start" is not supported: a start event takes listeners with eventType="end"`)
 
 	imported, err := engine.ImportProcessDefinition(t.Context(), model, engine.generateKey(), 1, false)
 	require.NoError(t, err, "a stored definition keeps loading")

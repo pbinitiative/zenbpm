@@ -30,7 +30,6 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 // engineLifecycle owns the background managers started by an Engine. NewEngine
@@ -1129,6 +1128,12 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
+	// an element with execution listeners is entered once and left once, with
+	// jobs in between: where it stands is read from its scope
+	if hasElementLifecycle(instance, activity.Element()) {
+		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken)
+	}
+
 	if !flowNodeOwnsHistory(activity.Element()) {
 		err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
@@ -1147,15 +1152,9 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		if err := ensureStartEventIsUnambiguous(instance, element); err != nil {
-			return nil, err
-		}
 		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)
-		}
-		if listener := runnableListenerOf(instance, element, extensions.ExecutionListenerEventTypeEnd); listener != nil {
-			return engine.holdTokenAtEndListener(ctx, batch, instance, listener, currentToken, outputVariables)
 		}
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {

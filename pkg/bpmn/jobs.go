@@ -15,6 +15,10 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
+// createInternalTask creates the job of an element which is entered and left
+// in one go: it evaluates the element's input mappings into the given
+// variables, creates the job (createJob), and writes the element's history
+// row with the variables as they were before the mappings.
 func (engine *Engine) createInternalTask(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -22,17 +26,47 @@ func (engine *Engine) createInternalTask(
 	element bpmn20.InternalTask,
 	currentToken runtime.ExecutionToken,
 	jobVarHolder runtime.VariableHolder,
-) (state runtime.ActivityState, retErr error) {
+) (runtime.ActivityState, error) {
+	created := jobCreation{}
 	// the element of a listener saved its history row before, and the
 	// listener's job carries the variables the row would copy
-	listener, isListener := element.(*bpmn20.ListenerTask)
-	var flowElementInput map[string]any
-	if !isListener {
-		flowElementInput = jobVarHolder.ExecutionScopeSnapshot()
+	if _, isListener := element.(*bpmn20.ListenerTask); !isListener {
+		created.writesHistoryInput = true
+		created.historyInput = jobVarHolder.ExecutionScopeSnapshot()
 	}
 	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
+	job, err := engine.createJob(ctx, batch, instance, element, currentToken, jobVarHolder, created)
+	return job.State, err
+}
+
+// jobCreation says what createJob does beside creating the job.
+type jobCreation struct {
+	// writesHistoryInput has createJob write the element's history row, with
+	// historyInput as its input variables. It is false where the row was
+	// written when the element was entered.
+	writesHistoryInput bool
+	historyInput       map[string]any
+}
+
+// createJob creates the job of a task, or of an execution listener, with the
+// given variables as they are: every input mapping was evaluated before. A
+// task handler registered in the engine completes or fails the job of a task
+// at once; a listener's job is always left to an external worker. The job is
+// answered in the state it was left in: active while it waits for a worker,
+// completed or failed after a handler in the engine.
+func (engine *Engine) createJob(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.InternalTask,
+	currentToken runtime.ExecutionToken,
+	jobVarHolder runtime.VariableHolder,
+	created jobCreation,
+) (job runtime.Job, retErr error) {
+	failed := runtime.Job{State: runtime.ActivityStateFailed}
+	listener, isListener := element.(*bpmn20.ListenerTask)
 	// taskHeaders are static worker parameters; only elements that declare the
 	// extension provide them (see bpmn20.TaskHeaderProvider).
 	var taskHeaders []extensions.THeader
@@ -44,7 +78,7 @@ func (engine *Engine) createInternalTask(
 	var handler func(job ActivatedJob)
 	if isListener {
 		if err := ensureListenerCanRun(instance, listener); err != nil {
-			return runtime.ActivityStateFailed, err
+			return failed, err
 		}
 	} else {
 		handler = engine.findTaskHandler(element)
@@ -64,13 +98,13 @@ func (engine *Engine) createInternalTask(
 		}
 		var err error
 		if retries, err = engine.initialRetries(element, jobScope); err != nil {
-			return runtime.ActivityStateFailed, fmt.Errorf("failed to create job: %w", err)
+			return failed, fmt.Errorf("failed to create job: %w", err)
 		}
 		if retryBackoff, err = engine.retryBackoffPolicy(element, jobScope); err != nil {
-			return runtime.ActivityStateFailed, fmt.Errorf("failed to create job: %w", err)
+			return failed, fmt.Errorf("failed to create job: %w", err)
 		}
 	}
-	job := runtime.Job{
+	job = runtime.Job{
 		ElementId:          currentToken.ElementId,
 		ElementType:        string(element.GetType()),
 		ElementInstanceKey: currentToken.ElementInstanceKey,
@@ -94,7 +128,7 @@ func (engine *Engine) createInternalTask(
 		assigneeResult, err := engine.evaluateExpression(userTask.GetAssignmentAssignee(), jobVarHolder.LocalVariables())
 		if err != nil {
 			job.State = runtime.ActivityStateFailed
-			return job.State, fmt.Errorf("failed to create job: %w", err)
+			return job, fmt.Errorf("failed to create job: %w", err)
 		}
 
 		if assigneeResult != nil {
@@ -109,10 +143,10 @@ func (engine *Engine) createInternalTask(
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
 		job.State = runtime.ActivityStateFailed
-		return job.State, fmt.Errorf("failed to create job: %w", err)
+		return job, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	if !isListener {
+	if created.writesHistoryInput {
 		err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().Key,
@@ -120,18 +154,18 @@ func (engine *Engine) createInternalTask(
 			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     flowElementInput,
+			InputVariables:     created.historyInput,
 			OutputVariables:    nil,
 		})
 		if err != nil {
 			job.State = runtime.ActivityStateFailed
-			return job.State, err
+			return job, err
 		}
 	}
 
 	if handler == nil {
 		engine.metrics.JobsCreated.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", false)))
-		return job.State, nil
+		return job, nil
 	}
 	engine.metrics.JobsCreated.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
 	// if we have the handler handle the task directly
@@ -199,7 +233,7 @@ func (engine *Engine) createInternalTask(
 		}
 		if job.State == runtime.ActivityStateCompleted {
 			if err := batch.SaveJob(ctx, job); err != nil {
-				return runtime.ActivityStateFailed, fmt.Errorf("failed to save terminal state of internal job %d: %w", job.Key, err)
+				return failed, fmt.Errorf("failed to save terminal state of internal job %d: %w", job.Key, err)
 			}
 		}
 		switch job.State {
@@ -216,7 +250,7 @@ func (engine *Engine) createInternalTask(
 		}
 	}
 
-	return job.State, jobError
+	return job, jobError
 }
 
 func (engine *Engine) terminateActiveJobsForToken(ctx context.Context, batch *EngineBatch, tokenKey int64) error {

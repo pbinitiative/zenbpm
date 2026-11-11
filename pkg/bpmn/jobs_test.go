@@ -21,6 +21,26 @@ const (
 	varHasReachedMaxAttempts    = "hasReachedMaxAttempts"
 )
 
+func TestAJobCarriesTheMappedInputsAndItsElementsHistoryTheVariablesBeforeThem(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/incident-job-input-refresh.bpmn")
+	require.NoError(t, err)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]any{"sourceValue": "original"})
+	require.NoError(t, err)
+
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, map[string]any{"sourceValue": "original", "workerValue": "original"}, jobs[0].InputVariables)
+	history, err := store.GetFlowElementInstanceByKey(t.Context(), jobs[0].ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"sourceValue": "original"}, history.InputVariables,
+		"the history row shows what the element was entered with, not what its input mappings made of it")
+	assert.Nil(t, history.CompletedAt)
+}
+
 func TestJobCompleteReturnsErrorSubscriptionTechnicalFailureRepresentedByIncident(t *testing.T) {
 	injectedErr := errors.New("injected error subscription save failure")
 	store := &failingContinuationStorage{Storage: inmemory.NewStorage(), err: injectedErr}

@@ -82,13 +82,16 @@ func (e EventSubscriptionState) Valid() bool {
 
 // Defines values for JobListenerEventType.
 const (
-	JobListenerEventTypeEnd JobListenerEventType = "end"
+	JobListenerEventTypeEnd   JobListenerEventType = "end"
+	JobListenerEventTypeStart JobListenerEventType = "start"
 )
 
 // Valid indicates whether the value is a known member of the JobListenerEventType enum.
 func (e JobListenerEventType) Valid() bool {
 	switch e {
 	case JobListenerEventTypeEnd:
+		return true
+	case JobListenerEventTypeStart:
 		return true
 	default:
 		return false
@@ -915,7 +918,7 @@ type Job struct {
 	ElementId          string `json:"elementId"`
 	ElementInstanceKey int64  `json:"elementInstanceKey"`
 
-	// ElementType BPMN element type that created the job; `START_EVENT` for the job of an execution listener
+	// ElementType BPMN element type of the element the job belongs to. The job of an execution listener carries the type of the listener's element, such as `START_EVENT` or `SERVICE_TASK`; `listenerEventType` tells it from the element's own job.
 	ElementType string `json:"elementType"`
 
 	// InputVariables Variables provided to the job at creation/activation time (from BPMN input mappings)
@@ -925,7 +928,7 @@ type Job struct {
 	// LastFailureMessage Message of the latest failure without an error code.
 	LastFailureMessage *string `json:"lastFailureMessage,omitempty"`
 
-	// ListenerEventType The event type of the execution listener whose job this is: `end` on a start event. Absent for the job of a task.
+	// ListenerEventType The event type of the execution listener whose job this is: `start` before the element's own work, `end` after it. Absent for the job of an element.
 	ListenerEventType *JobListenerEventType `json:"listenerEventType,omitempty"`
 
 	// OutputVariables Output variables set on job completion or failure (full output before mapping)
@@ -949,7 +952,7 @@ type Job struct {
 	Type string `json:"type"`
 }
 
-// JobListenerEventType The event type of the execution listener whose job this is: `end` on a start event. Absent for the job of a task.
+// JobListenerEventType The event type of the execution listener whose job this is: `start` before the element's own work, `end` after it. Absent for the job of an element.
 type JobListenerEventType string
 
 // JobFailure defines model for JobFailure.

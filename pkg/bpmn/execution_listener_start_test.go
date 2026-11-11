@@ -566,7 +566,7 @@ func TestImportLogsADefinitionWhoseStartEventListenerRuns(t *testing.T) {
 	fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")
 	require.NoError(t, err)
 	logged := func() int {
-		return strings.Count(log.String(), "imported process definition carries start event listeners")
+		return strings.Count(log.String(), "imported process definition carries execution listeners the engine runs")
 	}
 
 	key := engine.generateKey()

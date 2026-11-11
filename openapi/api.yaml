@@ -4081,13 +4081,16 @@ components:
           description: Configurable worker-routing type
         elementType:
           type: string
-          description: BPMN element type that created the job; `START_EVENT` for the job of an execution listener
+          description: >
+            BPMN element type of the element the job belongs to. The job of an execution listener
+            carries the type of the listener's element, such as `START_EVENT` or `SERVICE_TASK`;
+            `listenerEventType` tells it from the element's own job.
         listenerEventType:
           type: string
-          enum: [end]
+          enum: [start, end]
           description: >
-            The event type of the execution listener whose job this is: `end` on a start event.
-            Absent for the job of a task.
+            The event type of the execution listener whose job this is: `start` before the
+            element's own work, `end` after it. Absent for the job of an element.
         processInstanceKey:
           type: integer
           format: int64

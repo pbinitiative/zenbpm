@@ -5,19 +5,88 @@ sidebar_label: Execution listeners
 
 # Execution listeners
 
-An execution listener is a job the engine creates at a fixed point of a process instance's life,
-for an external worker to report it. ZenBPM runs a listener in one position, in the XML shape of
-Camunda 8:
+An execution listener is a job the engine creates at a fixed point of an element's life, for an
+external worker to take part in it. ZenBPM runs listeners in the XML shape of Camunda 8, on these
+elements:
 
-| Position | Event type | When the job is created | What waits for the job |
-|---|---|---|---|
-| a start event directly under `<process>` | `end` | when a token reaches the start event | the token: it leaves the start event when the job is completed |
+| Element | Event types |
+|---|---|
+| a service task, a send task, a user task | `start`, `end` |
+| a business rule task with a `zenbpm:taskDefinition` | `start`, `end` |
+| an intermediate event which throws a message | `start`, `end` |
+| a start event directly under `<process>` | `end` |
 
-A listener anywhere else is refused when the process is deployed (see
+They run wherever such an element sits: in the process, in an embedded sub-process and in a
+called process. They do not run on a multi-instance activity. A listener
+anywhere else is refused when the process is deployed (see
 [What a deployment refuses](#what-a-deployment-refuses)), except one on the `<process>` element
 itself, which ZenBPM neither runs nor refuses.
 
-## A listener on a start event
+## The life of an element with listeners
+
+```xml
+<bpmn:serviceTask id="ship">
+  <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="ship-order" />
+    <zenbpm:executionListeners>
+      <zenbpm:executionListener eventType="start" type="reserve-stock" />
+      <zenbpm:executionListener eventType="end" type="notify-customer" />
+    </zenbpm:executionListeners>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_1</bpmn:incoming>
+  <bpmn:outgoing>Flow_2</bpmn:outgoing>
+</bpmn:serviceTask>
+```
+
+A token which enters the element stays in it across several jobs, one at a time:
+
+1. The element's input mappings are evaluated.
+2. Its `start` listeners run, in the order of the model: the job of the first is created, and
+   when it is completed the job of the next.
+3. The element's own work runs: the job of the task. The boundary events of the task watch this
+   step only, neither the listeners before it nor the ones after it.
+4. When the job of the task is completed, the output mappings are applied.
+5. Its `end` listeners run, in the order of the model.
+6. The token leaves the element by its outgoing sequence flows.
+
+While the token is in the element, the element reads active in the history and in the UI, and its
+outputs show in the history from step 4 on. An element left by a boundary event, after a BPMN
+error of its job for example, runs no `end` listener.
+
+Several listeners of one event type are allowed. Two of them need different `type`s: a deployment
+refuses two listeners of one element with the same `eventType` and `type`.
+
+Starting a token at the element (`POST /v1/modify/start-process-instance`) enters it as every
+token does, so its `start` listeners run. Cancelling the instance terminates whichever job the
+token waits for, as every job of the instance; a completion sent afterwards is answered `409`.
+
+Each job of the element counts as one flow node execution towards
+[`maxProcessInstanceFlowNodeCount`](../configuration.md), and its leaving as one more: a task with
+two `start` and two `end` listeners counts six, where a task without listeners counts one.
+
+## Variables
+
+A listener's job carries the variables of its element: a copy of the instance's variables as they
+are when the job is created, under the results of the element's input mappings, under the
+variables the earlier jobs of the element were completed with. So:
+
+- a `start` listener sees the instance and the results of the input mappings;
+- the variables a `start` listener's job is completed with are local to the element: the later
+  `start` listeners and the element's own job get them as input variables, and nothing outside the
+  element does;
+- an `end` listener sees the instance as the output mappings left it, the element's local
+  variables, and the variables the element's own job was completed with;
+- the variables an `end` listener's job is completed with are seen by the later `end` listeners
+  of the element only.
+
+The variables of a listener's completion never reach the instance by themselves, as the variables
+of every job: an output mapping of the element has to name them. `=reserved` as the source of an
+output mapping of the task above writes what `reserve-stock` was completed with as `reserved` to
+the instance. A start event has no job of its own, so nothing its `end` listeners are completed
+with reaches the instance; a worker which has to set a variable there does so with
+`PATCH /v1/process-instances/{key}/variables` before it completes the job.
+
+## Listeners on a start event
 
 ```xml
 <bpmn:startEvent id="StartEvent_1">
@@ -30,70 +99,71 @@ itself, which ZenBPM neither runs nor refuses.
 </bpmn:startEvent>
 ```
 
-Every trigger takes it: a none start event, a [timer start event](./supported-elements/events/timer-events.md#timer-start-event)
+A start event takes `end` listeners only, as in Camunda 8. Every trigger takes them: a none start
+event, a [timer start event](./supported-elements/events/timer-events.md#timer-start-event)
 and a [message start event](./supported-elements/events/message-events.md#message-start-event),
 in a process that is started by the API, by a timer, by a message, or by a call activity. A process
-with several start events gets a job for each start event a token reaches.
+with several start events gets the jobs of each start event a token reaches.
 
 When the token reaches the start event, the start event's output mappings are applied first, then
-the job is created and the token waits. The output mappings are those of a top-level start event
-(see [Start events](./supported-elements/events/index.mdx#start-events)): a process started by a call
-activity does not apply its start event's output mappings, with a listener or without one. While it waits, the start event reads active in the history
-and in the UI, and the instance reads `active`. Nothing behind the start event runs: a message
-start is answered `201` as soon as the instance exists, and a failure behind the start event, such
-as a called process which is not deployed, surfaces only after the job is completed, as an
-incident of that run. When the job is completed, the token leaves the start event and the instance
-runs on.
+the job of the first listener is created and the token waits. The output mappings are those of a
+top-level start event (see [Start events](./supported-elements/events/index.mdx#start-events)): a
+process started by a call activity does not apply its start event's output mappings, with a
+listener or without one. While the token waits, the instance reads `active`, and nothing behind the
+start event runs: a message start is answered `201` as soon as the instance exists, and a failure
+behind the start event, such as a called process which is not deployed, surfaces only after the
+last listener's job is completed, as an incident of that run.
 
-A start event of a sub-process takes no listener. Starting an instance at another element
-(`POST /v1/modify/start-process-instance`), an instantiating receive task and the iterations
-of a multi-instance activity create no listener job; only the process each iteration of a
-multi-instance call activity starts runs its own start event listener, as every called process
-does. Modifying an instance to start a token at a
-start event runs its listener again, with a second job, so a worker has to be idempotent.
-
-Cancelling the instance while the job waits terminates the job with the instance, as every job of
-it; a completion sent afterwards is answered `409`.
+A start event of a sub-process takes no listener. Starting an instance at another element, an
+instantiating receive task and the iterations of a multi-instance activity create no job of a
+start event listener; only the process each iteration of a multi-instance call activity starts
+runs its own start event listeners, as every called process does. Modifying an instance to start
+a token at a start event runs its listeners again, with new jobs, so a worker has to be idempotent.
 
 ## What a listener job carries
 
 A listener job is a job as any other, with two differences in what a worker sees:
 
-- `elementType` is `START_EVENT`; `listenerEventType` (REST) and `listener_event_type` (the gRPC
-  job stream) are `end`, and absent for the job of a task;
-- its `inputVariables` are the instance's variables, as for every job, including the start event's
-  outputs.
-
-Completing a listener job changes no variable: the variables sent with the completion are kept on
-the job only. A worker which has to set variables on the instance does so with
-`PATCH /v1/process-instances/{key}/variables` before it completes the job.
+- `elementType` and `elementId` are those of the listener's element, such as `START_EVENT` or
+  `SERVICE_TASK`; `listenerEventType` (REST) and `listener_event_type` (the gRPC job stream) are
+  `start` or `end`, and absent for the element's own job;
+- its `inputVariables` are the variables of the element (see [Variables](#variables)).
 
 A listener job is never handed to a task handler registered in the engine, even one registered for
-the id of the start event: it is for external workers only.
+the id or the type of its element: it is for external workers only. Such a handler does the
+element's own work, between the listeners.
 
 A listener job cannot throw a BPMN error: a failure with an error code is answered `400`, and the
 job stays as it was. A failure of an ended job, or of a delivery whose failure was recorded
 already, is answered as for every job, with or without an error code. A failure without an error
-code spends the retries as for every job (see
-[Jobs](../jobs.md#failures-and-retries)). When they are gone, the incident stands on the start
-event, and resolving it hands out the job again.
+code spends the retries as for every job (see [Jobs](../jobs.md#failures-and-retries)). When they
+are gone, the incident stands on the listener's element, and resolving it hands out the job again.
+
+## Incidents
+
+Resolving an incident of an element with listeners goes on where the element stood. A listener
+whose job was completed never runs again for the same token in the element, whichever step failed:
+a listener's job, the element's own job, or the creation of the next job. This differs from
+Camunda 8, which runs the earlier listeners again after some failures.
+
+As for every element, resolving evaluates the element's input mappings again, with the variables
+the instance has then, and rebuilds the variables of the job which waits; what the earlier jobs of
+the element were completed with is kept.
 
 ## Attributes
 
 | Attribute | Meaning |
 |---|---|
-| `eventType` | `end` |
+| `eventType` | `start` or `end` |
 | `type` | the job type, a literal; surrounding whitespace is dropped |
 | `retries` | the job's retries, a literal as the `retries` of a `zenbpm:taskDefinition`; absent, the engine default |
 | `retryBackoff` | the job's backoff policy, a literal as the `retryBackoff` of a `zenbpm:taskDefinition`; absent, the engine default |
 
 FEEL expressions are refused in all of them, so that creating a listener's job can never fail on
-an expression. Resolving an incident of a listener job rebuilds the job's variables from the
-instance, as for every job.
+an expression.
 
 The listeners are read in every namespace: `zenbpm:executionListeners` and
-`zeebe:executionListeners` work alike, so a model drawn for Camunda 8 keeps its start event
-listeners. Only one listener per start event is supported.
+`zeebe:executionListeners` work alike, so a model drawn for Camunda 8 keeps its listeners.
 
 ## What a deployment refuses
 
@@ -101,54 +171,60 @@ A deployment is answered `400`, with a message naming the element, for:
 
 | Where | Refused |
 |---|---|
-| a start event directly under `<process>` | a listener of another event type than `end`, more than one listener, or a listener on a start event without an outgoing sequence flow |
-| a start event without an `id`, or whose `id` another flow node of the process shares, a boundary event included | any listener |
-| a start event | a listener outside `extensionElements` > `executionListeners`, such as one without the `executionListeners` element or one in the shape of Camunda 7 |
-| a start event outside the flow of a process, that is neither directly in a process nor in a sub-process nested in its flow, such as one inside extension elements | any listener |
-| an embedded or event sub-process, and its start events | any listener |
-| any other element | any listener |
+| an element which runs listeners | a listener of an event type the element does not run, two listeners with the same `eventType` and `type`, or a listener on an element without an outgoing sequence flow |
+| an element without an `id`, or whose `id` another flow node of the process shares, a boundary event included | any listener |
+| any flow node | a listener outside `extensionElements` > `executionListeners`, such as one without the `executionListeners` element or one in the shape of Camunda 7 |
+| a flow node outside the flow of a process, that is neither directly in a process nor in a sub-process nested in its flow, such as one inside extension elements | any listener |
+| a multi-instance activity | any listener |
+| any other element: a manual task, a business rule task calling a decision, a receive task, a call activity, a sub-process and its start events, an end event, an intermediate catch event, a link event, a boundary event, a gateway | any listener |
 | any element | any task listener (`taskListeners`) |
 | any listener | a blank `type`, or a `type`, `retries` or `retryBackoff` which is a FEEL expression or a literal which does not parse |
 
 For example:
 
 ```
-execution listener eventType="start" on service task id="ship" is not supported: only a start event directly under the process takes an execution listener, with eventType="end"
+execution listener eventType="end" on manual task id="sign" is not supported: execution listeners run on a service, send or user task, a business rule task with a task definition and a message throw event, none of them multi-instance (eventType="start" or "end"), and on a start event directly under the process (eventType="end")
 ```
 
 Until this version, ZenBPM deployed such a model and silently never ran its listeners. A model drawn
-for Camunda 8 with listeners on tasks, gateways or other events is refused from this version on.
-This holds for a repeated deployment of a model stored before as well: one which reached only some
-partitions before the upgrade cannot be completed by deploying it again, but only by deploying it
-without the refused listeners. A listener on the `<process>` element is still deployed and not
-run, as before, wherever it sits in the element's `extensionElements`, inside another extension
-element too.
+for Camunda 8 with listeners on gateways, sub-processes or other events is refused from this
+version on. This holds for a repeated deployment of a model stored before as well: one which
+reached only some partitions before the upgrade cannot be completed by deploying it again, but only
+by deploying it without the refused listeners. A listener on the `<process>` element is still
+deployed and not run, as before, wherever it sits in the element's `extensionElements`, inside
+another extension element too.
 
 ## Definitions deployed before
 
 A definition stored by an earlier version is loaded without the checks of a deployment, so that it
-keeps running. Its start event listeners run for every instance started from this version on;
-instances which passed their start events before are not affected. Its listeners in any other
-position are not run, as before. A stored start event listener which a deployment would refuse
-raises an incident on its start event instead of creating a job: one whose `type` is blank or
-whose `type`, `retries` or `retryBackoff` is a FEEL expression, one beside another listener of
-its start event, one on a start event without an outgoing sequence flow, and one on a start event
-whose `id` another flow node shares, where every token at that `id` raises the incident. When a cluster restore copies a definition to a partition which lacks it, the engine logs one
-line for each copied definition whose start event listeners run. A definition a partition
-restores from its own backup, or which only an upgrade brings to this version, is not logged.
+keeps running. Its listeners on the elements named at the top of this page run for every token
+which enters such an element from this version on. A token which already waited in a task before,
+behind the task's job, leaves the task when that job is completed, as before: the task's `end`
+listeners do not run for it. An instance of a model drawn for Camunda 8, deployed before, so waits
+at its first listener from this version on until a worker serves the listener's `type`.
+
+Its listeners in any other position are not run, as before. A stored listener which a deployment
+would refuse on an element which runs listeners raises an incident on that element instead of
+creating a job: one whose `type` is blank or whose `type`, `retries` or `retryBackoff` is a FEEL
+expression, one beside another listener of the same `eventType` and `type`, one on an element
+without an outgoing sequence flow, and one on an element whose `id` another flow node shares,
+where every token at that `id` raises the incident. When a cluster restore copies a definition to
+a partition which lacks it, the engine logs one line for each copied definition whose listeners
+run. A definition a partition restores from its own backup, or which only an upgrade brings to
+this version, is not logged.
 
 ## Upgrading a cluster
 
-A node running an earlier version ignores start event listeners: an instance started on a
-partition which such a node leads runs without the listener's job. Such a node does not know the
-job of a listener either, so while it leads a partition, a listener job which an upgraded node
+A node running an earlier version ignores listeners: a token which enters an element on a
+partition which such a node leads passes it without the listeners' jobs. Such a node does not know
+the job of a listener either, so while it leads a partition, a listener job which an upgraded node
 created there cannot be completed and its incident cannot be resolved, and a failure with an error
-code is taken as a BPMN error, which an error event sub-process may catch. The instance waits at
-its start event until an upgraded node leads the partition again. Upgrade every node of the
-cluster before deploying processes with start event listeners.
+code is taken as a BPMN error, which an error event sub-process may catch. The token waits in its
+element until an upgraded node leads the partition again. Upgrade every node of the cluster before
+deploying processes with listeners.
 
-Not deploying is not enough for a process deployed before the upgrade whose start events
-already carry listeners: from the first upgraded node on, its listeners run wherever an upgraded
-node leads, and nowhere else. Where every instance has to reach the listener's worker, hold back
+Not deploying is not enough for a process deployed before the upgrade whose elements already
+carry listeners: from the first upgraded node on, its listeners run wherever an upgraded node
+leads, and nowhere else. Where every instance has to reach the listeners' workers, hold back
 every start of such a process (by the API, by a message, by a call activity, and its timer
 starts) until every node runs this version.

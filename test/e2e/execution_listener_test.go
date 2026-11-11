@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
@@ -76,6 +77,70 @@ func TestStartListenerHoldsAnInstanceCreatedOverRest(t *testing.T) {
 
 	work := waitForProcessInstanceActiveJobByElementId(t, instance.Key, "listener-work")
 	assert.Nil(t, work.ListenerEventType, "absent for the job of a task")
+}
+
+func TestATaskRunsItsListenersAroundItsJobOverRest(t *testing.T) {
+	task := deployListenerTask(t)
+	instance, err := createProcessInstance(t, &task.definitionKey, map[string]any{"order": "o-3"})
+	require.NoError(t, err)
+	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
+
+	before := waitForActiveJobOfType(t, instance.Key, task.beforeJobType)
+	assert.Equal(t, "listened-task", before.ElementId)
+	assert.Equal(t, "SERVICE_TASK", before.ElementType, "a listener's job carries the type of its element")
+	require.NotNil(t, before.ListenerEventType)
+	assert.Equal(t, public.JobListenerEventTypeStart, *before.ListenerEventType)
+	assert.Equal(t, "o-3", before.InputVariables["order"])
+	completeListenerTaskJob(t, before.Key, map[string]any{"reserved": "r-1"})
+
+	work := waitForActiveJobOfType(t, instance.Key, task.workJobType)
+	assert.Nil(t, work.ListenerEventType, "absent for the task's own job")
+	assert.Equal(t, before.ElementInstanceKey, work.ElementInstanceKey, "the token stayed in the task")
+	assert.Equal(t, "r-1", work.InputVariables["reserved"], "the task's job sees what its start listener was completed with")
+	completeListenerTaskJob(t, work.Key, map[string]any{"shipped": true})
+
+	after := waitForActiveJobOfType(t, instance.Key, task.afterJobType)
+	require.NotNil(t, after.ListenerEventType)
+	assert.Equal(t, public.JobListenerEventTypeEnd, *after.ListenerEventType)
+	assert.Equal(t, "r-1", after.InputVariables["reservedBefore"], "the output mapping wrote the start listener's variable to the instance")
+	assert.Equal(t, true, after.InputVariables["shipped"], "the end listener sees what the task's job was completed with")
+	listened := getFlowElementByElementId(t, instance.Key, "listened-task")
+	assert.Nil(t, listened.CompletedAt, "the task reads active while its end listener runs")
+	completeListenerTaskJob(t, after.Key, map[string]any{"notified": true})
+
+	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+	completed, err := getProcessInstance(t, instance.Key)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"order": "o-3", "reservedBefore": "r-1"}, completed.Variables,
+		"what the jobs of the task were completed with reaches the instance through its output mappings only")
+}
+
+func TestTheListenersOfATaskReachWorkersOverTheJobStream(t *testing.T) {
+	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	worker := zenclient.NewGrpc(conn)
+	task := deployListenerTask(t)
+	var order atomic.Value
+	order.Store("")
+	register := func(jobType string, listenerEventType string) {
+		_, err := worker.RegisterWorker(t.Context(), jobType, func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+			assert.Equal(t, listenerEventType, job.GetListenerEventType())
+			assert.Equal(t, "SERVICE_TASK", job.GetElementType())
+			order.Store(order.Load().(string) + " " + listenerEventType + "/" + job.GetElementId())
+			return map[string]any{"reserved": "r-2"}, nil
+		}, jobType)
+		require.NoError(t, err)
+	}
+	register(task.beforeJobType, "start")
+	register(task.workJobType, "")
+	register(task.afterJobType, "end")
+
+	instance, err := createProcessInstance(t, &task.definitionKey, nil)
+	require.NoError(t, err)
+
+	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+	assert.Equal(t, " start/listened-task /listened-task end/listened-task", order.Load())
 }
 
 func TestMessageStartListenerAnswersThePublisherBeforeItsJobIsCompleted(t *testing.T) {
@@ -164,6 +229,60 @@ func deployListenerProcess(t *testing.T) listenerProcess {
 		`type="listener-work-job"`:  `type="` + process.workJobType + `"`,
 	})
 	return process
+}
+
+// listenerTask is a deployment of listener-task.bpmn under a process id and
+// job types of its own.
+type listenerTask struct {
+	definitionKey int64
+	beforeJobType string
+	workJobType   string
+	afterJobType  string
+}
+
+func deployListenerTask(t *testing.T) listenerTask {
+	t.Helper()
+	suffix := fmt.Sprintf("%d", rand.Int63())
+	task := listenerTask{
+		beforeJobType: "listener-task-before-" + suffix,
+		workJobType:   "listener-task-work-" + suffix,
+		afterJobType:  "listener-task-after-" + suffix,
+	}
+	task.definitionKey = deployListenerFixture(t, "listener-task.bpmn", map[string]string{
+		`id="listener-task"`:          `id="listener-task-` + suffix + `"`,
+		`type="listener-task-before"`: `type="` + task.beforeJobType + `"`,
+		`type="listener-task-work"`:   `type="` + task.workJobType + `"`,
+		`type="listener-task-after"`:  `type="` + task.afterJobType + `"`,
+	})
+	return task
+}
+
+// waitForActiveJobOfType waits for the active job of the given type of the
+// instance: the jobs of one element follow each other on the same element id.
+func waitForActiveJobOfType(t *testing.T, processInstanceKey int64, jobType string) public.Job {
+	t.Helper()
+	var found public.Job
+	require.Eventually(t, func() bool {
+		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
+		if err != nil {
+			return false
+		}
+		for _, job := range jobs {
+			if job.Type == jobType && job.State == public.JobStateActive {
+				found = job
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should expose an active job of type %s", processInstanceKey, jobType)
+	return found
+}
+
+func completeListenerTaskJob(t *testing.T, jobKey int64, variables map[string]any) {
+	t.Helper()
+	response, err := app.restClient.CompleteJobWithResponse(t.Context(), jobKey, zenclient.CompleteJobJSONRequestBody{Variables: &variables})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
 }
 
 func deployListenerFixture(t *testing.T, file string, replacements map[string]string) int64 {

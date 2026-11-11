@@ -712,8 +712,9 @@ type WaitingJob struct {
 	// out issues no tokens, as during a rolling upgrade; the failure then names none, and a client
 	// which copies the field whether or not it is present sends 0, which names none as well.
 	DeliveryToken *int64 `protobuf:"varint,12,opt,name=delivery_token,json=deliveryToken" json:"delivery_token,omitempty"`
-	// The event type of the execution listener whose job this is: "end" for a listener on a
-	// start event. Absent for the job of a task.
+	// The event type of the execution listener whose job this is: "start" before the element's
+	// own work, "end" after it. Absent for the job of an element. element_type is the type of
+	// the listener's element.
 	ListenerEventType *string `protobuf:"bytes,13,opt,name=listener_event_type,json=listenerEventType" json:"listener_event_type,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache

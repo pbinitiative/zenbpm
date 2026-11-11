@@ -22,12 +22,15 @@ External jobs are jobs that require interaction with one of the ZenBPM's public 
 
 ## Listener jobs
 
-An [execution listener](./bpmn/execution-listeners.md) on a start event creates an external job as
-well, when a token reaches the start event. A worker serves it as any other job, and tells it from a
-task's job by `listenerEventType` (`end`, REST) or `listener_event_type` (the gRPC job stream),
-which a task's job does not carry. Its `elementType` is `START_EVENT`. A listener job is never handed to an internal task
-handler, its completion changes no variable, and a failure with an error code is refused with
-`400`, because a listener cannot throw a BPMN error.
+An [execution listener](./bpmn/execution-listeners.md) creates an external job as well: a `start`
+listener when a token enters its element, an `end` listener when the element's own work is done.
+A worker serves it as any other job, and tells it from an element's own job by `listenerEventType`
+(`start` or `end`, REST) or `listener_event_type` (the gRPC job stream), which an element's own
+job does not carry. Its `elementType` is the type of the listener's element, such as `START_EVENT`
+or `USER_TASK`, so a client which picks the jobs of user tasks by `elementType` has to leave out
+the ones carrying a `listenerEventType`. A listener job is never handed to an internal task
+handler, the variables of its completion never reach the instance, and a failure with an error
+code is refused with `400`, because a listener cannot throw a BPMN error.
 
 ## Working with external jobs
 

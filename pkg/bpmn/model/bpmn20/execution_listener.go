@@ -68,6 +68,10 @@ func (p *TProcess) RunnableListenersOf(node FlowNode, eventType string) []extens
 
 // RunsListenersOn reports whether the node carries a listener the engine runs.
 func (p *TProcess) RunsListenersOn(node FlowNode) bool {
+	// asked for every element a token enters: most carry no listener at all
+	if len(node.GetExecutionListeners()) == 0 {
+		return false
+	}
 	runnableEventTypes := p.ListenerEventTypesRunOn(node)
 	for _, listener := range node.GetExecutionListeners() {
 		if slices.Contains(runnableEventTypes, listener.EventType) {

@@ -212,7 +212,7 @@ func (p *TProcess) CheckListeners(node FlowNode) error {
 	if len(listeners) == 0 {
 		return nil
 	}
-	element := flowNodeInWords(node)
+	element := FlowNodeInWords(node)
 	if node.GetId() == "" {
 		return fmt.Errorf("%s without an id carries an execution listener: give every element a unique id", element)
 	}
@@ -317,10 +317,10 @@ func forEachFlowNode(container *TFlowElementsContainer, visit func(node FlowNode
 	}
 }
 
-// flowNodeInWords names the kind of a flow node as a message names it, such
+// FlowNodeInWords names the kind of a flow node as a message names it, such
 // as "start event" for a TStartEvent, from the name of its XML element:
 // several kinds of task answer the same element type.
-func flowNodeInWords(node FlowNode) string {
+func FlowNodeInWords(node FlowNode) string {
 	return xmlNameInWords(bpmnElementName(reflect.Indirect(reflect.ValueOf(node)).Type().Name()))
 }
 

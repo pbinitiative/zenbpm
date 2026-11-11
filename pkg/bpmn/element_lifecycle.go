@@ -115,7 +115,7 @@ func (engine *Engine) activateElement(
 	process := processOf(instance)
 	if process.ListenerIDIsAmbiguous(element.GetId()) {
 		return runtime.ElementScope{}, fmt.Errorf("%s id=%q shares its id with another flow node, and one of them carries an execution listener, so the engine cannot tell which one the token is at; deploy a corrected version of the process",
-			strings.ToLower(strings.ReplaceAll(string(element.GetType()), "_", " ")), element.GetId())
+			bpmn20.FlowNodeInWords(element), element.GetId())
 	}
 	if err := process.CheckListeners(element); err != nil {
 		return runtime.ElementScope{}, fmt.Errorf("%w; deploy a corrected version of the process", err)

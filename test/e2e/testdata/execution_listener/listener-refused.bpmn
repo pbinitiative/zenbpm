@@ -11,15 +11,17 @@
     <bpmn:serviceTask id="listener-refused-task">
       <bpmn:extensionElements>
         <zenbpm:taskDefinition type="listener-refused-job" />
-        <zeebe:executionListeners>
-          <zeebe:executionListener eventType="start" type="listener-on-task" />
-        </zeebe:executionListeners>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="Flow_2" sourceRef="listener-refused-task" targetRef="listener-refused-end" />
     <bpmn:endEvent id="listener-refused-end">
+      <bpmn:extensionElements>
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="start" type="listener-on-end-event" />
+        </zeebe:executionListeners>
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_2</bpmn:incoming>
     </bpmn:endEvent>
   </bpmn:process>

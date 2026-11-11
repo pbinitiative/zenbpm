@@ -124,7 +124,7 @@ func TestDeploymentRefusesAListenerTheEngineDoesNotRun(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode(), string(response.Body))
-	assert.Contains(t, string(response.Body), `execution listener eventType=\"start\" on service task id=\"listener-refused-task\" is not supported`)
+	assert.Contains(t, string(response.Body), `execution listener eventType=\"start\" on end event id=\"listener-refused-end\" is not supported`)
 }
 
 func TestDeploymentRefusesAStartListenerOutsideItsContainer(t *testing.T) {

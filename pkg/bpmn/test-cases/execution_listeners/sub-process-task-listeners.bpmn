@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_sub-process-task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="sub-process-task-listeners" isExecutable="true">
+    <bpmn:startEvent id="outer-start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="outer-start" targetRef="listened-scope" />
+    <bpmn:subProcess id="listened-scope" name="listened-scope">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+      <bpmn:startEvent id="inner-start">
+        <bpmn:outgoing>Flow_3</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_3" sourceRef="inner-start" targetRef="inner-task" />
+      <bpmn:serviceTask id="inner-task" name="inner-task">
+        <bpmn:extensionElements>
+          <zenbpm:taskDefinition type="inner-work" />
+          <zeebe:executionListeners>
+            <zeebe:executionListener eventType="start" type="inner-before" />
+            <zeebe:executionListener eventType="end" type="inner-after" />
+          </zeebe:executionListeners>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_3</bpmn:incoming>
+        <bpmn:outgoing>Flow_4</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_4" sourceRef="inner-task" targetRef="inner-end" />
+      <bpmn:endEvent id="inner-end">
+        <bpmn:incoming>Flow_4</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="listened-scope" targetRef="outer-end" />
+    <bpmn:endEvent id="outer-end">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="sub-process-task-listeners">
+      <bpmndi:BPMNShape id="outer-start_di" bpmnElement="outer-start">
+        <dc:Bounds x="160" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="listened-scope_di" bpmnElement="listened-scope" isExpanded="true">
+        <dc:Bounds x="256" y="80" width="360" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inner-start_di" bpmnElement="inner-start">
+        <dc:Bounds x="296" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inner-task_di" bpmnElement="inner-task">
+        <dc:Bounds x="386" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inner-end_di" bpmnElement="inner-end">
+        <dc:Bounds x="540" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="outer-end_di" bpmnElement="outer-end">
+        <dc:Bounds x="676" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="196" y="180" />
+        <di:waypoint x="256" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="616" y="180" />
+        <di:waypoint x="676" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="332" y="180" />
+        <di:waypoint x="386" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="486" y="180" />
+        <di:waypoint x="540" y="180" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

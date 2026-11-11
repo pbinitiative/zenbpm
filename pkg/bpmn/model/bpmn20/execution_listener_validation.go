@@ -14,7 +14,7 @@ import (
 )
 
 // listenerPositionRule tells the modeller where a listener is run.
-const listenerPositionRule = `only a start event directly under the process takes an execution listener, with eventType="end"`
+const listenerPositionRule = `execution listeners run on a service, send or user task, a business rule task with a task definition and a message throw event, none of them multi-instance (eventType="start" or "end"), and on a start event directly under the process (eventType="end")`
 
 // listenerPathRule tells the modeller where in its element a listener sits.
 const listenerPathRule = `a listener has to sit in an executionListeners element directly inside the extensionElements of its element`
@@ -223,7 +223,7 @@ func (p *TProcess) CheckListeners(node FlowNode) error {
 	runnableEventTypes := p.ListenerEventTypesRunOn(node)
 	rule := listenerPositionRule
 	if len(runnableEventTypes) > 0 {
-		rule = fmt.Sprintf("a %s takes listeners with eventType=%q", element, strings.Join(runnableEventTypes, `" or "`))
+		rule = fmt.Sprintf(`a %s takes listeners with eventType="%s"`, element, strings.Join(runnableEventTypes, `" or "`))
 	}
 	for _, listener := range listeners {
 		if !slices.Contains(runnableEventTypes, listener.EventType) {

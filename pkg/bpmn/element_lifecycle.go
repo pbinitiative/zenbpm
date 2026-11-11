@@ -173,6 +173,33 @@ func (engine *Engine) executeElement(
 			}
 		}
 		return false, nil
+	case bpmn20.InternalTask:
+		// the job carries the variables of the element: its input mappings
+		// were evaluated when it was entered, and its start listeners added theirs
+		variables := scope.VariableHolder(&instance.ProcessInstance().VariableHolder)
+		job, err := engine.createJob(ctx, batch, instance, element, token, variables, jobCreation{leavesHistoryOpen: true})
+		if err != nil {
+			return false, fmt.Errorf("failed to process %s %d: %w", element.GetType(), token.ElementInstanceKey, err)
+		}
+		switch job.State {
+		case runtime.ActivityStateActive:
+			// the boundary events of an activity watch its own work only,
+			// neither its start nor its end listeners
+			if _, isActivity := element.(bpmn20.Activity); isActivity {
+				waiting := token
+				waiting.State = runtime.TokenStateWaiting
+				if err := engine.createBoundaryEventSubscriptions(ctx, batch, waiting, instance, element); err != nil {
+					return false, fmt.Errorf("failed to process boundary events for %s %d: %w", element.GetType(), token.ElementInstanceKey, err)
+				}
+			}
+			return true, nil
+		case runtime.ActivityStateCompleted:
+			// a handler in the engine completed the job at once
+			scope.MergeLocalVariables(job.OutputVariables)
+			return false, nil
+		default:
+			return false, fmt.Errorf("unexpected state %s of the job of %s %s", job.State, element.GetType(), element.GetId())
+		}
 	default:
 		return false, fmt.Errorf("%s %s carries execution listeners, but the engine does not run the element through its lifecycle", element.GetType(), element.GetId())
 	}
@@ -285,6 +312,29 @@ func (engine *Engine) listenerTheScopeWaitsFor(instance runtime.ProcessInstance,
 	return &listeners[scope.ListenerIndex]
 }
 
+// scopeOfElement answers the scope the element instance keeps. The second
+// answer is false for an element without listeners the engine runs, which is
+// never asked for in the storage, and for an element instance which was
+// entered before the engine ran its listeners.
+func (engine *Engine) scopeOfElement(
+	ctx context.Context,
+	instance runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	elementInstanceKey int64,
+) (runtime.ElementScope, bool, error) {
+	if element == nil || !processOf(instance).RunsListenersOn(element) {
+		return runtime.ElementScope{}, false, nil
+	}
+	scope, err := engine.persistence.FindElementScope(ctx, elementInstanceKey)
+	if errors.Is(err, storage.ErrNotFound) {
+		return runtime.ElementScope{}, false, nil
+	}
+	if err != nil {
+		return runtime.ElementScope{}, false, fmt.Errorf("failed to read the scope of element instance %d: %w", elementInstanceKey, err)
+	}
+	return scope, true, nil
+}
+
 // refreshElementScope evaluates the input mappings of the element again, as
 // the resolution of an incident does for every element, and answers the scope
 // with their new results; what the jobs of the element added stays. The
@@ -297,15 +347,9 @@ func (engine *Engine) refreshElementScope(
 	elementInstanceKey int64,
 ) (runtime.ElementScope, bool, error) {
 	element := processOf(instance).GetFlowNodeById(elementID)
-	if element == nil || !processOf(instance).RunsListenersOn(element) {
-		return runtime.ElementScope{}, false, nil
-	}
-	scope, err := engine.persistence.FindElementScope(ctx, elementInstanceKey)
-	if errors.Is(err, storage.ErrNotFound) {
-		return runtime.ElementScope{}, false, nil
-	}
-	if err != nil {
-		return runtime.ElementScope{}, false, fmt.Errorf("failed to read the scope of element instance %d: %w", elementInstanceKey, err)
+	scope, keepsScope, err := engine.scopeOfElement(ctx, instance, element, elementInstanceKey)
+	if err != nil || !keepsScope {
+		return runtime.ElementScope{}, false, err
 	}
 	if mapped, ok := element.(interface {
 		GetInputMapping() []extensions.TIoMapping

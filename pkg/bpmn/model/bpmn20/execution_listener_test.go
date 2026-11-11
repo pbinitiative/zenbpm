@@ -3,6 +3,7 @@ package bpmn20
 import (
 	"encoding/xml"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -109,13 +110,52 @@ func TestListenerJobTypeIsTrimmed(t *testing.T) {
 	assert.Equal(t, "on-start", start.GetTaskDefinition().TypeName)
 }
 
-func TestOnlyAStartEventOfTheProcessRunsAListener(t *testing.T) {
-	definitions := parseListenerModel(t, listenerModel("zeebe", "", "", subProcessWith("", "")))
-	process := &definitions.Process
+func TestTheEngineRunsListenersOnJobElementsAndOnStartEventsOfTheProcess(t *testing.T) {
+	both := []string{"start", "end"}
+	taskDefinition := `<bpmn:extensionElements><zenbpm:taskDefinition type="work" /></bpmn:extensionElements>`
+	multiInstance := `<bpmn:multiInstanceLoopCharacteristics><bpmn:extensionElements><zenbpm:loopCharacteristics inputCollection="=items" inputElement="item" /></bpmn:extensionElements></bpmn:multiInstanceLoopCharacteristics>`
+	cases := []struct {
+		name       string
+		element    string
+		eventTypes []string
+	}{
+		{name: "a start event of a sub-process", element: subProcessWith("", ""), eventTypes: nil},
+		{name: "a service task", element: `<bpmn:serviceTask id="listened">` + taskDefinition + `</bpmn:serviceTask>`, eventTypes: both},
+		{name: "a send task", element: `<bpmn:sendTask id="listened">` + taskDefinition + `</bpmn:sendTask>`, eventTypes: both},
+		{name: "a user task", element: `<bpmn:userTask id="listened" />`, eventTypes: both},
+		{name: "a business rule task with a task definition", element: `<bpmn:businessRuleTask id="listened">` + taskDefinition + `</bpmn:businessRuleTask>`, eventTypes: both},
+		{name: "a business rule task calling a decision", element: `<bpmn:businessRuleTask id="listened"><bpmn:extensionElements><zenbpm:calledDecision decisionId="d" resultVariable="r" /></bpmn:extensionElements></bpmn:businessRuleTask>`},
+		{name: "an event throwing a message", element: `<bpmn:intermediateThrowEvent id="listened">` + taskDefinition + `<bpmn:messageEventDefinition id="m" /></bpmn:intermediateThrowEvent>`, eventTypes: both},
+		{name: "an event throwing a link", element: `<bpmn:intermediateThrowEvent id="listened"><bpmn:linkEventDefinition id="l" name="link" /></bpmn:intermediateThrowEvent>`},
+		{name: "a multi-instance service task", element: `<bpmn:serviceTask id="listened">` + taskDefinition + multiInstance + `</bpmn:serviceTask>`},
+		{name: "a multi-instance user task", element: `<bpmn:userTask id="listened">` + multiInstance + `</bpmn:userTask>`},
+		{name: "a manual task", element: `<bpmn:manualTask id="listened" />`},
+		{name: "a receive task", element: `<bpmn:receiveTask id="listened" />`},
+		{name: "a call activity", element: `<bpmn:callActivity id="listened" />`},
+		{name: "a sub-process", element: `<bpmn:subProcess id="listened" />`},
+		{name: "an end event", element: `<bpmn:endEvent id="listened" />`},
+		{name: "an end event sending a message", element: `<bpmn:endEvent id="listened">` + taskDefinition + `<bpmn:messageEventDefinition id="m" /></bpmn:endEvent>`},
+		{name: "an intermediate catch event", element: `<bpmn:intermediateCatchEvent id="listened"><bpmn:timerEventDefinition id="t"><bpmn:timeDuration>PT1S</bpmn:timeDuration></bpmn:timerEventDefinition></bpmn:intermediateCatchEvent>`},
+		{name: "an exclusive gateway", element: `<bpmn:exclusiveGateway id="listened" />`},
+		{name: "a parallel gateway", element: `<bpmn:parallelGateway id="listened" />`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			definitions := parseListenerModel(t, listenerModel("zeebe", "", "", tc.element))
+			process := &definitions.Process
+			id := "listened"
+			if process.GetFlowNodeById(id) == nil {
+				id = "sub-start"
+			}
 
-	assert.Equal(t, []string{"end"}, process.ListenerEventTypesRunOn(&process.StartEvents[0]))
-	assert.Empty(t, process.ListenerEventTypesRunOn(process.GetFlowNodeById("sub-start")))
-	assert.Empty(t, process.ListenerEventTypesRunOn(process.GetFlowNodeById("task")))
+			assert.Equal(t, tc.eventTypes, process.ListenerEventTypesRunOn(process.GetFlowNodeById(id)))
+		})
+	}
+
+	definitions := parseListenerModel(t, listenerModel("zeebe", "", "", `<bpmn:boundaryEvent id="boundary" attachedToRef="task" />`))
+	assert.Equal(t, []string{"end"}, definitions.Process.ListenerEventTypesRunOn(&definitions.Process.StartEvents[0]), "a start event takes no start listener")
+	assert.Equal(t, both, definitions.Process.ListenerEventTypesRunOn(definitions.Process.GetFlowNodeById("task")))
+	assert.Empty(t, definitions.Process.ListenerEventTypesRunOn(&definitions.Process.BoundaryEvent[0]))
 }
 
 func TestEveryFlowNodeReadsItsListeners(t *testing.T) {
@@ -137,6 +177,11 @@ func TestEveryFlowNodeReadsItsListeners(t *testing.T) {
 			assert.Equal(t, []extensions.TExecutionListener{{EventType: "start", Type: "a"}, {EventType: "end", Type: "b"}},
 				listened.GetExecutionListeners())
 			assert.NoError(t, ValidateListenerPositions([]byte(model)), "the position check leaves a listener the model reads to the model check")
+			// the bare element is refused for another reason where the engine runs its start listener
+			if slices.Contains(definitions.Process.ListenerEventTypesRunOn(listened), "start") {
+				assert.ErrorContains(t, definitions.ValidateForDeployment(), xmlNameInWords(tag)+` id="listened" has an execution listener but no outgoing sequence flow`)
+				return
+			}
 			assert.ErrorContains(t, definitions.ValidateForDeployment(),
 				fmt.Sprintf(`execution listener eventType="start" on %s id="listened" is not supported`, xmlNameInWords(tag)))
 		})
@@ -214,12 +259,38 @@ func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 		{
 			name:         "a listener on a start event of a sub-process",
 			other:        subProcessWith("", listenersOf("zeebe", `eventType="end" type="t"`)),
-			errorMessage: `execution listener eventType="end" on start event id="sub-start" is not supported: only a start event directly under the process takes an execution listener, with eventType="end"`,
+			errorMessage: `execution listener eventType="end" on start event id="sub-start" is not supported: ` + listenerPositionRule,
 		},
 		{
-			name:         "a listener on a task",
-			other:        `<bpmn:serviceTask id="listened-task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="start" type="t"`) + `</bpmn:extensionElements></bpmn:serviceTask>`,
-			errorMessage: `execution listener eventType="start" on service task id="listened-task" is not supported: only a start event directly under the process takes an execution listener, with eventType="end"`,
+			name:         "a listener of an unknown event type on a task",
+			other:        `<bpmn:serviceTask id="listened-task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="start" type="t"`, `eventType="cancel" type="t"`) + `</bpmn:extensionElements></bpmn:serviceTask>`,
+			errorMessage: `execution listener eventType="cancel" on service task id="listened-task" is not supported: a service task takes listeners with eventType="start" or "end"`,
+		},
+		{
+			name: "a listener on a multi-instance task",
+			other: `<bpmn:serviceTask id="listened-task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="start" type="t"`) + `</bpmn:extensionElements>` +
+				`<bpmn:multiInstanceLoopCharacteristics><bpmn:extensionElements><zenbpm:loopCharacteristics inputCollection="=items" inputElement="item" /></bpmn:extensionElements></bpmn:multiInstanceLoopCharacteristics></bpmn:serviceTask>`,
+			errorMessage: `execution listener eventType="start" on service task id="listened-task" is not supported: ` + listenerPositionRule,
+		},
+		{
+			name:         "a listener on a manual task",
+			other:        `<bpmn:manualTask id="listened-task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) + `</bpmn:extensionElements></bpmn:manualTask>`,
+			errorMessage: `execution listener eventType="end" on manual task id="listened-task" is not supported: ` + listenerPositionRule,
+		},
+		{
+			name:         "a listener on an end event",
+			other:        `<bpmn:endEvent id="listened-end"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="start" type="t"`) + `</bpmn:extensionElements></bpmn:endEvent>`,
+			errorMessage: `execution listener eventType="start" on end event id="listened-end" is not supported: ` + listenerPositionRule,
+		},
+		{
+			name:         "a listener on a boundary event",
+			other:        `<bpmn:boundaryEvent id="listened-boundary" attachedToRef="task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="end" type="t"`) + `</bpmn:extensionElements></bpmn:boundaryEvent>`,
+			errorMessage: `execution listener eventType="end" on boundary event id="listened-boundary" is not supported: ` + listenerPositionRule,
+		},
+		{
+			name:         "two listeners of the same event type and job type on a task, beside one of the other event type",
+			other:        `<bpmn:serviceTask id="listened-task"><bpmn:extensionElements>` + listenersOf("zeebe", `eventType="start" type="t"`, `eventType="end" type="t"`, `eventType="start" type="t"`) + `</bpmn:extensionElements></bpmn:serviceTask>`,
+			errorMessage: `service task id="listened-task" has two execution listeners with eventType="start" and type="t"`,
 		},
 		{
 			name: "a listener on a start event of a sub-process sharing its id with a start event of the process",

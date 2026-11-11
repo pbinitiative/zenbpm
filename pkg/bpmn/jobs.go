@@ -48,6 +48,10 @@ type jobCreation struct {
 	// written when the element was entered.
 	writesHistoryInput bool
 	historyInput       map[string]any
+	// leavesHistoryOpen keeps the element's history row open where a handler
+	// in the engine completes the job at once: the row gets the outputs, and
+	// is completed when the token leaves the element.
+	leavesHistoryOpen bool
 }
 
 // createJob creates the job of a task, or of an execution listener, with the
@@ -211,6 +215,10 @@ func (engine *Engine) createJob(
 				jobError = newEngineErrorf("failing internal job with message: %s", err)
 			} else {
 				job.State = runtime.ActivityStateCompleted
+				var completedAt *time.Time
+				if !created.leavesHistoryOpen {
+					completedAt = new(time.Now())
+				}
 				if updateErr := batch.UpdateOutputFlowElementInstance(ctx,
 					runtime.FlowElementInstance{
 						Key:                currentToken.ElementInstanceKey,
@@ -219,7 +227,7 @@ func (engine *Engine) createJob(
 						ElementType:        string(element.GetType()),
 						ExecutionTokenKey:  currentToken.Key,
 						OutputVariables:    output,
-						CompletedAt:        new(time.Now()),
+						CompletedAt:        completedAt,
 					},
 				); updateErr != nil {
 					job.State = runtime.ActivityStateFailed

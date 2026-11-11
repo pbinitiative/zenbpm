@@ -488,7 +488,10 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 // completeElementOfJob does what the completion of an element's own job does
 // to the element: the output mappings are applied, the history row is
 // completed, the boundary events of the element are cancelled, and the token
-// leaves the element.
+// leaves the element. Where the element keeps a scope, because it carries
+// execution listeners, the token stays instead: the scope takes the variables
+// of the completion, for the end listeners to see, and moves on to them
+// (see runElementLifecycle), and the history row stays open until they ran.
 func (engine *Engine) completeElementOfJob(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -503,6 +506,15 @@ func (engine *Engine) completeElementOfJob(
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job), err)
 	}
+	// a job created before the engine ran listeners on its element has no scope
+	scope, keepsScope, err := engine.scopeOfElement(ctx, instance, task, job.ElementInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	completedAt := new(time.Now())
+	if keepsScope {
+		completedAt = nil
+	}
 	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                job.Token.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
@@ -510,7 +522,7 @@ func (engine *Engine) completeElementOfJob(
 		ElementType:        string(task.GetType()),
 		ExecutionTokenKey:  job.Token.Key,
 		OutputVariables:    outputVariables,
-		CompletedAt:        new(time.Now()),
+		CompletedAt:        completedAt,
 	})
 	if err != nil {
 		return nil, err
@@ -518,6 +530,16 @@ func (engine *Engine) completeElementOfJob(
 	err = engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, job.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	if keepsScope {
+		scope.MergeLocalVariables(variables)
+		scope.Phase, scope.ListenerIndex = runtime.ElementPhaseCompleting, 0
+		if err := batch.SaveElementScope(ctx, scope); err != nil {
+			return nil, fmt.Errorf("failed to save the scope of element instance %d: %w", scope.ElementInstanceKey, err)
+		}
+		token := job.Token
+		token.State = runtime.TokenStateRunning
+		return []runtime.ExecutionToken{token}, nil
 	}
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, task, job.Token)
 	if err != nil {

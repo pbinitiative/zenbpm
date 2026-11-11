@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_job-element-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="job-element-listeners-process" isExecutable="true">
+    <bpmn:startEvent id="job-element-start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="job-element-start" targetRef="listened-element" />
+    <bpmn:serviceTask id="listened-element" name="listened-element">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="element-work" />
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="start" type="element-before" />
+          <zeebe:executionListener eventType="end" type="element-after" />
+        </zeebe:executionListeners>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="listened-element" targetRef="job-element-end" />
+    <bpmn:endEvent id="job-element-end">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="job-element-listeners-process">
+      <bpmndi:BPMNShape id="job-element-start_di" bpmnElement="job-element-start">
+        <dc:Bounds x="160" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="listened-element_di" bpmnElement="listened-element">
+        <dc:Bounds x="256" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="job-element-end_di" bpmnElement="job-element-end">
+        <dc:Bounds x="416" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="196" y="120" />
+        <di:waypoint x="256" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="356" y="120" />
+        <di:waypoint x="416" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

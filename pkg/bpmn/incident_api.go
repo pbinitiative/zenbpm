@@ -130,7 +130,11 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	if keepsScope {
 		variables := scope.VariableHolder(&instance.ProcessInstance().VariableHolder)
 		job.InputVariables = variables.LocalVariables()
-		return nil
+		if isListenerJob(*job) {
+			// the history row of the element is not the listener's
+			return nil
+		}
+		return engine.saveHistoryInput(ctx, batch, job, instance.ProcessInstance().VariableHolder.ExecutionScopeSnapshot())
 	}
 
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
@@ -155,6 +159,20 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	job.InputVariables = variableHolder.LocalVariables()
 
 	flowElementInstance.InputVariables = flowElementInput
+	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
+		return fmt.Errorf("failed to update input variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	return nil
+}
+
+// saveHistoryInput writes the variables the element of the job was evaluated
+// from into its history row.
+func (engine *Engine) saveHistoryInput(ctx context.Context, batch *EngineBatch, job *runtime.Job, input map[string]any) error {
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find flow element instance %d for job %d: %w", job.ElementInstanceKey, job.Key, err)
+	}
+	flowElementInstance.InputVariables = input
 	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
 		return fmt.Errorf("failed to update input variables for flow element instance %d: %w", flowElementInstance.Key, err)
 	}

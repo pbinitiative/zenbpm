@@ -45,6 +45,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestJobStorageReader,
 		st.TestPendingJobsAreTheActiveCompletingAndFailedOnes,
 		st.TestJobRetryStateRoundTrips,
+		st.TestAJobKeepsWhatItBelongsTo,
 		st.TestActiveJobsLeaveOutJobsWaitingOutABackoff,
 		st.TestJobFailuresAreListedNewestFirst,
 		st.TestJobFailuresOfTheSameMomentAreListedByKey,
@@ -704,6 +705,34 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 		assert.Equal(t, int32(1), stored.Attempts)
 		assert.Equal(t, int64(3), stored.FailedDeliveryToken)
 		assert.Equal(t, int64(3), stored.DeliveryToken, "saving a job never takes its delivery token back")
+	}
+}
+
+func (st *StorageTester) TestAJobKeepsWhatItBelongsTo(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ofAnElement := st.saveJobWithToken(t, s, func(*bpmnruntime.Job) {})
+		ofAListener := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Kind = bpmnruntime.JobKindExecutionListener
+			job.ListenerEventType = "start"
+		})
+
+		stored, err := s.FindJobByJobKey(t.Context(), ofAnElement.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.JobKindElement, stored.Kind)
+		assert.Empty(t, stored.ListenerEventType)
+
+		stored, err = s.FindJobByJobKey(t.Context(), ofAListener.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.JobKindExecutionListener, stored.Kind)
+		assert.Equal(t, "start", stored.ListenerEventType)
+
+		ofAListener.State = bpmnruntime.ActivityStateCompleted
+		require.NoError(t, s.SaveJob(t.Context(), ofAListener))
+		stored, err = s.FindJobByJobKey(t.Context(), ofAListener.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateCompleted, stored.State)
+		assert.Equal(t, bpmnruntime.JobKindExecutionListener, stored.Kind, "an update leaves what the job belongs to")
+		assert.Equal(t, "start", stored.ListenerEventType)
 	}
 }
 

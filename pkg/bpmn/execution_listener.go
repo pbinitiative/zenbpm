@@ -107,12 +107,12 @@ func ensureStartEventIsUnambiguous(instance runtime.ProcessInstance, startEvent 
 // taskOfJob answers the task a job belongs to: a listener of its element, or
 // the element's own task.
 func taskOfJob(instance runtime.ProcessInstance, job runtime.Job) bpmn20.InternalTask {
-	return instance.ProcessInstance().Definition.Definitions.Process.TaskOfJob(job.ElementId, bpmn20.ListenerEventTypeOfJob(job.ElementType))
+	return instance.ProcessInstance().Definition.Definitions.Process.TaskOfJob(job.ElementId, job.ListenerEventType)
 }
 
 // isListenerJob reports whether the job is the job of an execution listener.
 func isListenerJob(job runtime.Job) bool {
-	return bpmn20.ListenerEventTypeOfJob(job.ElementType) != ""
+	return job.Kind == runtime.JobKindExecutionListener
 }
 
 // ensureListenerCanRun refuses to create a listener's job where a deployment

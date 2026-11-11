@@ -1968,6 +1968,8 @@ func buildJob(logger hclog.Logger, job sql.Job) (bpmnruntime.Job, error) {
 	return bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementType:        job.ElementType,
+		Kind:               bpmnruntime.JobKind(job.Kind),
+		ListenerEventType:  job.ListenerEventType.String,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		Key:                job.Key,
@@ -2063,6 +2065,8 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		DeliveryToken:        job.DeliveryToken,
 		FailedDeliveryToken:  job.FailedDeliveryToken,
 		Headers:              headersJSON,
+		Kind:                 int64(job.Kind),
+		ListenerEventType:    ssql.NullString{String: job.ListenerEventType, Valid: job.ListenerEventType != ""},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

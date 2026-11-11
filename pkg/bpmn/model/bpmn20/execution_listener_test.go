@@ -180,12 +180,6 @@ func TestAnIdIsAmbiguousOnlyWhereAListenerTheEngineRunsSharesIt(t *testing.T) {
 	assert.True(t, onTheOtherElement.Process.ListenerIDIsAmbiguous("start"))
 }
 
-func TestListenerEventTypeOfJobFollowsTheElementType(t *testing.T) {
-	assert.Equal(t, "end", ListenerEventTypeOfJob(string(ElementTypeStartEvent)))
-	assert.Equal(t, "", ListenerEventTypeOfJob(string(ElementTypeServiceTask)))
-	assert.Equal(t, "", ListenerEventTypeOfJob(""))
-}
-
 func TestDeploymentRefusesListenersWhereTheEngineDoesNotRunThem(t *testing.T) {
 	cases := []struct {
 		name         string

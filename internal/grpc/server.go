@@ -18,7 +18,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
 
@@ -281,8 +280,8 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			if job.DeliveryToken > 0 {
 				waiting.DeliveryToken = &job.DeliveryToken
 			}
-			if listenerEventType := bpmn20.ListenerEventTypeOfJob(job.ElementType); listenerEventType != "" {
-				waiting.ListenerEventType = &listenerEventType
+			if job.ListenerEventType != "" {
+				waiting.ListenerEventType = &job.ListenerEventType
 			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {

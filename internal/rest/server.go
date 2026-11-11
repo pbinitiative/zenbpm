@@ -32,7 +32,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
@@ -2173,7 +2172,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 	}
 
 	var listenerEventType *public.JobListenerEventType
-	if eventType := bpmn20.ListenerEventTypeOfJob(job.GetElementType()); eventType != "" {
+	if eventType := job.GetListenerEventType(); eventType != "" {
 		listenerEventType = new(public.JobListenerEventType(eventType))
 	}
 

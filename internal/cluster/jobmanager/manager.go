@@ -116,7 +116,10 @@ type Job struct {
 	ElementID      string
 	CreatedAt      int64
 	ElementType    string
-	ClientID       ClientID
+	// ListenerEventType is the event type of the execution listener whose job
+	// this is, and "" for the job of an element.
+	ListenerEventType string
+	ClientID          ClientID
 	// LockUntil is the unix millisecond on the leader's clock at which the
 	// lock of this delivery lapses.
 	LockUntil int64

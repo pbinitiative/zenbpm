@@ -13,16 +13,20 @@ import (
 
 func TestMapProtoJobNamesTheListenerEventType(t *testing.T) {
 	cases := []struct {
-		elementType string
-		expected    *public.JobListenerEventType
+		name              string
+		listenerEventType *string
+		expected          *public.JobListenerEventType
 	}{
-		{elementType: "START_EVENT", expected: new(public.JobListenerEventTypeEnd)},
-		{elementType: "SERVICE_TASK", expected: nil},
+		{name: "the job of an end listener", listenerEventType: new("end"), expected: new(public.JobListenerEventTypeEnd)},
+		{name: "the job of an element", listenerEventType: nil, expected: nil},
 	}
 	for _, tc := range cases {
-		t.Run(tc.elementType, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			state := int64(runtime.ActivityStateActive)
-			mapped, err := (&Server{}).mapProtoJob(&proto.Job{State: &state, InputVariables: []byte(`{}`), ElementType: &tc.elementType})
+			// a listener's job carries the type of its element, which says nothing about the listener
+			mapped, err := (&Server{}).mapProtoJob(&proto.Job{
+				State: &state, InputVariables: []byte(`{}`), ElementType: new("START_EVENT"), ListenerEventType: tc.listenerEventType,
+			})
 			require.NoError(t, err)
 
 			assert.Equal(t, tc.expected, mapped.ListenerEventType)

@@ -185,6 +185,7 @@ type Querier interface {
 	// retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
 	// delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
 	// before a delivery was recorded does not take the token back when it is saved.
+	// kind and listener_event_type are left out as well: what a job belongs to never changes.
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveJobFailure(ctx context.Context, arg SaveJobFailureParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error

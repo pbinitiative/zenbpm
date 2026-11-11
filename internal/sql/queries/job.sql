@@ -2,8 +2,9 @@
 -- retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
 -- delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
 -- before a delivery was recorded does not take the token back when it is saved.
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- kind and listener_event_type are left out as well: what a job belongs to never changes.
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token, kind, listener_event_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,

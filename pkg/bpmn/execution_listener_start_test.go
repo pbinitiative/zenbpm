@@ -29,6 +29,8 @@ func TestStartListenerHoldsTheTokenUntilItsJobIsCompleted(t *testing.T) {
 	job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
 	assert.Equal(t, "start-listener-job", job.Type)
 	assert.Equal(t, string(bpmn20.ElementTypeStartEvent), job.ElementType)
+	assert.Equal(t, runtime.JobKindExecutionListener, job.Kind)
+	assert.Equal(t, "end", job.ListenerEventType)
 	assert.Equal(t, "start-listener-start", job.ElementId)
 	assert.Equal(t, map[string]any{"input": "given", "mappedAtStart": "mapped"}, job.InputVariables,
 		"the job carries the instance's variables, the outputs of the start event included")
@@ -46,6 +48,8 @@ func TestStartListenerHoldsTheTokenUntilItsJobIsCompleted(t *testing.T) {
 
 	next := waitForPendingJobOfType(t, engine, instance.ProcessInstance().Key, "start-listener-after")
 	assert.Equal(t, "start-listener-task", next.ElementId)
+	assert.Equal(t, runtime.JobKindElement, next.Kind, "the job of the task is no listener's")
+	assert.Empty(t, next.ListenerEventType)
 	history, err = engine.persistence.GetFlowElementInstanceByKey(t.Context(), job.ElementInstanceKey)
 	require.NoError(t, err)
 	assert.NotNil(t, history.CompletedAt)

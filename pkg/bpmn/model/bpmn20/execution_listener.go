@@ -110,8 +110,8 @@ func (task *ListenerTask) GetTaskDefinition() extensions.TTaskDefinition {
 
 // TaskOfJob answers the task a job belongs to: the listener of the given
 // event type on the element, or the element's own internal task where the
-// event type is "" (see ListenerEventTypeOfJob). The answer is nil when the
-// element no longer has what created the job.
+// event type is "", as a job which no listener created says. The answer is
+// nil when the element no longer has what created the job.
 func (p *TProcess) TaskOfJob(elementID string, listenerEventType string) InternalTask {
 	if listenerEventType == "" {
 		return p.GetInternalTaskById(elementID)
@@ -126,22 +126,4 @@ func (p *TProcess) TaskOfJob(elementID string, listenerEventType string) Interna
 		}
 	}
 	return nil
-}
-
-// ListenerEventTypeOfJob answers the event type of the execution listener a job
-// belongs to, from the job's element type, or "" for the job of a task. It is
-// the one place which tells a listener's job from a task's job: only a
-// listener creates a job on a start event, so no column of the job is needed
-// yet.
-//
-// TODO: before a listener runs on an element which also creates task jobs, or
-// one element runs listeners of two event types, store the event type in a
-// nullable listener_event_type column of job (its migration fills 'end' where
-// element_type = 'START_EVENT'), set it in createInternalTask, and let this
-// function read the job instead of its element type.
-func ListenerEventTypeOfJob(elementType string) string {
-	if ElementType(elementType) == ElementTypeStartEvent {
-		return extensions.ExecutionListenerEventTypeEnd
-	}
-	return ""
 }

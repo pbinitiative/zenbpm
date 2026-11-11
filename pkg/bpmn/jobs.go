@@ -85,6 +85,10 @@ func (engine *Engine) createInternalTask(
 		Retries:            retries,
 		RetryBackoff:       retryBackoff,
 	}
+	if isListener {
+		job.Kind = runtime.JobKindExecutionListener
+		job.ListenerEventType = listener.EventType()
+	}
 	// Only evaluate assignee for UserTask elements
 	if userTask, ok := element.(bpmn20.UserTask); ok {
 		assigneeResult, err := engine.evaluateExpression(userTask.GetAssignmentAssignee(), jobVarHolder.LocalVariables())

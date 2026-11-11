@@ -174,7 +174,9 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     retry_backoff TEXT,
     retries_set_by_operator BIGINT NOT NULL DEFAULT 0,
     delivery_token BIGINT NOT NULL DEFAULT 0,
-    failed_delivery_token BIGINT NOT NULL DEFAULT 0
+    failed_delivery_token BIGINT NOT NULL DEFAULT 0,
+    kind BIGINT NOT NULL DEFAULT 0,
+    listener_event_type TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key

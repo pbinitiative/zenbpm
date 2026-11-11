@@ -106,6 +106,8 @@ type Job struct {
 	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
 	DeliveryToken        int64          `json:"delivery_token"`
 	FailedDeliveryToken  int64          `json:"failed_delivery_token"`
+	Kind                 int64          `json:"kind"`
+	ListenerEventType    sql.NullString `json:"listener_event_type"`
 }
 
 type JobFailure struct {

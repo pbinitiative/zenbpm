@@ -22,6 +22,7 @@ type Querier interface {
 	// Counted apart from the page: a page beyond the last one has no row to carry a window count.
 	CountJobFailures(ctx context.Context, jobKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
+	DeleteElementScope(ctx context.Context, key int64) error
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
 	// Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
@@ -30,6 +31,7 @@ type Querier interface {
 	DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
+	DeleteProcessInstancesElementScopes(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesErrorSubscriptions(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobFailures(ctx context.Context, keys []int64) error
@@ -54,6 +56,7 @@ type Querier interface {
 	FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error)
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
+	FindElementScope(ctx context.Context, key int64) (ElementScope, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error)
 	// Pinned to idx_process_instance_cleanup so SQLite uses the partial range index on
@@ -179,6 +182,7 @@ type Querier interface {
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
 	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error
+	SaveElementScope(ctx context.Context, arg SaveElementScopeParams) error
 	SaveErrorSubscription(ctx context.Context, arg SaveErrorSubscriptionParams) error
 	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error

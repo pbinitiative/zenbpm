@@ -310,6 +310,14 @@ func (b *EngineBatch) SaveJobFailure(ctx context.Context, failure bpmnruntime.Jo
 	return markTechnicalFailure(b.b.SaveJobFailure(ctx, failure))
 }
 
+func (b *EngineBatch) SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error {
+	return markTechnicalFailure(b.b.SaveElementScope(ctx, scope))
+}
+
+func (b *EngineBatch) DeleteElementScope(ctx context.Context, elementInstanceKey int64) error {
+	return markTechnicalFailure(b.b.DeleteElementScope(ctx, elementInstanceKey))
+}
+
 func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	return markTechnicalFailure(b.b.SaveMessageSubscription(ctx, subscription))
 }

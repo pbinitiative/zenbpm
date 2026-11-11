@@ -278,6 +278,7 @@ func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, hist
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesElementScopes(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobFailures(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
 		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
@@ -3086,6 +3087,82 @@ func FindIncidentsByProcessInstanceKey(ctx context.Context, db *sql.Queries, pro
 	return inflateIncidents(ctx, db, incidents)
 }
 
+var _ storage.ElementScopeStorageReader = &DB{}
+
+func (rq *DB) FindElementScope(ctx context.Context, elementInstanceKey int64) (bpmnruntime.ElementScope, error) {
+	row, err := rq.Queries.FindElementScope(ctx, elementInstanceKey)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return bpmnruntime.ElementScope{}, storage.ErrNotFound
+		}
+		return bpmnruntime.ElementScope{}, fmt.Errorf("failed to find the scope of element instance %d: %w", elementInstanceKey, err)
+	}
+	scope := bpmnruntime.ElementScope{
+		ElementInstanceKey: row.Key,
+		ProcessInstanceKey: row.ProcessInstanceKey,
+		Phase:              bpmnruntime.ElementPhase(row.Phase),
+		ListenerIndex:      int(row.ListenerIndex),
+	}
+	if err := json.Unmarshal([]byte(row.InputVariables), &scope.InputVariables); err != nil {
+		return bpmnruntime.ElementScope{}, fmt.Errorf("failed to unmarshal the input variables of the scope of element instance %d: %w", elementInstanceKey, err)
+	}
+	if err := json.Unmarshal([]byte(row.LocalVariables), &scope.LocalVariables); err != nil {
+		return bpmnruntime.ElementScope{}, fmt.Errorf("failed to unmarshal the local variables of the scope of element instance %d: %w", elementInstanceKey, err)
+	}
+	return scope, nil
+}
+
+var _ storage.ElementScopeStorageWriter = &DB{}
+
+func (rq *DB) SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error {
+	return SaveElementScopeWith(ctx, rq.Queries, scope)
+}
+
+// SaveElementScopeWith persists the scope of an element instance using the supplied sql.Queries handle.
+func SaveElementScopeWith(ctx context.Context, db *sql.Queries, scope bpmnruntime.ElementScope) error {
+	inputVariables, err := json.Marshal(variablesOrNone(scope.InputVariables))
+	if err != nil {
+		return fmt.Errorf("failed to marshal the input variables of the scope of element instance %d: %w", scope.ElementInstanceKey, err)
+	}
+	localVariables, err := json.Marshal(variablesOrNone(scope.LocalVariables))
+	if err != nil {
+		return fmt.Errorf("failed to marshal the local variables of the scope of element instance %d: %w", scope.ElementInstanceKey, err)
+	}
+	err = db.SaveElementScope(ctx, sql.SaveElementScopeParams{
+		Key:                scope.ElementInstanceKey,
+		ProcessInstanceKey: scope.ProcessInstanceKey,
+		Phase:              int64(scope.Phase),
+		ListenerIndex:      int64(scope.ListenerIndex),
+		InputVariables:     string(inputVariables),
+		LocalVariables:     string(localVariables),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save the scope of element instance %d: %w", scope.ElementInstanceKey, err)
+	}
+	return nil
+}
+
+// variablesOrNone answers the variables, and an empty map for none, so that
+// a scope always reads back with maps which can be written to.
+func variablesOrNone(variables map[string]any) map[string]any {
+	if variables == nil {
+		return map[string]any{}
+	}
+	return variables
+}
+
+func (rq *DB) DeleteElementScope(ctx context.Context, elementInstanceKey int64) error {
+	return DeleteElementScopeWith(ctx, rq.Queries, elementInstanceKey)
+}
+
+// DeleteElementScopeWith removes the scope of an element instance using the supplied sql.Queries handle.
+func DeleteElementScopeWith(ctx context.Context, db *sql.Queries, elementInstanceKey int64) error {
+	if err := db.DeleteElementScope(ctx, elementInstanceKey); err != nil {
+		return fmt.Errorf("failed to delete the scope of element instance %d: %w", elementInstanceKey, err)
+	}
+	return nil
+}
+
 var _ storage.IncidentStorageWriter = &DB{}
 
 func (rq *DB) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
@@ -3464,6 +3541,16 @@ func (b *DBBatch) ResetProcessInstanceFlowNodeCount(_ context.Context, processIn
 		reset:              true,
 	})
 	return nil
+}
+
+var _ storage.ElementScopeStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error {
+	return SaveElementScopeWith(ctx, b.queries, scope)
+}
+
+func (b *DBBatch) DeleteElementScope(ctx context.Context, elementInstanceKey int64) error {
+	return DeleteElementScopeWith(ctx, b.queries, elementInstanceKey)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

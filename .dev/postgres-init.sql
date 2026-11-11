@@ -207,6 +207,18 @@ CREATE INDEX IF NOT EXISTS idx_job_failure_job_key
 CREATE INDEX IF NOT EXISTS idx_fk_job_failure_process_instance_key
     ON reporting.job_failure (process_instance_key);
 
+CREATE TABLE IF NOT EXISTS reporting.element_scope (
+    key BIGINT PRIMARY KEY,
+    process_instance_key BIGINT NOT NULL,
+    phase BIGINT NOT NULL,
+    listener_index BIGINT NOT NULL DEFAULT 0,
+    input_variables TEXT NOT NULL,
+    local_variables TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fk_element_scope_process_instance_key
+    ON reporting.element_scope (process_instance_key);
+
 CREATE TABLE IF NOT EXISTS reporting.message_subscription (
     key BIGINT PRIMARY KEY,
     element_id TEXT NOT NULL,
@@ -367,6 +379,7 @@ DECLARE
         'process_definition',
         'process_instance',
         'decision_instance',
+        'element_scope',
         'error_subscription',
         'execution_token',
         'flow_element_instance',

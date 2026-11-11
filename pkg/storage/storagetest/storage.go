@@ -51,6 +51,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestJobFailuresOfTheSameMomentAreListedByKey,
 		st.TestAJobFailureIsFoundByTheDeliveryItNames,
 		st.TestIncidentNamesItsJob,
+		st.TestElementScopeRoundTrips,
+		st.TestElementScopeIsSavedAndDeletedInABatch,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
 		st.TestTokenStorageReader,
@@ -733,6 +735,69 @@ func (st *StorageTester) TestAJobKeepsWhatItBelongsTo(s storage.Storage, _ *test
 		assert.Equal(t, bpmnruntime.ActivityStateCompleted, stored.State)
 		assert.Equal(t, bpmnruntime.JobKindExecutionListener, stored.Kind, "an update leaves what the job belongs to")
 		assert.Equal(t, "start", stored.ListenerEventType)
+	}
+}
+
+func (st *StorageTester) TestElementScopeRoundTrips(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		elementInstanceKey := s.GenerateId()
+		_, err := s.FindElementScope(t.Context(), elementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound, "an element instance without a scope")
+
+		scope := bpmnruntime.ElementScope{
+			ElementInstanceKey: elementInstanceKey,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			Phase:              bpmnruntime.ElementPhaseActivating,
+			ListenerIndex:      1,
+			InputVariables:     map[string]any{"mapped": "value"},
+			LocalVariables:     map[string]any{"fromListener": map[string]any{"nested": true}},
+		}
+		require.NoError(t, s.SaveElementScope(t.Context(), scope))
+		stored, err := s.FindElementScope(t.Context(), elementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, scope, stored)
+
+		scope.Phase = bpmnruntime.ElementPhaseCompleting
+		scope.ListenerIndex = 0
+		scope.InputVariables = nil
+		scope.LocalVariables = nil
+		require.NoError(t, s.SaveElementScope(t.Context(), scope), "saving again replaces the scope")
+		stored, err = s.FindElementScope(t.Context(), elementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ElementPhaseCompleting, stored.Phase)
+		assert.Zero(t, stored.ListenerIndex)
+		assert.Equal(t, map[string]any{}, stored.InputVariables, "a scope without variables reads back with maps to write to")
+		assert.Equal(t, map[string]any{}, stored.LocalVariables)
+
+		require.NoError(t, s.DeleteElementScope(t.Context(), elementInstanceKey))
+		_, err = s.FindElementScope(t.Context(), elementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.NoError(t, s.DeleteElementScope(t.Context(), elementInstanceKey), "deleting a scope which is gone succeeds")
+	}
+}
+
+func (st *StorageTester) TestElementScopeIsSavedAndDeletedInABatch(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		kept := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+			ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+		})
+		left := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+			ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+		})
+		require.NoError(t, s.SaveElementScope(t.Context(), left))
+
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveElementScope(t.Context(), kept))
+		require.NoError(t, batch.DeleteElementScope(t.Context(), left.ElementInstanceKey))
+		_, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound, "nothing is written before the batch is flushed")
+		require.NoError(t, batch.Flush(t.Context()))
+
+		stored, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, kept, stored)
+		_, err = s.FindElementScope(t.Context(), left.ElementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	}
 }
 

@@ -38,6 +38,15 @@ type DmnResourceDefinition struct {
 	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
+type ElementScope struct {
+	Key                int64  `json:"key"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Phase              int64  `json:"phase"`
+	ListenerIndex      int64  `json:"listener_index"`
+	InputVariables     string `json:"input_variables"`
+	LocalVariables     string `json:"local_variables"`
+}
+
 type ErrorSubscription struct {
 	Key                  int64          `json:"key"`
 	ElementInstanceKey   int64          `json:"element_instance_key"`

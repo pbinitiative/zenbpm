@@ -34,6 +34,8 @@ type Storage interface {
 	IncidentStorageWriter
 	ErrorSubscriptionStorageReader
 	ErrorSubscriptionStorageWriter
+	ElementScopeStorageReader
+	ElementScopeStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -63,6 +65,7 @@ type Batch interface {
 	FlowNodeCounterWriter
 	IncidentStorageWriter
 	ErrorSubscriptionStorageWriter
+	ElementScopeStorageWriter
 	DmnResourceDefinitionStorageWriter
 	DecisionDefinitionStorageWriter
 
@@ -289,6 +292,21 @@ type IncidentStorageReader interface {
 
 type IncidentStorageWriter interface {
 	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
+}
+
+type ElementScopeStorageReader interface {
+	// FindElementScope returns the scope of the element instance, and
+	// ErrNotFound for an element instance which has none.
+	FindElementScope(ctx context.Context, elementInstanceKey int64) (bpmnruntime.ElementScope, error)
+}
+
+type ElementScopeStorageWriter interface {
+	// SaveElementScope stores the scope of an element instance, in place of
+	// the one stored for it before.
+	SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error
+	// DeleteElementScope removes the scope of the element instance; it
+	// succeeds where there is none.
+	DeleteElementScope(ctx context.Context, elementInstanceKey int64) error
 }
 
 type ErrorSubscriptionStorageReader interface {

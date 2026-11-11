@@ -20,7 +20,7 @@ func TestExecutionListenersAreReadInEveryNamespace(t *testing.T) {
 			startEvent := &definitions.Process.StartEvents[0]
 			assert.Equal(t, []extensions.TExecutionListener{{EventType: "end", Type: "on-start", Retries: "3", RetryBackoff: "PT10S"}},
 				startEvent.GetExecutionListeners())
-			require.NotNil(t, ListenerTaskOf(startEvent, "end"))
+			assert.True(t, definitions.Process.RunsListenersOn(startEvent))
 			assert.NoError(t, definitions.ValidateForDeployment())
 			assert.NoError(t, ValidateListenerPositions([]byte(model)))
 		})
@@ -33,13 +33,14 @@ func TestStartEventKeepsItsOutputMappingsBesideItsListener(t *testing.T) {
 
 	startEvent := &definitions.Process.StartEvents[0]
 	assert.Len(t, startEvent.GetOutputMapping(), 1)
-	assert.NotNil(t, ListenerTaskOf(startEvent, "end"))
+	assert.Len(t, definitions.Process.RunnableListenersOf(startEvent, "end"), 1)
 }
 
 func TestElementsWithoutListenersAnswerNone(t *testing.T) {
 	definitions := parseListenerModel(t, listenerModel("zeebe", "", "", ""))
 
-	assert.Nil(t, ListenerTaskOf(&definitions.Process.StartEvents[0], "end"))
+	assert.Empty(t, definitions.Process.RunnableListenersOf(&definitions.Process.StartEvents[0], "end"))
+	assert.False(t, definitions.Process.RunsListenersOn(&definitions.Process.StartEvents[0]))
 	assert.Nil(t, definitions.Process.TaskOfJob("start", "end"))
 	assert.False(t, modelReadsAListener(&definitions))
 	assert.False(t, definitions.RunsExecutionListeners())
@@ -82,7 +83,7 @@ func TestTaskOfJobAnswersTheListenerOfAStartEvent(t *testing.T) {
 	assert.Equal(t, &definitions.Process.StartEvents[0], start.Element())
 	assert.Nil(t, process.TaskOfJob("unknown", "end"))
 	assert.Nil(t, process.TaskOfJob("start", "start"), "the start event has no listener of that event type")
-	assert.Nil(t, process.TaskOfJob("task", "end"), "a service task reads no listeners")
+	assert.Nil(t, process.TaskOfJob("task", "end"), "the service task has no listener")
 
 	task := process.TaskOfJob("task", "")
 	require.NotNil(t, task)
@@ -93,7 +94,7 @@ func TestListenerJobTypeIsTrimmed(t *testing.T) {
 	definitions := parseListenerModel(t, listenerModel("zeebe", "", listenersOf("zeebe", `eventType="end" type=" on-start "`), ""))
 	require.NoError(t, definitions.ValidateForDeployment())
 
-	start := ListenerTaskOf(&definitions.Process.StartEvents[0], "end")
+	start := definitions.Process.TaskOfJob("start", "end")
 	require.NotNil(t, start)
 	assert.Equal(t, "on-start", start.GetTaskType(), "a worker of type on-start gets the job")
 	assert.Equal(t, "on-start", start.GetTaskDefinition().TypeName)
@@ -103,10 +104,80 @@ func TestOnlyAStartEventOfTheProcessRunsAListener(t *testing.T) {
 	definitions := parseListenerModel(t, listenerModel("zeebe", "", "", subProcessWith("", "")))
 	process := &definitions.Process
 
-	assert.Equal(t, []string{"end"}, process.RunnableListenerEventTypes(&process.StartEvents[0]))
-	subStart, ok := process.GetFlowNodeById("sub-start").(ExecutionListenerOwner)
-	require.True(t, ok)
-	assert.Empty(t, process.RunnableListenerEventTypes(subStart))
+	assert.Equal(t, []string{"end"}, process.ListenerEventTypesRunOn(&process.StartEvents[0]))
+	assert.Empty(t, process.ListenerEventTypesRunOn(process.GetFlowNodeById("sub-start")))
+	assert.Empty(t, process.ListenerEventTypesRunOn(process.GetFlowNodeById("task")))
+}
+
+func TestEveryFlowNodeReadsItsListeners(t *testing.T) {
+	listeners := "<bpmn:extensionElements>" + listenersOf("zeebe", `eventType="start" type="a"`, `eventType="end" type="b"`) + "</bpmn:extensionElements>"
+	for tag := range flowNodeTags {
+		t.Run(tag, func(t *testing.T) {
+			element := fmt.Sprintf(`<bpmn:%s id="listened">%s</bpmn:%s>`, tag, listeners, tag)
+			model := listenerModel("zeebe", "", "", element)
+			definitions := parseListenerModel(t, model)
+
+			var listened FlowNode
+			forEachFlowNode(&definitions.Process.TFlowElementsContainer, func(node FlowNode) {
+				if node.GetId() == "listened" {
+					listened = node
+				}
+			})
+
+			require.NotNil(t, listened, "the model reads the element as a flow node")
+			assert.Equal(t, []extensions.TExecutionListener{{EventType: "start", Type: "a"}, {EventType: "end", Type: "b"}},
+				listened.GetExecutionListeners())
+			assert.NoError(t, ValidateListenerPositions([]byte(model)), "the position check leaves a listener the model reads to the model check")
+			assert.ErrorContains(t, definitions.ValidateForDeployment(),
+				fmt.Sprintf(`execution listener eventType="start" on %s id="listened" is not supported`, xmlNameInWords(tag)))
+		})
+	}
+}
+
+func TestEveryFlowNodeOfTheIndexIsVisited(t *testing.T) {
+	boundary := `<bpmn:boundaryEvent id="boundary" attachedToRef="task" />`
+	definitions := parseListenerModel(t, listenerModel("zeebe", "", "", subProcessWith("", "")+boundary))
+	process := &definitions.Process
+
+	visited := map[string]FlowNode{}
+	forEachFlowNode(&process.TFlowElementsContainer, func(node FlowNode) {
+		visited[node.GetId()] = node
+	})
+
+	for id, node := range process.flowNodesByID {
+		assert.Same(t, node, visited[id], id)
+	}
+	assert.Contains(t, visited, "boundary", "a boundary event is no part of the index, but is visited")
+	assert.Len(t, visited, len(process.flowNodesByID)+1)
+}
+
+func TestTheModelReadsListenersOfTheFlowNodesOfAContainer(t *testing.T) {
+	assert.Equal(t, map[string]bool{
+		"startEvent": true, "endEvent": true, "serviceTask": true, "userTask": true, "businessRuleTask": true,
+		"sendTask": true, "receiveTask": true, "manualTask": true, "parallelGateway": true, "exclusiveGateway": true,
+		"eventBasedGateway": true, "inclusiveGateway": true, "intermediateCatchEvent": true,
+		"intermediateThrowEvent": true, "callActivity": true, "boundaryEvent": true, "subProcess": true,
+	}, flowNodeTags)
+	assert.False(t, modelReadsListenersOf("sequenceFlow"))
+	assert.False(t, modelReadsListenersOf("process"))
+}
+
+func TestAnIdIsAmbiguousOnlyWhereAListenerTheEngineRunsSharesIt(t *testing.T) {
+	sharingStart := `<bpmn:subProcess id="sub"><bpmn:startEvent id="start">%s<bpmn:outgoing>sub-flow</bpmn:outgoing></bpmn:startEvent>` +
+		`<bpmn:sequenceFlow id="sub-flow" sourceRef="start" targetRef="sub-end" /><bpmn:endEvent id="sub-end"><bpmn:incoming>sub-flow</bpmn:incoming></bpmn:endEvent></bpmn:subProcess>`
+	listener := "<bpmn:extensionElements>" + listenersOf("zeebe", `eventType="end" type="t"`) + "</bpmn:extensionElements>"
+
+	onTheStartEventOfTheProcess := parseListenerModel(t, listenerModel("zeebe", "", listenersOf("zeebe", `eventType="end" type="t"`), fmt.Sprintf(sharingStart, "")))
+	assert.True(t, onTheStartEventOfTheProcess.Process.ListenerIDIsAmbiguous("start"))
+	assert.False(t, onTheStartEventOfTheProcess.Process.ListenerIDIsAmbiguous("task"))
+
+	withoutAListener := parseListenerModel(t, listenerModel("zeebe", "", "", fmt.Sprintf(sharingStart, "")))
+	assert.False(t, withoutAListener.Process.ListenerIDIsAmbiguous("start"))
+
+	// the sub-process start event shares the id, so IsTopLevelStartEvent, which
+	// compares ids, takes it for one of the process: its listener counts
+	onTheOtherElement := parseListenerModel(t, listenerModel("zeebe", "", "", fmt.Sprintf(sharingStart, listener)))
+	assert.True(t, onTheOtherElement.Process.ListenerIDIsAmbiguous("start"))
 }
 
 func TestListenerEventTypeOfJobFollowsTheElementType(t *testing.T) {
@@ -357,12 +428,11 @@ func TestStoredDefinitionWithARefusedListenerStillParses(t *testing.T) {
 // modelReadsAListener reports whether an element of the process, at any depth,
 // carries an execution listener the model reads.
 func modelReadsAListener(definitions *TDefinitions) bool {
-	for _, owner := range listenerOwnersOf(&definitions.Process.TFlowElementsContainer) {
-		if len(owner.GetExecutionListeners()) > 0 {
-			return true
-		}
-	}
-	return false
+	reads := false
+	forEachFlowNode(&definitions.Process.TFlowElementsContainer, func(node FlowNode) {
+		reads = reads || len(node.GetExecutionListeners()) > 0
+	})
+	return reads
 }
 
 func parseListenerModel(t *testing.T, model string) TDefinitions {

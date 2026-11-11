@@ -43,7 +43,7 @@ func (engine *Engine) createInternalTask(
 	// the id of the listener's element must not complete it inline
 	var handler func(job ActivatedJob)
 	if isListener {
-		if err := ensureListenerCanRun(listener); err != nil {
+		if err := ensureListenerCanRun(instance, listener); err != nil {
 			return runtime.ActivityStateFailed, err
 		}
 	} else {

@@ -406,7 +406,7 @@ func TestStoredListenerOnAStartEventWithoutAnOutgoingFlowRaisesAnIncident(t *tes
 
 	incident := onlyOpenIncident(t, engine, instance.ProcessInstance().Key)
 	assert.Equal(t, "start-listener-start", incident.ElementId)
-	assert.Contains(t, incident.Message, "has no outgoing sequence flow")
+	assert.Contains(t, incident.Message, "has an execution listener but no outgoing sequence flow")
 	assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key), "no job is created whose completion could only fail")
 	assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
 }
@@ -423,7 +423,7 @@ func TestStoredListenerTheDeploymentWouldRefuseRaisesAnIncident(t *testing.T) {
 			name:         "two listeners on the start event",
 			old:          listener,
 			replacement:  listener + `<zeebe:executionListener eventType="end" type="second-job" />`,
-			errorMessage: "the element has 2 execution listeners, and the engine runs only one",
+			errorMessage: `start event id="start-listener-start" has 2 execution listeners, which is not supported`,
 		},
 		{
 			name:         "a start event sharing its id with a later one",

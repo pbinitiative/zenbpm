@@ -3,7 +3,6 @@ package bpmn
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -22,19 +21,20 @@ import (
 // bpmn20.TProcess.RunnableListenerEventTypes).
 
 // runnableListenerOf answers the listener of the given event type which the
-// engine runs on the owner in this instance, or nil. Where a listener runs is
-// decided by bpmn20.TProcess.RunnableListenerEventTypes alone, which the
+// engine runs on the element in this instance, or nil. Where a listener runs
+// is decided by bpmn20.TProcess.ListenerEventTypesRunOn alone, which the
 // deployment checks as well; this adds only that the instance runs its
 // process's own listeners: the start of an embedded or multi-instance child
 // runs none.
-func runnableListenerOf(instance runtime.ProcessInstance, owner bpmn20.ExecutionListenerOwner, eventType string) *bpmn20.ListenerTask {
+func runnableListenerOf(instance runtime.ProcessInstance, element bpmn20.FlowNode, eventType string) *bpmn20.ListenerTask {
 	if instance.Type() != runtime.ProcessTypeDefault && instance.Type() != runtime.ProcessTypeCallActivity {
 		return nil
 	}
-	if !slices.Contains(instance.ProcessInstance().Definition.Definitions.Process.RunnableListenerEventTypes(owner), eventType) {
+	listeners := instance.ProcessInstance().Definition.Definitions.Process.RunnableListenersOf(element, eventType)
+	if len(listeners) == 0 {
 		return nil
 	}
-	return bpmn20.ListenerTaskOf(owner, eventType)
+	return bpmn20.NewListenerTask(element, listeners[0])
 }
 
 // holdTokenAtEndListener holds the token on the element behind the job of its
@@ -91,13 +91,13 @@ func (engine *Engine) completeListenerElement(ctx context.Context, batch *Engine
 }
 
 // ensureStartEventIsUnambiguous refuses to run a start event whose id another
-// flow node shares where one of them carries an execution listener (see
-// bpmn20.TProcess.ListenerOwnerIDIsAmbiguous). A deployment refuses such a
-// model; a definition stored before is imported without that check, and its
-// token could run the listener of the other element, or none. The refusal
-// raises an incident instead.
+// flow node shares where one of them carries a listener the engine runs (see
+// bpmn20.TProcess.ListenerIDIsAmbiguous). A deployment refuses such a model; a
+// definition stored before is imported without that check, and its token
+// could run the listener of the other element, or none. The refusal raises an
+// incident instead.
 func ensureStartEventIsUnambiguous(instance runtime.ProcessInstance, startEvent *bpmn20.TStartEvent) error {
-	if instance.ProcessInstance().Definition.Definitions.Process.ListenerOwnerIDIsAmbiguous(startEvent.GetId()) {
+	if instance.ProcessInstance().Definition.Definitions.Process.ListenerIDIsAmbiguous(startEvent.GetId()) {
 		return fmt.Errorf("start event id=%q shares its id with another flow node, and one of them carries an execution listener, so the engine cannot tell which one the token is at; deploy a corrected version of the process",
 			startEvent.GetId())
 	}
@@ -116,27 +116,16 @@ func isListenerJob(job runtime.Job) bool {
 }
 
 // ensureListenerCanRun refuses to create a listener's job where a deployment
-// refuses the listener: beside another listener of its element, on an element
-// without an outgoing sequence flow, and unless its type, retries and
-// retryBackoff are literals. A definition stored before is imported without
-// those checks: the second listener would be dropped without a word; the
-// token could not leave an element without an outgoing flow, so every
-// completion of the job would fail; a job of type "" or of an expression
-// would wait for a worker which never comes; and the literals-only rule
-// promises that creating a listener's job never evaluates an expression. The
-// refusal raises an incident instead.
-func ensureListenerCanRun(listener *bpmn20.ListenerTask) error {
-	if owner, ok := listener.Element().(bpmn20.ExecutionListenerOwner); ok && len(owner.GetExecutionListeners()) > 1 {
-		return fmt.Errorf("execution listener eventType=%q on %s id=%q: the element has %d execution listeners, and the engine runs only one; deploy a corrected version of the process",
-			listener.EventType(), listener.GetType(), listener.GetId(), len(owner.GetExecutionListeners()))
-	}
-	if len(listener.GetOutgoingAssociation()) == 0 {
-		return fmt.Errorf("execution listener eventType=%q on %s id=%q: the element has no outgoing sequence flow, so the token could not leave it; deploy a corrected version of the process",
-			listener.EventType(), listener.GetType(), listener.GetId())
-	}
-	if err := listener.ValidateLiterals(); err != nil {
-		return fmt.Errorf("execution listener eventType=%q on %s id=%q: %w; deploy a corrected version of the process",
-			listener.EventType(), listener.GetType(), listener.GetId(), err)
+// refuses the listeners of its element (see bpmn20.TProcess.CheckListeners).
+// A definition stored before is imported without those checks: a second
+// listener would be dropped without a word; the token could not leave an
+// element without an outgoing flow, so every completion of the job would
+// fail; a job of type "" or of an expression would wait for a worker which
+// never comes; and the literals-only rule promises that creating a listener's
+// job never evaluates an expression. The refusal raises an incident instead.
+func ensureListenerCanRun(instance runtime.ProcessInstance, listener *bpmn20.ListenerTask) error {
+	if err := instance.ProcessInstance().Definition.Definitions.Process.CheckListeners(listener.Element()); err != nil {
+		return fmt.Errorf("%w; deploy a corrected version of the process", err)
 	}
 	return nil
 }

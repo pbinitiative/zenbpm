@@ -143,11 +143,11 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 // definition runs every iteration as before.
 //
 // Execution listeners are refused the same way where the engine does not run
-// them, and where their type, retries or retryBackoff is not a literal. A
-// definition stored before is not checked: from this version on, its start
-// event listeners run (an earlier engine ignored them), and its other ones
-// stay ignored. ValidateListenerPositions covers the elements whose model
-// does not read listeners.
+// them, and where their type, retries or retryBackoff is not a literal (see
+// TProcess.CheckListeners). A definition stored before is not checked: from
+// this version on, its listeners run where the engine runs listeners (an
+// earlier engine ignored them), and its other ones stay ignored.
+// ValidateListenerPositions covers the listeners the model does not read.
 func (definitions *TDefinitions) ValidateForDeployment() error {
 	if err := validateTaskDefinitions(definitions.Process.internalTasksByID); err != nil {
 		return err

@@ -1,10 +1,17 @@
 package extensions
 
-// ExecutionListenerEventTypeEnd is the event type of a listener which runs
-// when its element's own work is done, before the token leaves the element.
-// It is the one event type the engine runs so far, on a start event of a
-// process (see bpmn20.TProcess.RunnableListenerEventTypes).
-const ExecutionListenerEventTypeEnd = "end"
+// The event types of an execution listener. Where the engine runs which of
+// them is decided by bpmn20.TProcess.ListenerEventTypesRunOn.
+const (
+	// ExecutionListenerEventTypeStart is the event type of a listener which
+	// runs when its element is entered, after the element's input mappings
+	// and before the element's own work.
+	ExecutionListenerEventTypeStart = "start"
+	// ExecutionListenerEventTypeEnd is the event type of a listener which runs
+	// when its element's own work is done, after the element's output
+	// mappings and before the token leaves the element.
+	ExecutionListenerEventTypeEnd = "end"
+)
 
 // TExecutionListener is one entry of an `executionListeners` extension
 // element. Its shape is the one of `zeebe:executionListener`, so a model drawn
@@ -21,15 +28,4 @@ type TExecutionListener struct {
 	// RetryBackoff is read as the retryBackoff of a zenbpm:taskDefinition, but
 	// only a literal is accepted.
 	RetryBackoff string `xml:"retryBackoff,attr"`
-}
-
-// FirstExecutionListenerOf answers the first listener of the given event type,
-// or nil when there is none.
-func FirstExecutionListenerOf(listeners []TExecutionListener, eventType string) *TExecutionListener {
-	for i := range listeners {
-		if listeners[i].EventType == eventType {
-			return &listeners[i]
-		}
-	}
-	return nil
 }

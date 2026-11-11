@@ -26,15 +26,6 @@ type TStartEvent struct {
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 	EventDefinitions []EventDefinition
 	Output           []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
-	// ExecutionListeners holds the listeners of the start event (see
-	// ExecutionListenerOwner). Only an "end" listener of a start event
-	// directly under the process is run; deployment refuses every other one.
-	ExecutionListeners []extensions.TExecutionListener `xml:"extensionElements>executionListeners>executionListener"`
-}
-
-// GetExecutionListeners makes the start event an ExecutionListenerOwner.
-func (startEvent *TStartEvent) GetExecutionListeners() []extensions.TExecutionListener {
-	return startEvent.ExecutionListeners
 }
 
 func (startEvent TStartEvent) GetType() ElementType {
@@ -48,13 +39,12 @@ func (startEvent TStartEvent) GetOutputMapping() []extensions.TIoMapping {
 func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition *TMessageEventDefinition        `xml:"messageEventDefinition"`
-		TimerEventDefinition   *TTimerEventDefinition          `xml:"timerEventDefinition"`
-		ErrorEventDefinition   *TErrorEventDefinition          `xml:"errorEventDefinition"`
-		IsInterrupting         *bool                           `xml:"isInterrupting,attr"`
-		ParallelMultiple       bool                            `xml:"parallelMultiple,attr"`
-		Output                 []extensions.TIoMapping         `xml:"extensionElements>ioMapping>output"`
-		ExecutionListeners     []extensions.TExecutionListener `xml:"extensionElements>executionListeners>executionListener"`
+		MessageEventDefinition *TMessageEventDefinition `xml:"messageEventDefinition"`
+		TimerEventDefinition   *TTimerEventDefinition   `xml:"timerEventDefinition"`
+		ErrorEventDefinition   *TErrorEventDefinition   `xml:"errorEventDefinition"`
+		IsInterrupting         *bool                    `xml:"isInterrupting,attr"`
+		ParallelMultiple       bool                     `xml:"parallelMultiple,attr"`
+		Output                 []extensions.TIoMapping  `xml:"extensionElements>ioMapping>output"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -66,7 +56,6 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 	}
 	startEvent.ParallelMultiple = tempStruct.ParallelMultiple
 	startEvent.Output = tempStruct.Output
-	startEvent.ExecutionListeners = tempStruct.ExecutionListeners
 	startEvent.EventDefinitions = make([]EventDefinition, 0)
 	if tempStruct.TimerEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.TimerEventDefinition)

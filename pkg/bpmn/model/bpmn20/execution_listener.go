@@ -1,31 +1,63 @@
 package bpmn20
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
-// ExecutionListenerOwner is a flow node whose model reads the execution
-// listeners of its extensionElements. The start event is the only owner so
-// far. Another flow node becomes one by reading its listeners, implementing
-// this interface and being named in modelReadsListenersOf and
-// listenerOwnersOf; RunnableListenerEventTypes then decides whether the
-// engine runs them.
-type ExecutionListenerOwner interface {
-	FlowNode
-	GetExecutionListeners() []extensions.TExecutionListener
-}
+// Every flow node reads its execution listeners (TFlowNode.ExecutionListeners).
+// Which of them the engine runs is decided here, by ListenerEventTypesRunOn
+// alone: a deployment refuses every listener outside that table
+// (CheckListeners), and the engine runs none outside it.
 
-// RunnableListenerEventTypes answers the event types of the listeners the
-// engine runs on the owner: "end" on a start event directly under the
-// process, and none anywhere else. A deployment refuses a listener of any
-// other event type, and every listener of an owner which has none.
-func (p *TProcess) RunnableListenerEventTypes(owner ExecutionListenerOwner) []string {
-	if startEvent, ok := owner.(*TStartEvent); ok && p.IsTopLevelStartEvent(startEvent) {
+// ListenerEventTypesRunOn answers the event types of the listeners the engine
+// runs on the flow node: "end" on a start event directly under the process,
+// and none anywhere else. An element type is added here when the engine runs
+// it through its element lifecycle.
+func (p *TProcess) ListenerEventTypesRunOn(node FlowNode) []string {
+	if startEvent, ok := node.(*TStartEvent); ok && p.IsTopLevelStartEvent(startEvent) {
 		return []string{extensions.ExecutionListenerEventTypeEnd}
 	}
 	return nil
+}
+
+// RunnableListenersOf answers the node's listeners of the given event type
+// which the engine runs, in the order of the model.
+func (p *TProcess) RunnableListenersOf(node FlowNode, eventType string) []extensions.TExecutionListener {
+	if !slices.Contains(p.ListenerEventTypesRunOn(node), eventType) {
+		return nil
+	}
+	var listeners []extensions.TExecutionListener
+	for _, listener := range node.GetExecutionListeners() {
+		if listener.EventType == eventType {
+			listeners = append(listeners, listener)
+		}
+	}
+	return listeners
+}
+
+// RunsListenersOn reports whether the node carries a listener the engine runs.
+func (p *TProcess) RunsListenersOn(node FlowNode) bool {
+	runnableEventTypes := p.ListenerEventTypesRunOn(node)
+	for _, listener := range node.GetExecutionListeners() {
+		if slices.Contains(runnableEventTypes, listener.EventType) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTopLevelStartEvent reports whether the start event is one of the
+// process's own start events, not one of a sub-process.
+func (p *TProcess) IsTopLevelStartEvent(startEvent *TStartEvent) bool {
+	for i := range p.StartEvents {
+		if p.StartEvents[i].GetId() == startEvent.GetId() {
+			return true
+		}
+	}
+	return false
 }
 
 // ListenerTask is the job-carrying side of an execution listener. It reads as
@@ -40,15 +72,9 @@ type ListenerTask struct {
 	listener extensions.TExecutionListener
 }
 
-// ListenerTaskOf answers the task of the owner's listener of the given event
-// type, or nil when the owner has none. Only one listener per event type is
-// supported; a deployment refuses a second one.
-func ListenerTaskOf(owner ExecutionListenerOwner, eventType string) *ListenerTask {
-	listener := extensions.FirstExecutionListenerOf(owner.GetExecutionListeners(), eventType)
-	if listener == nil {
-		return nil
-	}
-	return &ListenerTask{FlowNode: owner, listener: *listener}
+// NewListenerTask answers the task of one listener of the element.
+func NewListenerTask(element FlowNode, listener extensions.TExecutionListener) *ListenerTask {
+	return &ListenerTask{FlowNode: element, listener: listener}
 }
 
 // EventType answers the listener's event type.
@@ -56,10 +82,6 @@ func (task *ListenerTask) EventType() string { return task.listener.EventType }
 
 // Element answers the element the listener belongs to.
 func (task *ListenerTask) Element() FlowNode { return task.FlowNode }
-
-// ValidateLiterals refuses the listener when its attributes are not literals
-// (see ValidateListenerLiterals).
-func (task *ListenerTask) ValidateLiterals() error { return ValidateListenerLiterals(task.listener) }
 
 // GetTaskType answers the listener's job type, without surrounding
 // whitespace, which a worker could not tell apart.
@@ -94,25 +116,16 @@ func (p *TProcess) TaskOfJob(elementID string, listenerEventType string) Interna
 	if listenerEventType == "" {
 		return p.GetInternalTaskById(elementID)
 	}
-	owner, ok := p.GetFlowNodeById(elementID).(ExecutionListenerOwner)
-	if !ok {
+	element := p.GetFlowNodeById(elementID)
+	if element == nil {
 		return nil
 	}
-	if task := ListenerTaskOf(owner, listenerEventType); task != nil {
-		return task
-	}
-	return nil
-}
-
-// IsTopLevelStartEvent reports whether the start event is one of the
-// process's own start events, not one of a sub-process.
-func (p *TProcess) IsTopLevelStartEvent(startEvent *TStartEvent) bool {
-	for i := range p.StartEvents {
-		if p.StartEvents[i].GetId() == startEvent.GetId() {
-			return true
+	for _, listener := range element.GetExecutionListeners() {
+		if listener.EventType == listenerEventType {
+			return NewListenerTask(element, listener)
 		}
 	}
-	return false
+	return nil
 }
 
 // ListenerEventTypeOfJob answers the event type of the execution listener a job

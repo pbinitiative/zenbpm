@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode"
@@ -120,9 +121,9 @@ func listenerInWords(listener xml.StartElement) string {
 
 // modelReadsListenersOf reports whether the model of the XML element of the
 // given local name reads its execution listeners, that is whether the element
-// is an ExecutionListenerOwner. An element which becomes one is added here.
+// is a flow node of the model.
 func modelReadsListenersOf(elementName string) bool {
-	return elementName == "startEvent"
+	return flowNodeTags[elementName]
 }
 
 // attributeOf answers the value of the element's attribute without a
@@ -167,7 +168,7 @@ func ownerOfListener(open []openElement) openElement {
 }
 
 // xmlNameInWords answers the local name of an XML element as a message names
-// it, such as "start event" for startEvent, to read as elementTypeInWords.
+// it, such as "start event" for startEvent.
 func xmlNameInWords(name string) string {
 	var words strings.Builder
 	for i, r := range name {
@@ -182,77 +183,47 @@ func xmlNameInWords(name string) string {
 	return words.String()
 }
 
-// validateExecutionListeners checks the listeners of every element whose
-// model reads them, in document order within each container, so the same
-// model always names the same element. It refuses a listener on an element
-// whose id another element of the process shares, since the engine finds the
-// element of a listener by its id; a listener the engine does not run there
-// (see TProcess.RunnableListenerEventTypes); more than one listener; and a
-// type, retries or retryBackoff which is not a literal the engine reads.
-// Literals only, so that creating a listener's job never fails on an
-// expression.
+// validateExecutionListeners checks the listeners of every flow node of the
+// process (see TProcess.CheckListeners), in the order forEachFlowNode visits
+// them, so the same model always names the same element.
 func validateExecutionListeners(process *TProcess) error {
-	for _, owner := range listenerOwnersOf(&process.TFlowElementsContainer) {
-		if len(owner.GetExecutionListeners()) == 0 {
-			continue
+	var refusal error
+	forEachFlowNode(&process.TFlowElementsContainer, func(node FlowNode) {
+		if refusal == nil {
+			refusal = process.CheckListeners(node)
 		}
-		if owner.GetId() == "" {
-			return fmt.Errorf("%s without an id carries an execution listener: give every element a unique id", elementTypeInWords(owner.GetType()))
-		}
-		if process.flowNodeIDCounts[owner.GetId()] > 1 {
-			return fmt.Errorf("%s id=%q carries an execution listener, but another flow node of the process has the same id: give every element a unique id",
-				elementTypeInWords(owner.GetType()), owner.GetId())
-		}
-		if err := validateListenersOf(owner, process.RunnableListenerEventTypes(owner)); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
+	return refusal
 }
 
-// ListenerOwnerIDIsAmbiguous reports whether several flow nodes of the process
-// have the id, and one of them carries an execution listener. A token at such
-// an id cannot tell which element it is at, so its listener could run for the
-// other element, or not at all. A deployment refuses such a model.
-func (p *TProcess) ListenerOwnerIDIsAmbiguous(id string) bool {
-	if p.flowNodeIDCounts[id] < 2 {
-		return false
+// CheckListeners refuses the listeners of a flow node which the engine cannot
+// run as the model says: on an element without an id, or whose id another
+// flow node shares, since the engine finds the element of a listener by its
+// id; a listener of an event type the engine does not run there (see
+// ListenerEventTypesRunOn); more than one listener; on an element without an
+// outgoing sequence flow, which the token could not leave; and a type,
+// retries or retryBackoff which is not a literal the engine reads. Literals
+// only, so that creating a listener's job never fails on an expression. A
+// deployment checks every flow node with it; the engine checks an element of
+// a definition stored without that check before it runs its listeners.
+func (p *TProcess) CheckListeners(node FlowNode) error {
+	listeners := node.GetExecutionListeners()
+	if len(listeners) == 0 {
+		return nil
 	}
-	for _, owner := range listenerOwnersOf(&p.TFlowElementsContainer) {
-		if owner.GetId() == id && len(owner.GetExecutionListeners()) > 0 {
-			return true
-		}
+	element := flowNodeInWords(node)
+	if node.GetId() == "" {
+		return fmt.Errorf("%s without an id carries an execution listener: give every element a unique id", element)
 	}
-	return false
-}
-
-// listenerOwnersOf answers every element of the container, its sub-processes
-// included, whose model reads execution listeners (see
-// modelReadsListenersOf). The containers are walked, not the id index of the
-// process, which holds only one element of an id that several elements share.
-func listenerOwnersOf(container *TFlowElementsContainer) []ExecutionListenerOwner {
-	owners := make([]ExecutionListenerOwner, 0, len(container.StartEvents))
-	for i := range container.StartEvents {
-		owners = append(owners, &container.StartEvents[i])
+	where := fmt.Sprintf("%s id=%q", element, node.GetId())
+	if p.flowNodeIDCounts[node.GetId()] > 1 {
+		return fmt.Errorf("%s carries an execution listener, but another flow node of the process has the same id: give every element a unique id", where)
 	}
-	for i := range container.SubProcess {
-		owners = append(owners, listenerOwnersOf(&container.SubProcess[i].TFlowElementsContainer)...)
-	}
-	return owners
-}
-
-// validateListenersOf refuses the listeners of one owner which the engine
-// does not run there: a listener of an event type outside runnableEventTypes
-// (none outside the positions of TProcess.RunnableListenerEventTypes), more
-// than one listener, and a listener whose attributes are not literals (see
-// ValidateListenerLiterals).
-func validateListenersOf(owner ExecutionListenerOwner, runnableEventTypes []string) error {
-	where := fmt.Sprintf("%s id=%q", elementTypeInWords(owner.GetType()), owner.GetId())
+	runnableEventTypes := p.ListenerEventTypesRunOn(node)
 	rule := listenerPositionRule
 	if len(runnableEventTypes) > 0 {
-		rule = fmt.Sprintf("a %s takes one listener with eventType=%q", elementTypeInWords(owner.GetType()), strings.Join(runnableEventTypes, `" or "`))
+		rule = fmt.Sprintf("a %s takes one listener with eventType=%q", element, strings.Join(runnableEventTypes, `" or "`))
 	}
-	listeners := owner.GetExecutionListeners()
 	for _, listener := range listeners {
 		if !slices.Contains(runnableEventTypes, listener.EventType) {
 			return fmt.Errorf("execution listener eventType=%q on %s is not supported: %s", listener.EventType, where, rule)
@@ -261,7 +232,7 @@ func validateListenersOf(owner ExecutionListenerOwner, runnableEventTypes []stri
 	if len(listeners) > 1 {
 		return fmt.Errorf("%s has %d execution listeners, which is not supported: %s", where, len(listeners), rule)
 	}
-	if len(owner.GetOutgoingAssociation()) == 0 {
+	if len(node.GetOutgoingAssociation()) == 0 {
 		return fmt.Errorf("%s has an execution listener but no outgoing sequence flow: the token could not leave it when the listener's job is completed", where)
 	}
 	for _, listener := range listeners {
@@ -272,10 +243,79 @@ func validateListenersOf(owner ExecutionListenerOwner, runnableEventTypes []stri
 	return nil
 }
 
-// elementTypeInWords answers an element type as a message names it, such as
-// "start event" for START_EVENT.
-func elementTypeInWords(elementType ElementType) string {
-	return strings.ReplaceAll(strings.ToLower(string(elementType)), "_", " ")
+// ListenerIDIsAmbiguous reports whether several flow nodes of the process
+// have the id, and one of them carries a listener the engine runs. A token at
+// such an id cannot tell which element it is at, so the listener could run
+// for the other element, or not at all. A deployment refuses such a model.
+func (p *TProcess) ListenerIDIsAmbiguous(id string) bool {
+	if p.flowNodeIDCounts[id] < 2 {
+		return false
+	}
+	ambiguous := false
+	forEachFlowNode(&p.TFlowElementsContainer, func(node FlowNode) {
+		ambiguous = ambiguous || node.GetId() == id && p.RunsListenersOn(node)
+	})
+	return ambiguous
+}
+
+// RunsExecutionListeners reports whether the process carries a listener the
+// engine runs (see TProcess.ListenerEventTypesRunOn).
+func (definitions *TDefinitions) RunsExecutionListeners() bool {
+	process := &definitions.Process
+	runs := false
+	forEachFlowNode(&process.TFlowElementsContainer, func(node FlowNode) {
+		runs = runs || process.RunsListenersOn(node)
+	})
+	return runs
+}
+
+// flowNodeType is the interface every flow node of the model implements.
+var flowNodeType = reflect.TypeFor[FlowNode]()
+
+// flowNodeTags holds the local names of the XML elements the model reads as
+// flow nodes of a process or sub-process, boundary events included.
+var flowNodeTags = func() map[string]bool {
+	tags := make(map[string]bool)
+	container := reflect.TypeFor[TFlowElementsContainer]()
+	for i := range container.NumField() {
+		if field := container.Field(i); holdsFlowNodes(field.Type) {
+			tags[field.Tag.Get("xml")] = true
+		}
+	}
+	return tags
+}()
+
+// holdsFlowNodes reports whether a field of a container is a list of flow nodes.
+func holdsFlowNodes(fieldType reflect.Type) bool {
+	return fieldType.Kind() == reflect.Slice && reflect.PointerTo(fieldType.Elem()).Implements(flowNodeType)
+}
+
+// forEachFlowNode visits every flow node of the container and of its
+// sub-processes, boundary events included, which the id index of the process
+// leaves out. The nodes of a container are visited in the order of the
+// container's fields and, within one field, of the document; the content of a
+// sub-process follows the container holding it.
+func forEachFlowNode(container *TFlowElementsContainer, visit func(node FlowNode)) {
+	fields := reflect.ValueOf(container).Elem()
+	for i := range fields.NumField() {
+		field := fields.Field(i)
+		if !holdsFlowNodes(field.Type()) {
+			continue
+		}
+		for j := range field.Len() {
+			visit(field.Index(j).Addr().Interface().(FlowNode))
+		}
+	}
+	for i := range container.SubProcess {
+		forEachFlowNode(&container.SubProcess[i].TFlowElementsContainer, visit)
+	}
+}
+
+// flowNodeInWords names the kind of a flow node as a message names it, such
+// as "start event" for a TStartEvent, from the name of its XML element:
+// several kinds of task answer the same element type.
+func flowNodeInWords(node FlowNode) string {
+	return xmlNameInWords(bpmnElementName(reflect.Indirect(reflect.ValueOf(node)).Type().Name()))
 }
 
 // ValidateListenerLiterals refuses a listener whose type is blank or an
@@ -296,18 +336,4 @@ func ValidateListenerLiterals(listener extensions.TExecutionListener) error {
 		return fmt.Errorf("its retryBackoff %q is an expression: a listener's retryBackoff must be a literal", listener.RetryBackoff)
 	}
 	return validateRetryLiterals(listener.Retries, listener.RetryBackoff)
-}
-
-// RunsExecutionListeners reports whether the process carries a listener the
-// engine runs (see TProcess.RunnableListenerEventTypes).
-func (definitions *TDefinitions) RunsExecutionListeners() bool {
-	process := &definitions.Process
-	for _, owner := range listenerOwnersOf(&process.TFlowElementsContainer) {
-		for _, eventType := range process.RunnableListenerEventTypes(owner) {
-			if ListenerTaskOf(owner, eventType) != nil {
-				return true
-			}
-		}
-	}
-	return false
 }

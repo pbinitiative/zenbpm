@@ -11,13 +11,14 @@ import (
 type ElementPhase int
 
 const (
-	// ElementPhaseActivating: the element is entered, its input mappings are
-	// evaluated, and its start listeners run.
+	// ElementPhaseActivating is the phase of an element which is entered: its
+	// input mappings are evaluated, and its start listeners run.
 	ElementPhaseActivating ElementPhase = iota + 1
-	// ElementPhaseActive: the element's own work runs, such as the job of a task.
+	// ElementPhaseActive is the phase in which the element's own work runs,
+	// such as the job of a task.
 	ElementPhaseActive
-	// ElementPhaseCompleting: the element's own work is done, its output
-	// mappings are applied, and its end listeners run.
+	// ElementPhaseCompleting is the phase of an element whose own work is
+	// done: its output mappings are applied, and its end listeners run.
 	ElementPhaseCompleting
 )
 

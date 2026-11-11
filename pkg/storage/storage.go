@@ -294,12 +294,15 @@ type IncidentStorageWriter interface {
 	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
 }
 
+// ElementScopeStorageReader reads the scopes of element instances, which the
+// engine keeps for elements with execution listeners (see bpmnruntime.ElementScope).
 type ElementScopeStorageReader interface {
 	// FindElementScope returns the scope of the element instance, and
 	// ErrNotFound for an element instance which has none.
 	FindElementScope(ctx context.Context, elementInstanceKey int64) (bpmnruntime.ElementScope, error)
 }
 
+// ElementScopeStorageWriter writes the scopes of element instances.
 type ElementScopeStorageWriter interface {
 	// SaveElementScope stores the scope of an element instance, in place of
 	// the one stored for it before.

@@ -60,9 +60,11 @@ Starting a token at the element (`POST /v1/modify/start-process-instance`) enter
 token does, so its `start` listeners run. Cancelling the instance terminates whichever job the
 token waits for, as every job of the instance; a completion sent afterwards is answered `409`.
 
-Each job of the element counts as one flow node execution towards
+Each job the token waits for in the element counts as one flow node execution towards
 [`maxProcessInstanceFlowNodeCount`](../configuration.md), and its leaving as one more: a task with
-two `start` and two `end` listeners counts six, where a task without listeners counts one.
+two `start` and two `end` listeners counts six, where a task without listeners counts one. A job
+of the task which a task handler registered in the engine completes at once is not waited for, so
+such a task counts one less.
 
 ## Variables
 
@@ -129,6 +131,10 @@ A listener job is a job as any other, with two differences in what a worker sees
   `start` or `end`, and absent for the element's own job;
 - its `inputVariables` are the variables of the element (see [Variables](#variables)).
 
+Its [task headers](../jobs.md#task-headers) are those of the listener's element, as in Camunda 8:
+the listeners of a task with headers get them as the task's own job does, and the listeners of a
+start event get none. A listener takes no headers of its own.
+
 A listener job is never handed to a task handler registered in the engine, even one registered for
 the id or the type of its element: it is for external workers only. Such a handler does the
 element's own work, between the listeners.
@@ -148,7 +154,9 @@ Camunda 8, which runs the earlier listeners again after some failures.
 
 As for every element, resolving evaluates the element's input mappings again, with the variables
 the instance has then, and rebuilds the variables of the job which waits; what the earlier jobs of
-the element were completed with is kept.
+the element were completed with is kept. The input variables the history shows for the element are
+those its own job gets its inputs from: they follow each such resolution until that job is
+completed, and stay as they are while the `end` listeners run.
 
 ## Attributes
 
@@ -208,7 +216,10 @@ would refuse on an element which runs listeners raises an incident on that eleme
 creating a job: one whose `type` is blank or whose `type`, `retries` or `retryBackoff` is a FEEL
 expression, one beside another listener of the same `eventType` and `type`, one on an element
 without an outgoing sequence flow, and one on an element whose `id` another flow node shares,
-where every token at that `id` raises the incident. When a cluster restore copies a definition to
+where every token at that `id` raises the incident. Resolving such an incident raises it again, as
+the listener is still what it was. This holds for an instance which was started before the upgrade
+and reaches the element afterwards as well: it passed such a task with an earlier version, and
+does not pass it with this one. When a cluster restore copies a definition to
 a partition which lacks it, the engine logs one line for each copied definition whose listeners
 run. A definition a partition restores from its own backup, or which only an upgrade brings to
 this version, is not logged.
@@ -217,14 +228,28 @@ this version, is not logged.
 
 A node running an earlier version ignores listeners: a token which enters an element on a
 partition which such a node leads passes it without the listeners' jobs. Such a node does not know
-the job of a listener either, so while it leads a partition, a listener job which an upgraded node
-created there cannot be completed and its incident cannot be resolved, and a failure with an error
-code is taken as a BPMN error, which an error event sub-process may catch. The token waits in its
-element until an upgraded node leads the partition again. Upgrade every node of the cluster before
-deploying processes with listeners.
+the job of a listener either. What it does, while it leads a partition, with a job an upgraded
+node created there depends on the element:
 
-Not deploying is not enough for a process deployed before the upgrade whose elements already
-carry listeners: from the first upgraded node on, its listeners run wherever an upgraded node
-leads, and nowhere else. Where every instance has to reach the listeners' workers, hold back
-every start of such a process (by the API, by a message, by a call activity, and its timer
-starts) until every node runs this version.
+- The job of a start event's listener cannot be completed and its incident cannot be resolved, and
+  a failure with an error code is taken as a BPMN error, which an error event sub-process may
+  catch. The token waits in the start event until an upgraded node leads the partition again.
+- The job of a listener on a task or on a message throw event is taken for the element's own job.
+  Completing it applies the element's output mappings to the variables of the completion and
+  moves the token on: the element's own job is never created, and its remaining listeners never
+  run. A failure with an error code is thrown as a BPMN error of the element, which its boundary
+  events may catch.
+- The own job of such an element, completed there, moves the token on without the element's `end`
+  listeners.
+
+So a cluster must not run both versions while a token can enter, or waits in, a task or a message
+throw event which carries listeners. Before a process with listeners is deployed for the first
+time, upgrade every node of the cluster.
+
+That is not enough for a process deployed before the upgrade whose elements already carry
+listeners: from the first upgraded node on, its listeners run wherever an upgraded node leads, and
+nowhere else. Where they sit on tasks or message throw events, stop every node of the cluster,
+upgrade them all, and start them again. Holding back the starts of such a process does not help:
+the instances which run already reach those elements as well. Where they sit on start events
+only, it does: hold back every start of the process (by the API, by a message, by a call
+activity, and its timer starts) until every node runs this version.

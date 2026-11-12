@@ -114,9 +114,10 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 // reevaluateJobInputVariables rebuilds the variables of a job from the
 // variables its instance has now, so that a correction made while the job's
 // incident was open reaches the worker. The job of an element which keeps a
-// scope is rebuilt from the scope (see refreshElementScope); every other job
-// from the input mappings of its task, and its element's history row shows
-// the variables they were evaluated from.
+// scope is rebuilt from the scope, which looks after the history row of the
+// element as well (see refreshElementScope); every other job from the input
+// mappings of its task, and its element's history row shows the variables
+// they were evaluated from.
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
 	task := taskOfJob(instance, *job)
 	if task == nil {
@@ -125,16 +126,12 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 
 	scope, keepsScope, err := engine.refreshElementScope(ctx, batch, instance, job.ElementId, job.ElementInstanceKey)
 	if err != nil {
-		return fmt.Errorf("failed to evaluate input variables for job %d: %w", job.Key, err)
+		return fmt.Errorf("failed to rebuild the variables of job %d: %w", job.Key, err)
 	}
 	if keepsScope {
 		variables := scope.VariableHolder(&instance.ProcessInstance().VariableHolder)
 		job.InputVariables = variables.LocalVariables()
-		if isListenerJob(*job) {
-			// the history row of the element is not the listener's
-			return nil
-		}
-		return engine.saveHistoryInput(ctx, batch, job, instance.ProcessInstance().VariableHolder.ExecutionScopeSnapshot())
+		return nil
 	}
 
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
@@ -165,12 +162,12 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	return nil
 }
 
-// saveHistoryInput writes the variables the element of the job was evaluated
-// from into its history row.
-func (engine *Engine) saveHistoryInput(ctx context.Context, batch *EngineBatch, job *runtime.Job, input map[string]any) error {
-	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
+// saveHistoryInput writes the variables the input mappings of the element
+// instance were evaluated from into its history row.
+func (engine *Engine) saveHistoryInput(ctx context.Context, batch *EngineBatch, elementInstanceKey int64, input map[string]any) error {
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, elementInstanceKey)
 	if err != nil {
-		return fmt.Errorf("failed to find flow element instance %d for job %d: %w", job.ElementInstanceKey, job.Key, err)
+		return fmt.Errorf("failed to find flow element instance %d: %w", elementInstanceKey, err)
 	}
 	flowElementInstance.InputVariables = input
 	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
@@ -373,9 +370,15 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 		}
 	} else {
 		// the element is entered again, or, where it keeps a scope, goes on
-		// from it with its input mappings evaluated again
+		// from it with its input mappings evaluated again. Mappings which do
+		// not evaluate would only raise the incident anew, so the resolution
+		// is refused until the variables are corrected; a failure of the
+		// storage says nothing about the incident.
 		if _, _, err := engine.refreshElementScope(ctx, &batch, instance, incident.Token.ElementId, incident.Token.ElementInstanceKey); err != nil {
-			return errors.Join(ErrIncidentNotResolvable, err)
+			if errors.Is(err, errInputMappingsDoNotEvaluate) {
+				return fmt.Errorf("%w: %w; correct the variables they read and resolve the incident again", ErrIncidentNotResolvable, err)
+			}
+			return fmt.Errorf("failed to resolve incident %d: %w", key, err)
 		}
 		incident.Token.State = runtime.TokenStateRunning
 	}

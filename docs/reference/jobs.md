@@ -80,7 +80,7 @@ A BPMN element can define **static task headers** — key/value pairs handed to 
 </bpmn:serviceTask>
 ```
 
-Each `header` has an optional `id` and a `key`/`value` pair. The values are literal: they are not expression-evaluated, so a header cannot reference process variables. Headers belong to the BPMN element rather than to a single job, so every job the element creates carries the same headers.
+Each `header` has an optional `id` and a `key`/`value` pair. The values are literal: they are not expression-evaluated, so a header cannot reference process variables. Headers belong to the BPMN element rather than to a single job, so every job the element creates carries the same headers, the jobs of its [execution listeners](./bpmn/execution-listeners.md) included.
 
 Headers are persisted with the job (a JSON object in the `job.headers` column, `'{}'` when the element defines none) and exposed to whoever receives the job:
 

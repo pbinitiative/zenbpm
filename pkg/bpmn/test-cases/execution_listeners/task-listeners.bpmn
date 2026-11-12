@@ -11,6 +11,9 @@
     <bpmn:serviceTask id="listened-task" name="listened-task">
       <bpmn:extensionElements>
         <zenbpm:taskDefinition type="listened-work" retries="2" retryBackoff="PT0S" />
+        <zenbpm:taskHeaders>
+          <zenbpm:header key="channel" value="post" />
+        </zenbpm:taskHeaders>
         <zeebe:executionListeners>
           <zeebe:executionListener eventType="start" type="before-first" retries="2" retryBackoff="PT0S" />
           <zeebe:executionListener eventType="end" type="after-first" />

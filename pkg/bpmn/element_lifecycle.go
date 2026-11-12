@@ -126,11 +126,9 @@ func (engine *Engine) activateElement(
 	// element without input mappings of its own, such as a start event,
 	// copies none
 	var historyInput map[string]any
-	if mapped, ok := element.(interface {
-		GetInputMapping() []extensions.TIoMapping
-	}); ok {
+	if inputMappings, ok := bpmn20.InputMappingsOf(element); ok {
 		historyInput = parent.ExecutionScopeSnapshot()
-		if err := scope.ApplyInputMappings(parent, mapped.GetInputMapping(), engine.evaluateExpression); err != nil {
+		if err := scope.ApplyInputMappings(parent, inputMappings, engine.evaluateExpression); err != nil {
 			return runtime.ElementScope{}, fmt.Errorf("failed to evaluate input variables: %w", err)
 		}
 	}
@@ -335,10 +333,19 @@ func (engine *Engine) scopeOfElement(
 	return scope, true, nil
 }
 
+// errInputMappingsDoNotEvaluate is wrapped into the error of
+// refreshElementScope when an input mapping of the element fails, to tell it
+// from a failure of the storage: the first one lasts until the variables are
+// corrected, the second one may be gone when the call is repeated.
+var errInputMappingsDoNotEvaluate = errors.New("failed to evaluate the input mappings")
+
 // refreshElementScope evaluates the input mappings of the element again, as
 // the resolution of an incident does for every element, and answers the scope
 // with their new results; what the jobs of the element added stays. The
-// second answer is false for an element instance which keeps no scope.
+// history row of the element shows the variables its own work got its inputs
+// from, so it follows them until that work is done: an element whose end
+// listeners run keeps the row as its own job left it. The second answer is
+// false for an element instance which keeps no scope.
 func (engine *Engine) refreshElementScope(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -351,11 +358,15 @@ func (engine *Engine) refreshElementScope(
 	if err != nil || !keepsScope {
 		return runtime.ElementScope{}, false, err
 	}
-	if mapped, ok := element.(interface {
-		GetInputMapping() []extensions.TIoMapping
-	}); ok {
-		if err := scope.ApplyInputMappings(&instance.ProcessInstance().VariableHolder, mapped.GetInputMapping(), engine.evaluateExpression); err != nil {
-			return runtime.ElementScope{}, false, fmt.Errorf("failed to evaluate input variables of %s %s: %w", element.GetType(), element.GetId(), err)
+	if inputMappings, ok := bpmn20.InputMappingsOf(element); ok {
+		parent := &instance.ProcessInstance().VariableHolder
+		if err := scope.ApplyInputMappings(parent, inputMappings, engine.evaluateExpression); err != nil {
+			return runtime.ElementScope{}, false, fmt.Errorf("%w of %s %s: %w", errInputMappingsDoNotEvaluate, element.GetType(), element.GetId(), err)
+		}
+		if scope.Phase != runtime.ElementPhaseCompleting {
+			if err := engine.saveHistoryInput(ctx, batch, elementInstanceKey, parent.ExecutionScopeSnapshot()); err != nil {
+				return runtime.ElementScope{}, false, err
+			}
 		}
 	}
 	if err := batch.SaveElementScope(ctx, scope); err != nil {

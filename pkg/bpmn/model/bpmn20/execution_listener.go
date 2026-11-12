@@ -95,10 +95,9 @@ func (p *TProcess) IsTopLevelStartEvent(startEvent *TStartEvent) bool {
 // ListenerTask is the job-carrying side of an execution listener. It reads as
 // the element it belongs to (the embedded FlowNode), so that the job of the
 // listener is created, handed out and resolved as the job of a task on that
-// element. It has no input or output mappings: a listener job carries its
-// instance's variables as every job does, and its completion changes no
-// variable. The element stays what it is, so a start event's own output
-// mappings are never evaluated again when the listener's job completes.
+// element. It has no input or output mappings of its own: the engine hands
+// its job the variables of the element, and keeps what the job is completed
+// with in the element (see the element lifecycle in package bpmn).
 type ListenerTask struct {
 	FlowNode
 	listener extensions.TExecutionListener
@@ -112,20 +111,29 @@ func NewListenerTask(element FlowNode, listener extensions.TExecutionListener) *
 // EventType answers the listener's event type.
 func (task *ListenerTask) EventType() string { return task.listener.EventType }
 
-// Element answers the element the listener belongs to.
-func (task *ListenerTask) Element() FlowNode { return task.FlowNode }
-
 // GetTaskType answers the listener's job type, without surrounding
 // whitespace, which a worker could not tell apart.
 func (task *ListenerTask) GetTaskType() string { return strings.TrimSpace(task.listener.Type) }
 
-// GetInputMapping answers none: a listener job carries its instance's variables.
+// GetInputMapping answers none: the input mappings are the element's, and
+// were evaluated before its first listener.
 func (task *ListenerTask) GetInputMapping() []extensions.TIoMapping {
 	return nil
 }
 
-// GetOutputMapping answers none: a listener's completion changes no variable.
+// GetOutputMapping answers none: what a listener's job is completed with
+// reaches no scope outside its element.
 func (task *ListenerTask) GetOutputMapping() []extensions.TIoMapping {
+	return nil
+}
+
+// GetTaskHeaders answers the static headers of the element, and none where
+// the element takes none: they belong to the element, so each of its jobs
+// carries them, a listener's as the element's own.
+func (task *ListenerTask) GetTaskHeaders() []extensions.THeader {
+	if provider, ok := task.FlowNode.(TaskHeaderProvider); ok {
+		return provider.GetTaskHeaders()
+	}
 	return nil
 }
 

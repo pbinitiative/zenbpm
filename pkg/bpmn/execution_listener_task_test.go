@@ -1,6 +1,8 @@
 package bpmn
 
 import (
+	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +31,8 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 	assert.Equal(t, "listened-task", beforeFirst.ElementId)
 	assert.Equal(t, "SERVICE_TASK", beforeFirst.ElementType, "a listener's job carries the type of its element")
 	assert.Equal(t, map[string]any{"given": "g", "taskInput": "g"}, beforeFirst.InputVariables, "a start listener sees the results of the input mappings")
+	taskHeaders := map[string]string{"channel": "post"}
+	assert.Equal(t, taskHeaders, beforeFirst.Headers, "a listener's job carries the static headers of its element")
 	elementInstanceKey := beforeFirst.ElementInstanceKey
 	assert.Equal(t, runtime.ElementPhaseActivating, scopeOf(t, store, elementInstanceKey).Phase)
 	history := historyOf(t, engine, elementInstanceKey)
@@ -46,6 +51,7 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 	assert.Equal(t, runtime.JobKindElement, work.Kind)
 	assert.Empty(t, work.ListenerEventType)
 	assert.Equal(t, elementInstanceKey, work.ElementInstanceKey)
+	assert.Equal(t, taskHeaders, work.Headers)
 	assert.Equal(t, map[string]any{"given": "g", "taskInput": "g", "fromBefore": "b1", "shared": "second"}, work.InputVariables,
 		"the task's own job sees what its start listeners were completed with")
 	assert.Equal(t, runtime.ElementPhaseActive, scopeOf(t, store, elementInstanceKey).Phase)
@@ -57,6 +63,7 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 	afterFirst := waitForPendingJobOfType(t, engine, instanceKey, "after-first")
 	assert.Equal(t, "end", afterFirst.ListenerEventType)
 	assert.Equal(t, elementInstanceKey, afterFirst.ElementInstanceKey)
+	assert.Equal(t, taskHeaders, afterFirst.Headers)
 	assert.Equal(t, map[string]any{
 		"given": "g", "taskResult": "r", "mappedFromBefore": "b1", // the instance, after the output mappings
 		"taskInput": "g", "fromBefore": "b1", "shared": "second", // the task's own
@@ -88,7 +95,7 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 
 	count, err := engine.persistence.GetFlowNodeCount(t.Context(), instanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, int64(8), count, "the start event, the following task, and the listened task once for each of its 2+2 listeners, its job and its leaving")
+	assert.Equal(t, int64(8), count, "the start event, the following task, and the listened task once for each of its five jobs it waits for and once for leaving")
 }
 
 func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
@@ -200,6 +207,14 @@ func TestAnEngineHandlerDoesTheWorkOfATaskBetweenItsListeners(t *testing.T) {
 	history := historyOf(t, engine, beforeFirst.ElementInstanceKey)
 	assert.Nil(t, history.CompletedAt, "the task stays active while its end listeners run")
 	assert.Equal(t, "b1", history.OutputVariables["taskResult"])
+
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterFirst.Key, nil))
+	afterSecond := waitForPendingJobOfType(t, engine, instanceKey, "after-second")
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterSecond.Key, nil))
+	waitForPendingJobOfType(t, engine, instanceKey, "following-work")
+	count, err := engine.persistence.GetFlowNodeCount(t.Context(), instanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), count, "the start event, the following task, and the listened task once for each of its four listeners' jobs and once for leaving: the job the handler completed at once was not waited for")
 }
 
 func TestResolvingAFailureOfTheTasksOwnWorkRunsNoCompletedStartListenerAgain(t *testing.T) {
@@ -237,6 +252,8 @@ func TestResolvingAFailureOfTheTasksOwnWorkRunsNoCompletedStartListenerAgain(t *
 
 	afterFirst := waitForPendingJobOfType(t, engine, instanceKey, "after-first")
 	assert.Equal(t, "corrected", seenInput.Load(), "resolving the incident evaluates the input mappings again")
+	assert.Equal(t, map[string]any{"given": "corrected"}, historyOf(t, engine, beforeFirst.ElementInstanceKey).InputVariables,
+		"the history row shows the variables the task's job got its inputs from")
 	assert.Equal(t, "b1", afterFirst.InputVariables["fromBefore"], "what the start listeners were completed with is kept")
 	assert.Equal(t, beforeFirst.ElementInstanceKey, afterFirst.ElementInstanceKey)
 	for _, listenerType := range []string{"before-first", "before-second"} {
@@ -265,9 +282,67 @@ func TestResolvingAnIncidentOfAListenersJobKeepsWhatEarlierListenersAdded(t *tes
 	resolved := requireSinglePendingJob(t, store, instanceKey)
 	assert.Equal(t, beforeSecond.Key, resolved.Key, "the same job is handed out again")
 	assert.Equal(t, map[string]any{"given": "corrected", "taskInput": "corrected", "fromBefore": "b1"}, resolved.InputVariables)
-	assert.Equal(t, map[string]any{"given": "g"}, historyOf(t, engine, beforeSecond.ElementInstanceKey).InputVariables,
-		"the history row of the task is not the listener's to rewrite")
+	assert.Equal(t, map[string]any{"given": "corrected"}, historyOf(t, engine, beforeSecond.ElementInstanceKey).InputVariables,
+		"the history row shows the variables the task's job will get its inputs from")
 	assert.Equal(t, 1, jobsOfType(t, store, instanceKey, "before-first"), "the completed listener is not run again")
+}
+
+func TestResolvingAnIncidentOfAnEndListenersJobLeavesTheHistoryOfTheTasksInputsAlone(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	definition := loadListenerFixture(t, engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	work := completeStartListeners(t, engine, store, instanceKey, nil)
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, map[string]any{"result": "r"}))
+	afterFirst := waitForPendingJobOfType(t, engine, instanceKey, "after-first")
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), afterFirst.Key, "listener failed", nil, nil, nil, nil, nil))
+	incident := onlyOpenIncident(t, engine, instanceKey)
+	_, _, err = engine.ModifyInstance(t.Context(), instanceKey, nil, nil, map[string]any{"given": "corrected"})
+	require.NoError(t, err)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+
+	resolved := requireSinglePendingJob(t, store, instanceKey)
+	assert.Equal(t, afterFirst.Key, resolved.Key)
+	assert.Equal(t, "corrected", resolved.InputVariables["taskInput"], "the end listener sees the input mappings evaluated again")
+	assert.Equal(t, map[string]any{"given": "g"}, historyOf(t, engine, work.ElementInstanceKey).InputVariables,
+		"the history row keeps the variables the task's job got its inputs from: that job is done")
+}
+
+func TestResolvingAnIncidentOfATaskWithListenersIsRefusedWhileItsInputMappingsDoNotEvaluate(t *testing.T) {
+	engine, store, incident := listenedTaskWhoseOwnWorkFailed(t, inmemory.NewStorage())
+	feel := &failingFeelRuntime{FeelRuntime: engine.feelRuntime}
+	engine.feelRuntime = feel
+
+	feel.fails.Store(true)
+	err := engine.ResolveIncident(t.Context(), incident.Key)
+
+	require.ErrorIs(t, err, ErrIncidentNotResolvable, "resolving would only raise the incident again")
+	assert.ErrorContains(t, err, "failed to evaluate the input mappings of SERVICE_TASK listened-task")
+	assert.ErrorContains(t, err, "correct the variables they read and resolve the incident again")
+	assert.Equal(t, incident.Key, onlyOpenIncident(t, engine, incident.ProcessInstanceKey).Key, "the incident stays open")
+
+	feel.fails.Store(false)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	waitForPendingJobOfType(t, engine, incident.ProcessInstanceKey, "after-first")
+	assert.Equal(t, 1, jobsOfType(t, store, incident.ProcessInstanceKey, "before-first"))
+}
+
+func TestAStorageFailureWhileResolvingAnIncidentOfATaskWithListenersIsNotARefusal(t *testing.T) {
+	failing := &failingScopeReadStorage{Storage: inmemory.NewStorage()}
+	engine, _, incident := listenedTaskWhoseOwnWorkFailed(t, failing)
+
+	failing.failsFindElementScope.Store(true)
+	err := engine.ResolveIncident(t.Context(), incident.Key)
+
+	require.ErrorIs(t, err, errFindElementScopeFailure)
+	assert.NotErrorIs(t, err, ErrIncidentNotResolvable, "nothing about the incident has to change: the resolution may be repeated as it is")
+	assert.Equal(t, incident.Key, onlyOpenIncident(t, engine, incident.ProcessInstanceKey).Key, "the incident stays open")
+
+	failing.failsFindElementScope.Store(false)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	waitForPendingJobOfType(t, engine, incident.ProcessInstanceKey, "after-first")
 }
 
 func TestResolvingAnIncidentOfTheTasksJobKeepsWhatItsStartListenersAdded(t *testing.T) {
@@ -290,6 +365,67 @@ func TestResolvingAnIncidentOfTheTasksJobKeepsWhatItsStartListenersAdded(t *test
 	assert.Equal(t, map[string]any{"given": "corrected", "taskInput": "corrected", "fromBefore": "b1"}, resolved.InputVariables)
 	assert.Equal(t, map[string]any{"given": "corrected"}, historyOf(t, engine, work.ElementInstanceKey).InputVariables,
 		"the history row shows the variables the input mappings were evaluated from again")
+}
+
+func TestConcurrentCompletionsOfAListenersJobMoveItsElementOnOnce(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	definition := loadListenerFixture(t, engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	beforeFirst := requireSinglePendingJob(t, store, instanceKey)
+
+	const completions = 8
+	start := make(chan struct{})
+	results := make(chan error, completions)
+	for range completions {
+		go func() {
+			<-start
+			results <- engine.JobCompleteByKey(context.WithoutCancel(t.Context()), beforeFirst.Key, map[string]any{"fromBefore": "b1"})
+		}()
+	}
+	close(start)
+	for range completions {
+		require.NoError(t, <-results, "a repeated completion is answered as the first one")
+	}
+
+	beforeSecond := waitForPendingJobOfType(t, engine, instanceKey, "before-second")
+	assert.Equal(t, "b1", beforeSecond.InputVariables["fromBefore"])
+	assert.Len(t, pendingJobs(t, engine, instanceKey), 1)
+	assert.Equal(t, 1, jobsOfType(t, store, instanceKey, "before-second"), "the next listener's job is created once")
+	scope := scopeOf(t, store, beforeFirst.ElementInstanceKey)
+	assert.Equal(t, runtime.ElementPhaseActivating, scope.Phase)
+	assert.Equal(t, 1, scope.ListenerIndex, "the scope moved on by one listener")
+	assert.Equal(t, map[string]any{"given": "g"}, variablesOf(t, engine, store, instance))
+}
+
+func TestAListenerCompletedBeforeARestartIsNotRunAgain(t *testing.T) {
+	store := &failingInstanceSaveStorage{Storage: inmemory.NewStorage()}
+	engine := NewEngine(EngineWithStorage(store))
+	engine.reconciliationInterval = time.Hour
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+	definition := loadListenerFixture(t, &engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	beforeFirst := requireSinglePendingJob(t, store, instanceKey)
+
+	// the completion is committed, and the engine goes down before it moves the token on
+	store.failsSaveProcessInstance.Store(true)
+	err = engine.JobCompleteByKey(t.Context(), beforeFirst.Key, map[string]any{"fromBefore": "b1"})
+	require.ErrorIs(t, err, errSaveProcessInstanceFailure)
+	require.Equal(t, runtime.ActivityStateCompleted, reloadJob(t, store.Storage, beforeFirst.Key).State)
+	require.Empty(t, pendingJobs(t, &engine, instanceKey), "nothing followed the completion")
+	store.failsSaveProcessInstance.Store(false)
+
+	require.NoError(t, engine.reconcileRunningTokensAtStartup(t.Context()), "what a start of the engine does with a token left running")
+
+	beforeSecond := requireSinglePendingJob(t, store, instanceKey)
+	assert.Equal(t, "before-second", beforeSecond.Type, "the element goes on behind the listener which was completed")
+	assert.Equal(t, "b1", beforeSecond.InputVariables["fromBefore"], "what the completed listener added was stored with its completion")
+	assert.Equal(t, beforeFirst.ElementInstanceKey, beforeSecond.ElementInstanceKey)
+	assert.Equal(t, 1, jobsOfType(t, store.Storage, instanceKey, "before-first"), "the completed listener is not run again")
 }
 
 func TestABpmnErrorOfTheTasksJobLeavesByTheBoundaryEventAndOfAListenersJobIsRefused(t *testing.T) {
@@ -426,6 +562,11 @@ func TestAStoredTaskListenerADeploymentWouldRefuseRaisesAnIncidentOnTheTask(t *t
 	assert.Contains(t, incident.Message, "deploy a corrected version of the process")
 	assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key), "neither a listener's job nor the task's is created")
 	assert.Equal(t, runtime.ActivityStateFailed, readInstance(t, engine, store, instance).State)
+
+	require.Error(t, engine.ResolveIncident(t.Context(), incident.Key), "the listener is still what it was")
+	raisedAgain := onlyOpenIncident(t, engine, instance.ProcessInstance().Key)
+	assert.NotEqual(t, incident.Key, raisedAgain.Key)
+	assert.Contains(t, raisedAgain.Message, `its type "=jobType" is an expression`)
 }
 
 func TestAStoredListenerWhereTheEngineRunsNoneStaysIgnored(t *testing.T) {
@@ -528,4 +669,85 @@ func jobsOfType(t *testing.T, store *inmemory.Storage, instanceKey int64, jobTyp
 		}
 	}
 	return count
+}
+
+// listenedTaskWhoseOwnWorkFailed runs the task of task-listeners.bpmn until
+// its start listeners are completed and the handler of its own job failed,
+// and answers the incident of that failure: one of the token, which no job
+// waits behind, on a task which keeps a scope.
+func listenedTaskWhoseOwnWorkFailed(t *testing.T, store storage.Storage) (*Engine, *inmemory.Storage, runtime.Incident) {
+	t.Helper()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+	inMemory, ok := store.(*inmemory.Storage)
+	if failing, wraps := store.(*failingScopeReadStorage); wraps {
+		inMemory, ok = failing.Storage, true
+	}
+	require.True(t, ok, "the storage of the test is in memory")
+
+	var fails atomic.Bool
+	fails.Store(true)
+	engine.NewTaskHandler().Type("listened-work").Handler(func(job ActivatedJob) {
+		if fails.CompareAndSwap(true, false) {
+			job.Fail("not yet")
+			return
+		}
+		job.Complete()
+	})
+	definition := loadListenerFixture(t, &engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	beforeFirst := requireSinglePendingJob(t, store, instanceKey)
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), beforeFirst.Key, nil))
+	beforeSecond := waitForPendingJobOfType(t, &engine, instanceKey, "before-second")
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), beforeSecond.Key, nil))
+	waitForInstanceState(t, &engine, inMemory, instance, runtime.ActivityStateFailed)
+	return &engine, inMemory, onlyOpenIncident(t, &engine, instanceKey)
+}
+
+var errFindElementScopeFailure = errors.New("storage failure: find element scope")
+
+// failingScopeReadStorage fails to read the scope of an element instance on demand.
+type failingScopeReadStorage struct {
+	*inmemory.Storage
+	failsFindElementScope atomic.Bool
+}
+
+func (s *failingScopeReadStorage) FindElementScope(ctx context.Context, elementInstanceKey int64) (runtime.ElementScope, error) {
+	if s.failsFindElementScope.Load() {
+		return runtime.ElementScope{}, errFindElementScopeFailure
+	}
+	return s.Storage.FindElementScope(ctx, elementInstanceKey)
+}
+
+var errSaveProcessInstanceFailure = errors.New("storage failure: save process instance")
+
+// failingInstanceSaveStorage fails to save a process instance outside a batch
+// on demand, which is what the run of an instance does first: a completion
+// is so committed without anything following it.
+type failingInstanceSaveStorage struct {
+	*inmemory.Storage
+	failsSaveProcessInstance atomic.Bool
+}
+
+func (s *failingInstanceSaveStorage) SaveProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
+	if s.failsSaveProcessInstance.Load() {
+		return errSaveProcessInstanceFailure
+	}
+	return s.Storage.SaveProcessInstance(ctx, instance)
+}
+
+// failingFeelRuntime fails every evaluation on demand.
+type failingFeelRuntime struct {
+	script.FeelRuntime
+	fails atomic.Bool
+}
+
+func (feel *failingFeelRuntime) Evaluate(expression string, variableContext map[string]any) (any, error) {
+	if feel.fails.Load() {
+		return nil, errors.New("injected evaluation failure")
+	}
+	return feel.FeelRuntime.Evaluate(expression, variableContext)
 }

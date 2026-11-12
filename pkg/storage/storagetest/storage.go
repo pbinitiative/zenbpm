@@ -729,6 +729,8 @@ func (st *StorageTester) TestAJobKeepsWhatItBelongsTo(s storage.Storage, _ *test
 		assert.Equal(t, "start", stored.ListenerEventType)
 
 		ofAListener.State = bpmnruntime.ActivityStateCompleted
+		ofAListener.Kind = bpmnruntime.JobKindElement
+		ofAListener.ListenerEventType = ""
 		require.NoError(t, s.SaveJob(t.Context(), ofAListener))
 		stored, err = s.FindJobByJobKey(t.Context(), ofAListener.Key)
 		require.NoError(t, err)
@@ -786,11 +788,31 @@ func (st *StorageTester) TestElementScopeIsSavedAndDeletedInABatch(s storage.Sto
 		})
 		require.NoError(t, s.SaveElementScope(t.Context(), left))
 
+		// as the completion of a listener's job writes them: the scope which
+		// moved on, the completed job and the token set running, all or none
+		listenerJob := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Kind = bpmnruntime.JobKindExecutionListener
+			job.ListenerEventType = "start"
+			job.ElementInstanceKey = kept.ElementInstanceKey
+		})
+		listenerJob.State = bpmnruntime.ActivityStateCompleted
+		listenerJob.Token.State = bpmnruntime.TokenStateRunning
+
 		batch := s.NewBatch()
 		require.NoError(t, batch.SaveElementScope(t.Context(), kept))
 		require.NoError(t, batch.DeleteElementScope(t.Context(), left.ElementInstanceKey))
+		require.NoError(t, batch.SaveJob(t.Context(), listenerJob))
+		require.NoError(t, batch.SaveToken(t.Context(), listenerJob.Token))
 		_, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
 		require.ErrorIs(t, err, storage.ErrNotFound, "nothing is written before the batch is flushed")
+		_, err = s.FindElementScope(t.Context(), left.ElementInstanceKey)
+		require.NoError(t, err, "nothing is deleted before the batch is flushed")
+		storedJob, err := s.FindJobByJobKey(t.Context(), listenerJob.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateActive, storedJob.State, "the job of the batch is not written alone")
+		storedToken, err := s.GetTokenByKey(t.Context(), listenerJob.Token.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.TokenStateWaiting, storedToken.State, "the token of the batch is not written alone")
 		require.NoError(t, batch.Flush(t.Context()))
 
 		stored, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
@@ -798,6 +820,12 @@ func (st *StorageTester) TestElementScopeIsSavedAndDeletedInABatch(s storage.Sto
 		assert.Equal(t, kept, stored)
 		_, err = s.FindElementScope(t.Context(), left.ElementInstanceKey)
 		require.ErrorIs(t, err, storage.ErrNotFound)
+		storedJob, err = s.FindJobByJobKey(t.Context(), listenerJob.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateCompleted, storedJob.State)
+		storedToken, err = s.GetTokenByKey(t.Context(), listenerJob.Token.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.TokenStateRunning, storedToken.State)
 	}
 }
 

@@ -756,12 +756,15 @@ func (mem *Storage) FindPendingProcessInstanceJobs(_ context.Context, processIns
 var _ storage.JobStorageWriter = &Storage{}
 
 // SaveJob stores the job. The delivery token of a job stored before stays: only
-// a delivery raises it, see RecordJobDelivery.
+// a delivery raises it, see RecordJobDelivery. What the job belongs to stays
+// as well: it is written when the job is created, and never changed.
 func (mem *Storage) SaveJob(_ context.Context, job bpmnruntime.Job) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	if stored, ok := mem.Jobs[job.GetKey()]; ok {
 		job.DeliveryToken = stored.DeliveryToken
+		job.Kind = stored.Kind
+		job.ListenerEventType = stored.ListenerEventType
 	}
 	mem.Jobs[job.GetKey()] = job
 	return nil

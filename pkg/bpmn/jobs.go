@@ -27,13 +27,7 @@ func (engine *Engine) createInternalTask(
 	currentToken runtime.ExecutionToken,
 	jobVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	created := jobCreation{}
-	// the element of a listener saved its history row before, and the
-	// listener's job carries the variables the row would copy
-	if _, isListener := element.(*bpmn20.ListenerTask); !isListener {
-		created.writesHistoryInput = true
-		created.historyInput = jobVarHolder.ExecutionScopeSnapshot()
-	}
+	created := jobCreation{writesHistoryInput: true, historyInput: jobVarHolder.ExecutionScopeSnapshot()}
 	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}

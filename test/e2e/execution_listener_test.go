@@ -91,17 +91,21 @@ func TestATaskRunsItsListenersAroundItsJobOverRest(t *testing.T) {
 	require.NotNil(t, before.ListenerEventType)
 	assert.Equal(t, public.JobListenerEventTypeStart, *before.ListenerEventType)
 	assert.Equal(t, "o-3", before.InputVariables["order"])
+	taskHeaders := &map[string]string{"carrier": "post"}
+	assert.Equal(t, taskHeaders, before.TaskHeaders, "a listener's job carries the static headers of its element")
 	completeListenerTaskJob(t, before.Key, map[string]any{"reserved": "r-1"})
 
 	work := waitForActiveJobOfType(t, instance.Key, task.workJobType)
 	assert.Nil(t, work.ListenerEventType, "absent for the task's own job")
 	assert.Equal(t, before.ElementInstanceKey, work.ElementInstanceKey, "the token stayed in the task")
 	assert.Equal(t, "r-1", work.InputVariables["reserved"], "the task's job sees what its start listener was completed with")
+	assert.Equal(t, taskHeaders, work.TaskHeaders)
 	completeListenerTaskJob(t, work.Key, map[string]any{"shipped": true})
 
 	after := waitForActiveJobOfType(t, instance.Key, task.afterJobType)
 	require.NotNil(t, after.ListenerEventType)
 	assert.Equal(t, public.JobListenerEventTypeEnd, *after.ListenerEventType)
+	assert.Equal(t, taskHeaders, after.TaskHeaders)
 	assert.Equal(t, "r-1", after.InputVariables["reservedBefore"], "the output mapping wrote the start listener's variable to the instance")
 	assert.Equal(t, true, after.InputVariables["shipped"], "the end listener sees what the task's job was completed with")
 	listened := getFlowElementByElementId(t, instance.Key, "listened-task")
@@ -127,6 +131,7 @@ func TestTheListenersOfATaskReachWorkersOverTheJobStream(t *testing.T) {
 		_, err := worker.RegisterWorker(t.Context(), jobType, func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 			assert.Equal(t, listenerEventType, job.GetListenerEventType())
 			assert.Equal(t, "SERVICE_TASK", job.GetElementType())
+			assert.Equal(t, map[string]string{"carrier": "post"}, job.GetHeaders(), "every job of the task carries its static headers")
 			order.Store(order.Load().(string) + " " + listenerEventType + "/" + job.GetElementId())
 			return map[string]any{"reserved": "r-2"}, nil
 		}, jobType)

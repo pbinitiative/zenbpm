@@ -81,12 +81,39 @@ func TestListenerTaskOfAnswersTheListenerAJobNames(t *testing.T) {
 	assert.Nil(t, start.GetInputMapping())
 	assert.Nil(t, start.GetOutputMapping())
 	assert.Len(t, start.GetOutgoingAssociation(), 1, "the start event's own sequence flows")
-	assert.Equal(t, &definitions.Process.StartEvents[0], start.Element())
+	assert.Equal(t, &definitions.Process.StartEvents[0], start.FlowNode)
 	assert.Equal(t, "then", process.ListenerTaskOf("start", "end", "then").GetTaskType(), "the job type tells the listeners of one event type apart")
 	assert.Nil(t, process.ListenerTaskOf("unknown", "end", "on-start"))
 	assert.Nil(t, process.ListenerTaskOf("start", "start", "on-start"), "the start event has no listener of that event type")
 	assert.Nil(t, process.ListenerTaskOf("start", "end", "gone"), "the start event has no listener of that job type")
 	assert.Nil(t, process.ListenerTaskOf("task", "end", "work"), "the service task has no listener")
+}
+
+func TestAListenerTaskCarriesTheHeadersOfItsElement(t *testing.T) {
+	listener := extensions.TExecutionListener{EventType: "start", Type: "before"}
+	headers := []extensions.THeader{{Key: "channel", Value: "post"}}
+	task := &TServiceTask{}
+	task.Headers = headers
+
+	assert.Equal(t, headers, NewListenerTask(task, listener).GetTaskHeaders(), "the headers belong to the element, so each of its jobs carries them")
+	assert.Nil(t, NewListenerTask(&TStartEvent{}, listener).GetTaskHeaders(), "a start event takes no headers")
+}
+
+func TestInputMappingsOfAnswersWhetherAFlowNodeTakesAny(t *testing.T) {
+	mappings := []extensions.TIoMapping{{Source: "=given", Target: "taskInput"}}
+	task := &TServiceTask{}
+	task.Input = mappings
+
+	answered, takesMappings := InputMappingsOf(task)
+	assert.True(t, takesMappings)
+	assert.Equal(t, mappings, answered)
+
+	answered, takesMappings = InputMappingsOf(&TServiceTask{})
+	assert.True(t, takesMappings, "a task without input mappings still takes them")
+	assert.Empty(t, answered)
+
+	_, takesMappings = InputMappingsOf(&TStartEvent{})
+	assert.False(t, takesMappings, "a start event takes no input mappings")
 }
 
 func TestSeveralListenersOfOneEventTypeAreKeptInTheOrderOfTheModel(t *testing.T) {

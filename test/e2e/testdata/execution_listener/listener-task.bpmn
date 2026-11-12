@@ -11,6 +11,9 @@
     <bpmn:serviceTask id="listened-task">
       <bpmn:extensionElements>
         <zenbpm:taskDefinition type="listener-task-work" />
+        <zenbpm:taskHeaders>
+          <zenbpm:header key="carrier" value="post" />
+        </zenbpm:taskHeaders>
         <zeebe:executionListeners>
           <zeebe:executionListener eventType="start" type="listener-task-before" />
           <zeebe:executionListener eventType="end" type="listener-task-after" />

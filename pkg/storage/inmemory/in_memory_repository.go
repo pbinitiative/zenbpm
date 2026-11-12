@@ -1570,6 +1570,9 @@ func (b *StorageBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, pr
 }
 
 func (b *StorageBatch) SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error {
+	// the batch writes the scope as it is now, whatever its caller does to
+	// it before the flush
+	scope = copyOfElementScope(scope)
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveElementScope(ctx, scope)
 	})
@@ -1625,15 +1628,45 @@ func (mem *Storage) DeleteElementScope(_ context.Context, elementInstanceKey int
 	return nil
 }
 
-// copyOfElementScope answers the scope with maps of its own, never nil, as a
-// scope read from a database has them: the engine writes into the maps of a
-// scope it read.
+// copyOfElementScope answers the scope with variables of its own, in maps
+// which are never nil, as a scope written to and read from a database has
+// them: the engine writes into the maps of a scope it read, and what a caller
+// does to a variable it saved or read must not change the stored scope.
 func copyOfElementScope(scope bpmnruntime.ElementScope) bpmnruntime.ElementScope {
-	inputVariables := make(map[string]any, len(scope.InputVariables))
-	maps.Copy(inputVariables, scope.InputVariables)
-	scope.InputVariables = inputVariables
-	localVariables := make(map[string]any, len(scope.LocalVariables))
-	maps.Copy(localVariables, scope.LocalVariables)
-	scope.LocalVariables = localVariables
+	scope.InputVariables = copyOfVariables(scope.InputVariables)
+	scope.LocalVariables = copyOfVariables(scope.LocalVariables)
 	return scope
+}
+
+// copyOfVariables answers the variables in a map of its own, never nil, with
+// a copy of every map and list among their values.
+func copyOfVariables(variables map[string]any) map[string]any {
+	copied := make(map[string]any, len(variables))
+	for name, value := range variables {
+		copied[name] = copyOfVariableValue(value)
+	}
+	return copied
+}
+
+// copyOfVariableValue answers a copy of a map or a list in the shape JSON
+// gives a variable, with a copy of what it holds, and any other value as it is.
+func copyOfVariableValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		if value == nil {
+			return value
+		}
+		return copyOfVariables(value)
+	case []any:
+		if value == nil {
+			return value
+		}
+		copied := make([]any, len(value))
+		for i, item := range value {
+			copied[i] = copyOfVariableValue(item)
+		}
+		return copied
+	default:
+		return value
+	}
 }

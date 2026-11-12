@@ -53,6 +53,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestIncidentNamesItsJob,
 		st.TestElementScopeRoundTrips,
 		st.TestElementScopeIsSavedAndDeletedInABatch,
+		st.TestAStoredElementScopeKeepsVariablesOfItsOwn,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
 		st.TestTokenStorageReader,
@@ -1075,6 +1076,51 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, _ *testing.
 			assert.NoError(t, err, "token-level message subscription should not have been deleted")
 			assert.Equal(t, message.MessageSubscription().Key, gotMsg.MessageSubscription().Key)
 		})
+	}
+}
+
+func (st *StorageTester) TestAStoredElementScopeKeepsVariablesOfItsOwn(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		scopeWithNestedVariables := func() bpmnruntime.ElementScope {
+			scope := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+				ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			})
+			scope.InputVariables = map[string]any{"order": map[string]any{"lines": []any{map[string]any{"article": "ordered"}}}}
+			scope.LocalVariables = map[string]any{"reservation": map[string]any{"state": "reserved"}}
+			return scope
+		}
+		// what a caller may do to a scope it holds: to a map and to a list among
+		// its variables, and to its variables themselves
+		changeVariablesOf := func(scope bpmnruntime.ElementScope) {
+			order := scope.InputVariables["order"].(map[string]any)
+			order["lines"].([]any)[0].(map[string]any)["article"] = "changed"
+			order["lines"].([]any)[0] = "replaced"
+			scope.LocalVariables["reservation"].(map[string]any)["state"] = "changed"
+			scope.LocalVariables["added"] = "later"
+		}
+
+		saved, expected := scopeWithNestedVariables(), scopeWithNestedVariables()
+		expected.ElementInstanceKey = saved.ElementInstanceKey
+		require.NoError(t, s.SaveElementScope(t.Context(), saved))
+		changeVariablesOf(saved)
+		stored, err := s.FindElementScope(t.Context(), saved.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a scope is stored as it was when it was saved")
+
+		changeVariablesOf(stored)
+		stored, err = s.FindElementScope(t.Context(), saved.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a scope which was read is the reader's own")
+
+		batched, expected := scopeWithNestedVariables(), scopeWithNestedVariables()
+		expected.ElementInstanceKey = batched.ElementInstanceKey
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveElementScope(t.Context(), batched))
+		changeVariablesOf(batched)
+		require.NoError(t, batch.Flush(t.Context()))
+		stored, err = s.FindElementScope(t.Context(), batched.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a batch writes a scope as it was when the batch took it")
 	}
 }
 

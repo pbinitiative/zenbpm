@@ -29,8 +29,11 @@ A worker serves it as any other job, and tells it from an element's own job by `
 job does not carry. Its `elementType` is the type of the listener's element, such as `START_EVENT`
 or `USER_TASK`, so a client which picks the jobs of user tasks by `elementType` has to leave out
 the ones carrying a `listenerEventType`. A listener job is never handed to an internal task
-handler, the variables of its completion never reach the instance, and a failure with an error
-code is refused with `400`, because a listener cannot throw a BPMN error.
+handler, and a failure with an error code is refused with `400`, because a listener cannot throw a
+BPMN error. The variables of its completion never reach the instance by themselves: what a `start`
+listener's job is completed with reaches it only where an output mapping of the element names it,
+and what an `end` listener's job is completed with never does (see
+[Variables](./bpmn/execution-listeners.md#variables)).
 
 ## Working with external jobs
 

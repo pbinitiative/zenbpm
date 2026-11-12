@@ -81,12 +81,15 @@ variables the earlier jobs of the element were completed with. So:
 - the variables an `end` listener's job is completed with are seen by the later `end` listeners
   of the element only.
 
-The variables of a listener's completion never reach the instance by themselves, as the variables
-of every job: an output mapping of the element has to name them. `=reserved` as the source of an
-output mapping of the task above writes what `reserve-stock` was completed with as `reserved` to
-the instance. A start event has no job of its own, so nothing its `end` listeners are completed
-with reaches the instance; a worker which has to set a variable there does so with
-`PATCH /v1/process-instances/{key}/variables` before it completes the job.
+The variables of a listener's completion never reach the instance by themselves. What a `start`
+listener's job is completed with reaches it where an output mapping of the element names it, as
+the variables of the element's own job do: `=reserved` as the source of an output mapping of the
+task above writes what `reserve-stock` was completed with as `reserved` to the instance. What an
+`end` listener's job is completed with reaches the instance on no element, because the output
+mappings are applied before the `end` listeners run; a start event takes `end` listeners only, so
+nothing its listeners are completed with does. A worker which has to set a variable in the
+instance from such a job does so with `PATCH /v1/process-instances/{key}/variables` before it
+completes the job.
 
 ## Listeners on a start event
 

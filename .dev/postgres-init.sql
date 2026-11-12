@@ -174,7 +174,9 @@ CREATE TABLE IF NOT EXISTS reporting.job (
     retry_backoff TEXT,
     retries_set_by_operator BIGINT NOT NULL DEFAULT 0,
     delivery_token BIGINT NOT NULL DEFAULT 0,
-    failed_delivery_token BIGINT NOT NULL DEFAULT 0
+    failed_delivery_token BIGINT NOT NULL DEFAULT 0,
+    kind BIGINT NOT NULL DEFAULT 0,
+    listener_event_type TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key
@@ -204,6 +206,18 @@ CREATE INDEX IF NOT EXISTS idx_job_failure_job_key
 
 CREATE INDEX IF NOT EXISTS idx_fk_job_failure_process_instance_key
     ON reporting.job_failure (process_instance_key);
+
+CREATE TABLE IF NOT EXISTS reporting.element_scope (
+    key BIGINT PRIMARY KEY,
+    process_instance_key BIGINT NOT NULL,
+    phase BIGINT NOT NULL,
+    listener_index BIGINT NOT NULL DEFAULT 0,
+    input_variables TEXT NOT NULL,
+    local_variables TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fk_element_scope_process_instance_key
+    ON reporting.element_scope (process_instance_key);
 
 CREATE TABLE IF NOT EXISTS reporting.message_subscription (
     key BIGINT PRIMARY KEY,
@@ -365,6 +379,7 @@ DECLARE
         'process_definition',
         'process_instance',
         'decision_instance',
+        'element_scope',
         'error_subscription',
         'execution_token',
         'flow_element_instance',

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html"
 	"strings"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 // TDocumentation  BPMN elements that inherit from the BaseElement will have the capability,
@@ -149,6 +151,10 @@ type FlowNode interface {
 	FlowElement
 	GetIncomingAssociation() []SequenceFlow
 	GetOutgoingAssociation() []SequenceFlow
+	// GetExecutionListeners answers the execution listeners of the element,
+	// in the order of the model. Whether the engine runs them is decided by
+	// TProcess.ListenerEventTypesRunOn.
+	GetExecutionListeners() []extensions.TExecutionListener
 }
 
 type TFlowNode struct {
@@ -157,6 +163,13 @@ type TFlowNode struct {
 	OutgoingAssociationsIDs []string       `xml:"outgoing"`
 	IncomingAssociations    []SequenceFlow `idField:"IncomingAssociationsIDs"`
 	OutgoingAssociations    []SequenceFlow `idField:"OutgoingAssociationsIDs"`
+	// ExecutionListeners is read here, once for every flow node, so that an
+	// element type needs no code of its own to carry listeners.
+	ExecutionListeners []extensions.TExecutionListener `xml:"extensionElements>executionListeners>executionListener"`
+}
+
+func (flowNode *TFlowNode) GetExecutionListeners() []extensions.TExecutionListener {
+	return flowNode.ExecutionListeners
 }
 
 func (flowNode *TFlowNode) GetIncomingAssociation() []SequenceFlow {

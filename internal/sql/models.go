@@ -38,6 +38,15 @@ type DmnResourceDefinition struct {
 	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
+type ElementScope struct {
+	Key                int64  `json:"key"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Phase              int64  `json:"phase"`
+	ListenerIndex      int64  `json:"listener_index"`
+	InputVariables     string `json:"input_variables"`
+	LocalVariables     string `json:"local_variables"`
+}
+
 type ErrorSubscription struct {
 	Key                  int64          `json:"key"`
 	ElementInstanceKey   int64          `json:"element_instance_key"`
@@ -106,6 +115,8 @@ type Job struct {
 	RetriesSetByOperator int64          `json:"retries_set_by_operator"`
 	DeliveryToken        int64          `json:"delivery_token"`
 	FailedDeliveryToken  int64          `json:"failed_delivery_token"`
+	Kind                 int64          `json:"kind"`
+	ListenerEventType    sql.NullString `json:"listener_event_type"`
 }
 
 type JobFailure struct {

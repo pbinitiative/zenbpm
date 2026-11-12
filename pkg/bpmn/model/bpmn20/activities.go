@@ -38,6 +38,19 @@ type InternalTask interface {
 	GetOutputMapping() []extensions.TIoMapping
 }
 
+// InputMappingsOf answers the input mappings of the flow node. The second
+// answer is false for a node which takes none, such as a start event or a
+// gateway.
+func InputMappingsOf(node FlowNode) ([]extensions.TIoMapping, bool) {
+	mapped, ok := node.(interface {
+		GetInputMapping() []extensions.TIoMapping
+	})
+	if !ok {
+		return nil, false
+	}
+	return mapped.GetInputMapping(), true
+}
+
 // TaskHeaderProvider is implemented by elements that support static task headers
 // (zenbpm:taskHeaders / zeebe:taskHeaders). It is intentionally separate from
 // InternalTask so that elements without headers (e.g. throwing events handled as

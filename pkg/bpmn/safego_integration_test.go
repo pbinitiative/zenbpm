@@ -31,7 +31,8 @@ func TestProcessFlowNode_UnsupportedElementReturnsError(t *testing.T) {
 		element: &unknownFlowNode{},
 	}
 
-	instance := &runtime.DefaultProcessInstance{}
+	// every instance runs a definition, which says whether an element carries execution listeners
+	instance := &runtime.DefaultProcessInstance{ProcessInstanceData: runtime.ProcessInstanceData{Definition: &runtime.ProcessDefinition{}}}
 
 	_, err = bpmnEngine.processFlowNode(t.Context(), &engineBatch, instance, activity, runtime.ExecutionToken{})
 	assert.Error(t, err)

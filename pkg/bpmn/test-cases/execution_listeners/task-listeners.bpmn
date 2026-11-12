@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <bpmn:process id="task-listeners-process" isExecutable="true">
+    <bpmn:startEvent id="task-listeners-start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="task-listeners-start" targetRef="listened-task" />
+    <bpmn:serviceTask id="listened-task" name="listened-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="listened-work" retries="2" retryBackoff="PT0S" />
+        <zenbpm:taskHeaders>
+          <zenbpm:header key="channel" value="post" />
+        </zenbpm:taskHeaders>
+        <zeebe:executionListeners>
+          <zeebe:executionListener eventType="start" type="before-first" retries="2" retryBackoff="PT0S" />
+          <zeebe:executionListener eventType="end" type="after-first" />
+          <zeebe:executionListener eventType="start" type="before-second" />
+          <zeebe:executionListener eventType="end" type="after-second" />
+        </zeebe:executionListeners>
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=given" target="taskInput" />
+          <zenbpm:output source="=result" target="taskResult" />
+          <zenbpm:output source="=fromBefore" target="mappedFromBefore" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="listened-task-error" attachedToRef="listened-task">
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="listened-task-error-definition" errorRef="listened-task-failed" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="listened-task" targetRef="following-task" />
+    <bpmn:serviceTask id="following-task" name="following-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="following-work" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="following-task" targetRef="task-listeners-end" />
+    <bpmn:endEvent id="task-listeners-end">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="listened-task-error" targetRef="recovering-task" />
+    <bpmn:serviceTask id="recovering-task" name="recovering-task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="recovering-work" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="recovering-task" targetRef="task-listeners-recovered" />
+    <bpmn:endEvent id="task-listeners-recovered">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="listened-task-failed" errorCode="LISTENED_TASK_FAILED" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="task-listeners-process">
+      <bpmndi:BPMNShape id="task-listeners-start_di" bpmnElement="task-listeners-start">
+        <dc:Bounds x="160" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="listened-task_di" bpmnElement="listened-task">
+        <dc:Bounds x="256" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="following-task_di" bpmnElement="following-task">
+        <dc:Bounds x="416" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="task-listeners-end_di" bpmnElement="task-listeners-end">
+        <dc:Bounds x="576" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="recovering-task_di" bpmnElement="recovering-task">
+        <dc:Bounds x="416" y="220" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="task-listeners-recovered_di" bpmnElement="task-listeners-recovered">
+        <dc:Bounds x="576" y="242" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="listened-task-error_di" bpmnElement="listened-task-error">
+        <dc:Bounds x="288" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="196" y="120" />
+        <di:waypoint x="256" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="356" y="120" />
+        <di:waypoint x="416" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="516" y="120" />
+        <di:waypoint x="576" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="306" y="178" />
+        <di:waypoint x="306" y="260" />
+        <di:waypoint x="416" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="516" y="260" />
+        <di:waypoint x="576" y="260" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

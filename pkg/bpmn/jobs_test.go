@@ -21,6 +21,26 @@ const (
 	varHasReachedMaxAttempts    = "hasReachedMaxAttempts"
 )
 
+func TestAJobCarriesTheMappedInputsAndItsElementsHistoryTheVariablesBeforeThem(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/incident-job-input-refresh.bpmn")
+	require.NoError(t, err)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]any{"sourceValue": "original"})
+	require.NoError(t, err)
+
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, map[string]any{"sourceValue": "original", "workerValue": "original"}, jobs[0].InputVariables)
+	history, err := store.GetFlowElementInstanceByKey(t.Context(), jobs[0].ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"sourceValue": "original"}, history.InputVariables,
+		"the history row shows what the element was entered with, not what its input mappings made of it")
+	assert.Nil(t, history.CompletedAt)
+}
+
 func TestJobCompleteReturnsErrorSubscriptionTechnicalFailureRepresentedByIncident(t *testing.T) {
 	injectedErr := errors.New("injected error subscription save failure")
 	store := &failingContinuationStorage{Storage: inmemory.NewStorage(), err: injectedErr}
@@ -535,6 +555,24 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	incidents, err := engineStorage.FindIncidentsByExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
+}
+
+func TestJobCompletionFailingOnItsOutputMappingNamesTheCause(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/service-task-invalid-output.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	job := requireSinglePendingJob(t, store, instance.ProcessInstance().Key)
+
+	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to map output variables for job")
+	assert.Contains(t, err.Error(), `failed to evaluate expression iban: "DE456"`, "the error carries its cause")
 }
 
 // TestCustomUserTaskJobTypePreservesBPMNElementType asserts that a User Task configured with zenbpm:taskDefinition persists both the configured worker-routing Type and the BPMN ElementType ("USER_TASK") on the created Job.

@@ -226,6 +226,9 @@ func parseProcessDefinitionForDeployment(xmlData []byte, key int64) (runtime.Pro
 	if err != nil {
 		return runtime.ProcessDefinition{}, err
 	}
+	if err := bpmn20.ValidateListenerPositions(xmlData); err != nil {
+		return runtime.ProcessDefinition{}, fmt.Errorf("failed to deploy process %s: %w", definition.BpmnProcessId, err)
+	}
 	if err := definition.Definitions.ValidateForDeployment(); err != nil {
 		return runtime.ProcessDefinition{}, fmt.Errorf("failed to deploy process %s: %w", definition.BpmnProcessId, err)
 	}

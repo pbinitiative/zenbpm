@@ -537,6 +537,10 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, elementId := range startingElementIds {
 		var flowNode = processInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(elementId)
+		if flowNode == nil {
+			return nil, fmt.Errorf("cannot start a token at element %q of process instance %d: the process has no flow node with that id",
+				elementId, processInstance.ProcessInstance().Key)
+		}
 		executionToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
@@ -1124,6 +1128,12 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
+	// an element with execution listeners is entered once and left once, with
+	// jobs in between: where it stands is read from its scope
+	if hasElementLifecycle(instance, activity.Element()) {
+		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken)
+	}
+
 	if !flowNodeOwnsHistory(activity.Element()) {
 		err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
@@ -1258,6 +1268,20 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 	token runtime.ExecutionToken,
 	outputVariables map[string]any,
 ) error {
+	return saveFlowElementOutputs(ctx, batch, instance, element, token, outputVariables, new(time.Now()))
+}
+
+// saveFlowElementOutputs writes the outputs of the element's history row, and
+// completes the row when completedAt is not nil.
+func saveFlowElementOutputs(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	token runtime.ExecutionToken,
+	outputVariables map[string]any,
+	completedAt *time.Time,
+) error {
 	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                token.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -1265,7 +1289,7 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 		ElementType:        string(element.GetType()),
 		ExecutionTokenKey:  token.Key,
 		OutputVariables:    outputVariables,
-		CompletedAt:        new(time.Now()),
+		CompletedAt:        completedAt,
 	})
 }
 

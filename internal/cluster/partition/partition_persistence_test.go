@@ -745,6 +745,13 @@ func TestDataCleanup(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
+		err = db.SaveElementScope(ctx, runtime.ElementScope{
+			ElementInstanceKey: job.ElementInstanceKey,
+			ProcessInstanceKey: inst2.ProcessInstance().Key,
+			Phase:              runtime.ElementPhaseActive,
+		})
+		assert.NoError(t, err)
+
 		flowHist := runtime.FlowElementInstance{
 			Key:                job.Key,
 			ProcessInstanceKey: inst2.ProcessInstance().Key,
@@ -835,6 +842,8 @@ func TestDataCleanup(t *testing.T) {
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from job_failure")
 	require.Equal(t, remainingCalls, count, "the failures of a job are deleted with the job")
+	count = queryCount(t, db, "select count(*) from element_scope")
+	require.Equal(t, remainingCalls, count, "the scope of an element instance its token never left is deleted with the instance")
 	count = queryCount(t, db, "select count(*) from execution_token")
 	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from flow_element_instance")

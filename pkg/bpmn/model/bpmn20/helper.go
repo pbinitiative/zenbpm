@@ -141,8 +141,18 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 // expression is only known then as well. A multi-instance completionCondition
 // is refused the same way: the engine does not evaluate it, so an already stored
 // definition runs every iteration as before.
+//
+// Execution listeners are refused the same way where the engine does not run
+// them, and where their type, retries or retryBackoff is not a literal (see
+// TProcess.CheckListeners). A definition stored before is not checked: from
+// this version on, its listeners run where the engine runs listeners (an
+// earlier engine ignored them), and its other ones stay ignored.
+// ValidateListenerPositions covers the listeners the model does not read.
 func (definitions *TDefinitions) ValidateForDeployment() error {
 	if err := validateTaskDefinitions(definitions.Process.internalTasksByID); err != nil {
+		return err
+	}
+	if err := validateExecutionListeners(&definitions.Process); err != nil {
 		return err
 	}
 	return validateMultiInstanceCompletionConditions(definitions.Process.flowNodesByID)
@@ -154,15 +164,25 @@ func (definitions *TDefinitions) ValidateForDeployment() error {
 func validateTaskDefinitions(tasks map[string]InternalTask) error {
 	for _, id := range slices.Sorted(maps.Keys(tasks)) {
 		taskDefinition := tasks[id].GetTaskDefinition()
-		if retries := strings.TrimSpace(taskDefinition.Retries); retries != "" && !extensions.IsExpression(retries) {
-			if _, err := extensions.ParseRetries(retries); err != nil {
-				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
-			}
+		if err := validateRetryLiterals(taskDefinition.Retries, taskDefinition.RetryBackoff); err != nil {
+			return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
 		}
-		if backoff := strings.TrimSpace(taskDefinition.RetryBackoff); backoff != "" && !extensions.IsExpression(backoff) {
-			if _, err := extensions.ParseRetryBackoff(backoff); err != nil {
-				return fmt.Errorf("invalid zenbpm:taskDefinition of element id=%q: %w", id, err)
-			}
+	}
+	return nil
+}
+
+// validateRetryLiterals refuses a retries or retryBackoff literal which does
+// not parse. A blank value takes the engine's default, and an expression is
+// only evaluated when its job is created.
+func validateRetryLiterals(retries string, retryBackoff string) error {
+	if retries = strings.TrimSpace(retries); retries != "" && !extensions.IsExpression(retries) {
+		if _, err := extensions.ParseRetries(retries); err != nil {
+			return err
+		}
+	}
+	if retryBackoff = strings.TrimSpace(retryBackoff); retryBackoff != "" && !extensions.IsExpression(retryBackoff) {
+		if _, err := extensions.ParseRetryBackoff(retryBackoff); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -279,11 +299,13 @@ type resolvableFunc func(refs *map[string]BaseElement) error
 func populateContainerIndex(container *TFlowElementsContainer) {
 	container.flowNodesByID = make(map[string]FlowNode)
 	container.internalTasksByID = make(map[string]InternalTask)
+	container.flowNodeIDCounts = make(map[string]int)
 
 	register := func(id string, node FlowNode) {
 		if id == "" {
 			return
 		}
+		container.flowNodeIDCounts[id]++
 		container.flowNodesByID[id] = node
 		if task, ok := node.(InternalTask); ok {
 			container.internalTasksByID[id] = task
@@ -339,6 +361,12 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 		sp := &container.SubProcess[i]
 		register(sp.GetId(), sp)
 	}
+	// boundary events stay out of the index, but count for an id they share
+	for i := range container.BoundaryEvent {
+		if id := container.BoundaryEvent[i].GetId(); id != "" {
+			container.flowNodeIDCounts[id]++
+		}
+	}
 	for i := range container.SubProcess {
 		sp := &container.SubProcess[i]
 		populateContainerIndex(&sp.TFlowElementsContainer)
@@ -351,6 +379,9 @@ func populateContainerIndex(container *TFlowElementsContainer) {
 			if _, exists := container.internalTasksByID[k]; !exists {
 				container.internalTasksByID[k] = v
 			}
+		}
+		for k, n := range sp.flowNodeIDCounts {
+			container.flowNodeIDCounts[k] += n
 		}
 	}
 }

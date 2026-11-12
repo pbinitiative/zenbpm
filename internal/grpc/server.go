@@ -280,6 +280,9 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			if job.DeliveryToken > 0 {
 				waiting.DeliveryToken = &job.DeliveryToken
 			}
+			if job.ListenerEventType != "" {
+				waiting.ListenerEventType = &job.ListenerEventType
+			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {
 				s.logger.Error("Failed to send message to stream: %w", "err", err)

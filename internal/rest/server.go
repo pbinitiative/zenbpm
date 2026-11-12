@@ -2171,10 +2171,16 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		taskHeaders = &headers
 	}
 
+	var listenerEventType *public.JobListenerEventType
+	if eventType := job.GetListenerEventType(); eventType != "" {
+		listenerEventType = new(public.JobListenerEventType(eventType))
+	}
+
 	return public.Job{
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
 		ElementType:        job.GetElementType(),
+		ListenerEventType:  listenerEventType,
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
 		ElementInstanceKey: job.GetElementInstanceKey(),

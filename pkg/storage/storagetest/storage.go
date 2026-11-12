@@ -45,11 +45,15 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestJobStorageReader,
 		st.TestPendingJobsAreTheActiveCompletingAndFailedOnes,
 		st.TestJobRetryStateRoundTrips,
+		st.TestAJobKeepsWhatItBelongsTo,
 		st.TestActiveJobsLeaveOutJobsWaitingOutABackoff,
 		st.TestJobFailuresAreListedNewestFirst,
 		st.TestJobFailuresOfTheSameMomentAreListedByKey,
 		st.TestAJobFailureIsFoundByTheDeliveryItNames,
 		st.TestIncidentNamesItsJob,
+		st.TestElementScopeRoundTrips,
+		st.TestElementScopeIsSavedAndDeletedInABatch,
+		st.TestAStoredElementScopeKeepsVariablesOfItsOwn,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
 		st.TestTokenStorageReader,
@@ -707,6 +711,125 @@ func (st *StorageTester) TestJobRetryStateRoundTrips(s storage.Storage, _ *testi
 	}
 }
 
+func (st *StorageTester) TestAJobKeepsWhatItBelongsTo(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ofAnElement := st.saveJobWithToken(t, s, func(*bpmnruntime.Job) {})
+		ofAListener := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Kind = bpmnruntime.JobKindExecutionListener
+			job.ListenerEventType = "start"
+		})
+
+		stored, err := s.FindJobByJobKey(t.Context(), ofAnElement.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.JobKindElement, stored.Kind)
+		assert.Empty(t, stored.ListenerEventType)
+
+		stored, err = s.FindJobByJobKey(t.Context(), ofAListener.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.JobKindExecutionListener, stored.Kind)
+		assert.Equal(t, "start", stored.ListenerEventType)
+
+		ofAListener.State = bpmnruntime.ActivityStateCompleted
+		ofAListener.Kind = bpmnruntime.JobKindElement
+		ofAListener.ListenerEventType = ""
+		require.NoError(t, s.SaveJob(t.Context(), ofAListener))
+		stored, err = s.FindJobByJobKey(t.Context(), ofAListener.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateCompleted, stored.State)
+		assert.Equal(t, bpmnruntime.JobKindExecutionListener, stored.Kind, "an update leaves what the job belongs to")
+		assert.Equal(t, "start", stored.ListenerEventType)
+	}
+}
+
+func (st *StorageTester) TestElementScopeRoundTrips(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		elementInstanceKey := s.GenerateId()
+		_, err := s.FindElementScope(t.Context(), elementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound, "an element instance without a scope")
+
+		scope := bpmnruntime.ElementScope{
+			ElementInstanceKey: elementInstanceKey,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			Phase:              bpmnruntime.ElementPhaseActivating,
+			ListenerIndex:      1,
+			InputVariables:     map[string]any{"mapped": "value"},
+			LocalVariables:     map[string]any{"fromListener": map[string]any{"nested": true}},
+		}
+		require.NoError(t, s.SaveElementScope(t.Context(), scope))
+		stored, err := s.FindElementScope(t.Context(), elementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, scope, stored)
+
+		scope.Phase = bpmnruntime.ElementPhaseCompleting
+		scope.ListenerIndex = 0
+		scope.InputVariables = nil
+		scope.LocalVariables = nil
+		require.NoError(t, s.SaveElementScope(t.Context(), scope), "saving again replaces the scope")
+		stored, err = s.FindElementScope(t.Context(), elementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ElementPhaseCompleting, stored.Phase)
+		assert.Zero(t, stored.ListenerIndex)
+		assert.Equal(t, map[string]any{}, stored.InputVariables, "a scope without variables reads back with maps to write to")
+		assert.Equal(t, map[string]any{}, stored.LocalVariables)
+
+		require.NoError(t, s.DeleteElementScope(t.Context(), elementInstanceKey))
+		_, err = s.FindElementScope(t.Context(), elementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.NoError(t, s.DeleteElementScope(t.Context(), elementInstanceKey), "deleting a scope which is gone succeeds")
+	}
+}
+
+func (st *StorageTester) TestElementScopeIsSavedAndDeletedInABatch(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		kept := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+			ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+		})
+		left := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+			ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+		})
+		require.NoError(t, s.SaveElementScope(t.Context(), left))
+
+		// as the completion of a listener's job writes them: the scope which
+		// moved on, the completed job and the token set running, all or none
+		listenerJob := st.saveJobWithToken(t, s, func(job *bpmnruntime.Job) {
+			job.Kind = bpmnruntime.JobKindExecutionListener
+			job.ListenerEventType = "start"
+			job.ElementInstanceKey = kept.ElementInstanceKey
+		})
+		listenerJob.State = bpmnruntime.ActivityStateCompleted
+		listenerJob.Token.State = bpmnruntime.TokenStateRunning
+
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveElementScope(t.Context(), kept))
+		require.NoError(t, batch.DeleteElementScope(t.Context(), left.ElementInstanceKey))
+		require.NoError(t, batch.SaveJob(t.Context(), listenerJob))
+		require.NoError(t, batch.SaveToken(t.Context(), listenerJob.Token))
+		_, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound, "nothing is written before the batch is flushed")
+		_, err = s.FindElementScope(t.Context(), left.ElementInstanceKey)
+		require.NoError(t, err, "nothing is deleted before the batch is flushed")
+		storedJob, err := s.FindJobByJobKey(t.Context(), listenerJob.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateActive, storedJob.State, "the job of the batch is not written alone")
+		storedToken, err := s.GetTokenByKey(t.Context(), listenerJob.Token.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.TokenStateWaiting, storedToken.State, "the token of the batch is not written alone")
+		require.NoError(t, batch.Flush(t.Context()))
+
+		stored, err := s.FindElementScope(t.Context(), kept.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, kept, stored)
+		_, err = s.FindElementScope(t.Context(), left.ElementInstanceKey)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		storedJob, err = s.FindJobByJobKey(t.Context(), listenerJob.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateCompleted, storedJob.State)
+		storedToken, err = s.GetTokenByKey(t.Context(), listenerJob.Token.Key)
+		require.NoError(t, err)
+		assert.Equal(t, bpmnruntime.TokenStateRunning, storedToken.State)
+	}
+}
+
 func (st *StorageTester) TestActiveJobsLeaveOutJobsWaitingOutABackoff(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		jobType := fmt.Sprintf("backoff-test-%d", s.GenerateId())
@@ -953,6 +1076,51 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, _ *testing.
 			assert.NoError(t, err, "token-level message subscription should not have been deleted")
 			assert.Equal(t, message.MessageSubscription().Key, gotMsg.MessageSubscription().Key)
 		})
+	}
+}
+
+func (st *StorageTester) TestAStoredElementScopeKeepsVariablesOfItsOwn(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		scopeWithNestedVariables := func() bpmnruntime.ElementScope {
+			scope := bpmnruntime.NewElementScope(bpmnruntime.ExecutionToken{
+				ElementInstanceKey: s.GenerateId(), ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			})
+			scope.InputVariables = map[string]any{"order": map[string]any{"lines": []any{map[string]any{"article": "ordered"}}}}
+			scope.LocalVariables = map[string]any{"reservation": map[string]any{"state": "reserved"}}
+			return scope
+		}
+		// what a caller may do to a scope it holds: to a map and to a list among
+		// its variables, and to its variables themselves
+		changeVariablesOf := func(scope bpmnruntime.ElementScope) {
+			order := scope.InputVariables["order"].(map[string]any)
+			order["lines"].([]any)[0].(map[string]any)["article"] = "changed"
+			order["lines"].([]any)[0] = "replaced"
+			scope.LocalVariables["reservation"].(map[string]any)["state"] = "changed"
+			scope.LocalVariables["added"] = "later"
+		}
+
+		saved, expected := scopeWithNestedVariables(), scopeWithNestedVariables()
+		expected.ElementInstanceKey = saved.ElementInstanceKey
+		require.NoError(t, s.SaveElementScope(t.Context(), saved))
+		changeVariablesOf(saved)
+		stored, err := s.FindElementScope(t.Context(), saved.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a scope is stored as it was when it was saved")
+
+		changeVariablesOf(stored)
+		stored, err = s.FindElementScope(t.Context(), saved.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a scope which was read is the reader's own")
+
+		batched, expected := scopeWithNestedVariables(), scopeWithNestedVariables()
+		expected.ElementInstanceKey = batched.ElementInstanceKey
+		batch := s.NewBatch()
+		require.NoError(t, batch.SaveElementScope(t.Context(), batched))
+		changeVariablesOf(batched)
+		require.NoError(t, batch.Flush(t.Context()))
+		stored, err = s.FindElementScope(t.Context(), batched.ElementInstanceKey)
+		require.NoError(t, err)
+		assert.Equal(t, expected, stored, "a batch writes a scope as it was when the batch took it")
 	}
 }
 

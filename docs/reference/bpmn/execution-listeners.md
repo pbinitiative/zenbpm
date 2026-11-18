@@ -60,11 +60,9 @@ Starting a token at the element (`POST /v1/modify/start-process-instance`) enter
 token does, so its `start` listeners run. Cancelling the instance terminates whichever job the
 token waits for, as every job of the instance; a completion sent afterwards is answered `409`.
 
-Each job the token waits for in the element counts as one flow node execution towards
-[`maxProcessInstanceFlowNodeCount`](../configuration.md), and its leaving as one more: a task with
-two `start` and two `end` listeners counts six, where a task without listeners counts one. A job
-of the task which a task handler registered in the engine completes at once is not waited for, so
-such a task counts one less.
+Listeners do not spend the budget of [`maxProcessInstanceFlowNodeCount`](../configuration.md): an
+element counts as one flow node execution when a token enters it, with any number of listeners
+as without one.
 
 ## Variables
 

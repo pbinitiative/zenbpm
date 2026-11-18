@@ -105,7 +105,7 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 
 	count, err := engine.persistence.GetFlowNodeCount(t.Context(), instanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, int64(8), count, "the start event, the following task, and the listened task once for each of its five jobs it waits for and once for leaving")
+	assert.Equal(t, int64(3), count, "the start event, the listened task and the following task: an element counts once, whatever its listeners")
 }
 
 func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
@@ -143,6 +143,23 @@ func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
 			assert.Equal(t, map[string]any{"fromAfter": true}, variablesOf(t, engine, store, instance), "the end listener did")
 		})
 	}
+}
+
+func TestTheListenersOfATaskDoNotSpendTheFlowNodeBudgetOfItsInstance(t *testing.T) {
+	// the start event, the listened task and the task behind it
+	engine, store := newListenerTestEngine(t, EngineWithMaxProcessInstanceFlowNodeCount(3))
+	definition := loadListenerFixture(t, engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+
+	runJobsInOrder(t, engine, "before-first", "before-second", "listened-work", "after-first", "after-second")
+
+	waitForPendingJobOfType(t, engine, instanceKey, "following-work")
+	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instanceKey)
+	require.NoError(t, err)
+	assert.Empty(t, incidents, "a task with four listeners counts as one flow node, as a task without any")
+	assert.Equal(t, runtime.ActivityStateActive, readInstance(t, engine, store, instance).State)
 }
 
 func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(t *testing.T) {
@@ -258,7 +275,7 @@ func TestAnEngineHandlerDoesTheWorkOfATaskBetweenItsListeners(t *testing.T) {
 	waitForPendingJobOfType(t, engine, instanceKey, "following-work")
 	count, err := engine.persistence.GetFlowNodeCount(t.Context(), instanceKey)
 	require.NoError(t, err)
-	assert.Equal(t, int64(7), count, "the start event, the following task, and the listened task once for each of its four listeners' jobs and once for leaving: the job the handler completed at once was not waited for")
+	assert.Equal(t, int64(3), count, "the start event, the listened task and the following task, as with a job left to a worker")
 }
 
 func TestResolvingAFailureOfTheTasksOwnWorkRunsNoCompletedStartListenerAgain(t *testing.T) {

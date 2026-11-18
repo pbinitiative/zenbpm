@@ -23,6 +23,10 @@ type elementActivity struct {
 	*/
 	state   runtime.ActivityState `json:"s"`
 	element bpmn20.FlowNode
+	// scope is what the element instance kept while the token waited in it,
+	// behind the job of an execution listener or its own; nil for a token
+	// which enters its element (see findScopeTheTokenWaitedIn).
+	scope *runtime.ElementScope
 }
 
 func (a elementActivity) GetKey() int64 {

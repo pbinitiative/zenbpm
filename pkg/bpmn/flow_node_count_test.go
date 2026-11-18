@@ -141,7 +141,7 @@ func TestProcessInstanceFlowNodeCountSurvivesEngineRecreation(t *testing.T) {
 	firstBatch, err := firstEngine.NewEngineBatchClean()
 	require.NoError(t, err)
 	require.NoError(t, firstEngine.validateAndIncrementFlowNodeCount(
-		t.Context(), &firstBatch, instance, token, &flowNodeRunCount{},
+		t.Context(), &firstBatch, instance, token, &flowNodeRunCount{}, true,
 	))
 	require.NoError(t, firstBatch.Flush(t.Context()))
 
@@ -151,7 +151,7 @@ func TestProcessInstanceFlowNodeCountSurvivesEngineRecreation(t *testing.T) {
 	secondBatch, err := secondEngine.NewEngineBatchClean()
 	require.NoError(t, err)
 	err = secondEngine.validateAndIncrementFlowNodeCount(
-		t.Context(), &secondBatch, instance, token, &flowNodeRunCount{},
+		t.Context(), &secondBatch, instance, token, &flowNodeRunCount{}, true,
 	)
 	require.ErrorIs(t, err, ErrMaxProcessInstanceFlowNodeCountExceeded)
 	secondBatch.Clear(t.Context())

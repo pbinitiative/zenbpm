@@ -651,12 +651,17 @@ type flowNodeRunCount struct {
 // batch so the write rides the same storage flush as the rest of the token processing) and returns
 // an error wrapping ErrMaxProcessInstanceFlowNodeCountExceeded when the limit is breached. A limit <= 0
 // disables the check entirely (no reads, no writes).
+//
+// The counter counts the flow nodes a token enters. A token which goes on in an element it waited
+// in, behind the job of an execution listener, enters nothing (entersElement is false): it is
+// neither counted nor checked, so an element counts one however many listeners it carries.
 func (engine *Engine) validateAndIncrementFlowNodeCount(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 	runCount *flowNodeRunCount,
+	entersElement bool,
 ) error {
 	if engine.maxProcessInstanceFlowNodeCount <= 0 {
 		return nil
@@ -664,6 +669,9 @@ func (engine *Engine) validateAndIncrementFlowNodeCount(
 	if !runCount.cached {
 		runCount.count = instance.ProcessInstance().FlowNodeCount
 		runCount.cached = true
+	}
+	if !entersElement {
+		return nil
 	}
 	runCount.count++
 	if err := batch.IncrementFlowNodeCount(ctx, instance.ProcessInstance().Key); err != nil {
@@ -1131,7 +1139,7 @@ func (engine *Engine) processFlowNode(
 	// start events and the elements whose own work is one job are entered, run
 	// and left by the element lifecycle, with execution listeners or without
 	if runsThroughElementLifecycle(instance, activity.Element()) {
-		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken)
+		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken, activity.scope)
 	}
 
 	if !flowNodeOwnsHistory(activity.Element()) {

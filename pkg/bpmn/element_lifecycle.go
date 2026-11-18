@@ -61,25 +61,46 @@ func processOf(instance runtime.ProcessInstance) *bpmn20.TProcess {
 	return &instance.ProcessInstance().Definition.Definitions.Process
 }
 
+// findScopeTheTokenWaitedIn reads the scope the element instance of the token
+// keeps, into the activity, where the token waited in its element before; the
+// activity of a token which enters its element is left without one. The run
+// loop asks before it processes the token, to tell the two apart.
+func (engine *Engine) findScopeTheTokenWaitedIn(
+	ctx context.Context,
+	instance runtime.ProcessInstance,
+	activity *elementActivity,
+	token runtime.ExecutionToken,
+) error {
+	scope, waitedBefore, err := engine.scopeOfElement(ctx, instance, activity.Element(), token.ElementInstanceKey)
+	if err != nil {
+		// the storage failed, not the element: whoever set the token running,
+		// such as the completion of a listener's job, must not take the
+		// incident this raises for the outcome of the process
+		return markTechnicalFailure(err)
+	}
+	if waitedBefore {
+		activity.scope = &scope
+	}
+	return nil
+}
+
 // runElementLifecycle moves the token on in its element until it waits for a
-// job or leaves the element: from the beginning for a token which enters the
-// element, and from where the scope of the element instance says it stands
-// for a token which waited in it before.
+// job or leaves the element: from where the scope of the element instance
+// says it stands for a token which waited in the element before (waitedIn),
+// and from the beginning for a token which enters it (nil).
 func (engine *Engine) runElementLifecycle(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
+	waitedIn *runtime.ElementScope,
 ) ([]runtime.ExecutionToken, error) {
-	scope, waitedBefore, err := engine.scopeOfElement(ctx, instance, element, token.ElementInstanceKey)
-	if err != nil {
-		// the storage failed, not the element: whoever set the token running,
-		// such as the completion of a listener's job, must not take the
-		// incident this raises for the outcome of the process
-		return nil, markTechnicalFailure(err)
-	}
-	if !waitedBefore {
+	var scope runtime.ElementScope
+	if waitedIn != nil {
+		scope = *waitedIn
+	} else {
+		var err error
 		if scope, err = engine.activateElement(ctx, batch, instance, element, token); err != nil {
 			return nil, err
 		}

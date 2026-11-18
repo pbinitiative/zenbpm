@@ -7,19 +7,20 @@ import (
 )
 
 // ElementPhase is where an element instance stands between the moment a token
-// enters the element and the moment it leaves.
+// enters the element and the moment it leaves. The storage keeps the number,
+// so a phase never changes its own.
 type ElementPhase int
 
 const (
 	// ElementPhaseActivating is the phase of an element which is entered: its
 	// input mappings are evaluated, and its start listeners run.
-	ElementPhaseActivating ElementPhase = iota + 1
+	ElementPhaseActivating ElementPhase = 1
 	// ElementPhaseActive is the phase in which the element's own work runs,
 	// such as the job of a task.
-	ElementPhaseActive
+	ElementPhaseActive ElementPhase = 2
 	// ElementPhaseCompleting is the phase of an element whose own work is
 	// done: its output mappings are applied, and its end listeners run.
-	ElementPhaseCompleting
+	ElementPhaseCompleting ElementPhase = 3
 )
 
 // ElementScope is what an element instance keeps while a token stays in it

@@ -1128,9 +1128,9 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
-	// an element with execution listeners is entered once and left once, with
-	// jobs in between: where it stands is read from its scope
-	if hasElementLifecycle(instance, activity.Element()) {
+	// start events and the elements whose own work is one job are entered, run
+	// and left by the element lifecycle, with execution listeners or without
+	if runsThroughElementLifecycle(instance, activity.Element()) {
 		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken)
 	}
 
@@ -1151,20 +1151,6 @@ func (engine *Engine) processFlowNode(
 	}
 
 	switch element := activity.Element().(type) {
-	case *bpmn20.TStartEvent:
-		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
-		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)
-		}
-		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
-		if err != nil {
-			flowNodeSpan.SetStatus(codes.Error, err.Error())
-			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
-		}
-		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken, outputVariables); err != nil {
-			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
-		}
-		return tokens, nil
 	case *bpmn20.TEndEvent:
 		tokens, err := engine.handleEndEvent(ctx, batch, instance, element, currentToken)
 		if err != nil {
@@ -1260,17 +1246,6 @@ func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
 	}
 }
 
-func (engine *Engine) completeStartEventFlowElementInstance(
-	ctx context.Context,
-	batch *EngineBatch,
-	instance runtime.ProcessInstance,
-	element *bpmn20.TStartEvent,
-	token runtime.ExecutionToken,
-	outputVariables map[string]any,
-) error {
-	return saveFlowElementOutputs(ctx, batch, instance, element, token, outputVariables, new(time.Now()))
-}
-
 // saveFlowElementOutputs writes the outputs of the element's history row, and
 // completes the row when completedAt is not nil.
 func saveFlowElementOutputs(
@@ -1352,13 +1327,9 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	var err error
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	// an activity whose own work is one job never comes here: the element
+	// lifecycle runs it (see runsThroughElementLifecycle)
 	switch element := activity.Element().(type) {
-	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
-	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
-	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder)
 		// we created process instance and it's running in separate goroutine

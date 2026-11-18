@@ -15,41 +15,45 @@ import (
 // ListenerEventTypesRunOn answers the event types of the listeners the engine
 // runs on the flow node, and none where it runs no listener:
 //
-//   - "start" and "end" on an element whose own work is one job: a service,
-//     send or user task, a business rule task with a task definition, and an
-//     intermediate event which throws a message; none of them where the
-//     activity is multi-instance;
+//   - "start" and "end" on an element whose own work is one job (WorkIsOneJob);
 //   - "end" on a start event directly under the process. A start event takes
 //     no "start" listener, as in Camunda 8.
 //
 // An element type is added here when the engine runs it through its element
 // lifecycle.
 func (p *TProcess) ListenerEventTypesRunOn(node FlowNode) []string {
-	if activity, ok := node.(Activity); ok && activity.GetMultiInstance() != nil {
-		return nil
-	}
-	switch element := node.(type) {
-	case *TStartEvent:
-		if p.IsTopLevelStartEvent(element) {
+	if startEvent, isStartEvent := node.(*TStartEvent); isStartEvent {
+		if p.IsTopLevelStartEvent(startEvent) {
 			return []string{extensions.ExecutionListenerEventTypeEnd}
 		}
-	case *TServiceTask, *TSendTask, *TUserTask:
-		return listenerEventTypesOfAJobElement
-	case *TBusinessRuleTask:
-		if _, external := element.Implementation.(*TBusinessRuleTaskExternal); external {
-			return listenerEventTypesOfAJobElement
-		}
-	case *TIntermediateThrowEvent:
-		if _, throwsMessage := element.EventDefinition.(TMessageEventDefinition); throwsMessage {
-			return listenerEventTypesOfAJobElement
-		}
+		return nil
+	}
+	if WorkIsOneJob(node) {
+		return []string{extensions.ExecutionListenerEventTypeStart, extensions.ExecutionListenerEventTypeEnd}
 	}
 	return nil
 }
 
-// listenerEventTypesOfAJobElement are the event types run on an element whose
-// own work is one job.
-var listenerEventTypesOfAJobElement = []string{extensions.ExecutionListenerEventTypeStart, extensions.ExecutionListenerEventTypeEnd}
+// WorkIsOneJob reports whether the own work of the flow node is one job: a
+// service, send or user task, a business rule task with a task definition, and
+// an intermediate event which throws a message; none of them where the
+// activity is multi-instance, whose jobs belong to its iterations.
+func WorkIsOneJob(node FlowNode) bool {
+	if activity, ok := node.(Activity); ok && activity.GetMultiInstance() != nil {
+		return false
+	}
+	switch element := node.(type) {
+	case *TServiceTask, *TSendTask, *TUserTask:
+		return true
+	case *TBusinessRuleTask:
+		_, external := element.Implementation.(*TBusinessRuleTaskExternal)
+		return external
+	case *TIntermediateThrowEvent:
+		_, throwsMessage := element.EventDefinition.(TMessageEventDefinition)
+		return throwsMessage
+	}
+	return false
+}
 
 // RunnableListenersOf answers the node's listeners of the given event type
 // which the engine runs, in the order of the model.

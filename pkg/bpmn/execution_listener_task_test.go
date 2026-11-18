@@ -111,20 +111,7 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
 	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
 	require.NoError(t, err)
-	cases := []struct {
-		name        string
-		openingTag  string
-		closingTag  string
-		elementType string
-	}{
-		{name: "a service task", openingTag: `<bpmn:serviceTask `, closingTag: `</bpmn:serviceTask>`, elementType: "SERVICE_TASK"},
-		{name: "a send task", openingTag: `<bpmn:sendTask `, closingTag: `</bpmn:sendTask>`, elementType: "SERVICE_TASK"},
-		{name: "a user task", openingTag: `<bpmn:userTask `, closingTag: `</bpmn:userTask>`, elementType: "USER_TASK"},
-		{name: "a business rule task with a task definition", openingTag: `<bpmn:businessRuleTask `, closingTag: `</bpmn:businessRuleTask>`, elementType: "BUSINESS_RULE_TASK"},
-		{name: "an event throwing a message", openingTag: `<bpmn:intermediateThrowEvent `,
-			closingTag: `<bpmn:messageEventDefinition id="thrown-message" /></bpmn:intermediateThrowEvent>`, elementType: "INTERMEDIATE_THROW_EVENT"},
-	}
-	for _, tc := range cases {
+	for _, tc := range elementsWhoseWorkIsOneJob {
 		t.Run(tc.name, func(t *testing.T) {
 			engine, store := newListenerTestEngine(t)
 			model := strings.NewReplacer(`<bpmn:serviceTask `, tc.openingTag, `</bpmn:serviceTask>`, tc.closingTag).Replace(string(fixture))
@@ -155,6 +142,52 @@ func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
 			waitForInstanceState(t, engine, store, instance, runtime.ActivityStateCompleted)
 			assert.Equal(t, map[string]any{"fromAfter": true}, variablesOf(t, engine, store, instance), "the end listener did")
 		})
+	}
+}
+
+func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(t *testing.T) {
+	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
+	require.NoError(t, err)
+	withoutListeners := strings.NewReplacer(
+		`<zeebe:executionListener eventType="start" type="element-before" />`, ``,
+		`<zeebe:executionListener eventType="end" type="element-after" />`, ``,
+	).Replace(string(fixture))
+	require.NotContains(t, withoutListeners, "<zeebe:executionListener ")
+	for _, tc := range elementsWhoseWorkIsOneJob {
+		for _, handledInTheEngine := range []bool{false, true} {
+			name := tc.name + ", its job left to a worker"
+			if handledInTheEngine {
+				name = tc.name + ", its job completed by a handler in the engine"
+			}
+			t.Run(name, func(t *testing.T) {
+				store := &scopeReadCountingStorage{Storage: inmemory.NewStorage()}
+				engine := NewEngine(EngineWithStorage(store))
+				require.NoError(t, engine.Start(t.Context()))
+				t.Cleanup(engine.Stop)
+				if handledInTheEngine {
+					engine.NewTaskHandler().Id("listened-element").Handler(func(job ActivatedJob) { job.Complete() })
+				}
+				model := strings.NewReplacer(`<bpmn:serviceTask `, tc.openingTag, `</bpmn:serviceTask>`, tc.closingTag).Replace(withoutListeners)
+				definition, err := engine.LoadFromBytes(t.Context(), []byte(model), engine.generateKey())
+				require.NoError(t, err)
+
+				instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+				require.NoError(t, err)
+
+				if !handledInTheEngine {
+					work := requireSinglePendingJob(t, store.Storage, instance.ProcessInstance().Key)
+					require.Equal(t, "element-work", work.Type)
+					assert.Empty(t, store.Copy().ElementScopes, "nothing is stored for the element beside its job while the token waits in it")
+					require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, nil))
+				}
+				waitForInstanceState(t, &engine, store.Storage, instance, runtime.ActivityStateCompleted)
+				assert.Zero(t, store.reads.Load(), "neither the start event nor the element asks the storage for a scope")
+				assert.Empty(t, store.Copy().ElementScopes)
+				for _, history := range store.Copy().FlowElementInstance {
+					assert.NotNil(t, history.CompletedAt, "the history row of %s is completed", history.ElementId)
+				}
+			})
+		}
 	}
 }
 
@@ -815,6 +848,34 @@ func listenedTaskAtItsFirstStartListener(t *testing.T, store storage.Storage) (*
 	beforeFirst := requireSinglePendingJob(t, store, instanceKey)
 	require.Equal(t, "before-first", beforeFirst.Type)
 	return &engine, instanceKey, beforeFirst
+}
+
+// elementsWhoseWorkIsOneJob are the elements the service task of the fixture
+// job-element-listeners.bpmn is turned into, by its opening and closing tag.
+var elementsWhoseWorkIsOneJob = []struct {
+	name        string
+	openingTag  string
+	closingTag  string
+	elementType string
+}{
+	{name: "a service task", openingTag: `<bpmn:serviceTask `, closingTag: `</bpmn:serviceTask>`, elementType: "SERVICE_TASK"},
+	{name: "a send task", openingTag: `<bpmn:sendTask `, closingTag: `</bpmn:sendTask>`, elementType: "SERVICE_TASK"},
+	{name: "a user task", openingTag: `<bpmn:userTask `, closingTag: `</bpmn:userTask>`, elementType: "USER_TASK"},
+	{name: "a business rule task with a task definition", openingTag: `<bpmn:businessRuleTask `, closingTag: `</bpmn:businessRuleTask>`, elementType: "BUSINESS_RULE_TASK"},
+	{name: "an event throwing a message", openingTag: `<bpmn:intermediateThrowEvent `,
+		closingTag: `<bpmn:messageEventDefinition id="thrown-message" /></bpmn:intermediateThrowEvent>`, elementType: "INTERMEDIATE_THROW_EVENT"},
+}
+
+// scopeReadCountingStorage counts how often the scope of an element instance
+// is asked for.
+type scopeReadCountingStorage struct {
+	*inmemory.Storage
+	reads atomic.Int32
+}
+
+func (s *scopeReadCountingStorage) FindElementScope(ctx context.Context, elementInstanceKey int64) (runtime.ElementScope, error) {
+	s.reads.Add(1)
+	return s.Storage.FindElementScope(ctx, elementInstanceKey)
 }
 
 var errFindElementScopeFailure = errors.New("storage failure: find element scope")

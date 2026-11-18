@@ -798,6 +798,13 @@ func (st *StorageTester) TestElementScopeIsSavedAndDeletedInABatch(s storage.Sto
 		})
 		listenerJob.State = bpmnruntime.ActivityStateCompleted
 		listenerJob.Token.State = bpmnruntime.TokenStateRunning
+		// the tests share one storage, and those of the running tokens expect
+		// to find no running token but their own
+		t.Cleanup(func() {
+			ended := listenerJob.Token
+			ended.State = bpmnruntime.TokenStateCompleted
+			assert.NoError(t, s.SaveToken(context.Background(), ended))
+		})
 
 		batch := s.NewBatch()
 		require.NoError(t, batch.SaveElementScope(t.Context(), kept))

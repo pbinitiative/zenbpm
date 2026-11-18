@@ -929,6 +929,87 @@ func TestDataCleanup(t *testing.T) {
 // TestWaitingJobsLeaveOutJobsWaitingOutABackoff shows the query a partition
 // leader distributes jobs from hands out a job waiting out a retry backoff only
 // once its deadline passed on the clock the leader passes in.
+func TestThePagesOfAnInstancesJobsComeInTheOrderOfTheirKeysWithTheTotalOfTheInstance(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-instance-job-pages-db")
+
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("instance-job-pages-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Instance_Job_Pages_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`, definitionKey),
+		BpmnChecksum:  [16]byte{4},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	saveInstance := func() int64 {
+		instance := runtime.DefaultProcessInstance{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &pd,
+				Key:            db.GenerateId(),
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      time.Now(),
+				State:          runtime.ActivityStateActive,
+			},
+		}
+		require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+		return instance.Key
+	}
+	saveJob := func(key int64, instanceKey int64) {
+		token := runtime.ExecutionToken{Key: key, ElementInstanceKey: key, ProcessInstanceKey: instanceKey, State: runtime.TokenStateWaiting}
+		require.NoError(t, db.SaveToken(t.Context(), token))
+		require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+			ElementId:          "task",
+			ElementInstanceKey: key,
+			ProcessInstanceKey: instanceKey,
+			Key:                key,
+			Type:               "paged",
+			State:              runtime.ActivityStateActive,
+			CreatedAt:          time.Now(),
+			Token:              token,
+		}))
+	}
+	paged, other := saveInstance(), saveInstance()
+	keys := []int64{db.GenerateId(), db.GenerateId(), db.GenerateId(), db.GenerateId(), db.GenerateId()}
+	// stored in another order than that of their keys, and among the jobs of another instance
+	for _, i := range []int{3, 0, 4} {
+		saveJob(keys[i], paged)
+	}
+	saveJob(db.GenerateId(), other)
+	for _, i := range []int{2, 1} {
+		saveJob(keys[i], paged)
+	}
+
+	page := func(number int64) (jobKeys []int64, totals []int64) {
+		rows, err := db.Queries.FindProcessInstanceJobs(t.Context(), sql.FindProcessInstanceJobsParams{
+			ProcessInstanceKey: paged,
+			Size:               2,
+			Offset:             2 * (number - 1),
+		})
+		require.NoError(t, err)
+		for _, row := range rows {
+			jobKeys = append(jobKeys, row.Job.Key)
+			totals = append(totals, row.TotalCount)
+		}
+		return jobKeys, totals
+	}
+	first, totalsOfFirst := page(1)
+	second, _ := page(2)
+	third, totalsOfThird := page(3)
+	beyond, _ := page(4)
+
+	assert.Equal(t, keys[0:2], first)
+	assert.Equal(t, keys[2:4], second)
+	assert.Equal(t, keys[4:5], third)
+	assert.Empty(t, beyond)
+	assert.Equal(t, []int64{5, 5}, totalsOfFirst, "every row carries the number of jobs of the instance, not of the page or the table")
+	assert.Equal(t, []int64{5}, totalsOfThird)
+}
+
 func TestWaitingJobsLeaveOutJobsWaitingOutABackoff(t *testing.T) {
 	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
 	defer func() {

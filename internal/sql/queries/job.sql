@@ -70,13 +70,27 @@ WHERE
     key = @key;
 
 -- name: FindProcessInstanceJobs :many
+-- Ordered by key, so that the pages of one instance never overlap and a job keeps its page
+-- while later jobs are created: an element with execution listeners has several jobs, which
+-- a client looks for page by page. The index on process_instance_key yields the rows in that
+-- order, so the order costs no sort as long as the total is counted by a query of its own:
+-- a window function over the page's query would have every job of the instance read and
+-- sorted for each page. See TestHotPathIndexes.
 SELECT
     sqlc.embed(job),
-    COUNT(*) OVER () AS total_count
+    (
+        SELECT
+            COUNT(*)
+        FROM
+            job AS counted
+        WHERE
+            counted.process_instance_key = @process_instance_key) AS total_count
 FROM
     job
 WHERE
-    process_instance_key = @process_instance_key
+    job.process_instance_key = @process_instance_key
+ORDER BY
+    job.key
 LIMIT @size OFFSET @offset;
 
 -- name: FindProcessInstanceJobsInState :many

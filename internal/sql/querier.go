@@ -112,6 +112,12 @@ type Querier interface {
 	// Pinned to idx_fk_error_subscription_process_instance_key. See note on
 	// FindProcessInstanceErrorSubscriptions.
 	FindProcessInstanceErrorSubscriptionsPage(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsPageParams) ([]FindProcessInstanceErrorSubscriptionsPageRow, error)
+	// Ordered by key, so that the pages of one instance never overlap and a job keeps its page
+	// while later jobs are created: an element with execution listeners has several jobs, which
+	// a client looks for page by page. The index on process_instance_key yields the rows in that
+	// order, so the order costs no sort as long as the total is counted by a query of its own:
+	// a window function over the page's query would have every job of the instance read and
+	// sorted for each page. See TestHotPathIndexes.
 	FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error)
 	// Pinned to idx_fk_job_process_instance_key. The planner currently picks it correctly, but
 	// pinning here makes the contract explicit and prevents the generic idx_job_execution_token_state

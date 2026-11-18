@@ -353,11 +353,19 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
 SELECT
     job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.input_variables, job.execution_token, job.assignee, job.output_variables, job.element_type, job.headers, job.retries, job.attempts, job.retry_at, job.last_failure_message, job.retry_backoff, job.retries_set_by_operator, job.delivery_token, job.failed_delivery_token, job.kind, job.listener_event_type,
-    COUNT(*) OVER () AS total_count
+    (
+        SELECT
+            COUNT(*)
+        FROM
+            job AS counted
+        WHERE
+            counted.process_instance_key = ?1) AS total_count
 FROM
     job
 WHERE
-    process_instance_key = ?1
+    job.process_instance_key = ?1
+ORDER BY
+    job.key
 LIMIT ?3 OFFSET ?2
 `
 
@@ -372,6 +380,12 @@ type FindProcessInstanceJobsRow struct {
 	TotalCount int64 `json:"total_count"`
 }
 
+// Ordered by key, so that the pages of one instance never overlap and a job keeps its page
+// while later jobs are created: an element with execution listeners has several jobs, which
+// a client looks for page by page. The index on process_instance_key yields the rows in that
+// order, so the order costs no sort as long as the total is counted by a query of its own:
+// a window function over the page's query would have every job of the instance read and
+// sorted for each page. See TestHotPathIndexes.
 func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceJobs, arg.ProcessInstanceKey, arg.Offset, arg.Size)
 	if err != nil {

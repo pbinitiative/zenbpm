@@ -388,6 +388,26 @@ func TestRqLiteStorage(t *testing.T) {
 	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(db, t))
 }
 
+func TestAnElementScopeIsRefusedForAProcessInstanceWhichIsNotStored(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() { require.NoError(t, partition.Stop()) }()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-element-scope-fk-db")
+	elementInstanceKey := db.GenerateId()
+
+	err := db.SaveElementScope(t.Context(), runtime.ElementScope{
+		ElementInstanceKey: elementInstanceKey,
+		ProcessInstanceKey: db.GenerateId(),
+		Phase:              runtime.ElementPhaseActivating,
+		InputVariables:     map[string]any{},
+		LocalVariables:     map[string]any{},
+	})
+
+	require.Error(t, err, "a scope belongs to a process instance, as a job and a token do")
+	assert.Contains(t, err.Error(), "FOREIGN KEY constraint failed")
+	_, err = db.FindElementScope(t.Context(), elementInstanceKey)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+}
+
 func TestRunUpMigrations(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer func() { require.NoError(t, partition.Stop()) }()

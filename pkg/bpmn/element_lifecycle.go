@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -263,9 +264,11 @@ func (engine *Engine) leaveElement(
 
 // completeListenerJob records the completion of a listener's job in the scope
 // of its element instance: the variables of the completion become variables
-// of the element, which its later jobs see and no other scope does, and the
-// scope moves on to the next listener. The token is answered running at its
-// element, for the run loop to go on from the scope.
+// of the element, which its later jobs see, and the scope moves on to the next
+// listener. Those of a start listener stay there, for the element's output
+// mappings to pick from; those of an end listener, which runs after the output
+// mappings, are written to the instance as well (publishToInstance). The token
+// is answered running at its element, for the run loop to go on from the scope.
 func (engine *Engine) completeListenerJob(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -282,6 +285,11 @@ func (engine *Engine) completeListenerJob(
 		return runtime.ExecutionToken{}, newEngineErrorf("job %d of the %s listener %q on %s is not the one its element instance %d waits for",
 			job.Key, job.ListenerEventType, job.Type, job.ElementId, job.ElementInstanceKey)
 	}
+	if scope.Phase == runtime.ElementPhaseCompleting {
+		if err := engine.publishToInstance(ctx, batch, instance, job, variables); err != nil {
+			return runtime.ExecutionToken{}, err
+		}
+	}
 	scope.MergeLocalVariables(variables)
 	scope.ListenerIndex++
 	if err := batch.SaveElementScope(ctx, scope); err != nil {
@@ -290,6 +298,36 @@ func (engine *Engine) completeListenerJob(
 	token := job.Token
 	token.State = runtime.TokenStateRunning
 	return token, nil
+}
+
+// publishToInstance writes the variables an end listener's job was completed
+// with to the instance its element runs in, every one of them: no output
+// mapping comes after an end listener which could name them. The history row
+// of the element shows them among its outputs, beside what its output mappings
+// wrote. The caller saves the instance.
+func (engine *Engine) publishToInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	job runtime.Job,
+	variables map[string]any,
+) error {
+	if len(variables) == 0 {
+		return nil
+	}
+	history, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find flow element instance %d of listener job %d: %w", job.ElementInstanceKey, job.Key, err)
+	}
+	outputs := make(map[string]any, len(history.OutputVariables)+len(variables))
+	maps.Copy(outputs, history.OutputVariables)
+	maps.Copy(outputs, variables)
+	history.OutputVariables = outputs
+	if err := batch.UpdateOutputFlowElementInstance(ctx, history); err != nil {
+		return fmt.Errorf("failed to write the outputs of %s %s: %w", history.ElementType, history.ElementId, err)
+	}
+	instance.ProcessInstance().VariableHolder.SetLocalVariables(variables)
+	return nil
 }
 
 // listenerTheScopeWaitsFor answers the listener whose job the element

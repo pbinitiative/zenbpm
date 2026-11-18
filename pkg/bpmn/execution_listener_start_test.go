@@ -59,7 +59,7 @@ func TestStartListenerHoldsTheTokenUntilItsJobIsCompleted(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, completed.State)
 }
 
-func TestStartListenerJobCompletionChangesNoVariableButPatchedOnesStay(t *testing.T) {
+func TestStartListenerJobCompletionWritesItsVariablesToTheInstanceAndPatchedOnesStay(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	definition := loadListenerFixture(t, engine, "start-listener.bpmn")
 	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
@@ -69,14 +69,19 @@ func TestStartListenerJobCompletionChangesNoVariableButPatchedOnesStay(t *testin
 	_, _, err = engine.ModifyInstance(t.Context(), instance.ProcessInstance().Key, nil, nil,
 		map[string]any{"patched": "before completion", "mappedAtStart": "patched mapping"})
 	require.NoError(t, err)
-	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, map[string]any{"completionVariable": "dropped"}))
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), job.Key, map[string]any{"completionVariable": "kept"}))
 
-	waitForPendingJobOfType(t, engine, instance.ProcessInstance().Key, "start-listener-after")
+	next := waitForPendingJobOfType(t, engine, instance.ProcessInstance().Key, "start-listener-after")
 	read := readInstance(t, engine, store, instance)
 	variables := read.VariableHolder.LocalVariables()
 	assert.Equal(t, "before completion", variables["patched"])
 	assert.Equal(t, "patched mapping", variables["mappedAtStart"], "the completion does not apply the start event's output mappings again")
-	assert.NotContains(t, variables, "completionVariable")
+	assert.Equal(t, "kept", variables["completionVariable"], "the end listener of a start event writes to the instance")
+	assert.Equal(t, "kept", next.InputVariables["completionVariable"], "so the element behind the start event sees it")
+	history, err := engine.persistence.GetFlowElementInstanceByKey(t.Context(), job.ElementInstanceKey)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"mappedAtStart": "mapped", "completionVariable": "kept"}, history.OutputVariables,
+		"the history shows it beside what the output mappings wrote")
 }
 
 func TestStartListenerJobCompletedTwiceAnswersSuccess(t *testing.T) {
@@ -147,15 +152,15 @@ func TestSeveralEndListenersOfAStartEventRunInTheOrderOfTheModel(t *testing.T) {
 	assert.Equal(t, runtime.ElementPhaseCompleting, scope.Phase)
 	assert.Zero(t, scope.ListenerIndex)
 
-	require.NoError(t, engine.JobCompleteByKey(t.Context(), firstJob.Key, map[string]any{"fromFirst": "seen by later listeners", "input": "hidden for them"}))
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), firstJob.Key, map[string]any{"fromFirst": "written by the first", "input": "replaced"}))
 	secondJob := waitForPendingJobOfType(t, engine, instanceKey, "second-listener-job")
 	assert.Equal(t, firstJob.ElementInstanceKey, secondJob.ElementInstanceKey, "the token stays in the same start event")
 	assert.Equal(t, "end", secondJob.ListenerEventType)
-	assert.Equal(t, map[string]any{"input": "hidden for them", "mappedAtStart": "mapped", "fromFirst": "seen by later listeners"}, secondJob.InputVariables,
-		"a later listener sees what an earlier one was completed with")
+	afterTheFirst := map[string]any{"input": "replaced", "mappedAtStart": "mapped", "fromFirst": "written by the first"}
+	assert.Equal(t, afterTheFirst, secondJob.InputVariables, "a later listener sees what an earlier one was completed with")
 	instanceData := readInstance(t, engine, store, instance)
-	assert.Equal(t, map[string]any{"input": "given", "mappedAtStart": "mapped"}, instanceData.VariableHolder.LocalVariables(),
-		"what a listener is completed with never reaches the instance")
+	assert.Equal(t, afterTheFirst, instanceData.VariableHolder.LocalVariables(),
+		"what an end listener is completed with reaches the instance, over a variable of the same name")
 	history, err := engine.persistence.GetFlowElementInstanceByKey(t.Context(), firstJob.ElementInstanceKey)
 	require.NoError(t, err)
 	assert.Nil(t, history.CompletedAt, "the start event stays active between its listeners")
@@ -166,12 +171,12 @@ func TestSeveralEndListenersOfAStartEventRunInTheOrderOfTheModel(t *testing.T) {
 	require.NoError(t, engine.JobCompleteByKey(t.Context(), secondJob.Key, nil))
 	thirdJob := waitForPendingJobOfType(t, engine, instanceKey, "third-listener-job")
 	assert.Len(t, pendingJobs(t, engine, instanceKey), 1)
-	assert.Equal(t, "seen by later listeners", thirdJob.InputVariables["fromFirst"])
+	assert.Equal(t, "written by the first", thirdJob.InputVariables["fromFirst"])
 
-	require.NoError(t, engine.JobCompleteByKey(t.Context(), thirdJob.Key, nil))
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), thirdJob.Key, map[string]any{"fromThird": "written by the third"}))
 	next := waitForPendingJobOfType(t, engine, instanceKey, "start-listener-after")
-	assert.Equal(t, map[string]any{"input": "given", "mappedAtStart": "mapped"}, next.InputVariables,
-		"the variables of a start event's listeners end with the start event")
+	assert.Equal(t, map[string]any{"input": "replaced", "mappedAtStart": "mapped", "fromFirst": "written by the first", "fromThird": "written by the third"},
+		next.InputVariables, "the element behind the start event sees what every listener wrote")
 	history, err = engine.persistence.GetFlowElementInstanceByKey(t.Context(), firstJob.ElementInstanceKey)
 	require.NoError(t, err)
 	assert.NotNil(t, history.CompletedAt)

@@ -96,8 +96,9 @@ func (p *TProcess) IsTopLevelStartEvent(startEvent *TStartEvent) bool {
 // the element it belongs to (the embedded FlowNode), so that the job of the
 // listener is created, handed out and resolved as the job of a task on that
 // element. It has no input or output mappings of its own: the engine hands
-// its job the variables of the element, and keeps what the job is completed
-// with in the element (see the element lifecycle in package bpmn).
+// its job the variables of the element, and decides by the listener's event
+// type where what the job is completed with goes (see the element lifecycle
+// in package bpmn).
 type ListenerTask struct {
 	FlowNode
 	listener extensions.TExecutionListener
@@ -121,8 +122,9 @@ func (task *ListenerTask) GetInputMapping() []extensions.TIoMapping {
 	return nil
 }
 
-// GetOutputMapping answers none: what a listener's job is completed with
-// reaches no scope outside its element.
+// GetOutputMapping answers none: what a start listener's job is completed
+// with stays in its element, and what an end listener's job is completed with
+// is written to the instance without a mapping.
 func (task *ListenerTask) GetOutputMapping() []extensions.TIoMapping {
 	return nil
 }

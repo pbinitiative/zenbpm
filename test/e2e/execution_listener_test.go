@@ -115,8 +115,8 @@ func TestATaskRunsItsListenersAroundItsJobOverRest(t *testing.T) {
 	waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 	completed, err := getProcessInstance(t, instance.Key)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"order": "o-3", "reservedBefore": "r-1"}, completed.Variables,
-		"what the jobs of the task were completed with reaches the instance through its output mappings only")
+	assert.Equal(t, map[string]any{"order": "o-3", "reservedBefore": "r-1", "notified": true}, completed.Variables,
+		"what the start listener and the task's job were completed with reaches the instance through the output mappings only, what the end listener was completed with as it is")
 }
 
 func TestTheListenersOfATaskReachWorkersOverTheJobStream(t *testing.T) {

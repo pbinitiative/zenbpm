@@ -78,18 +78,29 @@ variables the earlier jobs of the element were completed with. So:
   element does;
 - an `end` listener sees the instance as the output mappings left it, the element's local
   variables, and the variables the element's own job was completed with;
-- the variables an `end` listener's job is completed with are seen by the later `end` listeners
-  of the element only.
+- the variables an `end` listener's job is completed with are written to the instance, all of
+  them, and the later `end` listeners of the element see them.
 
-The variables of a listener's completion never reach the instance by themselves. What a `start`
-listener's job is completed with reaches it where an output mapping of the element names it, as
-the variables of the element's own job do: `=reserved` as the source of an output mapping of the
-task above writes what `reserve-stock` was completed with as `reserved` to the instance. What an
-`end` listener's job is completed with reaches the instance on no element, because the output
-mappings are applied before the `end` listeners run; a start event takes `end` listeners only, so
-nothing its listeners are completed with does. A worker which has to set a variable in the
-instance from such a job does so with `PATCH /v1/process-instances/{key}/variables` before it
-completes the job.
+What reaches the instance so differs by event type:
+
+| Completed with a variable | Reaches the instance |
+|---|---|
+| a `start` listener's job | only where an output mapping of the element names it, as for the element's own job: `=reserved` as the source of an output mapping of the task above writes what `reserve-stock` was completed with as `reserved` |
+| an `end` listener's job | always, under its own name, and in place of a variable of the instance with the same name |
+
+An `end` listener runs after the output mappings, so no mapping could name what its job is
+completed with: whoever models an `end` listener expects its result in the process, and gets it
+without one. This is the one place where a job writes to the instance without an output mapping.
+The instance is the one the element runs in. For an element in an embedded sub-process or in a
+called process that is the sub-process or the called process: from there the variable reaches the
+process around it as every variable does, where an output mapping of the sub-process or of the
+call activity names it. The history shows what an `end` listener wrote among the outputs of its
+element, beside what the output mappings wrote.
+
+A start event takes `end` listeners only, so what its listeners are completed with reaches the
+instance before anything behind the start event runs. A `start` listener which has to set a
+variable in the instance, where no output mapping names it, does so with
+`PATCH /v1/process-instances/{key}/variables` before it completes its job.
 
 ## Listeners on a start event
 

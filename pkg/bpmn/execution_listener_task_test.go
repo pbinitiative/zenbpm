@@ -79,17 +79,27 @@ func TestATaskRunsItsStartListenersItsJobAndItsEndListenersInTheOrderOfTheModel(
 	assert.Equal(t, runtime.ElementPhaseCompleting, scope.Phase)
 	assert.Zero(t, scope.ListenerIndex)
 
-	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterFirst.Key, map[string]any{"fromAfter": "a1"}))
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterFirst.Key, map[string]any{"fromAfter": "a1", "shared": "after"}))
 	afterSecond := waitForPendingJobOfType(t, engine, instanceKey, "after-second")
 	assert.Equal(t, "a1", afterSecond.InputVariables["fromAfter"], "a later end listener sees what an earlier one was completed with")
-	assert.NotContains(t, variablesOf(t, engine, store, instance), "fromAfter", "an end listener's variables never reach the instance")
+	assert.Equal(t, "after", afterSecond.InputVariables["shared"], "over a variable of the task with the same name")
+	assert.Equal(t, map[string]any{"given": "g", "taskResult": "r", "mappedFromBefore": "b1", "fromAfter": "a1", "shared": "after"},
+		variablesOf(t, engine, store, instance), "what an end listener is completed with reaches the instance, named by no output mapping")
+	history = historyOf(t, engine, elementInstanceKey)
+	assert.Equal(t, map[string]any{"taskResult": "r", "mappedFromBefore": "b1", "fromAfter": "a1", "shared": "after"}, history.OutputVariables,
+		"the history shows what an end listener wrote beside what the output mappings wrote")
+	assert.Nil(t, history.CompletedAt)
 
-	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterSecond.Key, map[string]any{"fromLast": "dropped"}))
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), afterSecond.Key, map[string]any{"fromLast": "a2", "taskResult": "replaced"}))
 	following := waitForPendingJobOfType(t, engine, instanceKey, "following-work")
-	assert.Equal(t, map[string]any{"given": "g", "taskResult": "r", "mappedFromBefore": "b1"}, following.InputVariables,
-		"the variables of a task end with the task")
+	afterTheTask := map[string]any{"given": "g", "taskResult": "replaced", "mappedFromBefore": "b1", "fromAfter": "a1", "shared": "after", "fromLast": "a2"}
+	assert.Equal(t, afterTheTask, following.InputVariables,
+		"what the start listeners and the task's job were completed with ends with the task, what the end listeners were completed with stays")
+	assert.Equal(t, afterTheTask, variablesOf(t, engine, store, instance), "a later end listener replaces a variable of the instance")
 	assert.NotEqual(t, elementInstanceKey, following.ElementInstanceKey)
-	assert.NotNil(t, historyOf(t, engine, elementInstanceKey).CompletedAt)
+	history = historyOf(t, engine, elementInstanceKey)
+	assert.NotNil(t, history.CompletedAt)
+	assert.Equal(t, map[string]any{"taskResult": "replaced", "mappedFromBefore": "b1", "fromAfter": "a1", "shared": "after", "fromLast": "a2"}, history.OutputVariables)
 	_, err = store.FindElementScope(t.Context(), elementInstanceKey)
 	assert.ErrorIs(t, err, storage.ErrNotFound, "the scope is deleted when the token leaves the task")
 
@@ -139,10 +149,11 @@ func TestEveryElementWhoseWorkIsOneJobRunsItsListeners(t *testing.T) {
 			after := waitForPendingJobOfType(t, engine, instanceKey, "element-after")
 			assert.Equal(t, "end", after.ListenerEventType)
 			assert.Equal(t, before.ElementInstanceKey, after.ElementInstanceKey)
-			require.NoError(t, engine.JobCompleteByKey(t.Context(), after.Key, nil))
+			assert.Empty(t, variablesOf(t, engine, store, instance), "neither the start listener nor the element's job wrote to the instance")
+			require.NoError(t, engine.JobCompleteByKey(t.Context(), after.Key, map[string]any{"fromAfter": true}))
 
 			waitForInstanceState(t, engine, store, instance, runtime.ActivityStateCompleted)
-			assert.Empty(t, variablesOf(t, engine, store, instance))
+			assert.Equal(t, map[string]any{"fromAfter": true}, variablesOf(t, engine, store, instance), "the end listener did")
 		})
 	}
 }
@@ -587,13 +598,22 @@ func TestAJobCreatedBeforeItsTaskRanListenersCompletesAsBefore(t *testing.T) {
 func TestListenersRunOnATaskOfASubProcessAndOfACalledProcess(t *testing.T) {
 	t.Run("in a sub-process", func(t *testing.T) {
 		engine, store := newListenerTestEngine(t)
-		definition := loadListenerFixture(t, engine, "sub-process-task-listeners.bpmn")
+		scope := `<bpmn:subProcess id="listened-scope" name="listened-scope">`
+		definition := loadListenerModel(t, engine, "sub-process-task-listeners.bpmn", scope, scope+
+			`<bpmn:extensionElements><zeebe:ioMapping><zeebe:output source="=fromInnerAfter" target="mappedByTheScope" /></zeebe:ioMapping></bpmn:extensionElements>`)
 		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
 		require.NoError(t, err)
 
-		runJobsInOrder(t, engine, "inner-before", "inner-work", "inner-after")
+		runJobsInOrder(t, engine, "inner-before", "inner-work")
+		innerAfter := waitForActiveJobOfType(t, engine, "inner-after")
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), innerAfter.Key, map[string]any{"fromInnerAfter": "i"}))
 
 		waitForInstanceState(t, engine, store, instance, runtime.ActivityStateCompleted)
+		subProcess := readInstanceByKey(t, engine, store, innerAfter.ProcessInstanceKey)
+		assert.Equal(t, "i", subProcess.VariableHolder.LocalVariables()["fromInnerAfter"],
+			"an end listener writes to the instance its element runs in: the sub-process")
+		assert.Equal(t, map[string]any{"given": "g", "mappedByTheScope": "i"}, variablesOf(t, engine, store, instance),
+			"from where it reaches the process as every variable of the sub-process does, by an output mapping")
 	})
 	t.Run("in a called process", func(t *testing.T) {
 		engine, store := newListenerTestEngine(t)
@@ -689,14 +709,21 @@ func completeStartListeners(t *testing.T, engine *Engine, store *inmemory.Storag
 func runJobsInOrder(t *testing.T, engine *Engine, jobTypes ...string) {
 	t.Helper()
 	for _, jobType := range jobTypes {
-		var jobs []runtime.Job
-		require.Eventually(t, func() bool {
-			var err error
-			jobs, err = engine.persistence.FindActiveJobsByType(t.Context(), jobType)
-			return err == nil && len(jobs) == 1
-		}, listenerTestTimeout, listenerTestPoll, "the job of type %s", jobType)
-		require.NoError(t, engine.JobCompleteByKey(t.Context(), jobs[0].Key, nil))
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), waitForActiveJobOfType(t, engine, jobType).Key, nil))
 	}
+}
+
+// waitForActiveJobOfType waits for the one active job of the type, wherever
+// its instance is.
+func waitForActiveJobOfType(t *testing.T, engine *Engine, jobType string) runtime.Job {
+	t.Helper()
+	var jobs []runtime.Job
+	require.Eventually(t, func() bool {
+		var err error
+		jobs, err = engine.persistence.FindActiveJobsByType(t.Context(), jobType)
+		return err == nil && len(jobs) == 1
+	}, listenerTestTimeout, listenerTestPoll, "the job of type %s", jobType)
+	return jobs[0]
 }
 
 func scopeOf(t *testing.T, store *inmemory.Storage, elementInstanceKey int64) runtime.ElementScope {

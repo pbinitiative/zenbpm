@@ -140,7 +140,9 @@ A listener job is a job as any other, with two differences in what a worker sees
 
 - `elementType` and `elementId` are those of the listener's element, such as `START_EVENT` or
   `SERVICE_TASK`; `listenerEventType` (REST) and `listener_event_type` (the gRPC job stream) are
-  `start` or `end`, and absent for the element's own job;
+  `start` or `end`, and absent for the element's own job. A job which the Go API hands out
+  (`Engine.ActivateJobs`) answers the same with `ActivatedJob.ListenerEventType()`, `""` for the
+  element's own job;
 - its `inputVariables` are the variables of the element (see [Variables](#variables)).
 
 Its [task headers](../jobs.md#task-headers) are those of the listener's element, as in Camunda 8:

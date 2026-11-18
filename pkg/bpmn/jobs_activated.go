@@ -18,6 +18,7 @@ type activatedJob struct {
 	processDefinitionVersion int32
 	processDefinitionKey     int64
 	elementId                string
+	listenerEventType        string
 	createdAt                time.Time
 	localVariables           map[string]interface{}
 	outputVariables          map[string]interface{}
@@ -44,6 +45,11 @@ type ActivatedJob interface {
 
 	// ElementId Get element id of the job
 	ElementId() string
+
+	// ListenerEventType returns the event type of the execution listener
+	// whose job this is ("start", "end"), and "" for the job of an element:
+	// both carry the id of the element.
+	ListenerEventType() string
 
 	// Variable from the process instance's variable context
 	Variable(key string) interface{}
@@ -87,6 +93,11 @@ func (aj *activatedJob) InstanceKey() int64 {
 // ElementId implements ActivatedJob
 func (aj *activatedJob) ElementId() string {
 	return aj.elementId
+}
+
+// ListenerEventType implements ActivatedJob
+func (aj *activatedJob) ListenerEventType() string {
+	return aj.listenerEventType
 }
 
 // Key implements ActivatedJob

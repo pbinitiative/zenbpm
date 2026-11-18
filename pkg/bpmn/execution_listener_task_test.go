@@ -213,6 +213,28 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 	}
 }
 
+func TestAJobHandedOutByActivateJobsTellsWhichListenerItBelongsTo(t *testing.T) {
+	engine, _ := newListenerTestEngine(t)
+	definition := loadListenerFixture(t, engine, "job-element-listeners.bpmn")
+	_, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+	require.NoError(t, err)
+
+	for _, expected := range []struct{ jobType, listenerEventType string }{
+		{jobType: "element-before", listenerEventType: "start"},
+		{jobType: "element-work", listenerEventType: ""},
+		{jobType: "element-after", listenerEventType: "end"},
+	} {
+		var activated []ActivatedJob
+		require.Eventually(t, func() bool {
+			activated, err = engine.ActivateJobs(t.Context(), expected.jobType)
+			return err == nil && len(activated) == 1
+		}, 5*time.Second, 10*time.Millisecond, "the job of type %s is handed out", expected.jobType)
+		assert.Equal(t, "listened-element", activated[0].ElementId(), "a listener's job carries the id of its element")
+		assert.Equal(t, expected.listenerEventType, activated[0].ListenerEventType(), "the job of type %s", expected.jobType)
+		require.NoError(t, engine.JobCompleteByKey(t.Context(), activated[0].Key(), nil))
+	}
+}
+
 func TestOnlyAnElementWithListenersHasItsScopeDeletedWhenItsTokenIsTakenOutOfIt(t *testing.T) {
 	listeners := `<zeebe:executionListeners>
           <zeebe:executionListener eventType="start" type="element-before" />

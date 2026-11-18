@@ -314,6 +314,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 			key:                 job.Key,
 			processInstanceKey:  job.ProcessInstanceKey,
 			elementId:           job.ElementId,
+			listenerEventType:   job.ListenerEventType,
 			createdAt:           job.CreatedAt,
 			localVariables:      localVars,
 			outputVariables:     map[string]interface{}{},

@@ -208,6 +208,37 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 	}
 }
 
+func TestAnElementWhoseInputMappingsFailNamesItselfInTheIncidentWithListenersAndWithout(t *testing.T) {
+	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
+	require.NoError(t, err)
+	taskDefinition := `<zenbpm:taskDefinition type="element-work" />`
+	// the flag is no flag the function knows, so the mapping fails when it is evaluated
+	failingMapping := taskDefinition + `<zenbpm:ioMapping><zenbpm:input source="=matches(&#34;a&#34;, &#34;a&#34;, flag)" target="matched" /></zenbpm:ioMapping>`
+	withListeners := strings.Replace(string(fixture), taskDefinition, failingMapping, 1)
+	require.NotEqual(t, string(fixture), withListeners)
+	withoutListeners := strings.NewReplacer(
+		`<zeebe:executionListener eventType="start" type="element-before" />`, ``,
+		`<zeebe:executionListener eventType="end" type="element-after" />`, ``,
+	).Replace(withListeners)
+	for name, model := range map[string]string{"with listeners": withListeners, "without listeners": withoutListeners} {
+		t.Run(name, func(t *testing.T) {
+			engine, _ := newListenerTestEngine(t)
+			definition, err := engine.LoadFromBytes(t.Context(), []byte(model), engine.generateKey())
+			require.NoError(t, err)
+
+			instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"flag": "x"})
+			require.Error(t, err)
+			require.NotNil(t, instance)
+
+			incident := onlyOpenIncident(t, engine, instance.ProcessInstance().Key)
+			assert.Equal(t, "listened-element", incident.ElementId)
+			assert.Contains(t, incident.Message, "failed to process SERVICE_TASK ")
+			assert.Contains(t, incident.Message, ": failed to evaluate input variables: ")
+			assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key), "no job of the element is created, a listener's neither")
+		})
+	}
+}
+
 func TestATaskWithStartListenersOnlyLeavesWhenItsJobIsCompleted(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zeebe:executionListener eventType="end" type="element-after" />`, ``)

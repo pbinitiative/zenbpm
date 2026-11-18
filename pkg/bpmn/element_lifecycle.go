@@ -168,7 +168,7 @@ func (engine *Engine) activateElement(
 	if inputMappings, ok := bpmn20.InputMappingsOf(element); ok {
 		historyInput = parent.ExecutionScopeSnapshot()
 		if err := scope.ApplyInputMappings(parent, inputMappings, engine.evaluateExpression); err != nil {
-			return runtime.ElementScope{}, fmt.Errorf("failed to evaluate input variables: %w", err)
+			return runtime.ElementScope{}, fmt.Errorf("failed to process %s %d: failed to evaluate input variables: %w", element.GetType(), token.ElementInstanceKey, err)
 		}
 	}
 	err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
@@ -337,7 +337,11 @@ func (engine *Engine) leaveElement(
 			return nil, fmt.Errorf("failed to delete the scope of %s %s: %w", element.GetType(), element.GetId(), err)
 		}
 	}
-	return engine.handleElementTransition(ctx, batch, instance, element, token)
+	tokens, err := engine.handleElementTransition(ctx, batch, instance, element, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), token.ElementInstanceKey, err)
+	}
+	return tokens, nil
 }
 
 // completeListenerJob records the completion of a listener's job in the scope

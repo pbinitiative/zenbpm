@@ -279,7 +279,7 @@ func (engine *Engine) terminateEndErrorPropagatingScope(ctx context.Context, bat
 		return fmt.Errorf("failed to terminate propagating error scope on process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	if err := endInterruptedElementInstance(ctx, batch, propagatingToken); err != nil {
+	if err := endInterruptedElementInstance(ctx, batch, instance, propagatingToken); err != nil {
 		return err
 	}
 	propagatingToken.State = runtime.TokenStateCanceled

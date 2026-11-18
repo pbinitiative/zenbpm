@@ -289,7 +289,8 @@ func (engine *Engine) waitInElement(
 // on to its end listeners, which see what the work was completed with. A token
 // in an element with listeners is set running for that, and the run loop goes
 // on from the scope; a token in an element without any leaves at once, and so
-// does one which entered its element before the engine ran its listeners.
+// does one which entered its element before the engine ran its listeners: its
+// history row gets its outputs and its end in one write.
 func (engine *Engine) finishWorkOfElement(
 	ctx context.Context,
 	batch *EngineBatch,
@@ -299,15 +300,19 @@ func (engine *Engine) finishWorkOfElement(
 	completedWith map[string]any,
 	outputs map[string]any,
 ) ([]runtime.ExecutionToken, error) {
-	if err := saveFlowElementOutputs(ctx, batch, instance, element, token, outputs, nil); err != nil {
-		return nil, fmt.Errorf("failed to write the outputs of %s %s: %w", element.GetType(), element.GetId(), err)
-	}
 	scope, waitsInScope, err := engine.scopeOfElement(ctx, instance, element, token.ElementInstanceKey)
 	if err != nil {
 		return nil, err
 	}
+	var leftAt *time.Time
 	if !waitsInScope {
-		return engine.leaveElement(ctx, batch, instance, element, token)
+		leftAt = new(time.Now())
+	}
+	if err := saveFlowElementOutputs(ctx, batch, instance, element, token, outputs, leftAt); err != nil {
+		return nil, fmt.Errorf("failed to write the outputs of %s %s: %w", element.GetType(), element.GetId(), err)
+	}
+	if !waitsInScope {
+		return engine.takeOutgoingFlows(ctx, batch, instance, element, token)
 	}
 	scope.MergeLocalVariables(completedWith)
 	scope.Phase, scope.ListenerIndex = runtime.ElementPhaseCompleting, 0
@@ -337,6 +342,18 @@ func (engine *Engine) leaveElement(
 			return nil, fmt.Errorf("failed to delete the scope of %s %s: %w", element.GetType(), element.GetId(), err)
 		}
 	}
+	return engine.takeOutgoingFlows(ctx, batch, instance, element, token)
+}
+
+// takeOutgoingFlows lets the token of an element instance which ended go on by
+// the outgoing sequence flows of its element.
+func (engine *Engine) takeOutgoingFlows(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	token runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, element, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), token.ElementInstanceKey, err)
@@ -439,6 +456,19 @@ func (engine *Engine) listenerTheScopeWaitsFor(instance runtime.ProcessInstance,
 // and no write of one.
 func keepsScope(instance runtime.ProcessInstance, element bpmn20.FlowNode) bool {
 	return processOf(instance).RunsListenersOn(element)
+}
+
+// mayKeepScope reports whether the element instance of the token may keep a
+// scope in the storage. Only the instance the token runs in can tell that it
+// keeps none; for a token of another instance, or at an element the instance's
+// process does not know, the answer is yes, so that a scope is never left
+// behind for want of a delete.
+func mayKeepScope(instance runtime.ProcessInstance, token runtime.ExecutionToken) bool {
+	if instance.ProcessInstance().Key != token.ProcessInstanceKey {
+		return true
+	}
+	element := processOf(instance).GetFlowNodeById(token.ElementId)
+	return element == nil || keepsScope(instance, element)
 }
 
 // scopeOfElement answers the scope the element instance keeps. The second

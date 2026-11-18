@@ -786,7 +786,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	var activeTokensLeft []runtime.ExecutionToken
 	if len(elementInstanceIdsToTerminate) > 0 {
-		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
+		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstance)
 		if err != nil {
 			createSpan.RecordError(err)
 			createSpan.SetStatus(codes.Error, err.Error())

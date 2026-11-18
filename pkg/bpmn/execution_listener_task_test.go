@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -177,7 +178,7 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 				name = tc.name + ", its job completed by a handler in the engine"
 			}
 			t.Run(name, func(t *testing.T) {
-				store := &scopeReadCountingStorage{Storage: inmemory.NewStorage()}
+				store := &lifecycleCostCountingStorage{Storage: inmemory.NewStorage()}
 				engine := NewEngine(EngineWithStorage(store))
 				require.NoError(t, engine.Start(t.Context()))
 				t.Cleanup(engine.Stop)
@@ -195,10 +196,14 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 					work := requireSinglePendingJob(t, store.Storage, instance.ProcessInstance().Key)
 					require.Equal(t, "element-work", work.Type)
 					assert.Empty(t, store.Copy().ElementScopes, "nothing is stored for the element beside its job while the token waits in it")
-					require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, nil))
+					require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, map[string]any{"result": "r"}))
+					assert.Equal(t, int32(1), store.historyUpdatesOf(work.ElementInstanceKey), "the completion of the job writes the outputs and the end of the history row at once")
+					history := historyOf(t, &engine, work.ElementInstanceKey)
+					assert.NotNil(t, history.CompletedAt)
 				}
 				waitForInstanceState(t, &engine, store.Storage, instance, runtime.ActivityStateCompleted)
 				assert.Zero(t, store.reads.Load(), "neither the start event nor the element asks the storage for a scope")
+				assert.Zero(t, store.deletes.Load(), "and neither has one deleted when it is left")
 				assert.Empty(t, store.Copy().ElementScopes)
 				for _, history := range store.Copy().FlowElementInstance {
 					assert.NotNil(t, history.CompletedAt, "the history row of %s is completed", history.ElementId)
@@ -206,6 +211,73 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 			})
 		}
 	}
+}
+
+func TestOnlyAnElementWithListenersHasItsScopeDeletedWhenItsTokenIsTakenOutOfIt(t *testing.T) {
+	listeners := `<zeebe:executionListeners>
+          <zeebe:executionListener eventType="start" type="element-before" />
+          <zeebe:executionListener eventType="end" type="element-after" />
+        </zeebe:executionListeners>`
+	takenOut := map[string]func(t *testing.T, engine *Engine, waiting runtime.Job){
+		"by the cancellation of its instance": func(t *testing.T, engine *Engine, waiting runtime.Job) {
+			require.NoError(t, engine.CancelInstanceByKey(t.Context(), waiting.ProcessInstanceKey))
+		},
+		"by a modification which terminates the token": func(t *testing.T, engine *Engine, waiting runtime.Job) {
+			_, _, err := engine.ModifyInstance(t.Context(), waiting.ProcessInstanceKey, []int64{waiting.ElementInstanceKey}, nil, nil)
+			require.NoError(t, err)
+		},
+	}
+	for name, takeTokenOut := range takenOut {
+		for _, withListeners := range []bool{false, true} {
+			scopesDeleted, waitingFor := int32(0), "element-work"
+			testName := "an element without listeners, " + name
+			if withListeners {
+				scopesDeleted, waitingFor = 1, "element-before"
+				testName = "an element with listeners, " + name
+			}
+			t.Run(testName, func(t *testing.T) {
+				store := &lifecycleCostCountingStorage{Storage: inmemory.NewStorage()}
+				engine := NewEngine(EngineWithStorage(store))
+				require.NoError(t, engine.Start(t.Context()))
+				t.Cleanup(engine.Stop)
+				replacement := listeners
+				if !withListeners {
+					replacement = ``
+				}
+				definition := loadListenerModel(t, &engine, "job-element-listeners.bpmn", listeners, replacement)
+				instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+				require.NoError(t, err)
+				waiting := requireSinglePendingJob(t, store.Storage, instance.ProcessInstance().Key)
+				require.Equal(t, waitingFor, waiting.Type)
+				require.Len(t, store.Copy().ElementScopes, int(scopesDeleted), "only an element with listeners keeps a scope while its token waits")
+
+				takeTokenOut(t, &engine, waiting)
+
+				assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store.Storage, waiting.Key).State)
+				assert.NotNil(t, historyOf(t, &engine, waiting.ElementInstanceKey).CompletedAt)
+				assert.Equal(t, scopesDeleted, store.deletes.Load(), "an element which keeps no scope costs no write for one")
+				assert.Empty(t, store.Copy().ElementScopes)
+			})
+		}
+	}
+}
+
+func TestATokenOfAnotherInstanceOrAtAnUnknownElementMayKeepAScope(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zeebe:executionListener eventType="start" type="element-before" />`, ``)
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+	require.NoError(t, err)
+	listened := requireSinglePendingJob(t, store, instance.ProcessInstance().Key).Token
+	require.Equal(t, "listened-element", listened.ElementId)
+	atElementWithoutListeners, ofAnotherInstance, atAnUnknownElement := listened, listened, listened
+	atElementWithoutListeners.ElementId = "job-element-end"
+	ofAnotherInstance.ElementId, ofAnotherInstance.ProcessInstanceKey = "job-element-end", listened.ProcessInstanceKey+1
+	atAnUnknownElement.ElementId = "removed-from-the-model"
+
+	assert.True(t, mayKeepScope(instance, listened), "its element carries a listener the engine runs")
+	assert.False(t, mayKeepScope(instance, atElementWithoutListeners))
+	assert.True(t, mayKeepScope(instance, ofAnotherInstance), "the process of another instance says nothing about the token's element")
+	assert.True(t, mayKeepScope(instance, atAnUnknownElement))
 }
 
 func TestAnElementWhoseInputMappingsFailNamesItselfInTheIncidentWithListenersAndWithout(t *testing.T) {
@@ -995,16 +1067,54 @@ var elementsWhoseWorkIsOneJob = []struct {
 		closingTag: `<bpmn:messageEventDefinition id="thrown-message" /></bpmn:intermediateThrowEvent>`, elementType: "INTERMEDIATE_THROW_EVENT"},
 }
 
-// scopeReadCountingStorage counts how often the scope of an element instance
-// is asked for.
-type scopeReadCountingStorage struct {
+// lifecycleCostCountingStorage counts what the lifecycle of an element costs
+// in the storage: how often the scope of an element instance is asked for, how
+// often the delete of one is put into a batch, and how often a batch updates
+// the history row of an element instance, by its key.
+type lifecycleCostCountingStorage struct {
 	*inmemory.Storage
-	reads atomic.Int32
+	reads          atomic.Int32
+	deletes        atomic.Int32
+	historyUpdates sync.Map
 }
 
-func (s *scopeReadCountingStorage) FindElementScope(ctx context.Context, elementInstanceKey int64) (runtime.ElementScope, error) {
+func (s *lifecycleCostCountingStorage) FindElementScope(ctx context.Context, elementInstanceKey int64) (runtime.ElementScope, error) {
 	s.reads.Add(1)
 	return s.Storage.FindElementScope(ctx, elementInstanceKey)
+}
+
+func (s *lifecycleCostCountingStorage) NewBatch() storage.Batch {
+	return &lifecycleCostCountingBatch{Batch: s.Storage.NewBatch(), costs: s}
+}
+
+func (s *lifecycleCostCountingStorage) historyUpdatesOf(elementInstanceKey int64) int32 {
+	updates, _ := s.historyUpdates.LoadOrStore(elementInstanceKey, new(atomic.Int32))
+	return updates.(*atomic.Int32).Load()
+}
+
+func (s *lifecycleCostCountingStorage) countHistoryUpdate(elementInstanceKey int64) {
+	updates, _ := s.historyUpdates.LoadOrStore(elementInstanceKey, new(atomic.Int32))
+	updates.(*atomic.Int32).Add(1)
+}
+
+type lifecycleCostCountingBatch struct {
+	storage.Batch
+	costs *lifecycleCostCountingStorage
+}
+
+func (b *lifecycleCostCountingBatch) DeleteElementScope(ctx context.Context, elementInstanceKey int64) error {
+	b.costs.deletes.Add(1)
+	return b.Batch.DeleteElementScope(ctx, elementInstanceKey)
+}
+
+func (b *lifecycleCostCountingBatch) UpdateOutputFlowElementInstance(ctx context.Context, history runtime.FlowElementInstance) error {
+	b.costs.countHistoryUpdate(history.Key)
+	return b.Batch.UpdateOutputFlowElementInstance(ctx, history)
+}
+
+func (b *lifecycleCostCountingBatch) CompleteFlowElementInstance(ctx context.Context, elementInstanceKey int64, completedAt time.Time) error {
+	b.costs.countHistoryUpdate(elementInstanceKey)
+	return b.Batch.CompleteFlowElementInstance(ctx, elementInstanceKey, completedAt)
 }
 
 var errFindElementScopeFailure = errors.New("storage failure: find element scope")

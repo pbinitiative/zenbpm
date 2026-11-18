@@ -440,7 +440,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
 		}
-		if err := endInterruptedElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, instance, token); err != nil {
 			return nil, err
 		}
 		token.State = runtime.TokenStateCanceled
@@ -458,8 +458,9 @@ func (engine *Engine) terminateExecutionTokens(
 	ctx context.Context,
 	batch *EngineBatch,
 	elementInstanceKeysToTerminate []int64,
-	processInstanceKey int64,
+	instance runtime.ProcessInstance,
 ) ([]runtime.ExecutionToken, error) {
+	processInstanceKey := instance.ProcessInstance().Key
 	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
@@ -473,7 +474,7 @@ func (engine *Engine) terminateExecutionTokens(
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
 		if _, terminate := keysToTerminate[activeToken.ElementInstanceKey]; terminate {
-			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
+			err = engine.terminateExecutionToken(ctx, batch, instance, activeToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
 			}
@@ -488,11 +489,11 @@ func (engine *Engine) terminateExecutionTokens(
 func (engine *Engine) terminateExecutionToken(
 	ctx context.Context,
 	batch *EngineBatch,
-	processInstanceKey int64,
+	instance runtime.ProcessInstance,
 	activeToken runtime.ExecutionToken,
 ) error {
 
-	err := engine.cancelBoundarySubscriptions(ctx, batch, processInstanceKey, activeToken)
+	err := engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, activeToken)
 	if err != nil {
 		return fmt.Errorf("failed to cancel subscriptions for execution token %d: %w", activeToken.Key, err)
 	}
@@ -521,7 +522,7 @@ func (engine *Engine) terminateExecutionToken(
 		}
 	}
 
-	if err := endInterruptedElementInstance(ctx, batch, activeToken); err != nil {
+	if err := endInterruptedElementInstance(ctx, batch, instance, activeToken); err != nil {
 		return err
 	}
 	activeToken.State = runtime.TokenStateCanceled
@@ -1323,14 +1324,20 @@ func (engine *Engine) completeFlowElementInstance(
 // taken out of its element instead of leaving it by its outgoing flows: by an
 // interrupting boundary event, a BPMN error, a cancellation or a
 // modification. Its history row is completed, and the scope it kept while its
-// listeners ran, if any, is deleted: nothing goes on from it any more.
+// listeners ran, if any, is deleted: nothing goes on from it any more. The
+// instance is the one the token runs in, which tells whether its element keeps
+// a scope at all (mayKeepScope).
 func endInterruptedElementInstance(
 	ctx context.Context,
 	batch *EngineBatch,
+	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) error {
 	if err := batch.CompleteFlowElementInstance(ctx, token.ElementInstanceKey, time.Now()); err != nil {
 		return fmt.Errorf("failed to complete flow element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
+	}
+	if !mayKeepScope(instance, token) {
+		return nil
 	}
 	if err := batch.DeleteElementScope(ctx, token.ElementInstanceKey); err != nil {
 		return fmt.Errorf("failed to delete the scope of element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)

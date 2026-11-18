@@ -117,7 +117,8 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 // scope is rebuilt from the scope, which looks after the history row of the
 // element as well (see refreshElementScope); every other job from the input
 // mappings of its task, and its element's history row shows the variables
-// they were evaluated from.
+// they were evaluated from. Input mappings which fail are told by
+// errInputMappingsDoNotEvaluate for both kinds of job.
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
 	task := taskOfJob(instance, *job)
 	if task == nil {
@@ -151,7 +152,7 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 
 	flowElementInput := variableHolder.ExecutionScopeSnapshot()
 	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression); err != nil {
-		return fmt.Errorf("failed to evaluate input variables for job %d: %w", job.Key, err)
+		return fmt.Errorf("failed to rebuild the variables of job %d: %w", job.Key, inputMappingsDoNotEvaluate(task, err))
 	}
 	job.InputVariables = variableHolder.LocalVariables()
 
@@ -353,7 +354,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 	// TODO: the same thing has to happen for other waiting subscriptions
 	if job != nil {
 		if err := engine.reevaluateJobInputVariables(ctx, &batch, instance, job); err != nil {
-			return err
+			return variablesOfIncidentNotRebuilt(key, err)
 		}
 		// an incident the job did not raise itself, such as a boundary event
 		// which failed to correlate, leaves the job's series and backoff alone
@@ -370,15 +371,9 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 		}
 	} else {
 		// the element is entered again, or, where it keeps a scope, goes on
-		// from it with its input mappings evaluated again. Mappings which do
-		// not evaluate would only raise the incident anew, so the resolution
-		// is refused until the variables are corrected; a failure of the
-		// storage says nothing about the incident.
+		// from it with its input mappings evaluated again
 		if _, _, err := engine.refreshElementScope(ctx, &batch, instance, incident.Token.ElementId, incident.Token.ElementInstanceKey); err != nil {
-			if errors.Is(err, errInputMappingsDoNotEvaluate) {
-				return fmt.Errorf("%w: %w; correct the variables they read and resolve the incident again", ErrIncidentNotResolvable, err)
-			}
-			return fmt.Errorf("failed to resolve incident %d: %w", key, err)
+			return variablesOfIncidentNotRebuilt(key, err)
 		}
 		incident.Token.State = runtime.TokenStateRunning
 	}
@@ -410,6 +405,19 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
+}
+
+// variablesOfIncidentNotRebuilt is the error of a resolution which could not
+// evaluate the variables of the incident's element again. Input mappings
+// which do not evaluate refuse the resolution until the variables are
+// corrected: the token would only raise the incident anew, and a job would be
+// handed out without the variables of its task. A failure of the storage says
+// nothing about the incident, so the resolution may be repeated as it is.
+func variablesOfIncidentNotRebuilt(incidentKey int64, err error) error {
+	if errors.Is(err, errInputMappingsDoNotEvaluate) {
+		return fmt.Errorf("%w: %w; correct the variables they read and resolve the incident again", ErrIncidentNotResolvable, err)
+	}
+	return fmt.Errorf("failed to resolve incident %d: %w", incidentKey, err)
 }
 
 // fenceJobOfIncident announces the change of the job the incident leaves

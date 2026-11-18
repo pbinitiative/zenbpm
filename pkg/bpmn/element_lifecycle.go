@@ -68,7 +68,10 @@ func (engine *Engine) runElementLifecycle(
 			return nil, err
 		}
 	case err != nil:
-		return nil, fmt.Errorf("failed to read the scope of %s %s: %w", element.GetType(), element.GetId(), err)
+		// the storage failed, not the element: whoever set the token running,
+		// such as the completion of a listener's job, must not take the
+		// incident this raises for the outcome of the process
+		return nil, markTechnicalFailure(fmt.Errorf("failed to read the scope of %s %s: %w", element.GetType(), element.GetId(), err))
 	}
 	process := processOf(instance)
 	for {
@@ -334,10 +337,17 @@ func (engine *Engine) scopeOfElement(
 }
 
 // errInputMappingsDoNotEvaluate is wrapped into the error of
-// refreshElementScope when an input mapping of the element fails, to tell it
-// from a failure of the storage: the first one lasts until the variables are
-// corrected, the second one may be gone when the call is repeated.
+// refreshElementScope and of reevaluateJobInputVariables when an input
+// mapping of the element fails, to tell it from a failure of the storage: the
+// first one lasts until the variables are corrected, the second one may be
+// gone when the call is repeated.
 var errInputMappingsDoNotEvaluate = errors.New("failed to evaluate the input mappings")
+
+// inputMappingsDoNotEvaluate is the error of an element whose input mappings
+// fail when they are evaluated again.
+func inputMappingsDoNotEvaluate(element bpmn20.FlowNode, err error) error {
+	return fmt.Errorf("%w of %s %s: %w", errInputMappingsDoNotEvaluate, element.GetType(), element.GetId(), err)
+}
 
 // refreshElementScope evaluates the input mappings of the element again, as
 // the resolution of an incident does for every element, and answers the scope
@@ -361,7 +371,7 @@ func (engine *Engine) refreshElementScope(
 	if inputMappings, ok := bpmn20.InputMappingsOf(element); ok {
 		parent := &instance.ProcessInstance().VariableHolder
 		if err := scope.ApplyInputMappings(parent, inputMappings, engine.evaluateExpression); err != nil {
-			return runtime.ElementScope{}, false, fmt.Errorf("%w of %s %s: %w", errInputMappingsDoNotEvaluate, element.GetType(), element.GetId(), err)
+			return runtime.ElementScope{}, false, inputMappingsDoNotEvaluate(element, err)
 		}
 		if scope.Phase != runtime.ElementPhaseCompleting {
 			if err := engine.saveHistoryInput(ctx, batch, elementInstanceKey, parent.ExecutionScopeSnapshot()); err != nil {

@@ -345,6 +345,73 @@ func TestAStorageFailureWhileResolvingAnIncidentOfATaskWithListenersIsNotARefusa
 	waitForPendingJobOfType(t, engine, incident.ProcessInstanceKey, "after-first")
 }
 
+func TestResolvingAnIncidentOfAListenersJobIsRefusedWhileTheInputMappingsOfItsTaskDoNotEvaluate(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	definition := loadListenerFixture(t, engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	work := completeStartListeners(t, engine, store, instanceKey, nil)
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, nil))
+	afterFirst := waitForPendingJobOfType(t, engine, instanceKey, "after-first")
+	require.NoError(t, engine.JobFailByKey(t.Context(), afterFirst.Key, "listener failed", nil, nil, nil, nil, nil))
+	incident := onlyOpenIncident(t, engine, instanceKey)
+	feel := &failingFeelRuntime{FeelRuntime: engine.feelRuntime}
+	engine.feelRuntime = feel
+
+	feel.fails.Store(true)
+	err = engine.ResolveIncident(t.Context(), incident.Key)
+
+	require.ErrorIs(t, err, ErrIncidentNotResolvable, "the listener's job would be handed out without the variables of its task")
+	assert.ErrorContains(t, err, "failed to evaluate the input mappings of SERVICE_TASK listened-task")
+	assert.ErrorContains(t, err, "correct the variables they read and resolve the incident again")
+	assert.Equal(t, incident.Key, onlyOpenIncident(t, engine, instanceKey).Key, "the incident stays open")
+	assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, afterFirst.Key).State, "the job is not handed out")
+
+	feel.fails.Store(false)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	assert.Equal(t, afterFirst.Key, requireSinglePendingJob(t, store, instanceKey).Key, "the same job is handed out again")
+	assert.Equal(t, runtime.ActivityStateActive, reloadJob(t, store, afterFirst.Key).State)
+}
+
+func TestAStorageFailureWhileResolvingAnIncidentOfAListenersJobIsNotARefusal(t *testing.T) {
+	failing := &failingScopeReadStorage{Storage: inmemory.NewStorage()}
+	engine, instanceKey, beforeFirst := listenedTaskAtItsFirstStartListener(t, failing)
+	require.NoError(t, engine.JobFailByKey(t.Context(), beforeFirst.Key, "listener failed", nil, nil, new(int32(0)), nil, nil))
+	incident := onlyOpenIncident(t, engine, instanceKey)
+
+	failing.failsFindElementScope.Store(true)
+	err := engine.ResolveIncident(t.Context(), incident.Key)
+
+	require.ErrorIs(t, err, errFindElementScopeFailure)
+	assert.NotErrorIs(t, err, ErrIncidentNotResolvable, "nothing about the incident has to change: the resolution may be repeated as it is")
+	assert.Equal(t, incident.Key, onlyOpenIncident(t, engine, instanceKey).Key, "the incident stays open")
+
+	failing.failsFindElementScope.Store(false)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	assert.Equal(t, beforeFirst.Key, requireSinglePendingJob(t, failing, instanceKey).Key)
+}
+
+func TestAScopeWhichCannotBeReadAfterAListenersCompletionIsCommittedFailsTheCompletion(t *testing.T) {
+	failing := &failingScopeReadStorage{Storage: inmemory.NewStorage()}
+	engine, instanceKey, beforeFirst := listenedTaskAtItsFirstStartListener(t, failing)
+
+	// the completion reads the scope and commits; the run of the instance
+	// which follows reads it again
+	failing.readsUntilOneFails.Store(2)
+	err := engine.JobCompleteByKey(t.Context(), beforeFirst.Key, nil)
+
+	require.ErrorIs(t, err, errFindElementScopeFailure, "the completer is told that the instance did not go on")
+	assert.Equal(t, runtime.ActivityStateCompleted, reloadJob(t, failing.Storage, beforeFirst.Key).State, "the completion itself is committed")
+	incident := onlyOpenIncident(t, engine, instanceKey)
+	assert.Equal(t, "listened-task", incident.ElementId)
+	assert.Empty(t, pendingJobs(t, engine, instanceKey), "the next listener's job was not created")
+
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	waitForPendingJobOfType(t, engine, instanceKey, "before-second")
+	assert.Equal(t, 1, jobsOfType(t, failing.Storage, instanceKey, "before-first"), "the completed listener is not run again")
+}
+
 func TestResolvingAnIncidentOfTheTasksJobKeepsWhatItsStartListenersAdded(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	definition := loadListenerFixture(t, engine, "task-listeners.bpmn")
@@ -707,16 +774,35 @@ func listenedTaskWhoseOwnWorkFailed(t *testing.T, store storage.Storage) (*Engin
 	return &engine, inMemory, onlyOpenIncident(t, &engine, instanceKey)
 }
 
+// listenedTaskAtItsFirstStartListener starts an instance of task-listeners.bpmn
+// on the given storage and answers the job of the task's first start listener.
+func listenedTaskAtItsFirstStartListener(t *testing.T, store storage.Storage) (*Engine, int64, runtime.Job) {
+	t.Helper()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	t.Cleanup(engine.Stop)
+	definition := loadListenerFixture(t, &engine, "task-listeners.bpmn")
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	beforeFirst := requireSinglePendingJob(t, store, instanceKey)
+	require.Equal(t, "before-first", beforeFirst.Type)
+	return &engine, instanceKey, beforeFirst
+}
+
 var errFindElementScopeFailure = errors.New("storage failure: find element scope")
 
-// failingScopeReadStorage fails to read the scope of an element instance on demand.
+// failingScopeReadStorage fails to read the scope of an element instance on
+// demand: every read while failsFindElementScope is set, and the one read
+// which readsUntilOneFails counts down to, 2 for the second read from now.
 type failingScopeReadStorage struct {
 	*inmemory.Storage
 	failsFindElementScope atomic.Bool
+	readsUntilOneFails    atomic.Int32
 }
 
 func (s *failingScopeReadStorage) FindElementScope(ctx context.Context, elementInstanceKey int64) (runtime.ElementScope, error) {
-	if s.failsFindElementScope.Load() {
+	if s.readsUntilOneFails.Add(-1) == 0 || s.failsFindElementScope.Load() {
 		return runtime.ElementScope{}, errFindElementScopeFailure
 	}
 	return s.Storage.FindElementScope(ctx, elementInstanceKey)

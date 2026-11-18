@@ -169,6 +169,9 @@ job:
    A `retries` expression which no longer evaluates refuses the resolution with `409` and changes
    nothing; the message names the error and the way out: correct the variables the expression
    reads and resolve again, or resolve again with the job's retries given (see below).
+   The input mappings of the task are evaluated again as well, for the variables the next attempt
+   gets; mappings which no longer evaluate refuse the resolution with `409` in the same way, until
+   the variables they read are corrected.
    Resolving the incident of an error code nothing caught does the same, so leftover retries do not
    carry over into the new series; retries an operator set before that incident are forgotten with
    the series they belonged to. An incident the job did not raise itself, such as one of a boundary

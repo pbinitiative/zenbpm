@@ -278,7 +278,7 @@ func TestInterruptingEventSubProcessTerminatesTheWaitingStartListenerJob(t *test
 	waitForInstanceState(t, engine, store, instance, runtime.ActivityStateCompleted)
 	assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store, job.Key).State)
 	_, err = store.FindElementScope(t.Context(), job.ElementInstanceKey)
-	assert.NoError(t, err, "the scope of an interrupted element instance stays until the history of its instance is cleaned up")
+	assert.ErrorIs(t, err, storage.ErrNotFound, "the scope of an interrupted element instance ends with it")
 }
 
 func TestCancelWhileStartListenerWaitsTerminatesItsJob(t *testing.T) {
@@ -292,10 +292,9 @@ func TestCancelWhileStartListenerWaitsTerminatesItsJob(t *testing.T) {
 
 	assert.Equal(t, runtime.ActivityStateTerminated, readInstance(t, engine, store, instance).State)
 	assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store, job.Key).State)
+	assert.Empty(t, store.Copy().ElementScopes, "the scope of the start event ends with the instance")
 	err = engine.JobCompleteByKey(t.Context(), job.Key, nil)
 	require.ErrorIs(t, err, ErrJobInTerminalState)
-	_, err = store.FindElementScope(t.Context(), job.ElementInstanceKey)
-	assert.NoError(t, err, "the scope of a cancelled element instance stays until the history of its instance is cleaned up")
 }
 
 func TestMessageStartEventWithListenerWaitsBehindItsJob(t *testing.T) {

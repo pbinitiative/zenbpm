@@ -576,8 +576,88 @@ func TestABpmnErrorOfTheTasksJobLeavesByTheBoundaryEventAndOfAListenersJobIsRefu
 	assert.Equal(t, "recovering-task", recovering.ElementId)
 	assert.Equal(t, 0, jobsOfType(t, store, instanceKey, "after-first"), "an end listener does not run for a task which is left by a boundary event")
 	assert.NotNil(t, historyOf(t, engine, work.ElementInstanceKey).CompletedAt)
-	assert.Equal(t, runtime.ElementPhaseActive, scopeOf(t, store, work.ElementInstanceKey).Phase,
-		"the scope of a task which was not left by its outgoing flow stays until the history of the instance is cleaned up")
+	assert.Empty(t, store.Copy().ElementScopes, "the scope of a task ends with it, however the token left")
+}
+
+func TestTheScopeOfATaskEndsWhenItsTokenIsTakenOutOfTheTask(t *testing.T) {
+	errorBoundary := `<bpmn:errorEventDefinition id="listened-task-error-definition" errorRef="listened-task-failed" />`
+	closing := `</bpmn:definitions>`
+	cases := []struct {
+		name string
+		// the fixture, and what is replaced in it: an old string, then its replacement
+		fixture      string
+		replaced     []string
+		completed    []string
+		waitingFor   string
+		takeTokenOut func(t *testing.T, engine *Engine, instanceKey int64, waiting runtime.Job)
+	}{
+		{
+			name: "by an interrupting message boundary event", fixture: "task-listeners.bpmn",
+			replaced: []string{
+				errorBoundary, `<bpmn:messageEventDefinition id="listened-task-message-definition" messageRef="listened-task-interrupt" />`,
+				closing, `<bpmn:message id="listened-task-interrupt" name="listened-task-interrupt"><bpmn:extensionElements>` +
+					`<zenbpm:subscription correlationKey="=given" /></bpmn:extensionElements></bpmn:message>` + closing,
+			},
+			completed: []string{"before-first", "before-second"}, waitingFor: "listened-work",
+			takeTokenOut: func(t *testing.T, engine *Engine, instanceKey int64, _ runtime.Job) {
+				require.NoError(t, engine.PublishMessageByName(t.Context(), "listened-task-interrupt", new("g"), nil))
+				waitForPendingJobOfType(t, engine, instanceKey, "recovering-work")
+			},
+		},
+		{
+			name: "by an interrupting timer boundary event", fixture: "task-listeners.bpmn",
+			replaced: []string{errorBoundary,
+				`<bpmn:timerEventDefinition id="listened-task-timer-definition"><bpmn:timeDuration>PT1H</bpmn:timeDuration></bpmn:timerEventDefinition>`},
+			completed: []string{"before-first", "before-second"}, waitingFor: "listened-work",
+			takeTokenOut: func(t *testing.T, engine *Engine, instanceKey int64, _ runtime.Job) {
+				timers, err := engine.persistence.FindProcessInstanceTimers(t.Context(), instanceKey, runtime.TimerStateCreated)
+				require.NoError(t, err)
+				require.Len(t, timers, 1)
+				instance, tokens, err := engine.TriggerTimer(t.Context(), timers[0])
+				require.NoError(t, err)
+				require.NoError(t, engine.RunProcessInstance(t.Context(), *instance, tokens))
+				waitForPendingJobOfType(t, engine, instanceKey, "recovering-work")
+			},
+		},
+		{
+			name: "by a modification which terminates the token", fixture: "task-listeners.bpmn", waitingFor: "before-first",
+			takeTokenOut: func(t *testing.T, engine *Engine, instanceKey int64, waiting runtime.Job) {
+				_, _, err := engine.ModifyInstance(t.Context(), instanceKey, []int64{waiting.ElementInstanceKey}, []string{"recovering-task"}, nil)
+				require.NoError(t, err)
+				waitForPendingJobOfType(t, engine, instanceKey, "recovering-work")
+			},
+		},
+		{
+			name: "by the cancellation of the process around its sub-process", fixture: "sub-process-task-listeners.bpmn",
+			completed: []string{"inner-before"}, waitingFor: "inner-work",
+			takeTokenOut: func(t *testing.T, engine *Engine, instanceKey int64, _ runtime.Job) {
+				require.NoError(t, engine.CancelInstanceByKey(t.Context(), instanceKey))
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			engine, store := newListenerTestEngine(t)
+			fixture, err := os.ReadFile(executionListenerFixtures + tc.fixture)
+			require.NoError(t, err)
+			for i := 0; i < len(tc.replaced); i += 2 {
+				require.Contains(t, string(fixture), tc.replaced[i])
+			}
+			definition, err := engine.LoadFromBytes(t.Context(), []byte(strings.NewReplacer(tc.replaced...).Replace(string(fixture))), engine.generateKey())
+			require.NoError(t, err)
+			instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+			require.NoError(t, err)
+			runJobsInOrder(t, engine, tc.completed...)
+			waiting := waitForActiveJobOfType(t, engine, tc.waitingFor)
+			require.NotEmpty(t, store.Copy().ElementScopes, "the task keeps a scope while the token waits in it")
+
+			tc.takeTokenOut(t, engine, instance.ProcessInstance().Key, waiting)
+
+			assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store, waiting.Key).State)
+			assert.Empty(t, store.Copy().ElementScopes, "the scope ends with the element instance: nothing goes on from it")
+			assert.NotNil(t, historyOf(t, engine, waiting.ElementInstanceKey).CompletedAt)
+		})
+	}
 }
 
 func TestStartingATokenAtATaskRunsItsStartListeners(t *testing.T) {
@@ -622,6 +702,7 @@ func TestCancellingAnInstanceTerminatesTheJobOfWhicheverPhaseItsTaskIsIn(t *test
 
 			assert.Equal(t, runtime.ActivityStateTerminated, reloadJob(t, store, waiting.Key).State)
 			assert.Equal(t, runtime.ActivityStateTerminated, readInstance(t, engine, store, instance).State)
+			assert.Empty(t, store.Copy().ElementScopes, "the scope of the task ends with the instance")
 			require.ErrorIs(t, engine.JobCompleteByKey(t.Context(), waiting.Key, nil), ErrJobInTerminalState)
 		})
 	}

@@ -319,9 +319,9 @@ func (engine *Engine) finishWorkOfElement(
 }
 
 // leaveElement ends the element instance and lets the token leave it by its
-// outgoing sequence flows. It is the one place which deletes the scope: the
-// scope of a token which is cancelled in its element stays until the history
-// of its instance is cleaned up.
+// outgoing sequence flows. The scope the element instance kept ends with it,
+// as it does for a token which is taken out of its element
+// (endInterruptedElementInstance).
 func (engine *Engine) leaveElement(
 	ctx context.Context,
 	batch *EngineBatch,

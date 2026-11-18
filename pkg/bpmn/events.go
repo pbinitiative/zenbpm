@@ -102,7 +102,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	}
 
 	if listener.CancellActivity {
-		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, token); err != nil {
 			return nil, err
 		}
 

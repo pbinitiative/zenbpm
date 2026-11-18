@@ -440,7 +440,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
 		}
-		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, token); err != nil {
 			return nil, err
 		}
 		token.State = runtime.TokenStateCanceled
@@ -521,7 +521,7 @@ func (engine *Engine) terminateExecutionToken(
 		}
 	}
 
-	if err := completeExistingFlowElementInstance(ctx, batch, activeToken); err != nil {
+	if err := endInterruptedElementInstance(ctx, batch, activeToken); err != nil {
 		return err
 	}
 	activeToken.State = runtime.TokenStateCanceled
@@ -1319,13 +1319,21 @@ func (engine *Engine) completeFlowElementInstance(
 	})
 }
 
-func completeExistingFlowElementInstance(
+// endInterruptedElementInstance ends the element instance of a token which is
+// taken out of its element instead of leaving it by its outgoing flows: by an
+// interrupting boundary event, a BPMN error, a cancellation or a
+// modification. Its history row is completed, and the scope it kept while its
+// listeners ran, if any, is deleted: nothing goes on from it any more.
+func endInterruptedElementInstance(
 	ctx context.Context,
 	batch *EngineBatch,
 	token runtime.ExecutionToken,
 ) error {
 	if err := batch.CompleteFlowElementInstance(ctx, token.ElementInstanceKey, time.Now()); err != nil {
 		return fmt.Errorf("failed to complete flow element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
+	}
+	if err := batch.DeleteElementScope(ctx, token.ElementInstanceKey); err != nil {
+		return fmt.Errorf("failed to delete the scope of element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
 	}
 	return nil
 }

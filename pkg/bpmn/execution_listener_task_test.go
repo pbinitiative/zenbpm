@@ -496,6 +496,31 @@ func TestResolvingAnIncidentOfAnEndListenersJobLeavesTheHistoryOfTheTasksInputsA
 		"the history row keeps the variables the task's job got its inputs from: that job is done")
 }
 
+func TestAnEndListenerWhoseIncidentIsResolvedGetsTheInputsEvaluatedFromWhatTheOutputMappingsWrote(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	// the output mapping writes the variable the input mapping reads
+	definition := loadListenerModel(t, engine, "task-listeners.bpmn",
+		`<zenbpm:output source="=result" target="taskResult" />`, `<zenbpm:output source="=result" target="given" />`)
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	work := completeStartListeners(t, engine, store, instanceKey, nil)
+	require.Equal(t, "g", work.InputVariables["taskInput"])
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), work.Key, map[string]any{"result": "r"}))
+	afterFirst := waitForPendingJobOfType(t, engine, instanceKey, "after-first")
+	require.Equal(t, "g", afterFirst.InputVariables["taskInput"], "an end listener sees the inputs the task's job got")
+
+	require.NoError(t, engine.JobFailByKey(t.Context(), afterFirst.Key, "listener failed", nil, nil, nil, nil, nil))
+	require.NoError(t, engine.ResolveIncident(t.Context(), onlyOpenIncident(t, engine, instanceKey).Key))
+
+	resolved := requireSinglePendingJob(t, store, instanceKey)
+	assert.Equal(t, afterFirst.Key, resolved.Key)
+	assert.Equal(t, "r", resolved.InputVariables["taskInput"],
+		"the resolution evaluates the input mappings from the instance as the output mappings left it")
+	assert.Equal(t, map[string]any{"given": "g"}, historyOf(t, engine, work.ElementInstanceKey).InputVariables,
+		"the history row keeps the variables the task's job got its inputs from")
+}
+
 func TestResolvingAnIncidentOfATaskWithListenersIsRefusedWhileItsInputMappingsDoNotEvaluate(t *testing.T) {
 	engine, store, incident := listenedTaskWhoseOwnWorkFailed(t, inmemory.NewStorage())
 	feel := &failingFeelRuntime{FeelRuntime: engine.feelRuntime}

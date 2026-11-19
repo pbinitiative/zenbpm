@@ -170,7 +170,10 @@ As for every element, resolving evaluates the element's input mappings again, wi
 the instance has then, and rebuilds the variables of the job which waits; what the earlier jobs of
 the element were completed with is kept. The input variables the history shows for the element are
 those its own job gets its inputs from: they follow each such resolution until that job is
-completed, and stay as they are while the `end` listeners run. Input mappings which do not evaluate
+completed, and stay as they are while the `end` listeners run. An `end` listener whose incident is
+resolved gets the inputs evaluated from the instance as the element's output mappings left it: an
+input mapping which reads a variable an output mapping of the same element wrote hands that listener
+another value than the element's own job got. Input mappings which do not evaluate
 with those variables refuse the resolution with `409` and change nothing, whichever job or step of
 the element raised the incident: correct the variables they read and resolve again.
 

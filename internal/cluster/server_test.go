@@ -200,7 +200,7 @@ func (d *Dialer) Dial(addr string, timeout time.Duration) (conn net.Conn, retErr
 
 func TestGRPCHeaderMux(t *testing.T) {
 	t.SkipNow()
-	muxLn, err := net.Listen("tcp", ":41421")
+	muxLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create mux listener: %s", err)
 	}
@@ -258,7 +258,7 @@ func TestGRPCHeaderMux(t *testing.T) {
 }
 
 func TestGRPCClient(t *testing.T) {
-	ln, err := net.Listen("tcp", ":41421")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create mux listener: %s", err)
 	}

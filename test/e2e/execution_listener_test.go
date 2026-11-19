@@ -119,6 +119,36 @@ func TestATaskRunsItsListenersAroundItsJobOverRest(t *testing.T) {
 		"what the start listener and the task's job were completed with reaches the instance through the output mappings only, what the end listener was completed with as it is")
 }
 
+func TestTheJobsOfAnInstanceArePagedInTheOrderTheyWereCreated(t *testing.T) {
+	task := deployListenerTask(t)
+	instance, err := createProcessInstance(t, &task.definitionKey, map[string]any{"order": "o-4"})
+	require.NoError(t, err)
+	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
+	before := waitForActiveJobOfType(t, instance.Key, task.beforeJobType)
+	completeListenerTaskJob(t, before.Key, nil)
+	work := waitForActiveJobOfType(t, instance.Key, task.workJobType)
+	completeListenerTaskJob(t, work.Key, nil)
+	waitForActiveJobOfType(t, instance.Key, task.afterJobType)
+
+	page := func(number int32) (jobTypes []string, total int) {
+		response, err := app.restClient.GetProcessInstanceJobsWithResponse(t.Context(), instance.Key,
+			&zenclient.GetProcessInstanceJobsParams{Page: new(number), Size: new(int32(2))})
+		require.NoError(t, err)
+		require.NotNil(t, response.JSON200, string(response.Body))
+		for _, job := range response.JSON200.Items {
+			jobTypes = append(jobTypes, job.Type)
+		}
+		return jobTypes, response.JSON200.TotalCount
+	}
+	first, totalOfFirst := page(1)
+	second, totalOfSecond := page(2)
+
+	assert.Equal(t, []string{task.beforeJobType, task.workJobType}, first, "the oldest jobs of the instance come first, so a job keeps its page while later ones are created")
+	assert.Equal(t, []string{task.afterJobType}, second)
+	assert.Equal(t, 3, totalOfFirst)
+	assert.Equal(t, 3, totalOfSecond)
+}
+
 func TestTheListenersOfATaskReachWorkersOverTheJobStream(t *testing.T) {
 	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)

@@ -223,6 +223,28 @@ another extension element too.
 
 ## Definitions deployed before
 
+> ⚠️ **Upgrade note:** earlier versions ignored execution listeners. A model drawn for Camunda 8
+> may carry them without anyone serving them, and from this version on they run, in instances
+> which are already running too. Before you upgrade:
+>
+> - Look for them. List the definitions with `GET /v1/process-definitions` and search the
+>   `bpmnData` of each (`GET /v1/process-definitions/{key}`) for `executionListener`. Only those on
+>   the elements named at the top of this page run; the sections below say what happens to the
+>   others.
+> - Start a worker for the `type` of every listener found, or instances stop at the first listener
+>   and wait for one. A worker which only has to let the instance pass completes the job without
+>   variables: what an `end` listener's job is completed with is written to the instance.
+> - Deploying a version of the model without the listeners helps new instances only. A running
+>   instance keeps the definition it was started with.
+>
+> After the upgrade, an instance which waits at a listener nobody serves goes on when its job is
+> completed by hand (`POST /v1/jobs/{key}/complete`, or **Complete** on the job in the UI). An
+> instance with an incident from a listener a deployment would refuse (see below) cannot be
+> helped by resolving the incident. Take its token out of the element and start one behind it
+> with `POST /v1/modify/process-instance` (`elementInstancesToTerminate` with the element instance
+> of the incident, `elementInstancesToStart` with the next element), or cancel the instance. Upgrade
+> every node of a cluster as [Upgrading a cluster](#upgrading-a-cluster) says.
+
 A definition stored by an earlier version is loaded without the checks of a deployment, so that it
 keeps running. Its listeners on the elements named at the top of this page run for every token
 which enters such an element from this version on. A token which already waited in a task before,

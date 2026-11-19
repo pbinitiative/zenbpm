@@ -937,6 +937,32 @@ func TestAStoredTaskListenerADeploymentWouldRefuseRaisesAnIncidentOnTheTask(t *t
 	assert.Contains(t, raisedAgain.Message, `its type "=jobType" is an expression`)
 }
 
+func TestAModificationMovesAnInstancePastAStoredListenerADeploymentWouldRefuse(t *testing.T) {
+	engine, store := newListenerTestEngine(t)
+	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
+	require.NoError(t, err)
+	model := strings.Replace(string(fixture), `type="element-before"`, `type="=jobType"`, 1)
+	definition, err := engine.ImportProcessDefinition(t.Context(), []byte(model), engine.generateKey(), 1, false)
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
+	require.Error(t, err)
+	incident := onlyOpenIncident(t, engine, instance.ProcessInstance().Key)
+
+	// what the upgrade note advises for an instance which waits at such an
+	// element: take the token out of it and start one behind it
+	_, _, err = engine.ModifyInstance(t.Context(), instance.ProcessInstance().Key,
+		[]int64{incident.Token.ElementInstanceKey}, []string{"job-element-end"}, nil)
+	require.NoError(t, err)
+
+	waitForInstanceState(t, engine, store, instance, runtime.ActivityStateCompleted)
+	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	for _, closed := range incidents {
+		assert.NotNil(t, closed.ResolvedAt, "the incident of the element the token was taken out of is closed")
+	}
+	assert.Empty(t, pendingJobs(t, engine, instance.ProcessInstance().Key))
+}
+
 func TestAStoredListenerWhereTheEngineRunsNoneStaysIgnored(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")

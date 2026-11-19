@@ -231,8 +231,8 @@ func TestDeploymentRefusesAStartListenerOutsideItsContainer(t *testing.T) {
 	model, err := readE2ETestDataBPMN("execution_listener/listener-process.bpmn")
 	require.NoError(t, err)
 	text := strings.ReplaceAll(string(model), `id="listener-process"`, fmt.Sprintf(`id="listener-misplaced-%d"`, rand.Int63()))
-	text = strings.Replace(text, "<zeebe:executionListeners>", "", 1)
-	text = strings.Replace(text, "</zeebe:executionListeners>", "", 1)
+	text = strings.Replace(text, "<zenbpm:executionListeners>", "", 1)
+	text = strings.Replace(text, "</zenbpm:executionListeners>", "", 1)
 
 	response, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), "application/octet-stream", strings.NewReader(text))
 

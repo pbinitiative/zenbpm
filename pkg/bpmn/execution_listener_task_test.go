@@ -167,10 +167,10 @@ func TestAnElementWithoutListenersRunsTheSameLifecycleWithoutAScopeInTheStorage(
 	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
 	require.NoError(t, err)
 	withoutListeners := strings.NewReplacer(
-		`<zeebe:executionListener eventType="start" type="element-before" />`, ``,
-		`<zeebe:executionListener eventType="end" type="element-after" />`, ``,
+		`<zenbpm:executionListener eventType="start" type="element-before" />`, ``,
+		`<zenbpm:executionListener eventType="end" type="element-after" />`, ``,
 	).Replace(string(fixture))
-	require.NotContains(t, withoutListeners, "<zeebe:executionListener ")
+	require.NotContains(t, withoutListeners, "<zenbpm:executionListener ")
 	for _, tc := range elementsWhoseWorkIsOneJob {
 		for _, handledInTheEngine := range []bool{false, true} {
 			name := tc.name + ", its job left to a worker"
@@ -236,10 +236,10 @@ func TestAJobHandedOutByActivateJobsTellsWhichListenerItBelongsTo(t *testing.T) 
 }
 
 func TestOnlyAnElementWithListenersHasItsScopeDeletedWhenItsTokenIsTakenOutOfIt(t *testing.T) {
-	listeners := `<zeebe:executionListeners>
-          <zeebe:executionListener eventType="start" type="element-before" />
-          <zeebe:executionListener eventType="end" type="element-after" />
-        </zeebe:executionListeners>`
+	listeners := `<zenbpm:executionListeners>
+          <zenbpm:executionListener eventType="start" type="element-before" />
+          <zenbpm:executionListener eventType="end" type="element-after" />
+        </zenbpm:executionListeners>`
 	takenOut := map[string]func(t *testing.T, engine *Engine, waiting runtime.Job){
 		"by the cancellation of its instance": func(t *testing.T, engine *Engine, waiting runtime.Job) {
 			require.NoError(t, engine.CancelInstanceByKey(t.Context(), waiting.ProcessInstanceKey))
@@ -286,7 +286,7 @@ func TestOnlyAnElementWithListenersHasItsScopeDeletedWhenItsTokenIsTakenOutOfIt(
 
 func TestATokenOfAnotherInstanceOrAtAnUnknownElementMayKeepAScope(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
-	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zeebe:executionListener eventType="start" type="element-before" />`, ``)
+	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zenbpm:executionListener eventType="start" type="element-before" />`, ``)
 	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
 	require.NoError(t, err)
 	listened := requireSinglePendingJob(t, store, instance.ProcessInstance().Key).Token
@@ -311,8 +311,8 @@ func TestAnElementWhoseInputMappingsFailNamesItselfInTheIncidentWithListenersAnd
 	withListeners := strings.Replace(string(fixture), taskDefinition, failingMapping, 1)
 	require.NotEqual(t, string(fixture), withListeners)
 	withoutListeners := strings.NewReplacer(
-		`<zeebe:executionListener eventType="start" type="element-before" />`, ``,
-		`<zeebe:executionListener eventType="end" type="element-after" />`, ``,
+		`<zenbpm:executionListener eventType="start" type="element-before" />`, ``,
+		`<zenbpm:executionListener eventType="end" type="element-after" />`, ``,
 	).Replace(withListeners)
 	for name, model := range map[string]string{"with listeners": withListeners, "without listeners": withoutListeners} {
 		t.Run(name, func(t *testing.T) {
@@ -335,7 +335,7 @@ func TestAnElementWhoseInputMappingsFailNamesItselfInTheIncidentWithListenersAnd
 
 func TestATaskWithStartListenersOnlyLeavesWhenItsJobIsCompleted(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
-	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zeebe:executionListener eventType="end" type="element-after" />`, ``)
+	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zenbpm:executionListener eventType="end" type="element-after" />`, ``)
 	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
 	require.NoError(t, err)
 
@@ -352,7 +352,7 @@ func TestATaskWithStartListenersOnlyLeavesWhenItsJobIsCompleted(t *testing.T) {
 
 func TestATaskWithEndListenersOnlyCreatesItsJobAtOnce(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
-	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zeebe:executionListener eventType="start" type="element-before" />`, ``)
+	definition := loadListenerModel(t, engine, "job-element-listeners.bpmn", `<zenbpm:executionListener eventType="start" type="element-before" />`, ``)
 	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, nil)
 	require.NoError(t, err)
 
@@ -881,7 +881,7 @@ func TestListenersRunOnATaskOfASubProcessAndOfACalledProcess(t *testing.T) {
 		engine, store := newListenerTestEngine(t)
 		scope := `<bpmn:subProcess id="listened-scope" name="listened-scope">`
 		definition := loadListenerModel(t, engine, "sub-process-task-listeners.bpmn", scope, scope+
-			`<bpmn:extensionElements><zeebe:ioMapping><zeebe:output source="=fromInnerAfter" target="mappedByTheScope" /></zeebe:ioMapping></bpmn:extensionElements>`)
+			`<bpmn:extensionElements><zenbpm:ioMapping><zenbpm:output source="=fromInnerAfter" target="mappedByTheScope" /></zenbpm:ioMapping></bpmn:extensionElements>`)
 		instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"given": "g"})
 		require.NoError(t, err)
 
@@ -941,7 +941,7 @@ func TestAStoredListenerWhereTheEngineRunsNoneStaysIgnored(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	fixture, err := os.ReadFile(executionListenerFixtures + "job-element-listeners.bpmn")
 	require.NoError(t, err)
-	listeners := `<bpmn:extensionElements><zeebe:executionListeners><zeebe:executionListener eventType="start" type="never-run" /></zeebe:executionListeners></bpmn:extensionElements>`
+	listeners := `<bpmn:extensionElements><zenbpm:executionListeners><zenbpm:executionListener eventType="start" type="never-run" /></zenbpm:executionListeners></bpmn:extensionElements>`
 	model := strings.Replace(string(fixture), `<bpmn:endEvent id="job-element-end">`, `<bpmn:endEvent id="job-element-end">`+listeners, 1)
 	_, err = engine.LoadFromBytes(t.Context(), []byte(model), engine.generateKey())
 	require.ErrorContains(t, err, `execution listener eventType="start" on end event id="job-element-end" is not supported`, "a deployment refuses it")

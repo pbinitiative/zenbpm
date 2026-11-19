@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_sub-process-task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_sub-process-task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
     xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
     xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
     xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
@@ -18,10 +18,10 @@
       <bpmn:serviceTask id="inner-task" name="inner-task">
         <bpmn:extensionElements>
           <zenbpm:taskDefinition type="inner-work" />
-          <zeebe:executionListeners>
-            <zeebe:executionListener eventType="start" type="inner-before" />
-            <zeebe:executionListener eventType="end" type="inner-after" />
-          </zeebe:executionListeners>
+          <zenbpm:executionListeners>
+            <zenbpm:executionListener eventType="start" type="inner-before" />
+            <zenbpm:executionListener eventType="end" type="inner-after" />
+          </zenbpm:executionListeners>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_3</bpmn:incoming>
         <bpmn:outgoing>Flow_4</bpmn:outgoing>

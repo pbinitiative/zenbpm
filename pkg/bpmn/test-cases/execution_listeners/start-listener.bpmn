@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_start-listener" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_start-listener" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
     xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
     xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
     xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
   <bpmn:process id="start-listener-process" isExecutable="true">
     <bpmn:startEvent id="start-listener-start">
       <bpmn:extensionElements>
-        <zeebe:executionListeners>
-          <zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />
-        </zeebe:executionListeners>
+        <zenbpm:executionListeners>
+          <zenbpm:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />
+        </zenbpm:executionListeners>
         <zenbpm:ioMapping>
           <zenbpm:output source="=&#34;mapped&#34;" target="mappedAtStart" />
         </zenbpm:ioMapping>

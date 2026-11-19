@@ -135,10 +135,10 @@ func TestSeveralEndListenersOfAStartEventRunInTheOrderOfTheModel(t *testing.T) {
 	engine, store := newListenerTestEngine(t)
 	fixture, err := os.ReadFile(executionListenerFixtures + "start-listener.bpmn")
 	require.NoError(t, err)
-	first := `<zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
+	first := `<zenbpm:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
 	require.Contains(t, string(fixture), first)
 	model := strings.Replace(string(fixture), first, first+
-		`<zeebe:executionListener eventType="end" type="second-listener-job" /><zeebe:executionListener eventType="end" type="third-listener-job" />`, 1)
+		`<zenbpm:executionListener eventType="end" type="second-listener-job" /><zenbpm:executionListener eventType="end" type="third-listener-job" />`, 1)
 	definition, err := engine.LoadFromBytes(t.Context(), []byte(model), engine.generateKey())
 	require.NoError(t, err, "a deployment takes several listeners of one event type")
 	instance, err := engine.CreateInstanceByKey(t.Context(), definition.Key, map[string]any{"input": "given"})
@@ -499,7 +499,7 @@ func TestStoredListenerOnAStartEventWithoutAnOutgoingFlowRaisesAnIncident(t *tes
 }
 
 func TestStoredListenerTheDeploymentWouldRefuseRaisesAnIncident(t *testing.T) {
-	listener := `<zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
+	listener := `<zenbpm:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`
 	cases := []struct {
 		name         string
 		old          string
@@ -509,7 +509,7 @@ func TestStoredListenerTheDeploymentWouldRefuseRaisesAnIncident(t *testing.T) {
 		{
 			name:         "two listeners of the same event type and job type on the start event",
 			old:          listener,
-			replacement:  listener + `<zeebe:executionListener eventType="end" type=" start-listener-job " />`,
+			replacement:  listener + `<zenbpm:executionListener eventType="end" type=" start-listener-job " />`,
 			errorMessage: `start event id="start-listener-start" has two execution listeners with eventType="end" and type="start-listener-job"`,
 		},
 		{
@@ -584,7 +584,7 @@ func TestImportLogsADefinitionWhoseStartEventListenerRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, logged(), "a repeated import logs nothing")
 
-	withoutListeners := strings.Replace(string(fixture), `<zeebe:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`, "", 1)
+	withoutListeners := strings.Replace(string(fixture), `<zenbpm:executionListener eventType="end" type="start-listener-job" retries="2" retryBackoff="PT0S" />`, "", 1)
 	_, err = engine.ImportProcessDefinition(t.Context(), []byte(withoutListeners), key, 1, false)
 	require.ErrorIs(t, err, storage.ErrUniqueConstraint)
 	assert.Equal(t, 1, logged(), "a refused import logs nothing")

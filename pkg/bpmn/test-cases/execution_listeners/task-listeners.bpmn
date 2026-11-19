@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_task-listeners" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0"
     xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
     xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
     xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
@@ -14,12 +14,12 @@
         <zenbpm:taskHeaders>
           <zenbpm:header key="channel" value="post" />
         </zenbpm:taskHeaders>
-        <zeebe:executionListeners>
-          <zeebe:executionListener eventType="start" type="before-first" retries="2" retryBackoff="PT0S" />
-          <zeebe:executionListener eventType="end" type="after-first" />
-          <zeebe:executionListener eventType="start" type="before-second" />
-          <zeebe:executionListener eventType="end" type="after-second" />
-        </zeebe:executionListeners>
+        <zenbpm:executionListeners>
+          <zenbpm:executionListener eventType="start" type="before-first" retries="2" retryBackoff="PT0S" />
+          <zenbpm:executionListener eventType="end" type="after-first" />
+          <zenbpm:executionListener eventType="start" type="before-second" />
+          <zenbpm:executionListener eventType="end" type="after-second" />
+        </zenbpm:executionListeners>
         <zenbpm:ioMapping>
           <zenbpm:input source="=given" target="taskInput" />
           <zenbpm:output source="=result" target="taskResult" />

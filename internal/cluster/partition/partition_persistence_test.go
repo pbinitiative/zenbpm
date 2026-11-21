@@ -26,6 +26,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
@@ -1180,6 +1181,82 @@ func TestAJobWhoseStoredBackoffCannotBeReadIsStillRead(t *testing.T) {
 	require.NoError(t, err, "the reads which end an instance must not fail on one row")
 	require.Len(t, pending, 1)
 	assert.Nil(t, pending[0].RetryBackoff)
+}
+
+// TestFindJobsSortsByCreatedAt shows the listing of jobs sorted by createdAt,
+// as GET /v1/jobs asks for it, follows the time of creation and not the key:
+// the jobs here were created in another order than their keys were drawn.
+func TestFindJobsSortsByCreatedAt(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-find-jobs-sort-db")
+
+	definitionKey := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("find-jobs-sort-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="p" isExecutable="true"></bpmn:process></xml>`,
+		BpmnChecksum:  [16]byte{5},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), pd))
+	instance := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+
+	// keys ascending, created second, third and first
+	createdAt := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	offsets := []time.Duration{time.Second, 2 * time.Second, 0}
+	jobKeys := make([]int64, len(offsets))
+	for i, offset := range offsets {
+		jobKey := db.GenerateId()
+		jobKeys[i] = jobKey
+		token := runtime.ExecutionToken{Key: jobKey, ElementInstanceKey: jobKey, ProcessInstanceKey: instance.Key, State: runtime.TokenStateWaiting}
+		require.NoError(t, db.SaveToken(t.Context(), token))
+		require.NoError(t, db.SaveJob(t.Context(), runtime.Job{
+			ElementId:          "task",
+			ElementInstanceKey: jobKey,
+			ProcessInstanceKey: instance.Key,
+			Key:                jobKey,
+			Type:               "sorted-job",
+			State:              runtime.ActivityStateActive,
+			CreatedAt:          createdAt.Add(offset),
+			Token:              token,
+			Retries:            1,
+		}))
+	}
+
+	findSorted := func(order public.GetJobsParamsSortOrder) []int64 {
+		t.Helper()
+		sort := sql.SortString(&order, new(public.GetJobsParamsSortByCreatedAt))
+		rows, err := db.Queries.FindJobs(t.Context(), sql.FindJobsParams{
+			Sort:               ssql.NullString{String: string(*sort), Valid: true},
+			ProcessInstanceKey: ssql.NullInt64{Int64: instance.Key, Valid: true},
+			Offset:             0,
+			Limit:              10,
+		})
+		require.NoError(t, err)
+		keys := make([]int64, len(rows))
+		for i, row := range rows {
+			keys[i] = row.Job.Key
+		}
+		return keys
+	}
+
+	assert.Equal(t, []int64{jobKeys[2], jobKeys[0], jobKeys[1]}, findSorted(public.GetJobsParamsSortOrderAsc),
+		"oldest first")
+	assert.Equal(t, []int64{jobKeys[1], jobKeys[0], jobKeys[2]}, findSorted(public.GetJobsParamsSortOrderDesc),
+		"newest first")
 }
 
 // TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded shows the write

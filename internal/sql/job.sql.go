@@ -263,8 +263,8 @@ WHERE
   AND (CAST(?5 AS TEXT) IS NULL OR j.assignee = CAST(?5 AS TEXT)) 
   
 ORDER BY
-  CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN j.created_at END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'created_at_desc' THEN j.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN j.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN j.created_at END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN j."key" END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN j."key" END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'type_asc' THEN j."type" END ASC,

@@ -428,11 +428,13 @@ Neither changes the backoff policy of the job. A failure may name its own backof
 failure only.
 
 Retries are set job by job; no endpoint sets them for many jobs at once. To find the jobs created
-before the upgrade, list `GET /v1/jobs?state=active&sortBy=key&sortOrder=asc`, and the same with
-`state=failed`. Within a partition, job keys grow with the time of creation, so the oldest jobs of
-each partition come first; the listing is paged per partition (see [REST API](#rest-api)). Compare
-their `createdAt` with the time the leader of the job's partition was upgraded. In a rolling
-upgrade that is a time per partition, not one for the whole cluster.
+before the upgrade, list `GET /v1/jobs?state=active&sortBy=createdAt&sortOrder=asc`, and the same
+with `state=failed`. The oldest jobs of each partition come first; the listing is sorted and paged
+per partition (see [REST API](#rest-api)). Compare their `createdAt` with the time the leader of
+the job's partition was upgraded. In a rolling upgrade that is a time per partition, not one for
+the whole cluster. Releases up to 1.10 ignore `sortBy=createdAt` on this endpoint and list the
+newest key first. There, use `sortBy=key&sortOrder=asc`: within a partition, job keys grow with
+the time of creation.
 
 This is the compatibility policy of the upgrade, not a missing backfill. Giving the stored jobs the
 retries of their definitions would make jobs which were waiting for a worker at the upgrade retry

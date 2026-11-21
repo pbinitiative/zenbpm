@@ -220,6 +220,7 @@ func TestRecvClientRequestsLogsAnExpectedStreamEndBelowError(t *testing.T) {
 			var entry map[string]any
 			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
 			assert.Equal(t, tt.level, entry["@level"])
+			assert.Equal(t, "client-1", entry["clientID"])
 		})
 	}
 }

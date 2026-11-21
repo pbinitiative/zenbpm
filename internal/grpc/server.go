@@ -130,7 +130,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			return
 		}
 		if err != nil {
-			s.logger.Error("Failed to receive a job stream request", "err", err)
+			s.logger.Error("Failed to receive a job stream request", "clientID", clientID, "err", err)
 			return
 		}
 		switch req := clientReq.Request.(type) {

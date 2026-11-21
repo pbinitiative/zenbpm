@@ -97,7 +97,7 @@ func IsDeadlineExceeded(err error) bool {
 // IsCanceled reports whether err stems from a cancelled request, whether it
 // surfaced as a context error or as a gRPC Canceled status.
 func IsCanceled(err error) bool {
-	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
+	return zenerr.IsCanceled(err)
 }
 
 // PhaseError reports which restore phase failed. The operation is marked as

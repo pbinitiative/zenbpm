@@ -81,19 +81,31 @@ type Controller struct {
 	// warning or an error
 	registrationReported bool
 	// registrationGracePeriod is how long a starting node may stay unlisted
-	// before the absence is reported
+	// before the absence is reported (see registrationGracePeriod())
 	registrationGracePeriod time.Duration
+	// registrationNow and registrationAfter measure the grace period
+	// (time.Now and time.After, replaced in tests)
+	registrationNow   func() time.Time
+	registrationAfter func(time.Duration) <-chan time.Time
 }
 
 const (
 	defaultRetryDelay         = 5 * time.Second
 	maxRetryDelay             = 15 * time.Minute
 	maxInitializationAttempts = 8
-	// defaultRegistrationGracePeriod bounds the expected wait of a starting
-	// node for its entry in the cluster state; it covers the raft join
-	// attempts and the bootstrap of a new cluster with room to spare.
-	defaultRegistrationGracePeriod = time.Minute
+	// minRegistrationGracePeriod is the least time a starting node waits
+	// for its entry in the cluster state before the absence is reported
+	minRegistrationGracePeriod = time.Minute
 )
+
+// registrationGracePeriod bounds the expected wait of a starting node for its
+// entry in the cluster state: the configured raft join attempts and the
+// bootstrap of a new cluster, with no less than minRegistrationGracePeriod
+// for the leader to record the node afterwards.
+func registrationGracePeriod(raftConf config.ClusterRaft) time.Duration {
+	joining := time.Duration(max(raftConf.JoinAttempts, 0))*raftConf.JoinInterval + raftConf.BootstrapExpectTimeout
+	return max(minRegistrationGracePeriod, joining+minRegistrationGracePeriod/2)
+}
 
 // Option configures a Controller.
 type Option func(*Controller)
@@ -125,7 +137,9 @@ func NewController(mux *tcp.Mux, conf config.Cluster, opts ...Option) (*Controll
 		lifecycleCtx:            lifecycleCtx,
 		lifecycleCancel:         lifecycleCancel,
 		jobRetryLimits:          bpmn.DefaultJobRetryLimits(),
-		registrationGracePeriod: defaultRegistrationGracePeriod,
+		registrationGracePeriod: registrationGracePeriod(conf.Raft),
+		registrationNow:         time.Now,
+		registrationAfter:       time.After,
 	}
 	for _, opt := range opts {
 		opt(&c)
@@ -357,10 +371,8 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		return
 	}
 	c.syncRestoreMaintenance()
-	cs := c.store.ClusterState()
-	currentNode, err := cs.GetNode(c.store.ID())
-	c.observeRegistration(err == nil)
-	if err != nil {
+	currentNode, registered := c.checkRegistration()
+	if !registered {
 		return
 	}
 	c.announceProtocolVersion(currentNode)
@@ -406,6 +418,20 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 	//  - check if it lost its leadership of any partition and needs to stop the engine (this should be preceded by previous error logs from the engine not being able to store changes)
 }
 
+// checkRegistration looks this node up in the cluster state and tracks the
+// result (see observeRegistration). Notifications run concurrently, so the
+// state is read under registrationMu: whichever check observes last has read
+// a cluster state at least as new as any earlier one, and a stale snapshot
+// without the node can never be taken for a loss of the registration a newer
+// snapshot already showed.
+func (c *Controller) checkRegistration() (state.Node, bool) {
+	c.registrationMu.Lock()
+	defer c.registrationMu.Unlock()
+	node, err := c.store.ClusterState().GetNode(c.store.ID())
+	c.observeRegistration(err == nil)
+	return node, err == nil
+}
+
 // observeRegistration tracks whether this node is listed in the cluster state
 // and logs an absence at the level it deserves. A node that has not been
 // listed yet is still registering: the cluster leader records it once it
@@ -415,9 +441,8 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 // missing after it was listed means the cluster state was replaced without
 // it, which is reported as an error right away. Each absence is reported
 // once; a node listed again after a reported absence says so.
+// The caller must hold registrationMu.
 func (c *Controller) observeRegistration(registered bool) {
-	c.registrationMu.Lock()
-	defer c.registrationMu.Unlock()
 	nodeID := c.store.ID()
 	if registered {
 		if c.registrationReported {
@@ -428,7 +453,7 @@ func (c *Controller) observeRegistration(registered bool) {
 		c.registrationReported = false
 		return
 	}
-	now := time.Now()
+	now := c.registrationNow()
 	if c.unregisteredSince.IsZero() {
 		c.unregisteredSince = now
 		if c.everRegistered {
@@ -460,18 +485,15 @@ func (c *Controller) scheduleRegistrationCheck() {
 	}
 	c.backgroundWg.Add(1)
 	c.retryMu.Unlock()
-	delay := c.registrationGracePeriod
+	graceEnd := c.registrationAfter(c.registrationGracePeriod)
 	safego.Go("node-registration-check", c.logger, func() {
 		defer c.backgroundWg.Done()
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
 		select {
-		case <-timer.C:
+		case <-graceEnd:
 		case <-c.shutdownCh:
 			return
 		}
-		_, err := c.store.ClusterState().GetNode(c.store.ID())
-		c.observeRegistration(err == nil)
+		c.checkRegistration()
 	})
 }
 

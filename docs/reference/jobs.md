@@ -148,6 +148,8 @@ job:
 1. Every job starts with the `retries` of its `zenbpm:taskDefinition` - a non-negative integer, or a
    FEEL expression starting with `=` evaluated when the job is created. Without the attribute it
    gets `jobs.defaultRetries`, which is `1`: one attempt, so the first failure creates an incident.
+   A job created before the upgrade to 1.9.0 is the exception: it starts with `1`, whatever its
+   definition says (see [Jobs created before job-level retries](#jobs-created-before-job-level-retries)).
 2. A failure sets the remaining retries to what the request names in `retries`, or to one less
    than now. `retries` may be larger than the current value, a worker may top up, but never above
    `jobs.maxRetries`; a negative value is refused with `400`. `retries` and the backoff are
@@ -352,6 +354,109 @@ attempts; it is not unique over the life of a job, since resolving an incident s
 at `1`. The delivery token differs for every delivery, so keying an effect on it, or on the job key
 and the attempt, would repeat the effect on every retry.
 
+### Jobs created before job-level retries
+
+Job-level retries arrived with ZenBPM 1.9.0, together with migration `0018_job_retries`. The
+migration runs on the database of a partition when a node of 1.9.0 or later becomes its leader and
+starts its engine, and again when a backup taken by an older release is restored; followers never
+run it. It adds the retry columns to every job stored there at that moment, whatever
+its state, and gives each of them the column defaults: `retries` `1`, `attempts` `0`, no `retryAt`,
+no `retryBackoff` and no failure history. The `1` is deliberate. Before 1.9.0 the first failure of
+a job without an error code created an incident, and a job that waits for a worker across the
+upgrade keeps that behaviour, even when its `zenbpm:taskDefinition` names other `retries`. The
+migration does not read the task definitions of the stored jobs, and `jobs.defaultRetries` does not
+reach them either: they start with `1`, whatever the engine is configured with.
+
+"Created before the upgrade" means created by a node older than 1.9.0. During a rolling upgrade the
+leadership of a partition can pass back to an older node after a node of 1.9.0 or later has
+migrated its database, for example when the upgraded leader restarts. While it leads, the older
+node creates jobs without the new columns, so they get the same defaults, and it fails every job at
+its first failure without an error code, whatever the job's retries. Such jobs behave like the ones
+stored at the migration. Upgrade every node before relying on the retries of the definitions.
+
+The retries a series of attempts starts with therefore depend on who created the job and on how
+the series started:
+
+| Job | Retries the series starts with | Backoff policy |
+|---|---|---|
+| Created by 1.9.0 or later | the definition's `retries`, or `jobs.defaultRetries` without the attribute | the definition's `retryBackoff`, or `jobs.defaultRetryBackoff` without the attribute |
+| Created before the upgrade, until its own incident is resolved | `1` | `jobs.defaultRetryBackoff` |
+| Created before the upgrade, once its own incident is resolved | the definition's `retries`, or `jobs.defaultRetries` without the attribute, evaluated at the resolution; or an operator's (see below) | `jobs.defaultRetryBackoff`, for as long as the job lives |
+
+Retries taken from a definition or from `jobs.defaultRetries` are capped by `jobs.maxRetries`, at
+creation and at resolution alike. Within a series the count changes as for any job: every failure
+without an error code spends one or sets the `retries` it names, and an operator may set it (see
+below). A migrated job therefore escapes an incident at its first failure without an error code
+only when that failure names `retries` above `0` or an operator set new ones meanwhile. Only the
+resolution of
+the job's own incident, the one a failure of the job raised, starts a new series. Resolving an
+incident the job did not raise itself, such as one of a boundary event of its task, leaves its
+retries as they are (see [Failures and retries](#failures-and-retries)).
+
+For example, take a job created before the upgrade by
+`<zenbpm:taskDefinition type="charge-card" retries="3" retryBackoff="PT1M" />`, with
+`jobs.maxRetries` at least `3`. After the upgrade `GET /v1/jobs/{jobKey}` shows `retries: 1`. Its
+next failure without an error code, naming no `retries`, leaves `retries: 0` and creates an
+incident. Resolving that incident gives the job `retries: 3`, as a job created by 1.9.0 has from
+the start. The job still waits `jobs.defaultRetryBackoff` between those attempts, not `PT1M`: the
+backoff policy is fixed when a job is created, and this job was created before the engine read it.
+
+The same holds for a job which was already `failed` with an open incident at the upgrade. That
+incident names no job (its `jobKey` is absent), so its resolution takes the job waiting on the
+incident's token and starts a new series with the definition's retries, as described in
+[Failures and retries](#failures-and-retries). A `completed` or `terminated` job created before the
+upgrade shows `retries: 1` as well; the value says nothing about its definition and has no effect.
+
+The first resolution of the own incident of any job created before the upgrade, whether it failed
+before the upgrade or after it, evaluates the definition's `retries`. If they no longer evaluate,
+the resolution is refused with `409` and changes nothing. That happens with an expression whose
+variables changed, and with a literal which does not parse in a definition deployed before the
+engine read `retries`, which was never checked. Resolving the incident with the job's retries given
+gets past it.
+
+**Giving an existing job other retries.** An operator who wants a job created before the upgrade to
+retry sets its retries with [`POST /v1/jobs/{jobKey}/retries`](#setting-the-retries-of-a-job),
+without waiting for its incident. The endpoint takes an `active` or `failed` job, a count from `1`
+to `jobs.maxRetries` and, optionally, a `retryAt`:
+
+- An `active` job goes on with the new retries at once, within its current series. The failure
+  which leaves no retries creates an incident; that incident ends the series and the operator's
+  retries with it, so resolving it gives the job the definition's retries.
+- A `failed` job keeps its incident open. The resolution keeps the retries set here instead of
+  evaluating the definition's, and the `retryAt` while it still lies ahead. To do both in one
+  request, give `retries`, and optionally `retryAt`, in the body of
+  [`POST /v1/incidents/{incidentKey}/resolve`](#setting-the-retries-while-resolving-the-incident).
+  Retries given there win over the definition's, which are not evaluated, and over retries set for
+  the job since it failed.
+
+Neither changes the backoff policy of the job. A failure may name its own backoff -
+`retryBackoff` on the REST endpoint, `retry_backoff_ms` on the stream - which applies to that
+failure only.
+
+Retries are set job by job; no endpoint sets them for many jobs at once. To find the jobs created
+before the upgrade, list `GET /v1/jobs?state=active&sortBy=key&sortOrder=asc`, and the same with
+`state=failed`, which a node older than 1.9.0 refuses with `400`. The listing is sorted and paged
+per partition (see [REST API](#rest-api)), and within a partition job keys grow with the time of
+creation, so the oldest jobs of each partition come first. This sort works on every release, also
+while the cluster runs several versions. Releases up to 1.10 ignore `sortBy=createdAt` on this
+endpoint and list the newest key first, and a partition's listing is served by one of its
+followers, which may still run such a release. The order of the keys is close to the order of
+`createdAt`, but not exact, so check each job's `createdAt` instead of stopping at a key.
+
+The listing yields candidates; the boundary to compare `createdAt` with is a time per partition. A
+job was created before the upgrade if its `createdAt` lies before the last time a node older than
+1.9.0 led its partition. Without a leadership change back to an older node, that is when the
+partition's leader logged `Migration applied: 0018_job_retries.up.sql`, which is also the `ran_at`
+of `0018_job_retries.up.sql` in the partition's `migration` table. If the leadership went back to an
+older node meanwhile, the boundary is when that node last stopped leading. For a restored backup
+taken by an older release, it is the time of the backup.
+
+This is the compatibility policy of the upgrade, not a missing backfill. Giving the stored jobs the
+retries of their definitions would make jobs which were waiting for a worker at the upgrade retry
+failures which stopped them at an incident before, without anybody choosing that. Such a backfill
+would change the behaviour of running instances, and takes a separate design decision and a
+migration of its own. Until then, the operator decides job by job, as described above.
+
 > ⚠️ **Upgrade notes:**
 >
 > - A model whose `zenbpm:taskDefinition` already carries `retries` - the Camunda Modeler writes
@@ -362,8 +467,10 @@ and the attempt, would repeat the effect on every retry.
 >   catch-all error boundary event or error event sub-process. Send an error code to throw a BPMN
 >   error.
 > - Jobs created before the upgrade keep one retry, the default of the new column, even when their
->   definition carries `retries`; jobs created afterwards get the definition's. Set the retries of a
->   running job with the endpoint above.
+>   definition carries `retries`; jobs created afterwards get the definition's. Resolving the
+>   job's own incident gives it the definition's retries, but not the definition's backoff. Set
+>   the retries of a running job with the endpoint above. See
+>   [Jobs created before job-level retries](#jobs-created-before-job-level-retries).
 > - Failing or completing a job which no longer waits for a worker answers `409` instead of `500`,
 >   and the stream answers the completion with a code. A worker using the Go client is not affected:
 >   it only logs the answer. A stream completion the leader refused used to be reported to the

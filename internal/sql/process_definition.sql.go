@@ -266,6 +266,8 @@ ORDER BY
   CASE CAST(?3 AS TEXT) WHEN 'version_desc' THEN fd.version END DESC,
   CASE CAST(?3 AS TEXT) WHEN 'instanceCount_asc' THEN COALESCE(ic.total_instances, 0) END ASC,
   CASE CAST(?3 AS TEXT) WHEN 'instanceCount_desc' THEN COALESCE(ic.total_instances, 0) END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_asc' THEN COALESCE(iic.with_incident_count, 0) END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_desc' THEN COALESCE(iic.with_incident_count, 0) END DESC,
   fd."key" DESC
 LIMIT ?2
 OFFSET ?1
@@ -383,6 +385,8 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_asc' THEN pd.bpmn_process_name END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_desc' THEN pd.bpmn_process_name END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'name_asc' THEN pd.bpmn_process_name END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'name_desc' THEN pd.bpmn_process_name END DESC,
   pd."key" DESC
 
 LIMIT ?6

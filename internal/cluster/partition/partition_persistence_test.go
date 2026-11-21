@@ -1235,6 +1235,9 @@ func TestFindJobsSortsByCreatedAt(t *testing.T) {
 			Retries:            1,
 		}))
 	}
+	// the premise: sorted by key the jobs come in another order than by creation,
+	// and the fallback of an unknown sort, the key descending, matches neither
+	require.True(t, slices.IsSorted(jobKeys), "keys are drawn ascending")
 
 	findSorted := func(order public.GetJobsParamsSortOrder) []int64 {
 		t.Helper()
@@ -1257,6 +1260,113 @@ func TestFindJobsSortsByCreatedAt(t *testing.T) {
 		"oldest first")
 	assert.Equal(t, []int64{jobKeys[1], jobKeys[0], jobKeys[2]}, findSorted(public.GetJobsParamsSortOrderDesc),
 		"newest first")
+}
+
+// TestFindProcessDefinitionsSortsByNameAndIncidentCount shows the process
+// definitions sorted by name, as GET /v1/process-definitions and its
+// statistics ask for it, follow the process name, and their statistics sorted
+// by incidentCount follow the instances with an open incident; neither falls
+// back to the key. The definitions are named and failed in another order than
+// their keys were drawn.
+func TestFindProcessDefinitionsSortsByNameAndIncidentCount(t *testing.T) {
+	partition, conf, clientMgr, tStore, server := prepareTestSetup(t, false)
+	defer func() {
+		require.NoError(t, partition.Stop())
+		require.NoError(t, server.Close())
+	}()
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-find-definitions-sort-db")
+
+	// keys ascending; named second, third and first; with 2, 0 and 1 instances with an incident
+	names := []string{"Billing", "Shipping", "Approval"}
+	incidentInstances := []int{2, 0, 1}
+	definitionKeys := make([]int64, len(names))
+	for i, name := range names {
+		definitionKey := db.GenerateId()
+		definitionKeys[i] = definitionKey
+		definition := runtime.ProcessDefinition{
+			BpmnProcessId:   fmt.Sprintf("sorted-definition-%d", definitionKey),
+			BpmnProcessName: name,
+			Version:         1,
+			Key:             definitionKey,
+			BpmnData:        `<bpmn:process id="sorted-definition" isExecutable="true"></bpmn:process>`,
+			BpmnChecksum:    [16]byte{byte(i + 6)},
+		}
+		require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+		for range incidentInstances[i] {
+			instance := runtime.DefaultProcessInstance{
+				ProcessInstanceData: runtime.ProcessInstanceData{
+					Definition:     &definition,
+					Key:            db.GenerateId(),
+					VariableHolder: runtime.VariableHolder{},
+					CreatedAt:      time.Now(),
+					State:          runtime.ActivityStateFailed,
+				},
+			}
+			require.NoError(t, db.SaveProcessInstance(t.Context(), &instance))
+			token := runtime.ExecutionToken{Key: db.GenerateId(), ElementInstanceKey: db.GenerateId(), ProcessInstanceKey: instance.Key, State: runtime.TokenStateFailed}
+			require.NoError(t, db.SaveToken(t.Context(), token))
+			require.NoError(t, db.SaveIncident(t.Context(), runtime.Incident{
+				Key:                db.GenerateId(),
+				ElementInstanceKey: token.ElementInstanceKey,
+				ElementId:          "task",
+				ProcessInstanceKey: instance.Key,
+				Message:            "failed",
+				CreatedAt:          time.Now(),
+				Token:              token,
+			}))
+		}
+	}
+	require.True(t, slices.IsSorted(definitionKeys), "keys are drawn ascending")
+	byKeys := func(order ...int) []int64 {
+		keys := make([]int64, len(order))
+		for i, index := range order {
+			keys[i] = definitionKeys[index]
+		}
+		return keys
+	}
+
+	findByName := func(order public.GetProcessDefinitionsParamsSortOrder) []int64 {
+		t.Helper()
+		sort := sql.SortString(&order, new(public.GetProcessDefinitionsParamsSortByName))
+		rows, err := db.Queries.FindProcessDefinitions(t.Context(), sql.FindProcessDefinitionsParams{
+			Sort:   ssql.NullString{String: string(*sort), Valid: true},
+			Offset: 0,
+			Limit:  10,
+		})
+		require.NoError(t, err)
+		keys := make([]int64, len(rows))
+		for i, row := range rows {
+			keys[i] = row.Key
+		}
+		return keys
+	}
+	assert.Equal(t, byKeys(2, 0, 1), findByName(public.GetProcessDefinitionsParamsSortOrderAsc), "names ascending")
+	assert.Equal(t, byKeys(1, 0, 2), findByName(public.GetProcessDefinitionsParamsSortOrderDesc), "names descending")
+
+	findStatistics := func(sortBy public.GetProcessDefinitionStatisticsParamsSortBy, order public.GetProcessDefinitionStatisticsParamsSortOrder) []int64 {
+		t.Helper()
+		sort := sql.SortString(&order, &sortBy)
+		rows, err := db.Queries.FindProcessDefinitionStatistics(t.Context(), sql.FindProcessDefinitionStatisticsParams{
+			Sort:   ssql.NullString{String: string(*sort), Valid: true},
+			Offset: 0,
+			Limit:  10,
+		})
+		require.NoError(t, err)
+		keys := make([]int64, len(rows))
+		for i, row := range rows {
+			keys[i] = row.Key
+		}
+		return keys
+	}
+	assert.Equal(t, byKeys(1, 2, 0),
+		findStatistics(public.GetProcessDefinitionStatisticsParamsSortByIncidentCount, public.GetProcessDefinitionStatisticsParamsSortOrderAsc),
+		"fewest instances with an incident first")
+	assert.Equal(t, byKeys(0, 2, 1),
+		findStatistics(public.GetProcessDefinitionStatisticsParamsSortByIncidentCount, public.GetProcessDefinitionStatisticsParamsSortOrderDesc),
+		"most instances with an incident first")
+	assert.Equal(t, byKeys(2, 0, 1),
+		findStatistics(public.GetProcessDefinitionStatisticsParamsSortByName, public.GetProcessDefinitionStatisticsParamsSortOrderAsc),
+		"the statistics sort by name as well")
 }
 
 // TestADeliveryIsRecordedOnlyForAJobWhichStillWaitsAsLoaded shows the write

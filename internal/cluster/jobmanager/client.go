@@ -270,8 +270,9 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 		select {
 		case c.jobsChan <- job:
 		case <-c.ctx.Done():
-			// the distribution loop is gone; the job's lock runs out and the
-			// leader hands it out again
+			// the distribution loop is gone; the leader keeps the job locked
+			// for its client until the lock lapses or the client is
+			// removed, and then hands it out again
 			c.logger.Debug("Job client closing, dropping a received job", "jobKey", job.Key, "streamNodeId", stream.nodeID)
 			c.removeNodeStream(stream)
 			return

@@ -122,6 +122,10 @@ func TestControllerDoesNotMistakeAStaleSnapshotForALostRegistration(t *testing.T
 		rt.controller.checkRegistration()
 	}()
 	<-staleRead.started // the stale check holds a snapshot without the node
+	if rt.controller.registrationMu.TryLock() {
+		rt.controller.registrationMu.Unlock()
+		t.Error("the check reads the cluster state without holding registrationMu, so a newer check can observe first")
+	}
 
 	rt.store.setNode(registeredTestNode(rt.store.id))
 	freshDone := make(chan struct{})
@@ -129,14 +133,6 @@ func TestControllerDoesNotMistakeAStaleSnapshotForALostRegistration(t *testing.T
 		defer close(freshDone)
 		rt.controller.checkRegistration()
 	}()
-	assert.Never(t, func() bool {
-		select {
-		case <-freshDone:
-			return true
-		default:
-			return false
-		}
-	}, 50*time.Millisecond, 5*time.Millisecond, "the newer check waits for the stale one")
 
 	close(staleRead.release)
 	<-staleDone
@@ -146,10 +142,15 @@ func TestControllerDoesNotMistakeAStaleSnapshotForALostRegistration(t *testing.T
 }
 
 func TestRegistrationGracePeriodCoversTheConfiguredJoin(t *testing.T) {
-	assert.Equal(t, time.Minute, registrationGracePeriod(config.ClusterRaft{JoinAttempts: 5, JoinInterval: 2 * time.Second, BootstrapExpectTimeout: 10 * time.Second}), "the defaults")
+	assert.Equal(t, time.Minute, registrationGracePeriod(config.ClusterRaft{
+		JoinAttempts: 5, JoinInterval: 2 * time.Second, JoinAddresses: []string{"localhost:8090"}, BootstrapExpectTimeout: 10 * time.Second,
+	}), "the defaults")
 	assert.Equal(t, time.Minute, registrationGracePeriod(config.ClusterRaft{}))
-	assert.Equal(t, 160*time.Second, registrationGracePeriod(config.ClusterRaft{JoinAttempts: 20, JoinInterval: 5 * time.Second, BootstrapExpectTimeout: 30 * time.Second}),
-		"the join attempts and the bootstrap timeout, plus half a minute for the leader to record the node")
+	// 20 attempts calling 10 addresses for up to a second each, 19 intervals
+	// of 5s, the bootstrap timeout, and half a minute for the leader
+	assert.Equal(t, (200+95+30+30)*time.Second, registrationGracePeriod(config.ClusterRaft{
+		JoinAttempts: 20, JoinInterval: 5 * time.Second, JoinAddresses: make([]string, 10), BootstrapExpectTimeout: 30 * time.Second,
+	}))
 }
 
 type registrationTest struct {

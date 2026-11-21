@@ -609,3 +609,23 @@ func unsetJobsEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestClusterRaftJoinBudget(t *testing.T) {
+	tests := []struct {
+		name string
+		raft ClusterRaft
+		want time.Duration
+	}{
+		{name: "no attempts", raft: ClusterRaft{JoinAddresses: []string{"a"}}, want: 0},
+		{name: "negative attempts", raft: ClusterRaft{JoinAttempts: -1, JoinInterval: time.Second, JoinAddresses: []string{"a"}}, want: 0},
+		{name: "a single attempt waits no interval", raft: ClusterRaft{JoinAttempts: 1, JoinInterval: time.Hour, JoinAddresses: []string{"a"}}, want: JoinRequestTimeout},
+		{name: "every attempt calls each address", raft: ClusterRaft{JoinAttempts: 3, JoinInterval: 5 * time.Second, JoinAddresses: []string{"a", "b"}}, want: 3*2*JoinRequestTimeout + 2*5*time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.raft.JoinBudget(); got != tt.want {
+				t.Errorf("JoinBudget() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}

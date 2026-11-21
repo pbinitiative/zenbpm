@@ -89,6 +89,7 @@ func TestJobServerStreamRecvLogsExpectedClosesBelowError(t *testing.T) {
 			server.nodeSubs[sub.nodeID] = sub
 			server.subscribeClient(sub.nodeID, "client-1", "job-a", SubscriptionSettings{})
 			require.Contains(t, server.subscriptions["job-a"], ClientID("client-1"))
+			lockJobs(server, distributedJob{client: "client-1", jobType: "job-a", jobKey: 42, lockUntil: time.Now().Add(30 * time.Second)})
 			var logs bytes.Buffer
 			server.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
 
@@ -97,6 +98,7 @@ func TestJobServerStreamRecvLogsExpectedClosesBelowError(t *testing.T) {
 			// however the stream ended, it is not used again
 			assert.NotContains(t, server.nodeSubs, sub.nodeID, "the node of the ended stream is dropped")
 			assert.NotContains(t, server.subscriptions["job-a"], ClientID("client-1"), "the clients of the ended stream are dropped")
+			assert.Contains(t, server.distributedJobs, int64(42), "the locks of its clients' jobs are kept until they lapse")
 			entries := logEntries(t, &logs)
 			require.Len(t, entries, 1, "log: %s", logs.String())
 			assert.Equal(t, tt.level, entries[0]["@level"], "log: %s", logs.String())
@@ -111,15 +113,14 @@ func TestJobServerStreamRecvLogsExpectedClosesBelowError(t *testing.T) {
 func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	client := newJobClient(ctx, "local-node", nil, nil)
-	client.logger = hclog.NewNullLogger()
-	stream := &clientNodeStream{
-		stream: &recvTestClientStream{
-			subscriptionTestStream: &subscriptionTestStream{ctx: t.Context()},
-			responses:              []*proto.SubscribeJobResponse{{Job: &proto.InternalJob{Key: new(int64(42))}}},
-			recvErr:                errors.New("not reached"),
-		},
-		nodeID: "leader-node",
+	var logs bytes.Buffer
+	client.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
+	recvStream := &recvTestClientStream{
+		subscriptionTestStream: &subscriptionTestStream{ctx: t.Context()},
+		responses:              []*proto.SubscribeJobResponse{{Job: &proto.InternalJob{Key: new(int64(42))}}},
+		recvErr:                errors.New("received again after the job client closed"),
 	}
+	stream := &clientNodeStream{stream: recvStream, nodeID: "leader-node"}
 	client.nodeStreams = []*clientNodeStream{stream}
 	// nobody reads jobsChan: the distribution loop has exited
 	cancel()
@@ -138,6 +139,10 @@ func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
 		}
 	}, 5*time.Second, 5*time.Millisecond, "the receive loop returns once the job client closed")
 	assert.Empty(t, client.nodeStreams)
+	assert.Equal(t, 1, recvStream.recvCalls, "the loop stops at the job it could not hand over, without receiving again")
+	entries := logEntries(t, &logs)
+	require.Len(t, entries, 1, "log: %s", logs.String())
+	assert.Equal(t, "debug", entries[0]["@level"], "log: %s", logs.String())
 }
 
 // TestJobServerSendLogsAStreamEndedOnPurposeBelowError verifies that a job
@@ -147,13 +152,15 @@ func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
 	tests := []struct {
-		name    string
-		ctx     context.Context
-		sendErr error
-		level   string
+		name          string
+		ctx           context.Context
+		serverStopped bool
+		sendErr       error
+		level         string
 	}{
 		{name: "gRPC Canceled status", ctx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
 		{name: "failure on a cancelled stream", ctx: cancelled, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
 		{name: "failure on a live stream", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
 	}
 	for _, tt := range tests {
@@ -161,6 +168,9 @@ func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 			server := newJobServer("node-1", nil, nil, DefaultLockLimits())
 			var logs bytes.Buffer
 			server.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
+			if tt.serverStopped {
+				server.ctx = cancelled
+			}
 			sub := &nodeSub{nodeID: "node-2", stream: &recvTestServerStream{ctx: tt.ctx, sendErr: tt.sendErr}}
 
 			sent := server.sendReservedJob(reservedDelivery{job: sql.Job{Key: 42, Type: "job-a"}, client: "client-1", stream: sub})
@@ -198,9 +208,11 @@ type recvTestClientStream struct {
 	*subscriptionTestStream
 	responses []*proto.SubscribeJobResponse
 	recvErr   error
+	recvCalls int
 }
 
 func (s *recvTestClientStream) Recv() (*proto.SubscribeJobResponse, error) {
+	s.recvCalls++
 	if len(s.responses) > 0 {
 		resp := s.responses[0]
 		s.responses = s.responses[1:]

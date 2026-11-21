@@ -405,6 +405,20 @@ func (c Cluster) ValidateCDC() error {
 	return nil
 }
 
+// JoinRequestTimeout bounds a single join call to one of the join addresses.
+const JoinRequestTimeout = time.Second
+
+// JoinBudget is the longest an explicit join can take with this
+// configuration: every attempt calls each join address in turn, each call
+// bounded by JoinRequestTimeout, and attempts are JoinInterval apart.
+func (r ClusterRaft) JoinBudget() time.Duration {
+	attempts := max(r.JoinAttempts, 0)
+	if attempts == 0 {
+		return 0
+	}
+	return time.Duration(attempts*len(r.JoinAddresses))*JoinRequestTimeout + time.Duration(attempts-1)*r.JoinInterval
+}
+
 type ClusterRaft struct {
 	// Dir is path to node data. Always set
 	Dir string `yaml:"dir" json:"dir" env:"CLUSTER_RAFT_DIR" env-default:"zen_bpm_node_data"`

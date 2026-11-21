@@ -99,11 +99,12 @@ const (
 )
 
 // registrationGracePeriod bounds the expected wait of a starting node for its
-// entry in the cluster state: the configured raft join attempts and the
-// bootstrap of a new cluster, with no less than minRegistrationGracePeriod
-// for the leader to record the node afterwards.
+// entry in the cluster state: the longest the configured raft join (every
+// attempt calling each join address) and the bootstrap of a new cluster can
+// take, plus half of minRegistrationGracePeriod for the leader to record the
+// node afterwards, and no less than minRegistrationGracePeriod.
 func registrationGracePeriod(raftConf config.ClusterRaft) time.Duration {
-	joining := time.Duration(max(raftConf.JoinAttempts, 0))*raftConf.JoinInterval + raftConf.BootstrapExpectTimeout
+	joining := raftConf.JoinBudget() + raftConf.BootstrapExpectTimeout
 	return max(minRegistrationGracePeriod, joining+minRegistrationGracePeriod/2)
 }
 

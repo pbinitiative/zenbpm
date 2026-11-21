@@ -286,8 +286,9 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {
-				// the stream is done once a send failed; the job's lock runs
-				// out and it is handed out again
+				// gRPC aborts the stream once a send failed; when the handler
+				// returns the client is removed, which releases its jobs,
+				// this one included, for another delivery
 				s.logSendError(stream, err, "Failed to send a job to the job stream", "jobKey", job.Key)
 				return
 			}
@@ -444,10 +445,11 @@ func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.Job
 
 // logSendError logs a failed send on a job stream: at debug level when the
 // stream ended on purpose (the client disconnected or the node shuts down,
-// which cancels the stream), as an error otherwise.
+// which cancels the stream, possibly only after the send failed on the
+// closing transport), as an error otherwise.
 func (s *Server) logSendError(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], err error, msg string, args ...any) {
 	args = append(args, "err", err)
-	if zenerr.IsCanceled(err) || stream.Context().Err() != nil {
+	if zenerr.IsCanceled(err) || stream.Context().Err() != nil || (s.ctx != nil && s.ctx.Err() != nil) {
 		s.logger.Debug(msg, args...)
 		return
 	}

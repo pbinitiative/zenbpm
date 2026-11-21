@@ -57,16 +57,20 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Same(t, replacementStream, server.subscriptions["test-job"]["client-1"])
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
+	lockedKey := gen.Generate().Int64()
 	lockJobs(server, distributedJob{
 		lockUntil: time.Now().Add(30 * time.Second),
 		jobType:   "test-job",
 		client:    "client-1",
-		jobKey:    gen.Generate().Int64(),
+		jobKey:    lockedKey,
 	})
 	server.removeNode(replacementStream)
 	assert.Empty(t, server.jobTypes["test-job"].clients)
 	assert.Empty(t, server.subscriptions["test-job"])
-	assert.Empty(t, server.distributedJobs, "jobs assigned to disconnected clients must become immediately eligible again")
+	// the node's stream may only have dropped while its workers keep
+	// processing the jobs: they are not handed out again before their locks
+	// lapse, which removeClient cuts short when a worker itself disconnects
+	assert.Contains(t, server.distributedJobs, lockedKey, "the locks of the node's clients outlive the stream")
 }
 
 func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {

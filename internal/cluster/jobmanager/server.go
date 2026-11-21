@@ -727,10 +727,11 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		// a node that disconnected or a stream cancelled by shutdown is no
-		// failure: the receive loop of the stream drops the node
+		// a node that disconnected, a stream cancelled by shutdown or this
+		// server stopping is no failure: the receive loop of the stream
+		// drops the node
 		logSend := s.logger.Error
-		if zenerr.IsCanceled(err) || delivery.stream.stream.Context().Err() != nil {
+		if zenerr.IsCanceled(err) || delivery.stream.stream.Context().Err() != nil || (s.ctx != nil && s.ctx.Err() != nil) {
 			logSend = s.logger.Debug
 		}
 		logSend("Failed to send job to node, its stream is not used again this round",
@@ -902,13 +903,19 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 	}
 }
 
+// removeNode drops a node stream that ended and the subscriptions of its
+// clients. The locks of the jobs delivered to those clients are kept: the
+// stream may only have dropped while the node and its workers keep running,
+// and such a node reconnects and replays its subscriptions, so handing the
+// jobs out again would deliver them twice while their workers still process
+// them. The locks lapse at their deadline; a worker that disconnects from its
+// node releases them at once (see removeClient).
 func (s *jobServer) removeNode(closing *nodeSub) {
 	s.removeNodeSubscription(closing)
 
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 
-	removedClients := make(map[ClientID]struct{})
 	for jobType, subs := range s.subscriptions {
 		removed := make(map[ClientID]struct{}, len(subs))
 		for clientID, nodeSub := range subs {
@@ -919,7 +926,6 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			delete(s.settings[jobType], clientID)
 			s.settingsVersion++
 			removed[clientID] = struct{}{}
-			removedClients[clientID] = struct{}{}
 		}
 		if len(removed) == 0 {
 			continue
@@ -943,14 +949,6 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			jobTypeData.index = 0
 		}
 		s.jobTypes[jobType] = jobTypeData
-	}
-	if len(removedClients) > 0 {
-		s.distributedJobsMu.Lock()
-		maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
-			_, removed := removedClients[job.client]
-			return removed
-		})
-		s.distributedJobsMu.Unlock()
 	}
 }
 

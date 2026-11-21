@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -726,7 +727,16 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		s.logger.Error("Failed to send job to node, its stream is not used again this round",
+		// a node that disconnected (gRPC answers a send on an ended stream
+		// with Canceled) or this server stopping is no failure: the receive
+		// loop of the stream drops the node. The stream context says nothing
+		// here: gRPC aborts the stream, cancelling it, on every failed send,
+		// a message that does not encode or is too large included.
+		logSend := s.logger.Error
+		if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
+			logSend = s.logger.Debug
+		}
+		logSend("Failed to send job to node, its stream is not used again this round",
 			"node", delivery.stream.nodeID, "jobType", job.Type, "key", job.Key, "err", err)
 		return false
 	}
@@ -861,12 +871,16 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 }
 
 func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
+	// however the stream ends, its node and the subscriptions of its clients
+	// go with it: the stream is done, and a node that reconnects replays its
+	// subscriptions on the new stream
+	defer s.removeNode(stream)
 	for {
 		req, err := stream.stream.Recv()
-		if err == io.EOF || errors.Is(err, context.Canceled) {
-			// read done.
-			s.removeNode(stream)
-			s.logger.Debug("Stream closed", "err", err)
+		if err == io.EOF || zenerr.IsCanceled(err) {
+			// read done: the node closed the stream or it was cancelled (the
+			// node disconnecting or this node shutting down)
+			s.logger.Debug("Stream closed", "err", err, "streamNodeId", stream.nodeID)
 			return
 		}
 		if err != nil {
@@ -891,13 +905,21 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 	}
 }
 
+// removeNode drops a node stream that ended and the subscriptions of its
+// clients. The locks of the jobs delivered to those clients are kept: the
+// stream may only have dropped while the node and its workers keep running,
+// and such a node reconnects and replays its subscriptions, so handing the
+// jobs out again would deliver them twice while their workers still process
+// them. The locks lapse at their deadline; a worker that disconnects from a
+// running node releases them at once (see removeClient). A node shutting down
+// usually loses its streams before its workers are removed, and the locks of
+// their jobs lapse.
 func (s *jobServer) removeNode(closing *nodeSub) {
 	s.removeNodeSubscription(closing)
 
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 
-	removedClients := make(map[ClientID]struct{})
 	for jobType, subs := range s.subscriptions {
 		removed := make(map[ClientID]struct{}, len(subs))
 		for clientID, nodeSub := range subs {
@@ -908,7 +930,6 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			delete(s.settings[jobType], clientID)
 			s.settingsVersion++
 			removed[clientID] = struct{}{}
-			removedClients[clientID] = struct{}{}
 		}
 		if len(removed) == 0 {
 			continue
@@ -932,14 +953,6 @@ func (s *jobServer) removeNode(closing *nodeSub) {
 			jobTypeData.index = 0
 		}
 		s.jobTypes[jobType] = jobTypeData
-	}
-	if len(removedClients) > 0 {
-		s.distributedJobsMu.Lock()
-		maps.DeleteFunc(s.distributedJobs, func(_ int64, job *distributedJob) bool {
-			_, removed := removedClients[job.client]
-			return removed
-		})
-		s.distributedJobsMu.Unlock()
 	}
 }
 

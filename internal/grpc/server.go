@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
@@ -123,13 +124,13 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			// read done.
 			return
 		}
-		if errors.Is(err, context.Canceled) {
-			// stream closed
-			s.logger.Debug("Stream context cancelled", "err", err)
+		if zenerr.IsCanceled(err) {
+			// stream closed: the client disconnected or the node shuts down
+			s.logger.Debug("Stream context cancelled", "clientID", clientID, "err", err)
 			return
 		}
 		if err != nil {
-			s.logger.Error("Failed to receive a job stream request", "err", err)
+			s.logger.Error("Failed to receive a job stream request", "clientID", clientID, "err", err)
 			return
 		}
 		switch req := clientReq.Request.(type) {
@@ -285,8 +286,13 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {
-				s.logger.Error("Failed to send message to stream: %w", "err", err)
-				continue
+				// gRPC aborts the stream once a send failed; when the handler
+				// returns the client is removed, which releases its jobs,
+				// this one included, for another delivery (on a node shutting
+				// down the removal may not reach the leaders, and the locks
+				// lapse instead)
+				s.logSendError(err, "Failed to send a job to the job stream", "jobKey", job.Key)
+				return
 			}
 		}
 	}
@@ -433,10 +439,25 @@ func refusalReason(err error) string {
 
 func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
 	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
-		s.logger.Debug("failed to send job stream response", "err", err)
+		s.logSendError(err, "Failed to send a job stream response")
 		return false
 	}
 	return true
+}
+
+// logSendError logs a failed send on a job stream: at debug level when the
+// stream ended on purpose, as an error otherwise. gRPC answers a send on a
+// stream whose client went away with Canceled; a send failing while this
+// server stops is expected as well. The stream context does not tell: gRPC
+// aborts the stream, cancelling it, on every failed send, a message that
+// does not encode or is too large included.
+func (s *Server) logSendError(err error, msg string, args ...any) {
+	args = append(args, "err", err)
+	if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
+		s.logger.Debug(msg, args...)
+		return
+	}
+	s.logger.Error(msg, args...)
 }
 
 func unknownRequestError(req any) *proto.JobStreamResponse {

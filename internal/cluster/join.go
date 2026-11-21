@@ -10,6 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -97,7 +98,7 @@ func (j *Joiner) join(targetAddr, id, addr string, suf rqproto.Suffrage) (string
 		j.logger.Error(fmt.Sprintf("failed to create client for %s: %s", targetAddr, err))
 		return "", fmt.Errorf("failed to create client for %s: %w", targetAddr, err)
 	}
-	timeoutCtx, cancelCtx := context.WithTimeout(context.Background(), time.Second)
+	timeoutCtx, cancelCtx := context.WithTimeout(context.Background(), config.JoinRequestTimeout)
 	_, err = clusterClient.Join(timeoutCtx, req)
 	cancelCtx()
 	if err != nil {

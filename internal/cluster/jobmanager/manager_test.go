@@ -57,16 +57,47 @@ func TestServerDropsOnlyClosingNodeStreamClientsFromRoundRobin(t *testing.T) {
 	assert.Same(t, replacementStream, server.subscriptions["test-job"]["client-1"])
 	assert.Equal(t, []ClientID{"client-1"}, server.jobTypes["test-job"].clients)
 
+	lockedKey := gen.Generate().Int64()
 	lockJobs(server, distributedJob{
 		lockUntil: time.Now().Add(30 * time.Second),
 		jobType:   "test-job",
 		client:    "client-1",
-		jobKey:    gen.Generate().Int64(),
+		jobKey:    lockedKey,
 	})
 	server.removeNode(replacementStream)
 	assert.Empty(t, server.jobTypes["test-job"].clients)
 	assert.Empty(t, server.subscriptions["test-job"])
-	assert.Empty(t, server.distributedJobs, "jobs assigned to disconnected clients must become immediately eligible again")
+	// the node's stream may only have dropped while its workers keep
+	// processing the jobs: they are not handed out again before their locks
+	// lapse, which removeClient cuts short when a worker itself disconnects
+	assert.Contains(t, server.distributedJobs, lockedKey, "the locks of the node's clients outlive the stream")
+}
+
+// TestServerReleasesTheLocksOfARemovedClientAtOnce verifies that a worker
+// disconnecting from its node, which the node reports with
+// UNSUBSCRIBE_ALL, releases the locks of its jobs at once: unlike a node
+// stream that ends, the worker is gone, so its jobs are eligible for another
+// delivery right away. Other clients keep their locks.
+func TestServerReleasesTheLocksOfARemovedClientAtOnce(t *testing.T) {
+	server := newJobServer("node-1", nil, nil, DefaultLockLimits())
+	stream := &recvTestServerStream{ctx: t.Context(), recvErr: io.EOF, requests: []*proto.SubscribeJobRequest{{
+		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
+		ClientId: new("client-1"),
+	}}}
+	sub := &nodeSub{nodeID: "node-2", stream: stream}
+	server.nodeSubs[sub.nodeID] = sub
+	server.subscribeClient(sub.nodeID, "client-1", "test-job", SubscriptionSettings{})
+	server.subscribeClient(sub.nodeID, "client-2", "test-job", SubscriptionSettings{})
+	removedKey, keptKey := gen.Generate().Int64(), gen.Generate().Int64()
+	lockJobs(server,
+		distributedJob{client: "client-1", jobType: "test-job", jobKey: removedKey, lockUntil: time.Now().Add(30 * time.Second)},
+		distributedJob{client: "client-2", jobType: "test-job", jobKey: keptKey, lockUntil: time.Now().Add(30 * time.Second)},
+	)
+
+	server.handleJobStreamRecv(sub)
+
+	assert.NotContains(t, server.distributedJobs, removedKey, "the removed client's job is eligible again at once")
+	assert.Contains(t, server.distributedJobs, keptKey, "the other client keeps its lock")
 }
 
 func TestServerRespectsPerClientCapacityWithinBatch(t *testing.T) {

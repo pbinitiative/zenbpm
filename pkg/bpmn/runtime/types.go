@@ -473,9 +473,27 @@ type Activity interface {
 	Element() bpmn20.FlowNode
 }
 
+// JobKind tells what a job belongs to. The storage keeps the number, so a
+// kind never changes its own.
+type JobKind int
+
+const (
+	// JobKindElement is the job of its element's own work: of a task, or of
+	// an event which sends a message.
+	JobKindElement JobKind = 0
+	// JobKindExecutionListener is the job of an execution listener of its element.
+	JobKindExecutionListener JobKind = 1
+)
+
 type Job struct {
-	ElementId          string
-	ElementType        string
+	ElementId   string
+	ElementType string
+	// Kind tells the job of an execution listener from the job of its
+	// element. Both carry the id and the type of the element.
+	Kind JobKind
+	// ListenerEventType is the event type of the execution listener whose job
+	// this is ("start", "end"), and "" for the job of an element.
+	ListenerEventType  string
 	ElementInstanceKey int64
 	ProcessInstanceKey int64
 	Key                int64

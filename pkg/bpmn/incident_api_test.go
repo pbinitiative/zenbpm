@@ -155,6 +155,34 @@ func TestResolveJobIncidentReevaluatesInputMappingsWithCurrentProcessVariables(t
 	assert.Equal(t, runtime.ActivityStateCompleted, completedInstance.ProcessInstance().State)
 }
 
+func TestResolveJobIncidentIsRefusedWhileTheInputMappingsOfItsTaskDoNotEvaluate(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/incident-job-input-refresh.bpmn")
+	require.NoError(t, err)
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, map[string]any{"sourceValue": "original"})
+	require.NoError(t, err)
+	instanceKey := instance.ProcessInstance().Key
+	job := requireSinglePendingJob(t, store, instanceKey)
+	require.NoError(t, engine.JobFailByKey(t.Context(), job.Key, "expected incident", nil, nil, nil, nil, nil))
+	incident := singleIncident(t, store, instanceKey)
+	feel := &failingFeelRuntime{FeelRuntime: engine.feelRuntime}
+	engine.feelRuntime = feel
+
+	feel.fails.Store(true)
+	err = engine.ResolveIncident(t.Context(), incident.Key)
+
+	require.ErrorIs(t, err, ErrIncidentNotResolvable, "the job would be handed out without the variables of its task")
+	assert.ErrorContains(t, err, "failed to evaluate the input mappings of SERVICE_TASK retry-task")
+	assert.ErrorContains(t, err, "correct the variables they read and resolve the incident again")
+	assert.Nil(t, singleIncident(t, store, instanceKey).ResolvedAt, "the incident stays open")
+	assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, job.Key).State, "the job is not handed out")
+
+	feel.fails.Store(false)
+	require.NoError(t, engine.ResolveIncident(t.Context(), incident.Key))
+	assert.Equal(t, runtime.ActivityStateActive, reloadJob(t, store, job.Key).State)
+}
+
 func TestResolveMultiInstanceJobIncidentPreservesIterationVariable(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store))

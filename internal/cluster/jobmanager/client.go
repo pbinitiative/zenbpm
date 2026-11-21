@@ -248,20 +248,21 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			return
 		}
 		c.jobsChan <- Job{
-			Key:            resp.Job.GetKey(),
-			InstanceKey:    resp.Job.GetInstanceKey(),
-			InputVariables: resp.Job.GetInputVariables(),
-			Type:           JobType(resp.Job.GetType()),
-			State:          resp.Job.GetState(),
-			ElementID:      resp.Job.GetElementId(),
-			CreatedAt:      resp.Job.GetCreatedAt(),
-			ElementType:    resp.Job.GetElementType(),
-			ClientID:       ClientID(resp.GetClientId()),
-			LockUntil:      resp.Job.GetLockUntil(),
-			Retries:        resp.Job.GetRetries(),
-			Attempt:        resp.Job.GetAttempt(),
-			DeliveryToken:  resp.Job.GetDeliveryToken(),
-			Headers:        resp.Job.GetHeaders(),
+			Key:               resp.Job.GetKey(),
+			InstanceKey:       resp.Job.GetInstanceKey(),
+			InputVariables:    resp.Job.GetInputVariables(),
+			Type:              JobType(resp.Job.GetType()),
+			State:             resp.Job.GetState(),
+			ElementID:         resp.Job.GetElementId(),
+			CreatedAt:         resp.Job.GetCreatedAt(),
+			ElementType:       resp.Job.GetElementType(),
+			ListenerEventType: resp.Job.GetListenerEventType(),
+			ClientID:          ClientID(resp.GetClientId()),
+			LockUntil:         resp.Job.GetLockUntil(),
+			Retries:           resp.Job.GetRetries(),
+			Attempt:           resp.Job.GetAttempt(),
+			DeliveryToken:     resp.Job.GetDeliveryToken(),
+			Headers:           resp.Job.GetHeaders(),
 		}
 	}
 }

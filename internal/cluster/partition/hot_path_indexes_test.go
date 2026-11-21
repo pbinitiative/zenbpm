@@ -94,6 +94,16 @@ func TestHotPathIndexes(t *testing.T) {
 		})
 	}
 
+	t.Run("a page of an instance's jobs comes in the order of their keys without a sort", func(t *testing.T) {
+		// the query of FindProcessInstanceJobs
+		query := "SELECT job.*, (SELECT COUNT(*) FROM job AS counted WHERE counted.process_instance_key = ?1) AS total_count FROM job WHERE job.process_instance_key = ?1 ORDER BY job.key LIMIT ?3 OFFSET ?2"
+		plan := strings.Join(explainQueryPlan(t, db, query, int64(1), int64(0), int64(10)), "\n")
+
+		require.Regexp(t, regexp.MustCompile(`USING (COVERING )?INDEX idx_fk_job_process_instance_key\b`), plan, "query plan:\n%s", plan)
+		require.NotContains(t, plan, "SCAN job", "query plan:\n%s", plan)
+		require.NotContains(t, plan, "TEMP B-TREE", "the index yields the jobs of an instance by key already; query plan:\n%s", plan)
+	})
+
 	t.Run("rollback removes and forward migration restores indexes", func(t *testing.T) {
 		migration := findMigration(t, "0012_hot_path_indexes.up.sql")
 		requireIndexesExist(t, db, true)

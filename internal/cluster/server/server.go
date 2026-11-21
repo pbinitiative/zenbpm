@@ -1345,6 +1345,7 @@ func jobToProto(job sql.Job) (*proto.Job, error) {
 		LastFailureMessage: sql.FromNullString(job.LastFailureMessage),
 		RetryBackoff:       sql.FromNullString(job.RetryBackoff),
 		DeliveryToken:      new(job.DeliveryToken),
+		ListenerEventType:  sql.FromNullString(job.ListenerEventType),
 	}, nil
 }
 

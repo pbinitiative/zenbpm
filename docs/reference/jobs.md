@@ -20,6 +20,21 @@ If you are using the engine as a library you can register your handlers and they
 
 External jobs are jobs that require interaction with one of the ZenBPM's public APIs (REST or GRPC) by a 3rd party application.
 
+## Listener jobs
+
+An [execution listener](./bpmn/execution-listeners.md) creates an external job as well: a `start`
+listener when a token enters its element, an `end` listener when the element's own work is done.
+A worker serves it as any other job, and tells it from an element's own job by `listenerEventType`
+(`start` or `end`, REST) or `listener_event_type` (the gRPC job stream), which an element's own
+job does not carry. Its `elementType` is the type of the listener's element, such as `START_EVENT`
+or `USER_TASK`, so a client which picks the jobs of user tasks by `elementType` has to leave out
+the ones carrying a `listenerEventType`. A listener job is never handed to an internal task
+handler, and a failure with an error code is refused with `400`, because a listener cannot throw a
+BPMN error. What a `start` listener's job is completed with reaches the instance only where an
+output mapping of the element names it; what an `end` listener's job is completed with is written
+to the instance as it is, without an output mapping (see
+[Variables](./bpmn/execution-listeners.md#variables)).
+
 ## Working with external jobs
 
 ### REST API
@@ -68,7 +83,7 @@ A BPMN element can define **static task headers** — key/value pairs handed to 
 </bpmn:serviceTask>
 ```
 
-Each `header` has an optional `id` and a `key`/`value` pair. The values are literal: they are not expression-evaluated, so a header cannot reference process variables. Headers belong to the BPMN element rather than to a single job, so every job the element creates carries the same headers.
+Each `header` has an optional `id` and a `key`/`value` pair. The values are literal: they are not expression-evaluated, so a header cannot reference process variables. Headers belong to the BPMN element rather than to a single job, so every job the element creates carries the same headers, the jobs of its [execution listeners](./bpmn/execution-listeners.md) included.
 
 Headers are persisted with the job (a JSON object in the `job.headers` column, `'{}'` when the element defines none) and exposed to whoever receives the job:
 
@@ -154,6 +169,9 @@ job:
    A `retries` expression which no longer evaluates refuses the resolution with `409` and changes
    nothing; the message names the error and the way out: correct the variables the expression
    reads and resolve again, or resolve again with the job's retries given (see below).
+   The input mappings of the task are evaluated again as well, for the variables the next attempt
+   gets; mappings which no longer evaluate refuse the resolution with `409` in the same way, until
+   the variables they read are corrected.
    Resolving the incident of an error code nothing caught does the same, so leftover retries do not
    carry over into the new series; retries an operator set before that incident are forgotten with
    the series they belonged to. An incident the job did not raise itself, such as one of a boundary

@@ -2,8 +2,9 @@
 -- retry_backoff is left out of the update on purpose: the policy is fixed when the job is created.
 -- delivery_token is left out as well: only RecordJobDelivery writes it, so that a job the engine read
 -- before a delivery was recorded does not take the token back when it is saved.
-INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- kind and listener_event_type are left out as well: what a job belongs to never changes.
+INSERT INTO job(key, element_id, element_type, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee, headers, retries, attempts, retry_at, last_failure_message, retry_backoff, retries_set_by_operator, delivery_token, failed_delivery_token, kind, listener_event_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
@@ -69,13 +70,27 @@ WHERE
     key = @key;
 
 -- name: FindProcessInstanceJobs :many
+-- Ordered by key, so that the pages of one instance never overlap and a job keeps its page
+-- while later jobs are created: an element with execution listeners has several jobs, which
+-- a client looks for page by page. The index on process_instance_key yields the rows in that
+-- order, so the order costs no sort as long as the total is counted by a query of its own:
+-- a window function over the page's query would have every job of the instance read and
+-- sorted for each page. See TestHotPathIndexes.
 SELECT
     sqlc.embed(job),
-    COUNT(*) OVER () AS total_count
+    (
+        SELECT
+            COUNT(*)
+        FROM
+            job AS counted
+        WHERE
+            counted.process_instance_key = @process_instance_key) AS total_count
 FROM
     job
 WHERE
-    process_instance_key = @process_instance_key
+    job.process_instance_key = @process_instance_key
+ORDER BY
+    job.key
 LIMIT @size OFFSET @offset;
 
 -- name: FindProcessInstanceJobsInState :many

@@ -408,7 +408,28 @@ mainLoop:
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
 
-		if err := engine.validateAndIncrementFlowNodeCount(ctx, &batch, instance, currentToken, runFlowNodeCount); err != nil {
+		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
+		if err == nil {
+			err = engine.findScopeTheTokenWaitedIn(ctx, instance, activity, currentToken)
+		}
+		if err != nil {
+			runErr = errors.Join(runErr, err)
+			outcome.recordTechnicalFailure()
+			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
+			outcome.recordIncident(incidentError)
+			if incidentError != nil {
+				err = errors.Join(err, incidentError)
+				runErr = errors.Join(runErr, incidentError)
+			}
+			endErrorSpan(tokenSpan, err)
+			continue
+		}
+
+		// the guard counts the elements a token enters: a token which goes on in
+		// an element it waited in was counted when it entered
+		entersElement := activity.scope == nil
+		if err := engine.validateAndIncrementFlowNodeCount(ctx, &batch, instance, currentToken, runFlowNodeCount, entersElement); err != nil {
 			runErr = errors.Join(runErr, err)
 			if !errors.Is(err, ErrMaxProcessInstanceFlowNodeCountExceeded) {
 				outcome.recordTechnicalFailure()
@@ -422,21 +443,6 @@ mainLoop:
 			}
 			endErrorSpan(tokenSpan, err)
 			break mainLoop
-		}
-
-		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
-		if err != nil {
-			runErr = errors.Join(runErr, err)
-			outcome.recordTechnicalFailure()
-			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			incidentError := batch.writeAndFlushTokenIncidentWithCounterInvalidation(ctx, currentToken, instance, err, runFlowNodeCount)
-			outcome.recordIncident(incidentError)
-			if incidentError != nil {
-				err = errors.Join(err, incidentError)
-				runErr = errors.Join(runErr, incidentError)
-			}
-			endErrorSpan(tokenSpan, err)
-			continue
 		}
 
 		executionInstance := instance
@@ -780,7 +786,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	var activeTokensLeft []runtime.ExecutionToken
 	if len(elementInstanceIdsToTerminate) > 0 {
-		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
+		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstance)
 		if err != nil {
 			createSpan.RecordError(err)
 			createSpan.SetStatus(codes.Error, err.Error())

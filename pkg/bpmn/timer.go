@@ -235,7 +235,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 	}
 
 	if listener.CancellActivity {
-		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, instance, token); err != nil {
 			return nil, err
 		}
 

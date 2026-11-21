@@ -11,7 +11,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -473,11 +472,8 @@ func (engine *Engine) buildActivityOutputEvaluationScope(elementInstance runtime
 		scope[key] = value
 	}
 
-	inputMappings, ok := element.(interface {
-		GetInputMapping() []extensions.TIoMapping
-	})
-	if ok {
-		if err := engine.evaluateInputMappingsAgainstScope(scope, inputMappings.GetInputMapping()); err != nil {
+	if inputMappings, ok := bpmn20.InputMappingsOf(element); ok {
+		if err := engine.evaluateInputMappingsAgainstScope(scope, inputMappings); err != nil {
 			return nil, err
 		}
 	}

@@ -771,6 +771,8 @@ func TestResolveIncidentWhoseRetriesNoLongerEvaluateNamesTheWayOut(t *testing.T)
 	err = engine.ResolveIncident(t.Context(), incident.Key)
 
 	require.ErrorIs(t, err, ErrIncidentNotResolvable)
+	assert.ErrorContains(t, err, fmt.Sprintf("the retries of job %d no longer evaluate", job.Key),
+		"a client tells this refusal, which retries of the operator's own lift, from the others by these words")
 	assert.ErrorContains(t, err, fmt.Sprintf("POST /v1/incidents/%d/resolve", incident.Key))
 	assert.Nil(t, singleIncident(t, store, job.ProcessInstanceKey).ResolvedAt, "the incident stays open")
 	assert.Equal(t, runtime.ActivityStateFailed, reloadJob(t, store, job.Key).State)

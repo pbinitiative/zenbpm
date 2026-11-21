@@ -334,6 +334,8 @@ message Job {
   string retry_backoff = 17;
   // token of the latest delivery of the job to a worker; 0 = never handed out
   int64 delivery_token = 18;
+  // event type of the execution listener whose job this is; absent for the job of an element
+  string listener_event_type = 19;
 }
 
 message JobFailure {
@@ -532,6 +534,8 @@ message InternalJob {
   int32 attempt = 12;
   // token of this delivery, higher than that of every delivery of the job before
   int64 delivery_token = 13;
+  // event type of the execution listener whose job this is; absent for the job of an element
+  string listener_event_type = 14;
 }
 
 message SetMessageSubscriptionPointerRequest {

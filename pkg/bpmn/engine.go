@@ -440,7 +440,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
 		}
-		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, instance, token); err != nil {
 			return nil, err
 		}
 		token.State = runtime.TokenStateCanceled
@@ -458,8 +458,9 @@ func (engine *Engine) terminateExecutionTokens(
 	ctx context.Context,
 	batch *EngineBatch,
 	elementInstanceKeysToTerminate []int64,
-	processInstanceKey int64,
+	instance runtime.ProcessInstance,
 ) ([]runtime.ExecutionToken, error) {
+	processInstanceKey := instance.ProcessInstance().Key
 	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
@@ -473,7 +474,7 @@ func (engine *Engine) terminateExecutionTokens(
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
 		if _, terminate := keysToTerminate[activeToken.ElementInstanceKey]; terminate {
-			err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
+			err = engine.terminateExecutionToken(ctx, batch, instance, activeToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)
 			}
@@ -488,11 +489,11 @@ func (engine *Engine) terminateExecutionTokens(
 func (engine *Engine) terminateExecutionToken(
 	ctx context.Context,
 	batch *EngineBatch,
-	processInstanceKey int64,
+	instance runtime.ProcessInstance,
 	activeToken runtime.ExecutionToken,
 ) error {
 
-	err := engine.cancelBoundarySubscriptions(ctx, batch, processInstanceKey, activeToken)
+	err := engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, activeToken)
 	if err != nil {
 		return fmt.Errorf("failed to cancel subscriptions for execution token %d: %w", activeToken.Key, err)
 	}
@@ -521,7 +522,7 @@ func (engine *Engine) terminateExecutionToken(
 		}
 	}
 
-	if err := completeExistingFlowElementInstance(ctx, batch, activeToken); err != nil {
+	if err := endInterruptedElementInstance(ctx, batch, instance, activeToken); err != nil {
 		return err
 	}
 	activeToken.State = runtime.TokenStateCanceled
@@ -537,6 +538,10 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, elementId := range startingElementIds {
 		var flowNode = processInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(elementId)
+		if flowNode == nil {
+			return nil, fmt.Errorf("cannot start a token at element %q of process instance %d: the process has no flow node with that id",
+				elementId, processInstance.ProcessInstance().Key)
+		}
 		executionToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
@@ -647,12 +652,17 @@ type flowNodeRunCount struct {
 // batch so the write rides the same storage flush as the rest of the token processing) and returns
 // an error wrapping ErrMaxProcessInstanceFlowNodeCountExceeded when the limit is breached. A limit <= 0
 // disables the check entirely (no reads, no writes).
+//
+// The counter counts the flow nodes a token enters. A token which goes on in an element it waited
+// in, behind the job of an execution listener, enters nothing (entersElement is false): it is
+// neither counted nor checked, so an element counts one however many listeners it carries.
 func (engine *Engine) validateAndIncrementFlowNodeCount(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 	runCount *flowNodeRunCount,
+	entersElement bool,
 ) error {
 	if engine.maxProcessInstanceFlowNodeCount <= 0 {
 		return nil
@@ -660,6 +670,9 @@ func (engine *Engine) validateAndIncrementFlowNodeCount(
 	if !runCount.cached {
 		runCount.count = instance.ProcessInstance().FlowNodeCount
 		runCount.cached = true
+	}
+	if !entersElement {
+		return nil
 	}
 	runCount.count++
 	if err := batch.IncrementFlowNodeCount(ctx, instance.ProcessInstance().Key); err != nil {
@@ -1124,6 +1137,12 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
+	// start events and the elements whose own work is one job are entered, run
+	// and left by the element lifecycle, with execution listeners or without
+	if runsThroughElementLifecycle(instance, activity.Element()) {
+		return engine.runElementLifecycle(ctx, batch, instance, activity.Element(), currentToken, activity.scope)
+	}
+
 	if !flowNodeOwnsHistory(activity.Element()) {
 		err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
@@ -1141,20 +1160,6 @@ func (engine *Engine) processFlowNode(
 	}
 
 	switch element := activity.Element().(type) {
-	case *bpmn20.TStartEvent:
-		outputVariables, err := engine.applyStartEventOutputMappings(instance, element)
-		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate StartEvent output mappings %d: %w", activity.GetKey(), err)
-		}
-		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
-		if err != nil {
-			flowNodeSpan.SetStatus(codes.Error, err.Error())
-			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
-		}
-		if err := engine.completeStartEventFlowElementInstance(ctx, batch, instance, element, currentToken, outputVariables); err != nil {
-			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
-		}
-		return tokens, nil
 	case *bpmn20.TEndEvent:
 		tokens, err := engine.handleEndEvent(ctx, batch, instance, element, currentToken)
 		if err != nil {
@@ -1250,13 +1255,16 @@ func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
 	}
 }
 
-func (engine *Engine) completeStartEventFlowElementInstance(
+// saveFlowElementOutputs writes the outputs of the element's history row, and
+// completes the row when completedAt is not nil.
+func saveFlowElementOutputs(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
-	element *bpmn20.TStartEvent,
+	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
 	outputVariables map[string]any,
+	completedAt *time.Time,
 ) error {
 	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                token.ElementInstanceKey,
@@ -1265,7 +1273,7 @@ func (engine *Engine) completeStartEventFlowElementInstance(
 		ElementType:        string(element.GetType()),
 		ExecutionTokenKey:  token.Key,
 		OutputVariables:    outputVariables,
-		CompletedAt:        new(time.Now()),
+		CompletedAt:        completedAt,
 	})
 }
 
@@ -1312,13 +1320,27 @@ func (engine *Engine) completeFlowElementInstance(
 	})
 }
 
-func completeExistingFlowElementInstance(
+// endInterruptedElementInstance ends the element instance of a token which is
+// taken out of its element instead of leaving it by its outgoing flows: by an
+// interrupting boundary event, a BPMN error, a cancellation or a
+// modification. Its history row is completed, and the scope it kept while its
+// listeners ran, if any, is deleted: nothing goes on from it any more. The
+// instance is the one the token runs in, which tells whether its element keeps
+// a scope at all (mayKeepScope).
+func endInterruptedElementInstance(
 	ctx context.Context,
 	batch *EngineBatch,
+	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) error {
 	if err := batch.CompleteFlowElementInstance(ctx, token.ElementInstanceKey, time.Now()); err != nil {
 		return fmt.Errorf("failed to complete flow element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
+	}
+	if !mayKeepScope(instance, token) {
+		return nil
+	}
+	if err := batch.DeleteElementScope(ctx, token.ElementInstanceKey); err != nil {
+		return fmt.Errorf("failed to delete the scope of element instance %d for token %d: %w", token.ElementInstanceKey, token.Key, err)
 	}
 	return nil
 }
@@ -1328,13 +1350,9 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	var err error
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	// an activity whose own work is one job never comes here: the element
+	// lifecycle runs it (see runsThroughElementLifecycle)
 	switch element := activity.Element().(type) {
-	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
-	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
-	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder)
 		// we created process instance and it's running in separate goroutine

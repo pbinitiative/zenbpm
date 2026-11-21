@@ -3014,7 +3014,9 @@ paths:
             were given for a job which no longer waits (completed or terminated). Or the `retries`
             expression of the job the incident leaves waiting no longer evaluates; the message names
             the error and the way out: correct the variables the expression reads and repeat the
-            resolution, or repeat it with the job's `retries` in the body.
+            resolution, or repeat it with the job's `retries` in the body. Or the input mappings of
+            the incident's element no longer evaluate: correct the variables they read and repeat
+            the resolution.
           content:
             application/json:
               schema:
@@ -4081,7 +4083,16 @@ components:
           description: Configurable worker-routing type
         elementType:
           type: string
-          description: BPMN element type that created the job
+          description: >
+            BPMN element type of the element the job belongs to. The job of an execution listener
+            carries the type of the listener's element, such as `START_EVENT` or `SERVICE_TASK`;
+            `listenerEventType` tells it from the element's own job.
+        listenerEventType:
+          type: string
+          enum: [start, end]
+          description: >
+            The event type of the execution listener whose job this is: `start` before the
+            element's own work, `end` after it. Absent for the job of an element.
         processInstanceKey:
           type: integer
           format: int64

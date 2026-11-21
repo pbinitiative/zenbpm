@@ -39,6 +39,8 @@ type Storage struct {
 	Incidents          map[int64]bpmnruntime.Incident
 	ErrorSubscriptions map[int64]bpmnruntime.ErrorSubscription
 	JobFailures        map[int64]bpmnruntime.JobFailure
+	// ElementScopes is keyed by element instance key.
+	ElementScopes map[int64]bpmnruntime.ElementScope
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -75,6 +77,7 @@ func NewStorage() *Storage {
 		Incidents:              make(map[int64]bpmnruntime.Incident),
 		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
 		JobFailures:            make(map[int64]bpmnruntime.JobFailure),
+		ElementScopes:          make(map[int64]bpmnruntime.ElementScope),
 	}
 }
 
@@ -95,6 +98,7 @@ func (mem *Storage) Copy() *Storage {
 	maps.Copy(c.FlowNodeCounts, mem.FlowNodeCounts)
 	maps.Copy(c.Incidents, mem.Incidents)
 	maps.Copy(c.JobFailures, mem.JobFailures)
+	maps.Copy(c.ElementScopes, mem.ElementScopes)
 	maps.Copy(c.ErrorSubscriptions, mem.ErrorSubscriptions)
 	return c
 }
@@ -752,12 +756,15 @@ func (mem *Storage) FindPendingProcessInstanceJobs(_ context.Context, processIns
 var _ storage.JobStorageWriter = &Storage{}
 
 // SaveJob stores the job. The delivery token of a job stored before stays: only
-// a delivery raises it, see RecordJobDelivery.
+// a delivery raises it, see RecordJobDelivery. What the job belongs to stays
+// as well: it is written when the job is created, and never changed.
 func (mem *Storage) SaveJob(_ context.Context, job bpmnruntime.Job) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	if stored, ok := mem.Jobs[job.GetKey()]; ok {
 		job.DeliveryToken = stored.DeliveryToken
+		job.Kind = stored.Kind
+		job.ListenerEventType = stored.ListenerEventType
 	}
 	mem.Jobs[job.GetKey()] = job
 	return nil
@@ -1562,6 +1569,23 @@ func (b *StorageBatch) ResetProcessInstanceFlowNodeCount(ctx context.Context, pr
 	return nil
 }
 
+func (b *StorageBatch) SaveElementScope(ctx context.Context, scope bpmnruntime.ElementScope) error {
+	// the batch writes the scope as it is now, whatever its caller does to
+	// it before the flush
+	scope = copyOfElementScope(scope)
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveElementScope(ctx, scope)
+	})
+	return nil
+}
+
+func (b *StorageBatch) DeleteElementScope(ctx context.Context, elementInstanceKey int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.DeleteElementScope(ctx, elementInstanceKey)
+	})
+	return nil
+}
+
 func (b *StorageBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveIncident(ctx, incident)
@@ -1574,4 +1598,75 @@ func (b *StorageBatch) SaveErrorSubscription(ctx context.Context, subscription b
 		return b.db.SaveErrorSubscription(ctx, subscription)
 	})
 	return nil
+}
+
+var _ storage.ElementScopeStorageReader = &Storage{}
+
+func (mem *Storage) FindElementScope(_ context.Context, elementInstanceKey int64) (bpmnruntime.ElementScope, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	scope, ok := mem.ElementScopes[elementInstanceKey]
+	if !ok {
+		return bpmnruntime.ElementScope{}, storage.ErrNotFound
+	}
+	return copyOfElementScope(scope), nil
+}
+
+var _ storage.ElementScopeStorageWriter = &Storage{}
+
+func (mem *Storage) SaveElementScope(_ context.Context, scope bpmnruntime.ElementScope) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	mem.ElementScopes[scope.ElementInstanceKey] = copyOfElementScope(scope)
+	return nil
+}
+
+func (mem *Storage) DeleteElementScope(_ context.Context, elementInstanceKey int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	delete(mem.ElementScopes, elementInstanceKey)
+	return nil
+}
+
+// copyOfElementScope answers the scope with variables of its own, in maps
+// which are never nil, as a scope written to and read from a database has
+// them: the engine writes into the maps of a scope it read, and what a caller
+// does to a variable it saved or read must not change the stored scope.
+func copyOfElementScope(scope bpmnruntime.ElementScope) bpmnruntime.ElementScope {
+	scope.InputVariables = copyOfVariables(scope.InputVariables)
+	scope.LocalVariables = copyOfVariables(scope.LocalVariables)
+	return scope
+}
+
+// copyOfVariables answers the variables in a map of its own, never nil, with
+// a copy of every map and list among their values.
+func copyOfVariables(variables map[string]any) map[string]any {
+	copied := make(map[string]any, len(variables))
+	for name, value := range variables {
+		copied[name] = copyOfVariableValue(value)
+	}
+	return copied
+}
+
+// copyOfVariableValue answers a copy of a map or a list in the shape JSON
+// gives a variable, with a copy of what it holds, and any other value as it is.
+func copyOfVariableValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		if value == nil {
+			return value
+		}
+		return copyOfVariables(value)
+	case []any:
+		if value == nil {
+			return value
+		}
+		copied := make([]any, len(value))
+		for i, item := range value {
+			copied[i] = copyOfVariableValue(item)
+		}
+		return copied
+	default:
+		return value
+	}
 }

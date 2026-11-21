@@ -150,6 +150,11 @@ func (engine *Engine) JobFailByKey(
 		}
 		job.FailedDeliveryToken = *deliveryToken
 	}
+	// refused only for a failure the job would record: an ended job answers
+	// as every ended job does, and a repeated delivery as every repeated one
+	if errorCode != nil && isListenerJob(job) {
+		return invalidJobRequestf("job %d is the job of an execution listener, and a listener job cannot throw a BPMN error: fail it without an error code", jobKey)
+	}
 
 	failJobSpan.SetAttributes(
 		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
@@ -309,6 +314,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 			key:                 job.Key,
 			processInstanceKey:  job.ProcessInstanceKey,
 			elementId:           job.ElementId,
+			listenerEventType:   job.ListenerEventType,
 			createdAt:           job.CreatedAt,
 			localVariables:      localVars,
 			outputVariables:     map[string]interface{}{},
@@ -390,38 +396,23 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return err
 	}
 
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	variableHolder.SetLocalVariables(job.InputVariables)
-
-	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+	task := taskOfJob(instance, job)
 	if task == nil {
 		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
 	}
-	outputVariables, err := variableHolder.PropagateOnlyMappedOutputs(task.GetOutputMapping(), variables, engine.evaluateExpression)
-	if err != nil {
-		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
-	}
-	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                job.Token.ElementInstanceKey,
-		ProcessInstanceKey: job.ProcessInstanceKey,
-		ElementId:          job.Token.ElementId,
-		ElementType:        string(task.GetType()),
-		ExecutionTokenKey:  job.Token.Key,
-		OutputVariables:    outputVariables,
-		CompletedAt:        new(time.Now()),
-	})
-	if err != nil {
-		return err
-	}
-
-	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance.ProcessInstance().Key, job.Token)
-	if err != nil {
-		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	tokens, err := engine.handleElementTransition(ctx, &batch, instance, task, job.Token)
-	if err != nil {
-		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+	var tokens []runtime.ExecutionToken
+	if isListenerJob(job) {
+		// the token stays in its element: the run loop goes on from the scope
+		token, err := engine.completeListenerJob(ctx, &batch, instance, job, variables)
+		if err != nil {
+			return err
+		}
+		tokens = []runtime.ExecutionToken{token}
+	} else {
+		tokens, err = engine.completeElementOfJob(ctx, &batch, instance, job, task, variables)
+		if err != nil {
+			return err
+		}
 	}
 
 	job.State = runtime.ActivityStateCompleted
@@ -493,6 +484,35 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 	}
 	return nil
+}
+
+// completeElementOfJob does what the completion of an element's own job does
+// to the element: the output mappings are applied, the boundary events of the
+// element are cancelled, and the own work of the element is done
+// (finishWorkOfElement), so that its end listeners run or the token leaves.
+func (engine *Engine) completeElementOfJob(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	job runtime.Job,
+	task bpmn20.InternalTask,
+	variables map[string]any,
+) ([]runtime.ExecutionToken, error) {
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	variableHolder.SetLocalVariables(job.InputVariables)
+	outputVariables, err := variableHolder.PropagateOnlyMappedOutputs(task.GetOutputMapping(), variables, engine.evaluateExpression)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job), err)
+	}
+	err = engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, job.Token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	tokens, err := engine.finishWorkOfElement(ctx, batch, instance, task, job.Token, variables, outputVariables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
+	}
+	return tokens, nil
 }
 
 // repeatedCompletion answers a completion of a job completed before: it is as

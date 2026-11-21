@@ -721,6 +721,8 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 			Attempt:        new(attemptOfDelivery(job)),
 			DeliveryToken:  &job.DeliveryToken,
 			Headers:        delivery.headers,
+			// a NULL column stays absent
+			ListenerEventType: sql.FromNullString(job.ListenerEventType),
 		},
 	})
 	if err != nil {

@@ -27,7 +27,7 @@ func TestTerminateExecutionTokensWithSingleKeyTerminatesOnlyMatchingToken(t *tes
 	tokenSaves.Store(0)
 
 	// when: terminate one of the two tokens (mixed matching and non-matching tokens)
-	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{tokenB1.ElementInstanceKey}, instance.ProcessInstance().Key)
+	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{tokenB1.ElementInstanceKey}, instance)
 	require.NoError(t, err)
 	require.NoError(t, batch.Flush(t.Context()))
 
@@ -60,7 +60,7 @@ func TestTerminateExecutionTokensWithMultipleKeysTerminatesEachTokenExactlyOnce(
 	tokenSaves.Store(0)
 
 	// when: terminate both tokens
-	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{tokenB1.ElementInstanceKey, tokenB2.ElementInstanceKey}, instance.ProcessInstance().Key)
+	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{tokenB1.ElementInstanceKey, tokenB2.ElementInstanceKey}, instance)
 	require.NoError(t, err)
 	require.NoError(t, batch.Flush(t.Context()))
 
@@ -96,7 +96,7 @@ func TestTerminateExecutionTokensWithDuplicateKeysDoesNotDuplicateOperations(t *
 		t.Context(),
 		&batch,
 		[]int64{tokenB1.ElementInstanceKey, tokenB1.ElementInstanceKey, tokenB1.ElementInstanceKey},
-		instance.ProcessInstance().Key,
+		instance,
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Flush(t.Context()))
@@ -125,7 +125,7 @@ func TestTerminateExecutionTokensWithNonMatchingKeysKeepsAllTokensActive(t *test
 	tokenSaves.Store(0)
 
 	// when: no active token matches the provided keys
-	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{-1, -2}, instance.ProcessInstance().Key)
+	surviving, err := engine.terminateExecutionTokens(t.Context(), &batch, []int64{-1, -2}, instance)
 	require.NoError(t, err)
 	require.NoError(t, batch.Flush(t.Context()))
 

@@ -102,7 +102,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	}
 
 	if listener.CancellActivity {
-		if err := completeExistingFlowElementInstance(ctx, batch, token); err != nil {
+		if err := endInterruptedElementInstance(ctx, batch, instance, token); err != nil {
 			return nil, err
 		}
 
@@ -576,27 +576,9 @@ func (engine *Engine) propagateAndSaveOutputVariables(ctx context.Context, batch
 }
 
 func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+	// an event which throws a message never comes here: its work is one job,
+	// which the element lifecycle runs (see runsThroughElementLifecycle)
 	switch ed := ite.EventDefinition.(type) {
-	case bpmn20.TMessageEventDefinition:
-		activityResult, err := engine.createInternalTask(ctx, batch, instance, ite, currentToken, runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil))
-		if err != nil {
-			currentToken.State = runtime.TokenStateFailed
-			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageThrowEvent %d: %w", currentToken.ElementInstanceKey, err)
-		}
-		switch activityResult {
-		case runtime.ActivityStateActive:
-			currentToken.State = runtime.TokenStateWaiting
-			return []runtime.ExecutionToken{currentToken}, nil
-		case runtime.ActivityStateCompleted:
-			tokens, err := engine.handleElementTransition(ctx, batch, instance, ite, currentToken)
-			if err != nil {
-				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageThrowEvent flow transition %d: %w", currentToken.ElementInstanceKey, err)
-			}
-			return tokens, nil
-		default:
-			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("unexpected activity state in handling MessageThrowEvent %s", activityResult)
-		}
-
 	case bpmn20.TLinkEventDefinition:
 		token, outputVariables, err := engine.handleIntermediateThrowLinkEvent(ctx, instance, ite, currentToken)
 		if err != nil {

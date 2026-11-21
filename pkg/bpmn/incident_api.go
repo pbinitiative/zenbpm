@@ -111,11 +111,28 @@ func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Conte
 	return engine.createStartEventSubscriptions(ctx, batch, subProcess.TProcess, *processDefinition, &instance)
 }
 
+// reevaluateJobInputVariables rebuilds the variables of a job from the
+// variables its instance has now, so that a correction made while the job's
+// incident was open reaches the worker. The job of an element which keeps a
+// scope is rebuilt from the scope, which looks after the history row of the
+// element as well (see refreshElementScope); every other job from the input
+// mappings of its task, and its element's history row shows the variables
+// they were evaluated from. Input mappings which fail are told by
+// errInputMappingsDoNotEvaluate for both kinds of job.
 func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, job *runtime.Job) error {
-	element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(job.ElementId)
-	task, ok := element.(bpmn20.InternalTask)
-	if !ok {
+	task := taskOfJob(instance, *job)
+	if task == nil {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
+	}
+
+	scope, keepsScope, err := engine.refreshElementScope(ctx, batch, instance, job.ElementId, job.ElementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to rebuild the variables of job %d: %w", job.Key, err)
+	}
+	if keepsScope {
+		variables := scope.VariableHolder(&instance.ProcessInstance().VariableHolder)
+		job.InputVariables = variables.LocalVariables()
+		return nil
 	}
 
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, job.ElementInstanceKey)
@@ -124,7 +141,7 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if activity, ok := element.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
+	if activity, ok := task.(bpmn20.Activity); ok && activity.GetMultiInstance() != nil {
 		inputElementName := activity.GetMultiInstance().LoopCharacteristics.InputElementName
 		inputElement, ok := flowElementInstance.InputVariables[inputElementName]
 		if !ok {
@@ -135,11 +152,25 @@ func (engine *Engine) reevaluateJobInputVariables(ctx context.Context, batch *En
 
 	flowElementInput := variableHolder.ExecutionScopeSnapshot()
 	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression); err != nil {
-		return fmt.Errorf("failed to evaluate input variables for job %d: %w", job.Key, err)
+		return fmt.Errorf("failed to rebuild the variables of job %d: %w", job.Key, inputMappingsDoNotEvaluate(task, err))
 	}
 	job.InputVariables = variableHolder.LocalVariables()
 
 	flowElementInstance.InputVariables = flowElementInput
+	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
+		return fmt.Errorf("failed to update input variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	return nil
+}
+
+// saveHistoryInput writes the variables the input mappings of the element
+// instance were evaluated from into its history row.
+func (engine *Engine) saveHistoryInput(ctx context.Context, batch *EngineBatch, elementInstanceKey int64, input map[string]any) error {
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, elementInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find flow element instance %d: %w", elementInstanceKey, err)
+	}
+	flowElementInstance.InputVariables = input
 	if err := batch.SaveFlowElementInstance(ctx, flowElementInstance); err != nil {
 		return fmt.Errorf("failed to update input variables for flow element instance %d: %w", flowElementInstance.Key, err)
 	}
@@ -166,7 +197,7 @@ func (engine *Engine) restartJobRetries(instance runtime.ProcessInstance, incide
 		return nil
 	}
 	job.RetryAt = nil
-	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.ElementId)
+	task := taskOfJob(instance, *job)
 	if task == nil {
 		return fmt.Errorf("failed to find task %s for job %d", job.ElementId, job.Key)
 	}
@@ -323,7 +354,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 	// TODO: the same thing has to happen for other waiting subscriptions
 	if job != nil {
 		if err := engine.reevaluateJobInputVariables(ctx, &batch, instance, job); err != nil {
-			return err
+			return variablesOfIncidentNotRebuilt(key, err)
 		}
 		// an incident the job did not raise itself, such as a boundary event
 		// which failed to correlate, leaves the job's series and backoff alone
@@ -339,6 +370,11 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			return err
 		}
 	} else {
+		// the element is entered again, or, where it keeps a scope, goes on
+		// from it with its input mappings evaluated again
+		if _, _, err := engine.refreshElementScope(ctx, &batch, instance, incident.Token.ElementId, incident.Token.ElementInstanceKey); err != nil {
+			return variablesOfIncidentNotRebuilt(key, err)
+		}
 		incident.Token.State = runtime.TokenStateRunning
 	}
 	err = batch.SaveToken(ctx, incident.Token)
@@ -369,6 +405,19 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			"incident", incident.Key, "processInstance", instance.ProcessInstance().Key, "err", runErr)
 	}
 	return nil
+}
+
+// variablesOfIncidentNotRebuilt is the error of a resolution which could not
+// evaluate the variables of the incident's element again. Input mappings
+// which do not evaluate refuse the resolution until the variables are
+// corrected: the token would only raise the incident anew, and a job would be
+// handed out without the variables of its task. A failure of the storage says
+// nothing about the incident, so the resolution may be repeated as it is.
+func variablesOfIncidentNotRebuilt(incidentKey int64, err error) error {
+	if errors.Is(err, errInputMappingsDoNotEvaluate) {
+		return fmt.Errorf("%w: %w; correct the variables they read and resolve the incident again", ErrIncidentNotResolvable, err)
+	}
+	return fmt.Errorf("failed to resolve incident %d: %w", incidentKey, err)
 }
 
 // fenceJobOfIncident announces the change of the job the incident leaves

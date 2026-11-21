@@ -146,20 +146,23 @@ func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
 }
 
 // TestJobServerSendLogsAStreamEndedOnPurposeBelowError verifies that a job
-// send failing because the node disconnected or the stream was cancelled is
-// no error, while a send failing on a live stream stays one.
+// send failing because the node disconnected (gRPC answers a send on an
+// ended stream with Canceled) or because the server stops is no error, while
+// any other failure stays one, also though gRPC cancelled the stream when it
+// aborted it on the failed send.
 func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
 	tests := []struct {
 		name          string
 		ctx           context.Context
+		abortOnSend   bool
 		serverStopped bool
 		sendErr       error
 		level         string
 	}{
 		{name: "gRPC Canceled status", ctx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
-		{name: "failure on a cancelled stream", ctx: cancelled, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure gRPC aborted the stream on", ctx: t.Context(), abortOnSend: true, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
 		{name: "failure while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
 		{name: "failure on a live stream", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
 	}
@@ -171,7 +174,11 @@ func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 			if tt.serverStopped {
 				server.ctx = cancelled
 			}
-			sub := &nodeSub{nodeID: "node-2", stream: &recvTestServerStream{ctx: tt.ctx, sendErr: tt.sendErr}}
+			stream := &recvTestServerStream{ctx: tt.ctx, sendErr: tt.sendErr}
+			if tt.abortOnSend {
+				stream.ctx, stream.abort = context.WithCancel(tt.ctx)
+			}
+			sub := &nodeSub{nodeID: "node-2", stream: stream}
 
 			sent := server.sendReservedJob(reservedDelivery{job: sql.Job{Key: 42, Type: "job-a"}, client: "client-1", stream: sub})
 
@@ -221,21 +228,35 @@ func (s *recvTestClientStream) Recv() (*proto.SubscribeJobResponse, error) {
 	return nil, s.recvErr
 }
 
-// recvTestServerStream is a leader-side job stream whose receive fails with
-// recvErr and whose send fails with sendErr.
+// recvTestServerStream is a leader-side job stream that hands out the given
+// requests, then fails its receive with recvErr, and whose send fails with
+// sendErr.
 type recvTestServerStream struct {
-	ctx     context.Context
-	recvErr error
-	sendErr error
+	ctx      context.Context
+	requests []*proto.SubscribeJobRequest
+	recvErr  error
+	sendErr  error
+	// abort, if set, cancels ctx on a failed send, as gRPC does
+	abort context.CancelFunc
 }
 
 func (s *recvTestServerStream) Recv() (*proto.SubscribeJobRequest, error) {
+	if len(s.requests) > 0 {
+		req := s.requests[0]
+		s.requests = s.requests[1:]
+		return req, nil
+	}
 	return nil, s.recvErr
 }
-func (s *recvTestServerStream) Send(*proto.SubscribeJobResponse) error { return s.sendErr }
-func (*recvTestServerStream) SetHeader(metadata.MD) error              { return nil }
-func (*recvTestServerStream) SendHeader(metadata.MD) error             { return nil }
-func (*recvTestServerStream) SetTrailer(metadata.MD)                   {}
-func (s *recvTestServerStream) Context() context.Context               { return s.ctx }
-func (*recvTestServerStream) SendMsg(any) error                        { return nil }
-func (*recvTestServerStream) RecvMsg(any) error                        { return nil }
+func (s *recvTestServerStream) Send(*proto.SubscribeJobResponse) error {
+	if s.sendErr != nil && s.abort != nil {
+		s.abort()
+	}
+	return s.sendErr
+}
+func (*recvTestServerStream) SetHeader(metadata.MD) error  { return nil }
+func (*recvTestServerStream) SendHeader(metadata.MD) error { return nil }
+func (*recvTestServerStream) SetTrailer(metadata.MD)       {}
+func (s *recvTestServerStream) Context() context.Context   { return s.ctx }
+func (*recvTestServerStream) SendMsg(any) error            { return nil }
+func (*recvTestServerStream) RecvMsg(any) error            { return nil }

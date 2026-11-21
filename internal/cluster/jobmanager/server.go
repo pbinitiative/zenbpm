@@ -727,11 +727,13 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		// a node that disconnected, a stream cancelled by shutdown or this
-		// server stopping is no failure: the receive loop of the stream
-		// drops the node
+		// a node that disconnected (gRPC answers a send on an ended stream
+		// with Canceled) or this server stopping is no failure: the receive
+		// loop of the stream drops the node. The stream context says nothing
+		// here: gRPC aborts the stream, cancelling it, on every failed send,
+		// a message that does not encode or is too large included.
 		logSend := s.logger.Error
-		if zenerr.IsCanceled(err) || delivery.stream.stream.Context().Err() != nil || (s.ctx != nil && s.ctx.Err() != nil) {
+		if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
 			logSend = s.logger.Debug
 		}
 		logSend("Failed to send job to node, its stream is not used again this round",
@@ -908,8 +910,10 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 // stream may only have dropped while the node and its workers keep running,
 // and such a node reconnects and replays its subscriptions, so handing the
 // jobs out again would deliver them twice while their workers still process
-// them. The locks lapse at their deadline; a worker that disconnects from its
-// node releases them at once (see removeClient).
+// them. The locks lapse at their deadline; a worker that disconnects from a
+// running node releases them at once (see removeClient). A node shutting down
+// usually loses its streams before its workers are removed, and the locks of
+// their jobs lapse.
 func (s *jobServer) removeNode(closing *nodeSub) {
 	s.removeNodeSubscription(closing)
 

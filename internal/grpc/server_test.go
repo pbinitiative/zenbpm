@@ -278,24 +278,26 @@ func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
 // a response send failing on a stream that was cancelled is no error, while
 // one failing on a live stream is.
 func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
-	cancelled, cancel := context.WithCancel(t.Context())
-	cancel()
+	stopped, stop := context.WithCancel(t.Context())
+	stop()
 	tests := []struct {
-		name  string
-		ctx   context.Context
-		level string
+		name      string
+		serverCtx context.Context
+		sendErr   error
+		level     string
 	}{
-		{name: "cancelled stream", ctx: cancelled, level: "debug"},
-		{name: "live stream", ctx: t.Context(), level: "error"},
+		{name: "client gone", serverCtx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "server stops", serverCtx: stopped, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "transport failure", serverCtx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "error"},
+		{name: "message that does not encode", serverCtx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stream := newJobStreamTestServer()
-			stream.ctx = tt.ctx
-			stream.sendErr = errors.New("transport is closing")
+			stream.sendErr = tt.sendErr
 			var logOutput bytes.Buffer
 			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
-			server := &Server{logger: logger}
+			server := &Server{ctx: tt.serverCtx, logger: logger}
 
 			assert.False(t, server.sendJobStreamResponse(stream, &sync.Mutex{}, &proto.JobStreamResponse{}))
 

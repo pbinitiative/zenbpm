@@ -288,8 +288,10 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			if err != nil {
 				// gRPC aborts the stream once a send failed; when the handler
 				// returns the client is removed, which releases its jobs,
-				// this one included, for another delivery
-				s.logSendError(stream, err, "Failed to send a job to the job stream", "jobKey", job.Key)
+				// this one included, for another delivery (on a node shutting
+				// down the removal may not reach the leaders, and the locks
+				// lapse instead)
+				s.logSendError(err, "Failed to send a job to the job stream", "jobKey", job.Key)
 				return
 			}
 		}
@@ -437,19 +439,21 @@ func refusalReason(err error) string {
 
 func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
 	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
-		s.logSendError(stream, err, "Failed to send a job stream response")
+		s.logSendError(err, "Failed to send a job stream response")
 		return false
 	}
 	return true
 }
 
 // logSendError logs a failed send on a job stream: at debug level when the
-// stream ended on purpose (the client disconnected or the node shuts down,
-// which cancels the stream, possibly only after the send failed on the
-// closing transport), as an error otherwise.
-func (s *Server) logSendError(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], err error, msg string, args ...any) {
+// stream ended on purpose, as an error otherwise. gRPC answers a send on a
+// stream whose client went away with Canceled; a send failing while this
+// server stops is expected as well. The stream context does not tell: gRPC
+// aborts the stream, cancelling it, on every failed send, a message that
+// does not encode or is too large included.
+func (s *Server) logSendError(err error, msg string, args ...any) {
 	args = append(args, "err", err)
-	if zenerr.IsCanceled(err) || stream.Context().Err() != nil || (s.ctx != nil && s.ctx.Err() != nil) {
+	if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
 		s.logger.Debug(msg, args...)
 		return
 	}

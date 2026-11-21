@@ -16,7 +16,9 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func TestJobStreamRemovesClientWhenReceiveLoopEnds(t *testing.T) {
@@ -187,6 +189,41 @@ func TestRecvClientRequestsLogsAnExpectedRefusalAsAWarning(t *testing.T) {
 	}
 }
 
+// TestRecvClientRequestsLogsAnExpectedStreamEndBelowError shows a job stream
+// ended by its client disconnecting or by the node shutting down is no error,
+// whether the cancellation surfaces as a context error or as the gRPC Canceled
+// status a cancelled stream reports, while a transport failure stays visible
+// as an error.
+func TestRecvClientRequestsLogsAnExpectedStreamEndBelowError(t *testing.T) {
+	tests := []struct {
+		name    string
+		recvErr error
+		level   string
+	}{
+		{name: "context cancellation", recvErr: context.Canceled, level: "debug"},
+		{name: "gRPC Canceled status", recvErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "gRPC Unavailable status", recvErr: status.Error(codes.Unavailable, "transport is closing"), level: "error"},
+		{name: "unexpected error", recvErr: errors.New("broken pipe"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.recvErr = tt.recvErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{jobManager: &jobStreamTestManager{}, logger: logger}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+
+			lines := bytes.Split(bytes.TrimSpace(logOutput.Bytes()), []byte("\n"))
+			require.Len(t, lines, 1, "log: %s", logOutput.String())
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+		})
+	}
+}
+
 func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) {
 	manager := &jobStreamTestManager{subscribeErr: errors.New("subscription failed")}
 	stream := newJobStreamTestServer(
@@ -327,6 +364,8 @@ type jobStreamTestServer struct {
 	recvCalls int
 	sent      []*proto.JobStreamResponse
 	sendErr   error
+	// recvErr ends the stream once the requests are consumed (io.EOF if nil)
+	recvErr error
 }
 
 func newJobStreamTestServer(requests ...*proto.JobStreamRequest) *jobStreamTestServer {
@@ -335,6 +374,9 @@ func newJobStreamTestServer(requests ...*proto.JobStreamRequest) *jobStreamTestS
 
 func (s *jobStreamTestServer) Recv() (*proto.JobStreamRequest, error) {
 	if s.recvCalls >= len(s.requests) {
+		if s.recvErr != nil {
+			return nil, s.recvErr
+		}
 		return nil, io.EOF
 	}
 	req := s.requests[s.recvCalls]

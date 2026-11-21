@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -863,10 +864,11 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 	for {
 		req, err := stream.stream.Recv()
-		if err == io.EOF || errors.Is(err, context.Canceled) {
-			// read done.
+		if err == io.EOF || zenerr.IsCanceled(err) {
+			// read done: the node closed the stream or it was cancelled (the
+			// node disconnecting or this node shutting down)
 			s.removeNode(stream)
-			s.logger.Debug("Stream closed", "err", err)
+			s.logger.Debug("Stream closed", "err", err, "streamNodeId", stream.nodeID)
 			return
 		}
 		if err != nil {

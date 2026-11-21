@@ -228,9 +228,10 @@ func (c *jobClient) resendClientSubscriptions(stream *clientNodeStream) bool {
 func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 	for {
 		resp, err := stream.stream.Recv()
-		if err == io.EOF || errors.Is(err, context.Canceled) {
-			// read done.
-			c.logger.Debug("Stream closed", "err", err)
+		if err == io.EOF || zenerr.IsCanceled(err) {
+			// read done: the leader ended the stream or it was cancelled
+			// (this node shutting down or dropping the stream)
+			c.logger.Debug("Stream closed", "err", err, "streamNodeId", stream.nodeID)
 			c.removeNodeStream(stream)
 			c.reconcileNodeSubscriptions()
 			return
@@ -242,7 +243,9 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			return
 		}
 		if resp.Job == nil {
-			c.logger.Error("closing stream", "err", err, "streamNodeId", stream.nodeID)
+			// the close message the leader sends once it stops distributing
+			// jobs (shutdown or lost partition leadership)
+			c.logger.Debug("Stream closed by the partition leader", "streamNodeId", stream.nodeID)
 			c.removeNodeStream(stream)
 			c.reconcileNodeSubscriptions()
 			return

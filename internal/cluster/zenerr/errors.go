@@ -1,12 +1,15 @@
 package zenerr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -140,6 +143,15 @@ func IsUnavailable(err error) bool {
 func IsConflict(err error) bool {
 	var zerr *ZenError
 	return errors.As(err, &zerr) && zerr.Code == ConflictCode
+}
+
+// IsCanceled reports whether err stems from a cancelled call or stream, either
+// as a Go context error or as a gRPC Canceled status. gRPC reports the
+// cancellation of a stream's context (a peer disconnecting or a node shutting
+// down) as status.Error(codes.Canceled, ...), which errors.Is(err,
+// context.Canceled) does not match.
+func IsCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
 }
 
 func Join(new error, original *ZenError) *ZenError {

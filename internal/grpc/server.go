@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
@@ -123,9 +124,9 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			// read done.
 			return
 		}
-		if errors.Is(err, context.Canceled) {
-			// stream closed
-			s.logger.Debug("Stream context cancelled", "err", err)
+		if zenerr.IsCanceled(err) {
+			// stream closed: the client disconnected or the node shuts down
+			s.logger.Debug("Stream context cancelled", "clientID", clientID, "err", err)
 			return
 		}
 		if err != nil {

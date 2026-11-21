@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -82,17 +84,91 @@ func TestJobServerStreamRecvLogsExpectedClosesBelowError(t *testing.T) {
 	for _, tt := range streamRecvEndings {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newJobServer("node-1", nil, nil, DefaultLockLimits())
-			var logs bytes.Buffer
-			server.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
+			server.logger = hclog.NewNullLogger()
 			sub := &nodeSub{nodeID: "node-2", stream: &recvTestServerStream{ctx: t.Context(), recvErr: tt.err}}
 			server.nodeSubs[sub.nodeID] = sub
+			server.subscribeClient(sub.nodeID, "client-1", "job-a", SubscriptionSettings{})
+			require.Contains(t, server.subscriptions["job-a"], ClientID("client-1"))
+			var logs bytes.Buffer
+			server.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
 
 			server.handleJobStreamRecv(sub)
 
+			// however the stream ended, it is not used again
+			assert.NotContains(t, server.nodeSubs, sub.nodeID, "the node of the ended stream is dropped")
+			assert.NotContains(t, server.subscriptions["job-a"], ClientID("client-1"), "the clients of the ended stream are dropped")
 			entries := logEntries(t, &logs)
 			require.Len(t, entries, 1, "log: %s", logs.String())
 			assert.Equal(t, tt.level, entries[0]["@level"], "log: %s", logs.String())
 			assert.Equal(t, "node-2", entries[0]["streamNodeId"])
+		})
+	}
+}
+
+// TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob verifies that a
+// job received while the job client closes does not keep the receive loop
+// waiting for a distribution loop that is gone.
+func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	client := newJobClient(ctx, "local-node", nil, nil)
+	client.logger = hclog.NewNullLogger()
+	stream := &clientNodeStream{
+		stream: &recvTestClientStream{
+			subscriptionTestStream: &subscriptionTestStream{ctx: t.Context()},
+			responses:              []*proto.SubscribeJobResponse{{Job: &proto.InternalJob{Key: new(int64(42))}}},
+			recvErr:                errors.New("not reached"),
+		},
+		nodeID: "leader-node",
+	}
+	client.nodeStreams = []*clientNodeStream{stream}
+	// nobody reads jobsChan: the distribution loop has exited
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		client.handleJobStreamRecv(stream)
+	}()
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 5*time.Second, 5*time.Millisecond, "the receive loop returns once the job client closed")
+	assert.Empty(t, client.nodeStreams)
+}
+
+// TestJobServerSendLogsAStreamEndedOnPurposeBelowError verifies that a job
+// send failing because the node disconnected or the stream was cancelled is
+// no error, while a send failing on a live stream stays one.
+func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		sendErr error
+		level   string
+	}{
+		{name: "gRPC Canceled status", ctx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "failure on a cancelled stream", ctx: cancelled, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure on a live stream", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newJobServer("node-1", nil, nil, DefaultLockLimits())
+			var logs bytes.Buffer
+			server.logger = hclog.New(&hclog.LoggerOptions{Output: &logs, JSONFormat: true, Level: hclog.Trace})
+			sub := &nodeSub{nodeID: "node-2", stream: &recvTestServerStream{ctx: tt.ctx, sendErr: tt.sendErr}}
+
+			sent := server.sendReservedJob(reservedDelivery{job: sql.Job{Key: 42, Type: "job-a"}, client: "client-1", stream: sub})
+
+			assert.False(t, sent)
+			entries := logEntries(t, &logs)
+			require.Len(t, entries, 1, "log: %s", logs.String())
+			assert.Equal(t, tt.level, entries[0]["@level"], "log: %s", logs.String())
 		})
 	}
 }
@@ -134,19 +210,20 @@ func (s *recvTestClientStream) Recv() (*proto.SubscribeJobResponse, error) {
 }
 
 // recvTestServerStream is a leader-side job stream whose receive fails with
-// recvErr.
+// recvErr and whose send fails with sendErr.
 type recvTestServerStream struct {
 	ctx     context.Context
 	recvErr error
+	sendErr error
 }
 
 func (s *recvTestServerStream) Recv() (*proto.SubscribeJobRequest, error) {
 	return nil, s.recvErr
 }
-func (*recvTestServerStream) Send(*proto.SubscribeJobResponse) error { return nil }
-func (*recvTestServerStream) SetHeader(metadata.MD) error            { return nil }
-func (*recvTestServerStream) SendHeader(metadata.MD) error           { return nil }
-func (*recvTestServerStream) SetTrailer(metadata.MD)                 {}
-func (s *recvTestServerStream) Context() context.Context             { return s.ctx }
-func (*recvTestServerStream) SendMsg(any) error                      { return nil }
-func (*recvTestServerStream) RecvMsg(any) error                      { return nil }
+func (s *recvTestServerStream) Send(*proto.SubscribeJobResponse) error { return s.sendErr }
+func (*recvTestServerStream) SetHeader(metadata.MD) error              { return nil }
+func (*recvTestServerStream) SendHeader(metadata.MD) error             { return nil }
+func (*recvTestServerStream) SetTrailer(metadata.MD)                   {}
+func (s *recvTestServerStream) Context() context.Context               { return s.ctx }
+func (*recvTestServerStream) SendMsg(any) error                        { return nil }
+func (*recvTestServerStream) RecvMsg(any) error                        { return nil }

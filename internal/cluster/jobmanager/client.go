@@ -250,7 +250,7 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			c.reconcileNodeSubscriptions()
 			return
 		}
-		c.jobsChan <- Job{
+		job := Job{
 			Key:               resp.Job.GetKey(),
 			InstanceKey:       resp.Job.GetInstanceKey(),
 			InputVariables:    resp.Job.GetInputVariables(),
@@ -266,6 +266,15 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			Attempt:           resp.Job.GetAttempt(),
 			DeliveryToken:     resp.Job.GetDeliveryToken(),
 			Headers:           resp.Job.GetHeaders(),
+		}
+		select {
+		case c.jobsChan <- job:
+		case <-c.ctx.Done():
+			// the distribution loop is gone; the job's lock runs out and the
+			// leader hands it out again
+			c.logger.Debug("Job client closing, dropping a received job", "jobKey", job.Key, "streamNodeId", stream.nodeID)
+			c.removeNodeStream(stream)
+			return
 		}
 	}
 }

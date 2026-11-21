@@ -225,6 +225,87 @@ func TestRecvClientRequestsLogsAnExpectedStreamEndBelowError(t *testing.T) {
 	}
 }
 
+// TestSendClientJobsStopsAfterAFailedSend verifies that a job send failing
+// because the client disconnected is no error while one failing on a live
+// stream stays one, and that the stream, done once a send failed, takes no
+// further jobs.
+func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
+	tests := []struct {
+		name    string
+		sendErr error
+		level   string
+	}{
+		{name: "gRPC Canceled status", sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "failure on a live stream", sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.sendErr = tt.sendErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{ctx: t.Context(), logger: logger}
+			clientCh := make(chan jobmanager.Job, 2)
+			clientCh <- jobmanager.Job{Key: 7, Type: "job-a"}
+			clientCh <- jobmanager.Job{Key: 8, Type: "job-a"}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				server.sendClientJobs(stream, clientCh, make(chan struct{}), &sync.Mutex{})
+			}()
+			require.Eventually(t, func() bool {
+				select {
+				case <-done:
+					return true
+				default:
+					return false
+				}
+			}, 5*time.Second, 5*time.Millisecond, "the send loop returns after the failed send")
+
+			assert.Len(t, clientCh, 1, "the next job is left to the job manager")
+			lines := bytes.Split(bytes.TrimSpace(logOutput.Bytes()), []byte("\n"))
+			require.Len(t, lines, 1, "log: %s", logOutput.String())
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+			assert.NotContains(t, entry["@message"], "%w")
+		})
+	}
+}
+
+// TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError verifies that
+// a response send failing on a stream that was cancelled is no error, while
+// one failing on a live stream is.
+func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	tests := []struct {
+		name  string
+		ctx   context.Context
+		level string
+	}{
+		{name: "cancelled stream", ctx: cancelled, level: "debug"},
+		{name: "live stream", ctx: t.Context(), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.ctx = tt.ctx
+			stream.sendErr = errors.New("transport is closing")
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{logger: logger}
+
+			assert.False(t, server.sendJobStreamResponse(stream, &sync.Mutex{}, &proto.JobStreamResponse{}))
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(bytes.TrimSpace(logOutput.Bytes()), &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+		})
+	}
+}
+
 func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) {
 	manager := &jobStreamTestManager{subscribeErr: errors.New("subscription failed")}
 	stream := newJobStreamTestServer(

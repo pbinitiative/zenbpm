@@ -286,8 +286,10 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			}
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{Job: waiting})
 			if err != nil {
-				s.logger.Error("Failed to send message to stream: %w", "err", err)
-				continue
+				// the stream is done once a send failed; the job's lock runs
+				// out and it is handed out again
+				s.logSendError(stream, err, "Failed to send a job to the job stream", "jobKey", job.Key)
+				return
 			}
 		}
 	}
@@ -434,10 +436,22 @@ func refusalReason(err error) string {
 
 func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
 	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
-		s.logger.Debug("failed to send job stream response", "err", err)
+		s.logSendError(stream, err, "Failed to send a job stream response")
 		return false
 	}
 	return true
+}
+
+// logSendError logs a failed send on a job stream: at debug level when the
+// stream ended on purpose (the client disconnected or the node shuts down,
+// which cancels the stream), as an error otherwise.
+func (s *Server) logSendError(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], err error, msg string, args ...any) {
+	args = append(args, "err", err)
+	if zenerr.IsCanceled(err) || stream.Context().Err() != nil {
+		s.logger.Debug(msg, args...)
+		return
+	}
+	s.logger.Error(msg, args...)
 }
 
 func unknownRequestError(req any) *proto.JobStreamResponse {

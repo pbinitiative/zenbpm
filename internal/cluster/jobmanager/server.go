@@ -727,7 +727,13 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		s.logger.Error("Failed to send job to node, its stream is not used again this round",
+		// a node that disconnected or a stream cancelled by shutdown is no
+		// failure: the receive loop of the stream drops the node
+		logSend := s.logger.Error
+		if zenerr.IsCanceled(err) || delivery.stream.stream.Context().Err() != nil {
+			logSend = s.logger.Debug
+		}
+		logSend("Failed to send job to node, its stream is not used again this round",
 			"node", delivery.stream.nodeID, "jobType", job.Type, "key", job.Key, "err", err)
 		return false
 	}
@@ -862,12 +868,15 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 }
 
 func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
+	// however the stream ends, its node and the subscriptions of its clients
+	// go with it: the stream is done, and a node that reconnects replays its
+	// subscriptions on the new stream
+	defer s.removeNode(stream)
 	for {
 		req, err := stream.stream.Recv()
 		if err == io.EOF || zenerr.IsCanceled(err) {
 			// read done: the node closed the stream or it was cancelled (the
 			// node disconnecting or this node shutting down)
-			s.removeNode(stream)
 			s.logger.Debug("Stream closed", "err", err, "streamNodeId", stream.nodeID)
 			return
 		}

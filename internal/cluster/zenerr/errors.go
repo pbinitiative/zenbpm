@@ -154,6 +154,21 @@ func IsCanceled(err error) bool {
 	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
 }
 
+// IsSendToGonePeer reports whether a send on a server-side gRPC stream failed
+// because its peer went away, not because of the message or this server.
+// gRPC answers such a send with Canceled while the connection is still open
+// (the peer cancelled the stream) and with Unavailable once the connection
+// closed (the peer closed its channel, which is how a client normally shuts
+// down, crashed, or the network dropped). A failure of this server's own
+// making has another code: Internal for a message that does not encode,
+// ResourceExhausted for one over the send limit.
+//
+// It is for server-side sends only. On a receive, and on the client side of a
+// stream, Unavailable is a transport failure worth reporting.
+func IsSendToGonePeer(err error) bool {
+	return IsCanceled(err) || status.Code(err) == codes.Unavailable
+}
+
 func Join(new error, original *ZenError) *ZenError {
 	return &ZenError{original.Code, errors.Join(new, original.err)}
 }

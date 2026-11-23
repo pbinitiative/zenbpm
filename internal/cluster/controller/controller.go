@@ -93,19 +93,23 @@ const (
 	defaultRetryDelay         = 5 * time.Second
 	maxRetryDelay             = 15 * time.Minute
 	maxInitializationAttempts = 8
-	// minRegistrationGracePeriod is the least time a starting node waits
-	// for its entry in the cluster state before the absence is reported
-	minRegistrationGracePeriod = time.Minute
+	// registrationMargin is the time the cluster leader gets to record a
+	// node that joined, on top of what the startup of the node waits for
+	registrationMargin = 30 * time.Second
 )
 
 // registrationGracePeriod bounds the expected wait of a starting node for its
-// entry in the cluster state: the longest the configured raft join (every
-// attempt calling each join address) and the bootstrap of a new cluster can
-// take, plus half of minRegistrationGracePeriod for the leader to record the
-// node afterwards, and no less than minRegistrationGracePeriod.
+// entry in the cluster state by what its startup itself waits for: the longest
+// the configured raft join (every attempt calling each join address) and the
+// bootstrap of a new cluster can take, then the wait for the raft log to be
+// applied, plus registrationMargin for the leader to record the node. The wait
+// for the log matters most to a node restarting with existing raft state,
+// which neither joins nor bootstraps: an entry of its own that is in the log
+// and not in a snapshot shows only once the cluster has a leader again, as
+// after a cold restart of the whole cluster.
 func registrationGracePeriod(raftConf config.ClusterRaft) time.Duration {
 	joining := raftConf.JoinBudget() + raftConf.BootstrapExpectTimeout
-	return max(minRegistrationGracePeriod, joining+minRegistrationGracePeriod/2)
+	return joining + config.StartupApplyTimeout + registrationMargin
 }
 
 // Option configures a Controller.

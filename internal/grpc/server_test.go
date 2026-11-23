@@ -226,17 +226,18 @@ func TestRecvClientRequestsLogsAnExpectedStreamEndBelowError(t *testing.T) {
 }
 
 // TestSendClientJobsStopsAfterAFailedSend verifies that a job send failing
-// because the client disconnected is no error while one failing on a live
-// stream stays one, and that the stream, done once a send failed, takes no
-// further jobs.
+// because the client went away, having cancelled its stream or closed its
+// connection, is no error while one failing on a live stream stays one, and
+// that the stream, done once a send failed, takes no further jobs.
 func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
 	tests := []struct {
 		name    string
 		sendErr error
 		level   string
 	}{
-		{name: "gRPC Canceled status", sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
-		{name: "failure on a live stream", sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
+		{name: "gRPC Canceled status of a cancelled stream", sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "gRPC Unavailable status of a closed connection", sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure on a live stream", sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -252,7 +253,7 @@ func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				server.sendClientJobs(stream, clientCh, make(chan struct{}), &sync.Mutex{})
+				server.sendClientJobs(stream, "client-1", clientCh, make(chan struct{}), &sync.Mutex{})
 			}()
 			require.Eventually(t, func() bool {
 				select {
@@ -270,13 +271,16 @@ func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
 			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
 			assert.Equal(t, tt.level, entry["@level"])
 			assert.NotContains(t, entry["@message"], "%w")
+			assert.Equal(t, "client-1", entry["clientID"])
+			assert.EqualValues(t, 7, entry["jobKey"])
 		})
 	}
 }
 
 // TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError verifies that
-// a response send failing on a stream that was cancelled is no error, while
-// one failing on a live stream is.
+// a response send failing because the client went away, having cancelled its
+// stream or closed its connection, or because the server stops is no error,
+// while one failing on a live stream is.
 func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	stopped, stop := context.WithCancel(t.Context())
 	stop()
@@ -286,9 +290,9 @@ func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) 
 		sendErr   error
 		level     string
 	}{
-		{name: "client gone", serverCtx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
-		{name: "server stops", serverCtx: stopped, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
-		{name: "transport failure", serverCtx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "error"},
+		{name: "client cancelled its stream", serverCtx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "client closed its connection", serverCtx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "server stops", serverCtx: stopped, sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "debug"},
 		{name: "message that does not encode", serverCtx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {
@@ -299,11 +303,12 @@ func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) 
 			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
 			server := &Server{ctx: tt.serverCtx, logger: logger}
 
-			assert.False(t, server.sendJobStreamResponse(stream, &sync.Mutex{}, &proto.JobStreamResponse{}))
+			assert.False(t, server.sendJobStreamResponse(stream, "client-1", &sync.Mutex{}, &proto.JobStreamResponse{}))
 
 			var entry map[string]any
 			require.NoError(t, json.Unmarshal(bytes.TrimSpace(logOutput.Bytes()), &entry), "log: %s", logOutput.String())
 			assert.Equal(t, tt.level, entry["@level"])
+			assert.Equal(t, "client-1", entry["clientID"])
 		})
 	}
 }

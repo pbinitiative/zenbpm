@@ -727,13 +727,15 @@ func (s *jobServer) sendReservedJob(delivery reservedDelivery) bool {
 		},
 	})
 	if err != nil {
-		// a node that disconnected (gRPC answers a send on an ended stream
-		// with Canceled) or this server stopping is no failure: the receive
-		// loop of the stream drops the node. The stream context says nothing
-		// here: gRPC aborts the stream, cancelling it, on every failed send,
-		// a message that does not encode or is too large included.
+		// a node that went away or this server stopping is no failure: the
+		// receive loop of the stream drops the node. gRPC answers a send to
+		// a node that cancelled its stream with Canceled, and one to a node
+		// whose connection closed, as when it stopped or crashed, with
+		// Unavailable. The stream context says nothing here: gRPC aborts the
+		// stream, cancelling it, on every failed send, a message that does
+		// not encode or is too large included.
 		logSend := s.logger.Error
-		if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
+		if zenerr.IsSendToGonePeer(err) || (s.ctx != nil && s.ctx.Err() != nil) {
 			logSend = s.logger.Debug
 		}
 		logSend("Failed to send job to node, its stream is not used again this round",

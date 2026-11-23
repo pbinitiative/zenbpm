@@ -130,7 +130,7 @@ func TestSendClientJobsCarriesLockUntil(t *testing.T) {
 	clientCh <- jobmanager.Job{Key: 7, Type: "job-a", LockUntil: 1234567}
 	close(clientCh)
 
-	server.sendClientJobs(stream, clientCh, recvDone, &sync.Mutex{})
+	server.sendClientJobs(stream, "client-1", clientCh, recvDone, &sync.Mutex{})
 
 	require.Len(t, stream.sent, 1)
 	require.NotNil(t, stream.sent[0].Job)
@@ -145,7 +145,7 @@ func TestSendClientJobsCarriesRetriesAttemptAndDeliveryToken(t *testing.T) {
 	clientCh <- jobmanager.Job{Key: 7, Type: "job-a", Retries: 2, Attempt: 3, DeliveryToken: 5}
 	close(clientCh)
 
-	server.sendClientJobs(stream, clientCh, recvDone, &sync.Mutex{})
+	server.sendClientJobs(stream, "client-1", clientCh, recvDone, &sync.Mutex{})
 
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, int32(2), stream.sent[0].Job.GetRetries())
@@ -165,7 +165,7 @@ func TestSendClientJobsLeavesOutTheTokenOfADeliveryWhichHasNone(t *testing.T) {
 	clientCh <- jobmanager.Job{Key: 7, Type: "job-a"}
 	close(clientCh)
 
-	server.sendClientJobs(stream, clientCh, recvDone, &sync.Mutex{})
+	server.sendClientJobs(stream, "client-1", clientCh, recvDone, &sync.Mutex{})
 
 	require.Len(t, stream.sent, 1)
 	assert.Nil(t, stream.sent[0].Job.DeliveryToken)

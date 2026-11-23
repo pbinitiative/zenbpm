@@ -408,6 +408,12 @@ func (c Cluster) ValidateCDC() error {
 // JoinRequestTimeout bounds a single join call to one of the join addresses.
 const JoinRequestTimeout = time.Second
 
+// StartupApplyTimeout bounds the wait of a starting node for the raft log it
+// holds to be applied. A node restarting with existing raft state applies
+// nothing past its snapshot until the cluster has a leader again, so the wait
+// covers the time the cluster takes to regain its quorum.
+const StartupApplyTimeout = 120 * time.Second
+
 // JoinBudget is the longest an explicit join can take with this
 // configuration: every attempt calls each join address in turn, each call
 // bounded by JoinRequestTimeout, and attempts are JoinInterval apart.

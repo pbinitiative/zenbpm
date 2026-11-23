@@ -146,9 +146,10 @@ func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
 }
 
 // TestJobServerSendLogsAStreamEndedOnPurposeBelowError verifies that a job
-// send failing because the node disconnected (gRPC answers a send on an
-// ended stream with Canceled) or because the server stops is no error, while
-// any other failure stays one, also though gRPC cancelled the stream when it
+// send failing because the node went away (gRPC answers a send to a node that
+// cancelled its stream with Canceled, and one to a node whose connection
+// closed with Unavailable) or because the server stops is no error, while any
+// other failure stays one, also though gRPC cancelled the stream when it
 // aborted it on the failed send.
 func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	cancelled, cancel := context.WithCancel(t.Context())
@@ -163,8 +164,9 @@ func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	}{
 		{name: "gRPC Canceled status", ctx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
 		{name: "failure gRPC aborted the stream on", ctx: t.Context(), abortOnSend: true, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
-		{name: "failure while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
-		{name: "failure on a live stream", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "connection reset by peer"), level: "error"},
+		{name: "gRPC Unavailable status of a closed connection", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "debug"},
+		{name: "message that does not encode", ctx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -65,6 +66,82 @@ func TestJobStreamLogsALocalSendFailureAsAnError(t *testing.T) {
 	assert.Equal(t, "error", logs.levelOf("Failed to send a job to the job stream"), "log: %s", logs)
 }
 
+// TestJobStreamLogsASendToAClientThatClosedItsConnectionBelowError runs a job
+// stream over a real gRPC server whose client closes its channel, which is how
+// a worker normally shuts down, while the answer to its request is on the way.
+// gRPC fails that send with Unavailable, not with the Canceled of a cancelled
+// stream, and the departure is no error all the same.
+func TestJobStreamLogsASendToAClientThatClosedItsConnectionBelowError(t *testing.T) {
+	logs := &sendErrorTestLog{}
+	manager := &blockingExtendTestManager{extending: make(chan struct{})}
+	server := &Server{
+		ctx:        t.Context(),
+		jobManager: manager,
+		logger:     hclog.New(&hclog.LoggerOptions{Output: logs, JSONFormat: true, Level: hclog.Trace}),
+	}
+	listener := bufconn.Listen(1 << 20)
+	grpcServer := grpc.NewServer()
+	proto.RegisterZenBpmServer(grpcServer, server)
+	go func() { _ = grpcServer.Serve(listener) }()
+	t.Cleanup(grpcServer.Stop)
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	stream, err := proto.NewZenBpmClient(conn).JobStream(metadata.AppendToOutgoingContext(t.Context(), jobmanager.MetadataClientID, "client-1"))
+	require.NoError(t, err)
+	extendLock := func(key int64) *proto.JobStreamRequest {
+		return &proto.JobStreamRequest{Request: &proto.JobStreamRequest_ExtendLock{ExtendLock: &proto.JobExtendLockRequest{Key: &key}}}
+	}
+	// the stream has carried an answer already, as that of a worker at work
+	require.NoError(t, stream.Send(extendLock(1)))
+	_, err = stream.Recv()
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(extendLock(blockedExtensionKey)))
+	select {
+	case <-manager.extending:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the lock extension did not reach the job manager")
+	}
+
+	// the extension returns once the stream ended, so its answer is sent to
+	// a client that has left
+	require.NoError(t, conn.Close())
+
+	const message = "Failed to send a job stream response"
+	require.Eventually(t, func() bool {
+		return logs.entryOf(message) != nil
+	}, 5*time.Second, 5*time.Millisecond, "log: %s", logs)
+	entry := logs.entryOf(message)
+	assert.Contains(t, entry["err"], "code = Unavailable", "the send failed on the closed connection; log: %s", logs)
+	assert.Equal(t, "debug", entry["@level"], "log: %s", logs)
+	assert.Equal(t, "client-1", entry["clientID"])
+	assert.NotContains(t, logs.String(), `"@level":"error"`, "a client leaving logs no error")
+}
+
+// blockedExtensionKey is the job whose lock extension
+// blockingExtendTestManager holds.
+const blockedExtensionKey = 7
+
+// blockingExtendTestManager holds the lock extension of blockedExtensionKey
+// until the stream it came on has ended, so that its answer is sent to a
+// client that has left. Any other extension is answered at once.
+type blockingExtendTestManager struct {
+	jobStreamTestManager
+	extending chan struct{}
+}
+
+func (m *blockingExtendTestManager) ExtendJobLockReq(ctx context.Context, _ jobmanager.ClientID, key int64, _ time.Duration, _ *int64) (time.Time, error) {
+	if key != blockedExtensionKey {
+		return time.Now().Add(time.Minute), nil
+	}
+	close(m.extending)
+	<-ctx.Done()
+	return time.Now().Add(time.Minute), nil
+}
+
 // capturingJobStreamTestManager hands the client channel of every added
 // client to the test.
 type capturingJobStreamTestManager struct {
@@ -100,15 +177,20 @@ func (l *sendErrorTestLog) String() string {
 
 // levelOf returns the level of the first entry with the message, or "".
 func (l *sendErrorTestLog) levelOf(message string) string {
+	level, _ := l.entryOf(message)["@level"].(string)
+	return level
+}
+
+// entryOf returns the first entry with the message, or nil.
+func (l *sendErrorTestLog) entryOf(message string) map[string]any {
 	l.mu.Lock()
 	data := bytes.Clone(l.buf.Bytes())
 	l.mu.Unlock()
 	for line := range bytes.Lines(data) {
 		var entry map[string]any
 		if json.Unmarshal(line, &entry) == nil && entry["@message"] == message {
-			level, _ := entry["@level"].(string)
-			return level
+			return entry
 		}
 	}
-	return ""
+	return nil
 }

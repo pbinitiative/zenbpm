@@ -141,16 +141,25 @@ func TestControllerDoesNotMistakeAStaleSnapshotForALostRegistration(t *testing.T
 	rt.logs.assertNoErrors(t)
 }
 
-func TestRegistrationGracePeriodCoversTheConfiguredJoin(t *testing.T) {
-	assert.Equal(t, time.Minute, registrationGracePeriod(config.ClusterRaft{
+// TestRegistrationGracePeriodCoversTheStartupWaits verifies that the grace
+// period covers everything the startup of a node waits for before its entry
+// can show: the configured join and bootstrap, and the wait for the raft log
+// to be applied, which is all a restarting node waits for.
+func TestRegistrationGracePeriodCoversTheStartupWaits(t *testing.T) {
+	// 5 attempts calling one address for up to a second each, 4 intervals of
+	// 2s, the bootstrap timeout, the wait for the log, and half a minute for
+	// the leader
+	assert.Equal(t, (5+8+10+120+30)*time.Second, registrationGracePeriod(config.ClusterRaft{
 		JoinAttempts: 5, JoinInterval: 2 * time.Second, JoinAddresses: []string{"localhost:8090"}, BootstrapExpectTimeout: 10 * time.Second,
 	}), "the defaults")
-	assert.Equal(t, time.Minute, registrationGracePeriod(config.ClusterRaft{}))
-	// 20 attempts calling 10 addresses for up to a second each, 19 intervals
-	// of 5s, the bootstrap timeout, and half a minute for the leader
-	assert.Equal(t, (200+95+30+30)*time.Second, registrationGracePeriod(config.ClusterRaft{
+	// 20 attempts calling 10 addresses, 19 intervals of 5s
+	assert.Equal(t, (200+95+30+120+30)*time.Second, registrationGracePeriod(config.ClusterRaft{
 		JoinAttempts: 20, JoinInterval: 5 * time.Second, JoinAddresses: make([]string, 10), BootstrapExpectTimeout: 30 * time.Second,
 	}))
+	// a node restarting with existing raft state neither joins nor
+	// bootstraps: it waits for its log to be applied, and no absence is
+	// reported while that wait still counts as normal
+	assert.Greater(t, registrationGracePeriod(config.ClusterRaft{}), config.StartupApplyTimeout)
 }
 
 type registrationTest struct {

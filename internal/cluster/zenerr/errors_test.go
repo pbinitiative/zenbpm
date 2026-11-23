@@ -37,3 +37,26 @@ func TestIsCanceled(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSendToGonePeer(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		gone bool
+	}{
+		{name: "context cancellation", err: context.Canceled, gone: true},
+		{name: "gRPC Canceled status of a cancelled stream", err: status.Error(codes.Canceled, "context canceled"), gone: true},
+		{name: "gRPC Unavailable status of a closed connection", err: status.Error(codes.Unavailable, "transport is closing"), gone: true},
+		{name: "wrapped gRPC Unavailable status", err: fmt.Errorf("send: %w", status.Error(codes.Unavailable, "transport is closing")), gone: true},
+		{name: "no error", err: nil},
+		{name: "message that does not encode", err: status.Error(codes.Internal, "grpc: error while marshaling")},
+		{name: "message over the send limit", err: status.Error(codes.ResourceExhausted, "trying to send message larger than max")},
+		{name: "gRPC DeadlineExceeded status", err: status.Error(codes.DeadlineExceeded, "deadline exceeded")},
+		{name: "unexpected error", err: errors.New("broken pipe")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.gone, IsSendToGonePeer(tt.err))
+		})
+	}
+}

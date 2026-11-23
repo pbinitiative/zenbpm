@@ -162,7 +162,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	if len(nodes) > 0 {
 		node.logger.Info("Preexisting configuration detected. Skipping bootstrap.")
 
-		err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+		err = node.store.WaitForAllApplied(config.StartupApplyTimeout) // TODO: pull out to config
 		if err != nil {
 			node.logger.Error("Failed to apply log until timeout was reached: %s", err)
 		}
@@ -200,7 +200,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	if err != nil {
 		return nil, fmt.Errorf("timeout expired before leader information was received")
 	}
-	err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+	err = node.store.WaitForAllApplied(config.StartupApplyTimeout) // TODO: pull out to config
 	if err != nil {
 		node.logger.Error("Failed to apply log until timeout was reached: %s", err)
 	}

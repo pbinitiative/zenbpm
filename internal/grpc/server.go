@@ -113,7 +113,7 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 		defer close(recvDone)
 		s.recvClientRequests(stream, clientID, sendMu)
 	})
-	s.sendClientJobs(stream, clientCh, recvDone, sendMu)
+	s.sendClientJobs(stream, clientID, clientCh, recvDone, sendMu)
 	return nil
 }
 
@@ -138,7 +138,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
 				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
@@ -154,7 +154,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
 				s.logJobRequestError(err, "failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 					Error: completeJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -168,7 +168,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
 				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
@@ -185,7 +185,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), deliveryTokenOf(req.Fail.DeliveryToken))
 			if err != nil {
 				s.logJobRequestError(err, "failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 					Error: failJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -196,7 +196,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 		case *proto.JobStreamRequest_ExtendLock:
-			if !s.sendJobStreamResponse(stream, sendMu, s.extendLock(stream.Context(), clientID, req.ExtendLock)) {
+			if !s.sendJobStreamResponse(stream, clientID, sendMu, s.extendLock(stream.Context(), clientID, req.ExtendLock)) {
 				return
 			}
 		case *proto.JobStreamRequest_Subscription:
@@ -210,7 +210,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				}
 				if err := s.jobManager.AddClientJobSub(stream.Context(), clientID, jobType, settings); err != nil {
 					s.logger.Error("failed to subscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
-					if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+					if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 						Error: &proto.ErrorResult{
 							Code:    nil,
 							Message: new(fmt.Sprintf("Failed to subscribe to job type %s", jobType)),
@@ -224,7 +224,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				if err := s.jobManager.RemoveClientJobSub(stream.Context(), clientID, jobType); err != nil {
 					s.logger.Error("failed to unsubscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
-					if !s.sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
+					if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
 						Error: &proto.ErrorResult{
 							Code:    nil,
 							Message: new(fmt.Sprintf("Failed to unsubscribe from job type %s", jobType)),
@@ -235,13 +235,13 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 					continue
 				}
 			default:
-				if !s.sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.GetType())) {
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, unknownRequestError(req.Subscription.GetType())) {
 					return
 				}
 				continue
 			}
 		default:
-			if !s.sendJobStreamResponse(stream, sendMu, unknownRequestError(clientReq.Request)) {
+			if !s.sendJobStreamResponse(stream, clientID, sendMu, unknownRequestError(clientReq.Request)) {
 				return
 			}
 			continue
@@ -249,7 +249,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 	}
 }
 
-func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, recvDone <-chan struct{}, sendMu *sync.Mutex) {
+func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, clientCh chan jobmanager.Job, recvDone <-chan struct{}, sendMu *sync.Mutex) {
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -291,7 +291,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 				// this one included, for another delivery (on a node shutting
 				// down the removal may not reach the leaders, and the locks
 				// lapse instead)
-				s.logSendError(err, "Failed to send a job to the job stream", "jobKey", job.Key)
+				s.logSendError(err, "Failed to send a job to the job stream", "clientID", clientID, "jobKey", job.Key)
 				return
 			}
 		}
@@ -437,23 +437,24 @@ func refusalReason(err error) string {
 	return err.Error()
 }
 
-func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
+func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
 	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
-		s.logSendError(err, "Failed to send a job stream response")
+		s.logSendError(err, "Failed to send a job stream response", "clientID", clientID)
 		return false
 	}
 	return true
 }
 
 // logSendError logs a failed send on a job stream: at debug level when the
-// stream ended on purpose, as an error otherwise. gRPC answers a send on a
-// stream whose client went away with Canceled; a send failing while this
-// server stops is expected as well. The stream context does not tell: gRPC
-// aborts the stream, cancelling it, on every failed send, a message that
-// does not encode or is too large included.
+// client went away or this server stops, as an error otherwise. gRPC answers
+// a send to a client that cancelled its stream with Canceled, and one to a
+// client whose connection closed, which is how a worker normally shuts down,
+// with Unavailable. The stream context does not tell: gRPC aborts the stream,
+// cancelling it, on every failed send, a message that does not encode or is
+// too large included.
 func (s *Server) logSendError(err error, msg string, args ...any) {
 	args = append(args, "err", err)
-	if zenerr.IsCanceled(err) || (s.ctx != nil && s.ctx.Err() != nil) {
+	if zenerr.IsSendToGonePeer(err) || (s.ctx != nil && s.ctx.Err() != nil) {
 		s.logger.Debug(msg, args...)
 		return
 	}

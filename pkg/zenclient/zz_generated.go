@@ -1349,7 +1349,7 @@ type GetDecisionInstancesParams struct {
 	// SortBy Sort field
 	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted
 	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1373,7 +1373,7 @@ type GetDmnResourceDefinitionsParams struct {
 	// SortBy Sort field
 	SortBy *GetDmnResourceDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted
 	SortOrder *GetDmnResourceDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
@@ -1424,7 +1424,7 @@ type GetJobsParams struct {
 	// SortBy Sort field
 	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted
 	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1539,7 +1539,7 @@ type GetProcessDefinitionsParams struct {
 	// SortBy Sort field
 	SortBy *GetProcessDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted
 	SortOrder *GetProcessDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
@@ -1578,7 +1578,7 @@ type GetProcessDefinitionStatisticsParams struct {
 	// SortBy Sort field
 	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted
 	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1611,7 +1611,7 @@ type GetProcessInstancesParams struct {
 	// SortBy Sort field (applies globally across partitions)
 	SortBy *GetProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted
 	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// CreatedFrom Filter - created after this date
@@ -1664,7 +1664,7 @@ type GetChildProcessInstancesParams struct {
 	// SortBy Sort field (applies globally across partitions)
 	SortBy *GetChildProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted
 	SortOrder *GetChildProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// State Filter by state
@@ -1716,7 +1716,7 @@ type GetHistoryParams struct {
 	Size   *int32                  `form:"size,omitempty" json:"size,omitempty"`
 	SortBy *GetHistoryParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted
 	SortOrder *GetHistoryParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 

@@ -359,13 +359,13 @@ and the attempt, would repeat the effect on every retry.
 Job-level retries arrived with ZenBPM 1.9.0, together with migration `0018_job_retries`. The
 migration runs on the database of a partition when a node of 1.9.0 or later becomes its leader and
 starts its engine, and again when a backup taken by an older release is restored; followers never
-run it. It adds the retry columns to every job stored there at that moment, whatever
-its state, and gives each of them the column defaults: `retries` `1`, `attempts` `0`, no `retryAt`,
-no `retryBackoff` and no failure history. The `1` is deliberate. Before 1.9.0 the first failure of
-a job without an error code created an incident, and a job that waits for a worker across the
-upgrade keeps that behaviour, even when its `zenbpm:taskDefinition` names other `retries`. The
-migration does not read the task definitions of the stored jobs, and `jobs.defaultRetries` does not
-reach them either: they start with `1`, whatever the engine is configured with.
+run it. It adds the retry columns to every job stored there at that moment, whatever its state, and
+gives each of them the column defaults: `retries` `1`, `attempts` `0`, no `retryAt`, no
+`retryBackoff` and no failure history. The `1` is deliberate. Before 1.9.0 the first failure of a
+job without an error code created an incident, and a job that waits for a worker across the upgrade
+keeps that behaviour, even when its `zenbpm:taskDefinition` names other `retries`. The migration
+does not read the task definitions of the stored jobs, and `jobs.defaultRetries` does not reach
+them either: they start with `1`, whatever the engine is configured with.
 
 "Created before the upgrade" means created by a node older than 1.9.0. During a rolling upgrade the
 leadership of a partition can pass back to an older node after a node of 1.9.0 or later has
@@ -388,10 +388,9 @@ creation and at resolution alike. Within a series the count changes as for any j
 without an error code spends one or sets the `retries` it names, and an operator may set it (see
 below). A migrated job therefore escapes an incident at its first failure without an error code
 only when that failure names `retries` above `0` or an operator set new ones meanwhile. Only the
-resolution of
-the job's own incident, the one a failure of the job raised, starts a new series. Resolving an
-incident the job did not raise itself, such as one of a boundary event of its task, leaves its
-retries as they are (see [Failures and retries](#failures-and-retries)).
+resolution of the job's own incident, the one a failure of the job raised, starts a new series.
+Resolving an incident the job did not raise itself, such as one of a boundary event of its task,
+leaves its retries as they are (see [Failures and retries](#failures-and-retries)).
 
 For example, take a job created before the upgrade by
 `<zenbpm:taskDefinition type="charge-card" retries="3" retryBackoff="PT1M" />`, with
@@ -434,22 +433,29 @@ Neither changes the backoff policy of the job. A failure may name its own backof
 failure only.
 
 Retries are set job by job; no endpoint sets them for many jobs at once. To find the jobs created
-before the upgrade, list `GET /v1/jobs?state=active&sortBy=key&sortOrder=asc`, and the same with
-`state=failed`, which a node older than 1.9.0 refuses with `400`. The listing is sorted and paged
-per partition (see [REST API](#rest-api)), and within a partition job keys grow with the time of
-creation, so the oldest jobs of each partition come first. This sort works on every release, also
-while the cluster runs several versions. Releases up to 1.10 ignore `sortBy=createdAt` on this
-endpoint and list the newest key first, and a partition's listing is served by one of its
-followers, which may still run such a release. The order of the keys is close to the order of
-`createdAt`, but not exact, so check each job's `createdAt` instead of stopping at a key.
+before the upgrade:
 
-The listing yields candidates; the boundary to compare `createdAt` with is a time per partition. A
-job was created before the upgrade if its `createdAt` lies before the last time a node older than
-1.9.0 led its partition. Without a leadership change back to an older node, that is when the
-partition's leader logged `Migration applied: 0018_job_retries.up.sql`, which is also the `ran_at`
-of `0018_job_retries.up.sql` in the partition's `migration` table. If the leadership went back to an
-older node meanwhile, the boundary is when that node last stopped leading. For a restored backup
-taken by an older release, it is the time of the backup.
+1. **List the candidates by key.** List `GET /v1/jobs?state=active&sortBy=key&sortOrder=asc`, and
+   the same with `state=failed`, which a node older than 1.9.0 refuses with `400`. The listing is
+   sorted and paged per partition (see [REST API](#rest-api)), and within a partition job keys grow
+   with the time of creation, so the oldest jobs of each partition come first.
+2. **Read each job's `createdAt`.** The order of the keys is close to the order of `createdAt`, but
+   not exact, so check the `createdAt` of each job instead of stopping at a key.
+3. **Find the boundary of the job's partition.** It is a time per partition: the last time a node
+   older than 1.9.0 led the partition.
+   - Without a leadership change back to an older node, that is when the partition's leader logged
+     `Migration applied: 0018_job_retries.up.sql`, which is also the `ran_at` of
+     `0018_job_retries.up.sql` in the partition's `migration` table.
+   - If the leadership went back to an older node meanwhile, it is when that node last stopped
+     leading.
+   - For a restored backup taken by an older release, it is the time of the backup.
+4. **Compare.** A job was created before the upgrade if its `createdAt` lies before the boundary of
+   its partition.
+
+List by key, not by `createdAt`: the sort by key works on every release, also while the cluster
+runs several versions. Releases up to and including 1.10.0 ignore `sortBy=createdAt` on this
+endpoint and list the newest key first, and a partition's listing is usually served by one of its
+followers, which may still run such a release.
 
 This is the compatibility policy of the upgrade, not a missing backfill. Giving the stored jobs the
 retries of their definitions would make jobs which were waiting for a worker at the upgrade retry

@@ -3,8 +3,10 @@ package sql
 import (
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -29,22 +31,25 @@ var listingQueries = map[string]string{
 // through to the key, newest first, without an error, as sortBy=createdAt of
 // GET /v1/jobs and sortBy=name and incidentCount of the process definitions
 // did. The values come from the spec, so a sortBy added there without its
-// query branch fails here.
+// query branch fails here. Every sort a query misses is reported, not only
+// the first.
 func TestEveryListingKnowsEverySortOfTheRestAPI(t *testing.T) {
 	sortsByListing := sortByEnumsOfTheRestAPI(t)
 
 	for operationID := range listingQueries {
-		require.Contains(t, sortsByListing, operationID,
+		assert.Contains(t, sortsByListing, operationID,
 			"listingQueries names %s, which openapi/api.yaml does not offer a sortBy for", operationID)
 	}
 	for operationID, sortsBy := range sortsByListing {
 		query, ok := listingQueries[operationID]
-		require.True(t, ok, "%s offers a sortBy; name the query which orders it in listingQueries", operationID)
+		if !assert.True(t, ok, "%s offers a sortBy; name the query which orders it in listingQueries", operationID) {
+			continue
+		}
 		for _, sortBy := range sortsBy {
 			for _, order := range []string{"asc", "desc"} {
 				sort := SortString(&order, &sortBy)
 				require.NotNil(t, sort)
-				require.Contains(t, query, "WHEN '"+string(*sort)+"' ",
+				assert.Contains(t, query, "WHEN '"+string(*sort)+"' ",
 					"the query of %s does not order by sortBy=%s&sortOrder=%s", operationID, sortBy, order)
 			}
 		}
@@ -52,13 +57,15 @@ func TestEveryListingKnowsEverySortOfTheRestAPI(t *testing.T) {
 }
 
 // sortByEnumsOfTheRestAPI reads the values of the sortBy query parameter of
-// every operation of openapi/api.yaml which has one, by operationId.
+// every operation of openapi/api.yaml which has one, by operationId. A
+// parameter an operation refers to in the spec's components counts as its own.
 func sortByEnumsOfTheRestAPI(t *testing.T) map[string][]string {
 	t.Helper()
 	content, err := os.ReadFile("../../openapi/api.yaml")
 	require.NoError(t, err)
 
 	type parameter struct {
+		Ref    string `yaml:"$ref"`
 		Name   string `yaml:"name"`
 		In     string `yaml:"in"`
 		Schema struct {
@@ -70,7 +77,10 @@ func sortByEnumsOfTheRestAPI(t *testing.T) map[string][]string {
 		Parameters  []parameter `yaml:"parameters"`
 	}
 	var spec struct {
-		Paths map[string]map[string]yaml.Node `yaml:"paths"`
+		Paths      map[string]map[string]yaml.Node `yaml:"paths"`
+		Components struct {
+			Parameters map[string]parameter `yaml:"parameters"`
+		} `yaml:"components"`
 	}
 	require.NoError(t, yaml.Unmarshal(content, &spec))
 
@@ -84,6 +94,12 @@ func sortByEnumsOfTheRestAPI(t *testing.T) map[string][]string {
 			var op operation
 			require.NoError(t, node.Decode(&op), "%s %s", method, path)
 			for _, p := range op.Parameters {
+				if p.Ref != "" {
+					name, ok := strings.CutPrefix(p.Ref, "#/components/parameters/")
+					require.True(t, ok, "%s refers to the parameter %s, which is not among the spec's parameters", op.OperationID, p.Ref)
+					p, ok = spec.Components.Parameters[name]
+					require.True(t, ok, "%s refers to the parameter %s, which the spec does not define", op.OperationID, name)
+				}
 				if p.Name != "sortBy" || p.In != "query" {
 					continue
 				}

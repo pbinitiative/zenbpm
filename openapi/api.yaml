@@ -698,7 +698,12 @@ paths:
             type: string
             enum: [name, bpmnProcessId, bpmnProcessName, version, key]
           description: Sort field
-        - $ref: "#/components/parameters/sortOrder"
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction of `sortBy`; `asc` when omitted
         - name: bpmnProcessId
           in: query
           schema:
@@ -953,7 +958,7 @@ paths:
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction
+          description: Sort direction of `sortBy`; `asc` when omitted
       responses:
         200:
           description: Process definition statistics
@@ -1752,7 +1757,7 @@ paths:
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction
+          description: Sort direction of `sortBy`; `asc` when omitted
       responses:
         200:
           description: List of activities
@@ -2200,7 +2205,7 @@ paths:
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction
+          description: Sort direction of `sortBy`; `asc` when omitted
       responses:
         200:
           description: List of jobs on partitions
@@ -4347,4 +4352,4 @@ components:
       schema:
         type: string
         enum: [asc, desc]
-      description: Sort direction
+      description: Sort direction of `sortBy`; `desc` when omitted

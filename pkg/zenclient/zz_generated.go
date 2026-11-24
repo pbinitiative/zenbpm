@@ -1346,10 +1346,10 @@ type GetDecisionInstancesParams struct {
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 
-	// SortBy Sort field
+	// SortBy Sort field. When omitted, the latest evaluation comes first.
 	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `desc` when omitted
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1370,10 +1370,10 @@ type GetDmnResourceDefinitionsParams struct {
 	// OnlyLatest If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId
 	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
 
-	// SortBy Sort field
+	// SortBy Sort field. When omitted, the definitions are sorted by `dmnResourceDefinitionId` ascending and, within one, by `version` descending.
 	SortBy *GetDmnResourceDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `desc` when omitted
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetDmnResourceDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
@@ -1421,10 +1421,10 @@ type GetJobsParams struct {
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 
-	// SortBy Sort field
+	// SortBy Sort field. When omitted, the newest key comes first.
 	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `asc` when omitted
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1536,10 +1536,10 @@ type GetProcessDefinitionsParams struct {
 	// OnlyLatest If true, returns only the latest version of each process definition grouped by bpmnProcessId
 	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
 
-	// SortBy Sort field
+	// SortBy Sort field. When omitted, the newest key comes first.
 	SortBy *GetProcessDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `asc` when omitted
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetProcessDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
@@ -1575,10 +1575,10 @@ type GetProcessDefinitionStatisticsParams struct {
 	// Search Search by BPMN process ID or BPMN process name (partial match)
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// SortBy Sort field
+	// SortBy Sort field. `incidentCount` sorts by `instanceCounts.withIncident`, the number of process instances with an unresolved incident, not by the number of their incidents. When omitted, the newest key comes first.
 	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `asc` when omitted
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
@@ -1608,10 +1608,10 @@ type GetProcessInstancesParams struct {
 	// BpmnProcessId Filter by BPMN process ID (returns instances across all versions)
 	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
 
-	// SortBy Sort field (applies globally across partitions)
+	// SortBy Sort field (applies globally across partitions). When omitted, the latest created instance comes first.
 	SortBy *GetProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `desc` when omitted
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// CreatedFrom Filter - created after this date
@@ -1661,10 +1661,10 @@ type GetChildProcessInstancesParams struct {
 	// Size Number of items per page
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 
-	// SortBy Sort field (applies globally across partitions)
+	// SortBy Sort field (applies globally across partitions). When omitted, the latest created instance comes first.
 	SortBy *GetChildProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `desc` when omitted
+	// SortOrder Sort direction of `sortBy`; `desc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetChildProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
 	// State Filter by state
@@ -1713,10 +1713,12 @@ type GetHistoryParams struct {
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 1000)
-	Size   *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field. When omitted, the latest created element comes first.
 	SortBy *GetHistoryParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 
-	// SortOrder Sort direction of `sortBy`; `asc` when omitted
+	// SortOrder Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
 	SortOrder *GetHistoryParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 

@@ -406,12 +406,14 @@ incident's token and starts a new series with the definition's retries, as descr
 [Failures and retries](#failures-and-retries). A `completed` or `terminated` job created before the
 upgrade shows `retries: 1` as well; the value says nothing about its definition and has no effect.
 
-The first resolution of the own incident of any job created before the upgrade, whether it failed
-before the upgrade or after it, evaluates the definition's `retries`. If they no longer evaluate,
-the resolution is refused with `409` and changes nothing. That happens with an expression whose
-variables changed, and with a literal which does not parse in a definition deployed before the
-engine read `retries`, which was never checked. Resolving the incident with the job's retries given
-gets past it.
+Every resolution of a job's own incident evaluates the definition's `retries`, unless an operator's
+retries are kept or given with the resolution (see below). If they do not evaluate, the resolution
+is refused with `409` and changes nothing. That happens with an expression whose variables changed,
+and with a literal which does not parse in a definition deployed before the engine read `retries`,
+which was never checked. Resolving the incident with the job's retries given gets past it, but only
+for this incident: the next own incident of the job evaluates the definition's `retries` again. The
+job of a definition with such a literal therefore needs an operator's retries at every resolution
+of its own incidents.
 
 **Giving an existing job other retries.** An operator who wants a job created before the upgrade to
 retry sets its retries with [`POST /v1/jobs/{jobKey}/retries`](#setting-the-retries-of-a-job),
@@ -451,6 +453,11 @@ before the upgrade:
    - For a restored backup taken by an older release, it is the time of the backup.
 4. **Compare.** A job was created before the upgrade if its `createdAt` lies before the boundary of
    its partition.
+5. **Repeat.** List both states again until a full pass finds no further job created before the
+   upgrade. The pages are counted from the first row of the state at each request, so when a job
+   leaves the state between two requests, for example because it completes, every later job moves
+   up by one, and the job which moves onto a page already read is skipped. A job which changes
+   between `active` and `failed` during a pass can be missed as well.
 
 List by key, not by `createdAt`: the sort by key works on every release, also while the cluster
 runs several versions. Releases up to and including 1.10.0 ignore `sortBy=createdAt` on this

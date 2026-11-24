@@ -136,7 +136,9 @@ paths:
           schema:
             type: string
             enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
-          description: Sort field
+          description: >
+            Sort field. When omitted, the definitions are sorted by
+            `dmnResourceDefinitionId` ascending and, within one, by `version` descending.
         - $ref: "#/components/parameters/sortOrder"
         - name: dmnResourceDefinitionId
           in: query
@@ -431,7 +433,7 @@ paths:
           schema:
             type: string
             enum: [evaluatedAt, key]
-          description: Sort field
+          description: Sort field. When omitted, the latest evaluation comes first.
         - $ref: "#/components/parameters/sortOrder"
       responses:
         200:
@@ -697,13 +699,13 @@ paths:
           schema:
             type: string
             enum: [name, bpmnProcessId, bpmnProcessName, version, key]
-          description: Sort field
+          description: Sort field. When omitted, the newest key comes first.
         - name: sortOrder
           in: query
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction of `sortBy`; `asc` when omitted
+          description: Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
         - name: bpmnProcessId
           in: query
           schema:
@@ -952,13 +954,16 @@ paths:
           schema:
             type: string
             enum: [name, bpmnProcessId, version, instanceCount, incidentCount]
-          description: Sort field
+          description: >
+            Sort field. `incidentCount` sorts by `instanceCounts.withIncident`, the number
+            of process instances with an unresolved incident, not by the number of their
+            incidents. When omitted, the newest key comes first.
         - name: sortOrder
           in: query
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction of `sortBy`; `asc` when omitted
+          description: Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
       responses:
         200:
           description: Process definition statistics
@@ -1167,7 +1172,9 @@ paths:
           schema:
             type: string
             enum: [createdAt, key, state, businessKey, bpmnProcessId]
-          description: Sort field (applies globally across partitions)
+          description: >
+            Sort field (applies globally across partitions). When omitted, the latest
+            created instance comes first.
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
           in: query
@@ -1493,7 +1500,9 @@ paths:
           schema:
             type: string
             enum: [key, state]
-          description: Sort field (applies globally across partitions)
+          description: >
+            Sort field (applies globally across partitions). When omitted, the latest
+            created instance comes first.
         - $ref: "#/components/parameters/sortOrder"
         - name: state
           in: query
@@ -1752,12 +1761,13 @@ paths:
           schema:
             type: string
             enum: [createdAt]
+          description: Sort field. When omitted, the latest created element comes first.
         - name: sortOrder
           in: query
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction of `sortBy`; `asc` when omitted
+          description: Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
       responses:
         200:
           description: List of activities
@@ -2199,13 +2209,13 @@ paths:
           schema:
             type: string
             enum: [createdAt, key, type, state]
-          description: Sort field
+          description: Sort field. When omitted, the newest key comes first.
         - name: sortOrder
           in: query
           schema:
             type: string
             enum: [asc, desc]
-          description: Sort direction of `sortBy`; `asc` when omitted
+          description: Sort direction of `sortBy`; `asc` when omitted. Ignored without `sortBy`.
       responses:
         200:
           description: List of jobs on partitions
@@ -4352,4 +4362,4 @@ components:
       schema:
         type: string
         enum: [asc, desc]
-      description: Sort direction of `sortBy`; `desc` when omitted
+      description: Sort direction of `sortBy`; `desc` when omitted. Ignored without `sortBy`.

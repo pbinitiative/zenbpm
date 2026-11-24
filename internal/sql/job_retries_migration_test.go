@@ -11,8 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// jobRetriesMigration is the migration job-level retries arrived with.
-const jobRetriesMigration = "0018_job_retries.up.sql"
+const (
+	// jobRetriesMigration is the migration job-level retries arrived with, in 1.9.0.
+	jobRetriesMigration = "0018_job_retries.up.sql"
+	// lastMigrationBeforeJobRetriesRelease is the latest migration 1.8.0 shipped,
+	// the last release before 1.9.0. Migrations 0016 and 0017 came with 1.9.0 too.
+	lastMigrationBeforeJobRetriesRelease = "0015_process_definition_id_version_unique.up.sql"
+)
 
 // TestJobRetriesMigrationGivesExistingJobsOneRetry pins the compatibility
 // policy of the upgrade to job-level retries (see docs/reference/jobs.md,
@@ -26,8 +31,8 @@ const jobRetriesMigration = "0018_job_retries.up.sql"
 //
 // A migration which shipped is not edited, so the policy would change through
 // a later one, a backfill from the task definitions for example. The jobs are
-// therefore stored in the schema as it was before migration 0018, and the
-// policy is read after that migration and every later one.
+// therefore stored in the schema of 1.8.0, the last one a node older than 1.9.0
+// wrote to, and the policy is read after every migration since.
 func TestJobRetriesMigrationGivesExistingJobsOneRetry(t *testing.T) {
 	db, err := stdsql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
@@ -42,10 +47,16 @@ func TestJobRetriesMigrationGivesExistingJobsOneRetry(t *testing.T) {
 	slices.SortFunc(migrations, func(a, b MigrationData) int {
 		return strings.Compare(a.Filename, b.Filename)
 	})
-	upgrade := slices.IndexFunc(migrations, func(migration MigrationData) bool {
-		return migration.Filename == jobRetriesMigration
-	})
-	require.Positive(t, upgrade, "%s is not among the migrations", jobRetriesMigration)
+	indexOf := func(filename string) int {
+		t.Helper()
+		index := slices.IndexFunc(migrations, func(migration MigrationData) bool {
+			return migration.Filename == filename
+		})
+		require.NotEqual(t, -1, index, "%s is not among the migrations", filename)
+		return index
+	}
+	upgrade := indexOf(lastMigrationBeforeJobRetriesRelease) + 1
+	require.GreaterOrEqual(t, indexOf(jobRetriesMigration), upgrade, "the upgrade to 1.9.0 applies %s", jobRetriesMigration)
 	apply := func(migrations Migrations) {
 		t.Helper()
 		for _, migration := range migrations {

@@ -169,6 +169,14 @@ func IsSendToGonePeer(err error) bool {
 	return IsCanceled(err) || status.Code(err) == codes.Unavailable
 }
 
+// IsSendOverLimit reports whether a send on a server-side gRPC stream failed
+// because the message is over this server's send limit. gRPC checks the limit
+// before it touches the stream, so neither a peer that went away nor this
+// server stopping causes the failure.
+func IsSendOverLimit(err error) bool {
+	return status.Code(err) == codes.ResourceExhausted
+}
+
 func Join(new error, original *ZenError) *ZenError {
 	return &ZenError{original.Code, errors.Join(new, original.err)}
 }

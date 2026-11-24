@@ -280,7 +280,8 @@ func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
 // TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError verifies that
 // a response send failing because the client went away, having cancelled its
 // stream or closed its connection, or because the server stops is no error,
-// while one failing on a live stream is.
+// while one failing on a live stream is. A response over the send limit, which
+// no shutdown causes, is an error on a server that stops too.
 func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	stopped, stop := context.WithCancel(t.Context())
 	stop()
@@ -293,6 +294,7 @@ func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) 
 		{name: "client cancelled its stream", serverCtx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
 		{name: "client closed its connection", serverCtx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
 		{name: "server stops", serverCtx: stopped, sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "debug"},
+		{name: "message over the send limit while the server stops", serverCtx: stopped, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
 		{name: "message that does not encode", serverCtx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {

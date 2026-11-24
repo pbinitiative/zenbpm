@@ -38,6 +38,28 @@ func TestIsCanceled(t *testing.T) {
 	}
 }
 
+func TestIsSendOverLimit(t *testing.T) {
+	overLimit := status.Error(codes.ResourceExhausted, "trying to send message larger than max")
+	tests := []struct {
+		name string
+		err  error
+		over bool
+	}{
+		{name: "nil", err: nil},
+		{name: "gRPC ResourceExhausted status", err: overLimit, over: true},
+		{name: "wrapped gRPC ResourceExhausted status", err: fmt.Errorf("send: %w", overLimit), over: true},
+		{name: "gRPC Internal status", err: status.Error(codes.Internal, "grpc: error while marshaling")},
+		{name: "gRPC Unavailable status", err: status.Error(codes.Unavailable, "transport is closing")},
+		{name: "gRPC Canceled status", err: status.Error(codes.Canceled, "context canceled")},
+		{name: "plain error", err: errors.New("trying to send message larger than max")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.over, IsSendOverLimit(tt.err))
+		})
+	}
+}
+
 func TestIsSendToGonePeer(t *testing.T) {
 	tests := []struct {
 		name string

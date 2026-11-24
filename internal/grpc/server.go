@@ -25,11 +25,9 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats/opentelemetry"
-	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -455,8 +453,7 @@ func refusalReason(err error) string {
 // because the stream ended: a client which closed its connection before the
 // stream sent anything makes the answer fail with Internal ("SendHeader called
 // multiple times"), as it races the status gRPC writes for the handler.
-// ResourceExhausted stays an error: gRPC checks the send limit before it
-// touches the stream, so it is this server's failure whenever it is reported.
+// An answer over the send limit stays an error (see zenerr.IsSendOverLimit).
 // An answer which does not encode is this server's failure too, but fails with
 // Internal as well, so its code does not tell it from the race. Logging a late
 // one at debug level is accepted: the answers are small messages built here.
@@ -467,7 +464,7 @@ func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.Job
 	}
 	select {
 	case <-handlerDone:
-		if status.Code(err) != codes.ResourceExhausted {
+		if !zenerr.IsSendOverLimit(err) {
 			s.logger.Debug("Failed to send a job stream response after the stream ended", "clientID", clientID, "err", err)
 			return false
 		}
@@ -478,15 +475,17 @@ func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.Job
 }
 
 // logSendError logs a failed send on a job stream: at debug level when the
-// client went away or this server stops, as an error otherwise. gRPC answers
-// a send to a client that cancelled its stream with Canceled, and one to a
-// client whose connection closed, which is how a worker normally shuts down,
-// with Unavailable. The stream context does not tell: gRPC aborts the stream,
-// cancelling it, on every failed send, a message that does not encode or is
-// too large included.
+// client went away or this server stops, as an error otherwise. A message over
+// the send limit is an error on a stopping server too, as no shutdown causes
+// it (see zenerr.IsSendOverLimit). gRPC answers a send to a client that
+// cancelled its stream with Canceled, and one to a client whose connection
+// closed, which is how a worker normally shuts down, with Unavailable. The
+// stream context does not tell: gRPC aborts the stream, cancelling it, on every
+// failed send, a message that does not encode or is too large included.
 func (s *Server) logSendError(err error, msg string, args ...any) {
 	args = append(args, "err", err)
-	if zenerr.IsSendToGonePeer(err) || (s.ctx != nil && s.ctx.Err() != nil) {
+	stopping := s.ctx != nil && s.ctx.Err() != nil
+	if zenerr.IsSendToGonePeer(err) || (stopping && !zenerr.IsSendOverLimit(err)) {
 		s.logger.Debug(msg, args...)
 		return
 	}

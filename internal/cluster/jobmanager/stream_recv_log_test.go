@@ -150,7 +150,8 @@ func TestJobClientStreamRecvDoesNotBlockShutdownOnAReceivedJob(t *testing.T) {
 // cancelled its stream with Canceled, and one to a node whose connection
 // closed with Unavailable) or because the server stops is no error, while any
 // other failure stays one, also though gRPC cancelled the stream when it
-// aborted it on the failed send.
+// aborted it on the failed send. A job over the send limit, which no shutdown
+// causes, is an error on a server that stops too.
 func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -166,6 +167,7 @@ func TestJobServerSendLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
 		{name: "failure gRPC aborted the stream on", ctx: t.Context(), abortOnSend: true, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
 		{name: "gRPC Unavailable status of a closed connection", ctx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
 		{name: "failure while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "debug"},
+		{name: "job over the send limit while the server stops", ctx: t.Context(), serverStopped: true, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
 		{name: "message that does not encode", ctx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
 	}
 	for _, tt := range tests {

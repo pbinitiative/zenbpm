@@ -25,9 +25,11 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -109,15 +111,23 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 	defer s.jobManager.RemoveClient(s.ctx, clientID)
 	sendMu := &sync.Mutex{}
 	recvDone := make(chan struct{})
+	// the handler does not wait for the receive loop, which may still answer
+	// a request once the handler returned and gRPC ended the stream;
+	// handlerDone tells such a late answer from one sent on a running stream
+	handlerDone := make(chan struct{})
+	defer close(handlerDone)
 	safego.Go("grpc-job-stream-recv", safego.DefaultLogger, func() {
 		defer close(recvDone)
-		s.recvClientRequests(stream, clientID, sendMu)
+		s.recvClientRequests(stream, clientID, sendMu, handlerDone)
 	})
 	s.sendClientJobs(stream, clientID, clientCh, recvDone, sendMu)
 	return nil
 }
 
-func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex) {
+// recvClientRequests carries out the requests of a job-stream client until
+// the stream ends or an answer cannot be sent. handlerDone is closed once the
+// handler of the stream returned (see sendJobStreamResponse).
+func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex, handlerDone <-chan struct{}) {
 	for {
 		clientReq, err := stream.Recv()
 		if err == io.EOF {
@@ -138,7 +148,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
 				s.logger.Error("failed to decode completed job variables", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
@@ -154,7 +164,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			err = s.jobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
 				s.logJobRequestError(err, "failed to complete job for job-stream client", "clientID", clientID, "jobKey", req.Complete.GetKey(), "variableKeys", variableKeys(req.Complete.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 					Error: completeJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -168,7 +178,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
 				s.logger.Error("failed to decode failed job variables", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    new(uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST)),
 						Message: new("Invalid job variables"),
@@ -185,7 +195,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				req.Fail.Retries, jobmanager.RetryBackoffFromMillis(req.Fail.RetryBackoffMs), deliveryTokenOf(req.Fail.DeliveryToken))
 			if err != nil {
 				s.logJobRequestError(err, "failed to process job failure request for job-stream client", "clientID", clientID, "jobKey", req.Fail.GetKey(), "variableKeys", variableKeys(req.Fail.Variables), "err", err)
-				if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 					Error: failJobError(err),
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -196,7 +206,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 		case *proto.JobStreamRequest_ExtendLock:
-			if !s.sendJobStreamResponse(stream, clientID, sendMu, s.extendLock(stream.Context(), clientID, req.ExtendLock)) {
+			if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, s.extendLock(stream.Context(), clientID, req.ExtendLock)) {
 				return
 			}
 		case *proto.JobStreamRequest_Subscription:
@@ -210,7 +220,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				}
 				if err := s.jobManager.AddClientJobSub(stream.Context(), clientID, jobType, settings); err != nil {
 					s.logger.Error("failed to subscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
-					if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+					if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 						Error: &proto.ErrorResult{
 							Code:    nil,
 							Message: new(fmt.Sprintf("Failed to subscribe to job type %s", jobType)),
@@ -224,7 +234,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				if err := s.jobManager.RemoveClientJobSub(stream.Context(), clientID, jobType); err != nil {
 					s.logger.Error("failed to unsubscribe job-stream client", "clientID", clientID, "jobType", jobType, "err", err)
-					if !s.sendJobStreamResponse(stream, clientID, sendMu, &proto.JobStreamResponse{
+					if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, &proto.JobStreamResponse{
 						Error: &proto.ErrorResult{
 							Code:    nil,
 							Message: new(fmt.Sprintf("Failed to unsubscribe from job type %s", jobType)),
@@ -235,13 +245,13 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 					continue
 				}
 			default:
-				if !s.sendJobStreamResponse(stream, clientID, sendMu, unknownRequestError(req.Subscription.GetType())) {
+				if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, unknownRequestError(req.Subscription.GetType())) {
 					return
 				}
 				continue
 			}
 		default:
-			if !s.sendJobStreamResponse(stream, clientID, sendMu, unknownRequestError(clientReq.Request)) {
+			if !s.sendJobStreamResponse(stream, clientID, sendMu, handlerDone, unknownRequestError(clientReq.Request)) {
 				return
 			}
 			continue
@@ -437,12 +447,34 @@ func refusalReason(err error) string {
 	return err.Error()
 }
 
-func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex, resp *proto.JobStreamResponse) bool {
-	if err := sendJobStreamResponse(stream, sendMu, resp); err != nil {
-		s.logSendError(err, "Failed to send a job stream response", "clientID", clientID)
-		return false
+// sendJobStreamResponse answers a request of a job-stream client and reports
+// whether the answer was sent; a failure is logged (see logSendError).
+//
+// handlerDone is closed once the handler of the stream returned. An answer
+// which fails after that is logged at debug level, as it normally fails
+// because the stream ended: a client which closed its connection before the
+// stream sent anything makes the answer fail with Internal ("SendHeader called
+// multiple times"), as it races the status gRPC writes for the handler.
+// ResourceExhausted stays an error: gRPC checks the send limit before it
+// touches the stream, so it is this server's failure whenever it is reported.
+// An answer which does not encode is this server's failure too, but fails with
+// Internal as well, so its code does not tell it from the race. Logging a late
+// one at debug level is accepted: the answers are small messages built here.
+func (s *Server) sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex, handlerDone <-chan struct{}, resp *proto.JobStreamResponse) bool {
+	err := sendJobStreamResponse(stream, sendMu, resp)
+	if err == nil {
+		return true
 	}
-	return true
+	select {
+	case <-handlerDone:
+		if status.Code(err) != codes.ResourceExhausted {
+			s.logger.Debug("Failed to send a job stream response after the stream ended", "clientID", clientID, "err", err)
+			return false
+		}
+	default:
+	}
+	s.logSendError(err, "Failed to send a job stream response", "clientID", clientID)
+	return false
 }
 
 // logSendError logs a failed send on a job stream: at debug level when the

@@ -66,59 +66,127 @@ func TestJobStreamLogsALocalSendFailureAsAnError(t *testing.T) {
 	assert.Equal(t, "error", logs.levelOf("Failed to send a job to the job stream"), "log: %s", logs)
 }
 
+// The two messages of an answer that could not be sent: one for a stream whose
+// handler still runs, one for a stream whose handler returned.
+const (
+	sendFailureMessage     = "Failed to send a job stream response"
+	lateSendFailureMessage = "Failed to send a job stream response after the stream ended"
+)
+
 // TestJobStreamLogsASendToAClientThatClosedItsConnectionBelowError runs a job
 // stream over a real gRPC server whose client closes its channel, which is how
 // a worker normally shuts down, while the answer to its request is on the way.
-// gRPC fails that send with Unavailable, not with the Canceled of a cancelled
-// stream, and the departure is no error all the same.
+// The departure is no error, whatever gRPC makes of the send: on a stream that
+// has carried an answer it fails with Unavailable, not with the Canceled of a
+// cancelled stream. The first answer of a stream may instead race the status
+// gRPC writes once the handler returned, and fail with Internal.
 func TestJobStreamLogsASendToAClientThatClosedItsConnectionBelowError(t *testing.T) {
+	tests := []struct {
+		name string
+		// answeredBefore has the stream carry an answer before the client
+		// leaves, as that of a worker at work
+		answeredBefore bool
+	}{
+		{name: "a stream that has carried an answer", answeredBefore: true},
+		{name: "the first answer of a stream"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := &sendErrorTestLog{}
+			manager := &blockingExtendTestManager{extending: make(chan struct{})}
+			server := &Server{
+				ctx:        t.Context(),
+				jobManager: manager,
+				logger:     hclog.New(&hclog.LoggerOptions{Output: logs, JSONFormat: true, Level: hclog.Trace}),
+			}
+			listener := bufconn.Listen(1 << 20)
+			grpcServer := grpc.NewServer()
+			proto.RegisterZenBpmServer(grpcServer, server)
+			go func() { _ = grpcServer.Serve(listener) }()
+			t.Cleanup(grpcServer.Stop)
+
+			conn, err := grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+				grpc.WithTransportCredentials(insecure.NewCredentials()))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = conn.Close() })
+			stream, err := proto.NewZenBpmClient(conn).JobStream(metadata.AppendToOutgoingContext(t.Context(), jobmanager.MetadataClientID, "client-1"))
+			require.NoError(t, err)
+			if tt.answeredBefore {
+				require.NoError(t, stream.Send(extendLockRequest(1, 0)))
+				_, err = stream.Recv()
+				require.NoError(t, err)
+			}
+			require.NoError(t, stream.Send(extendLockRequest(blockedExtensionKey, 0)))
+			select {
+			case <-manager.extending:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the lock extension did not reach the job manager")
+			}
+
+			// the extension returns once the stream ended, so its answer is
+			// sent to a client that has left
+			require.NoError(t, conn.Close())
+
+			// the handler may or may not have returned when the answer fails
+			sendFailure := func() map[string]any {
+				if entry := logs.entryOf(sendFailureMessage); entry != nil {
+					return entry
+				}
+				return logs.entryOf(lateSendFailureMessage)
+			}
+			require.Eventually(t, func() bool { return sendFailure() != nil }, 5*time.Second, 5*time.Millisecond, "log: %s", logs)
+			entry := sendFailure()
+			if tt.answeredBefore {
+				assert.Contains(t, entry["err"], "code = Unavailable", "the send failed on the closed connection; log: %s", logs)
+			}
+			assert.Equal(t, "debug", entry["@level"], "log: %s", logs)
+			assert.Equal(t, "client-1", entry["clientID"])
+			assert.NotContains(t, logs.String(), `"@level":"error"`, "a client leaving logs no error")
+		})
+	}
+}
+
+// TestJobStreamLogsAnAnswerSentAfterTheHandlerReturnedBelowError verifies
+// that the handler of a job stream marks its return for the receive loop,
+// which it does not wait for. The answer the loop sends afterwards goes to a
+// stream gRPC has ended, and the Internal status gRPC then fails the first
+// send of a stream with says nothing about this server.
+func TestJobStreamLogsAnAnswerSentAfterTheHandlerReturnedBelowError(t *testing.T) {
 	logs := &sendErrorTestLog{}
-	manager := &blockingExtendTestManager{extending: make(chan struct{})}
 	server := &Server{
 		ctx:        t.Context(),
-		jobManager: manager,
+		jobManager: &jobStreamTestManager{},
 		logger:     hclog.New(&hclog.LoggerOptions{Output: logs, JSONFormat: true, Level: hclog.Trace}),
 	}
-	listener := bufconn.Listen(1 << 20)
-	grpcServer := grpc.NewServer()
-	proto.RegisterZenBpmServer(grpcServer, server)
-	go func() { _ = grpcServer.Serve(listener) }()
-	t.Cleanup(grpcServer.Stop)
+	// the client has left: the stream is cancelled, and its request is
+	// received only once the handler returned
+	left, leave := context.WithCancel(t.Context())
+	leave()
+	stream := &heldRecvTestStream{jobStreamTestServer: newJobStreamTestServer(extendLockRequest(7, 0)), release: make(chan struct{})}
+	stream.ctx = left
+	stream.sendErr = status.Error(codes.Internal, "transport: SendHeader called multiple times")
 
-	conn, err := grpc.NewClient("passthrough:///bufnet",
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-	stream, err := proto.NewZenBpmClient(conn).JobStream(metadata.AppendToOutgoingContext(t.Context(), jobmanager.MetadataClientID, "client-1"))
-	require.NoError(t, err)
-	extendLock := func(key int64) *proto.JobStreamRequest {
-		return &proto.JobStreamRequest{Request: &proto.JobStreamRequest_ExtendLock{ExtendLock: &proto.JobExtendLockRequest{Key: &key}}}
-	}
-	// the stream has carried an answer already, as that of a worker at work
-	require.NoError(t, stream.Send(extendLock(1)))
-	_, err = stream.Recv()
-	require.NoError(t, err)
-	require.NoError(t, stream.Send(extendLock(blockedExtensionKey)))
-	select {
-	case <-manager.extending:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the lock extension did not reach the job manager")
-	}
+	require.NoError(t, server.JobStream(stream))
+	close(stream.release)
 
-	// the extension returns once the stream ended, so its answer is sent to
-	// a client that has left
-	require.NoError(t, conn.Close())
-
-	const message = "Failed to send a job stream response"
 	require.Eventually(t, func() bool {
-		return logs.entryOf(message) != nil
+		return logs.entryOf(lateSendFailureMessage) != nil
 	}, 5*time.Second, 5*time.Millisecond, "log: %s", logs)
-	entry := logs.entryOf(message)
-	assert.Contains(t, entry["err"], "code = Unavailable", "the send failed on the closed connection; log: %s", logs)
-	assert.Equal(t, "debug", entry["@level"], "log: %s", logs)
-	assert.Equal(t, "client-1", entry["clientID"])
+	assert.Equal(t, "debug", logs.levelOf(lateSendFailureMessage), "log: %s", logs)
 	assert.NotContains(t, logs.String(), `"@level":"error"`, "a client leaving logs no error")
+}
+
+// heldRecvTestStream is a job stream whose requests are received only once
+// release is closed.
+type heldRecvTestStream struct {
+	*jobStreamTestServer
+	release chan struct{}
+}
+
+func (s *heldRecvTestStream) Recv() (*proto.JobStreamRequest, error) {
+	<-s.release
+	return s.jobStreamTestServer.Recv()
 }
 
 // blockedExtensionKey is the job whose lock extension

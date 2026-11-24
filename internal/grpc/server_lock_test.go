@@ -29,7 +29,7 @@ func TestRecvClientRequestsPassesSubscriptionSettingsOn(t *testing.T) {
 	})
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, manager.subscribedSettings, 1)
 	assert.Equal(t, jobmanager.SubscriptionSettings{LockDuration: 5 * time.Second, MaxActiveJobs: 3}, manager.subscribedSettings[0])
@@ -49,7 +49,7 @@ func TestRecvClientRequestsSaturatesUnrepresentableDurations(t *testing.T) {
 	stream.requests[1].GetExtendLock().LockDurationMs = new(int64(math.MaxInt64))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, manager.subscribedSettings, 1)
 	assert.Equal(t, time.Duration(math.MaxInt64), manager.subscribedSettings[0].LockDuration, "a huge request stays huge for the leader to cap, it does not wrap to a default request")
@@ -68,7 +68,7 @@ func TestRecvClientRequestsPassesTheDeliveryOfALockExtensionOn(t *testing.T) {
 	stream := newJobStreamTestServer(named, extendLockRequest(7, 0))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, manager.extendedDeliveries, 2)
 	assert.Equal(t, new(int64(3)), manager.extendedDeliveries[0])
@@ -81,7 +81,7 @@ func TestRecvClientRequestsAnswersLockExtensionWithTheDeadline(t *testing.T) {
 	stream := newJobStreamTestServer(extendLockRequest(7, 2*time.Second))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	assert.Equal(t, []int64{7}, manager.extendedKeys)
 	assert.Equal(t, []time.Duration{2 * time.Second}, manager.extendedDurations)
@@ -109,7 +109,7 @@ func TestRecvClientRequestsReportsLockExtensionRefusalByCode(t *testing.T) {
 			stream := newJobStreamTestServer(extendLockRequest(7, 0))
 			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			require.Len(t, stream.sent, 1)
 			require.NotNil(t, stream.sent[0].Error)
@@ -186,7 +186,7 @@ func TestRecvClientRequestsPassesRetriesAndBackoffOn(t *testing.T) {
 	stream := newJobStreamTestServer(withRetries, failRequest(nil))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, manager.failedRetries, 2)
 	assert.Equal(t, new(int32(3)), manager.failedRetries[0])
@@ -215,7 +215,7 @@ func TestRecvClientRequestsReadsATokenOfZeroAsNone(t *testing.T) {
 	stream := newJobStreamTestServer(failure, extension)
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, manager.failedDeliveries, 1)
 	assert.Nil(t, manager.failedDeliveries[0])
@@ -241,7 +241,7 @@ func TestRecvClientRequestsReportsWhyAFailureWasNotRecordedByCode(t *testing.T) 
 			stream := newJobStreamTestServer(failRequest(nil))
 			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			require.Len(t, stream.sent, 1)
 			require.NotNil(t, stream.sent[0].Error)
@@ -274,7 +274,7 @@ func TestRecvClientRequestsReportsWhyACompletionWasNotRecordedByCode(t *testing.
 			stream := newJobStreamTestServer(completeRequest(nil))
 			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			require.Len(t, stream.sent, 1)
 			require.NotNil(t, stream.sent[0].Error)
@@ -292,7 +292,7 @@ func TestRecvClientRequestsCodesUndecodableCompletionVariablesAsAnInvalidRequest
 	stream := newJobStreamTestServer(completeRequest([]byte(`{"broken":`)))
 	server := &Server{jobManager: &jobStreamTestManager{}, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST), stream.sent[0].Error.GetCode())
@@ -310,7 +310,7 @@ func TestRecvClientRequestsPassesTheEngineReasonOfAnInvalidRequestOn(t *testing.
 	stream := newJobStreamTestServer(failRequest(nil))
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, "Invalid job failure request: retry backoff of job 42 must not be negative: invalid job request: got -1s", stream.sent[0].Error.GetMessage())
@@ -323,7 +323,7 @@ func TestRecvClientRequestsCodesUndecodableFailureVariablesAsAnInvalidRequest(t 
 	stream := newJobStreamTestServer(failRequest([]byte(`{"broken":`)))
 	server := &Server{jobManager: &jobStreamTestManager{}, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, uint32(proto.JobStreamErrorCode_JOB_STREAM_ERROR_CODE_INVALID_REQUEST), stream.sent[0].Error.GetCode())

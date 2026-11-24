@@ -2,11 +2,13 @@ package sql
 
 import (
 	stdsql "database/sql"
+	"encoding/xml"
 	"slices"
 	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/require"
 )
@@ -18,6 +20,30 @@ const (
 	// the last release before 1.9.0. Migrations 0016 and 0017 came with 1.9.0 too.
 	lastMigrationBeforeJobRetriesRelease = "0015_process_definition_id_version_unique.up.sql"
 )
+
+// chargeDefinition is the definition the stored jobs belong to. Its task names
+// retries and a backoff, as the example of docs/reference/jobs.md does, which
+// a node older than 1.9.0 did not read and the migration does not read either.
+const chargeDefinition = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_charge" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="charge" name="Charge" isExecutable="true">
+    <bpmn:startEvent id="start">
+      <bpmn:outgoing>to-charge-card</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="to-charge-card" sourceRef="start" targetRef="charge-card" />
+    <bpmn:serviceTask id="charge-card" name="Charge card">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="charge-card" retries="3" retryBackoff="PT1M" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>to-charge-card</bpmn:incoming>
+      <bpmn:outgoing>to-end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="to-end" sourceRef="charge-card" targetRef="end" />
+    <bpmn:endEvent id="end">
+      <bpmn:incoming>to-end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>`
 
 // TestJobRetriesMigrationGivesExistingJobsOneRetry pins the compatibility
 // policy of the upgrade to job-level retries (see docs/reference/jobs.md,
@@ -32,7 +58,9 @@ const (
 // A migration which shipped is not edited, so the policy would change through
 // a later one, a backfill from the task definitions for example. The jobs are
 // therefore stored in the schema of 1.8.0, the last one a node older than 1.9.0
-// wrote to, and the policy is read after every migration since.
+// wrote to, and the policy is read after every migration since. Their task
+// definition names three retries and a backoff, so that a backfill which reads
+// the definitions has something to give them.
 func TestJobRetriesMigrationGivesExistingJobsOneRetry(t *testing.T) {
 	db, err := stdsql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
@@ -67,11 +95,24 @@ func TestJobRetriesMigrationGivesExistingJobsOneRetry(t *testing.T) {
 
 	apply(migrations[:upgrade])
 
-	// what a node older than 1.9.0 stored: an instance with one job in every
-	// state, keyed by its state, and an open incident
+	// the definition is one the engine reads, and its task asks for other
+	// retries than the migration gives its jobs
+	var definitions bpmn20.TDefinitions
+	require.NoError(t, xml.Unmarshal([]byte(chargeDefinition), &definitions))
+	require.NoError(t, definitions.ValidateForDeployment())
+	task := definitions.Process.GetInternalTaskById("charge-card")
+	require.NotNil(t, task, "the definition has no task for the jobs")
+	require.Equal(t, "charge-card", task.GetTaskDefinition().TypeName)
+	require.Equal(t, "3", task.GetTaskDefinition().Retries)
+	require.Equal(t, "PT1M", task.GetTaskDefinition().RetryBackoff)
+
+	// what a node older than 1.9.0 stored: an instance with one job of that
+	// task in every state, keyed by its state, and an open incident
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO process_definition (key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_process_name)
-		VALUES (1, 1, 'charge', '<definitions/>', x'00', 'Charge');
+		VALUES (1, 1, 'charge', ?, x'00', 'Charge')`, chargeDefinition)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
 		INSERT INTO process_instance (key, process_definition_key, created_at, state, variables, process_type)
 		VALUES (2, 1, 1000, 1, '{}', 0);
 		INSERT INTO incident (key, element_instance_key, element_id, process_instance_key, message, created_at, execution_token)
@@ -116,7 +157,8 @@ func TestJobRetriesMigrationGivesExistingJobsOneRetry(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.NoError(t, rows.Close())
 
-	// one retry, a fresh series, no backoff of its own, nothing an operator set, never delivered
+	// one retry, not the definition's three; a fresh series, no backoff of its
+	// own, nothing an operator set, never delivered
 	expected := make(map[runtime.ActivityState]migratedJob)
 	for _, state := range states {
 		expected[state] = migratedJob{retries: 1}

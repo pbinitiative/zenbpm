@@ -451,8 +451,13 @@ before the upgrade:
    - If the leadership went back to an older node meanwhile, it is when that node last stopped
      leading.
    - For a restored backup taken by an older release, it is the time of the backup.
-4. **Compare.** A job was created before the upgrade if its `createdAt` lies before the boundary of
-   its partition.
+4. **Compare.** A job whose `createdAt` lies before the boundary of its partition is a candidate.
+   Unless the leadership went back to an older node, every candidate was created before the
+   upgrade. If it did, a node of 1.9.0 or later led the partition for a time before the boundary,
+   and the jobs it created then are candidates too, although they have the retries and the backoff
+   of their definitions. A job does not record which release created it, so the time decides here
+   as well: such a candidate was created before the upgrade only if its `createdAt` lies before the
+   migration, or within a time an older node led the partition after it.
 5. **Repeat.** List both states again until a full pass finds no further job created before the
    upgrade. The pages are counted from the first row of the state at each request, so when a job
    leaves the state between two requests, for example because it completes, every later job moves

@@ -319,6 +319,16 @@ the field and its environment variable. As with `jobManager`, a value left out t
 while a value written in the file or the environment is validated as written. Zeebe gives a job
 three attempts by default; set `JOBS_DEFAULT_RETRIES=3` for the same.
 
+`defaultRetries` gives a job whose task definition names no `retries` its retries when the job is
+created, and again when the resolution of the job's own incident starts a new series, unless
+retries an operator set are kept or given with the resolution. `defaultRetryBackoff` applies
+whenever a job whose task definition named no backoff is retried after a failure which names no
+backoff of its own. A change of either therefore reaches the jobs which already exist at those
+moments. Jobs created by a node older than 1.9.0 start with `1` retry, whatever `defaultRetries`
+says, until the resolution of their own incident starts a new series. For as long as they live,
+`defaultRetryBackoff` is what they back off by unless a failure names its own backoff (see
+[Jobs created before job-level retries](jobs.md#jobs-created-before-job-level-retries)).
+
 ---
 
 ## Tracing Configuration: `Tracing`

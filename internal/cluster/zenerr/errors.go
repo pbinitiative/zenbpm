@@ -1,12 +1,15 @@
 package zenerr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -140,6 +143,38 @@ func IsUnavailable(err error) bool {
 func IsConflict(err error) bool {
 	var zerr *ZenError
 	return errors.As(err, &zerr) && zerr.Code == ConflictCode
+}
+
+// IsCanceled reports whether err stems from a cancelled call or stream, either
+// as a Go context error or as a gRPC Canceled status. gRPC reports the
+// cancellation of a stream's context (a peer disconnecting or a node shutting
+// down) as status.Error(codes.Canceled, ...), which errors.Is(err,
+// context.Canceled) does not match.
+func IsCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
+}
+
+// IsSendToGonePeer reports whether a send on a server-side gRPC stream failed
+// because its peer went away, not because of the message or this server.
+// gRPC answers such a send with Canceled while the connection is still open
+// (the peer cancelled the stream) and with Unavailable once the connection
+// closed (the peer closed its channel, which is how a client normally shuts
+// down, crashed, or the network dropped). A failure of this server's own
+// making has another code: Internal for a message that does not encode,
+// ResourceExhausted for one over the send limit.
+//
+// It is for server-side sends only. On a receive, and on the client side of a
+// stream, Unavailable is a transport failure worth reporting.
+func IsSendToGonePeer(err error) bool {
+	return IsCanceled(err) || status.Code(err) == codes.Unavailable
+}
+
+// IsSendOverLimit reports whether a send on a server-side gRPC stream failed
+// because the message is over this server's send limit. gRPC checks the limit
+// before it touches the stream, so neither a peer that went away nor this
+// server stopping causes the failure.
+func IsSendOverLimit(err error) bool {
+	return status.Code(err) == codes.ResourceExhausted
 }
 
 func Join(new error, original *ZenError) *ZenError {

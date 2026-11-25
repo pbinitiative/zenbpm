@@ -16,7 +16,9 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func TestJobStreamRemovesClientWhenReceiveLoopEnds(t *testing.T) {
@@ -58,7 +60,7 @@ func TestRecvClientRequestsSanitizesSubscriptionErrors(t *testing.T) {
 			stream := newJobStreamTestServer(subscriptionRequest(tt.requestType))
 			server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			require.Len(t, stream.sent, 1)
 			require.NotNil(t, stream.sent[0].Error)
@@ -122,7 +124,7 @@ func TestRecvClientRequestsSanitizesJobOperationErrors(t *testing.T) {
 			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true})
 			server := &Server{jobManager: manager, logger: logger}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			require.Len(t, stream.sent, 1)
 			require.NotNil(t, stream.sent[0].Error)
@@ -178,11 +180,181 @@ func TestRecvClientRequestsLogsAnExpectedRefusalAsAWarning(t *testing.T) {
 			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true})
 			server := &Server{jobManager: manager, logger: logger}
 
-			server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 			var entry map[string]any
 			require.NoError(t, json.Unmarshal(bytes.SplitN(logOutput.Bytes(), []byte("\n"), 2)[0], &entry), "log: %s", logOutput.String())
 			assert.Equal(t, tt.level, entry["@level"])
+		})
+	}
+}
+
+// TestRecvClientRequestsLogsAnExpectedStreamEndBelowError shows a job stream
+// ended by its client disconnecting or by the node shutting down is no error,
+// whether the cancellation surfaces as a context error or as the gRPC Canceled
+// status a cancelled stream reports, while a transport failure stays visible
+// as an error.
+func TestRecvClientRequestsLogsAnExpectedStreamEndBelowError(t *testing.T) {
+	tests := []struct {
+		name    string
+		recvErr error
+		level   string
+	}{
+		{name: "context cancellation", recvErr: context.Canceled, level: "debug"},
+		{name: "gRPC Canceled status", recvErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "gRPC Unavailable status", recvErr: status.Error(codes.Unavailable, "transport is closing"), level: "error"},
+		{name: "unexpected error", recvErr: errors.New("broken pipe"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.recvErr = tt.recvErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{jobManager: &jobStreamTestManager{}, logger: logger}
+
+			server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
+
+			lines := bytes.Split(bytes.TrimSpace(logOutput.Bytes()), []byte("\n"))
+			require.Len(t, lines, 1, "log: %s", logOutput.String())
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+			assert.Equal(t, "client-1", entry["clientID"])
+		})
+	}
+}
+
+// TestSendClientJobsStopsAfterAFailedSend verifies that a job send failing
+// because the client went away, having cancelled its stream or closed its
+// connection, is no error while one failing on a live stream stays one, and
+// that the stream, done once a send failed, takes no further jobs.
+func TestSendClientJobsStopsAfterAFailedSend(t *testing.T) {
+	tests := []struct {
+		name    string
+		sendErr error
+		level   string
+	}{
+		{name: "gRPC Canceled status of a cancelled stream", sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "gRPC Unavailable status of a closed connection", sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "failure on a live stream", sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.sendErr = tt.sendErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{ctx: t.Context(), logger: logger}
+			clientCh := make(chan jobmanager.Job, 2)
+			clientCh <- jobmanager.Job{Key: 7, Type: "job-a"}
+			clientCh <- jobmanager.Job{Key: 8, Type: "job-a"}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				server.sendClientJobs(stream, "client-1", clientCh, make(chan struct{}), &sync.Mutex{})
+			}()
+			require.Eventually(t, func() bool {
+				select {
+				case <-done:
+					return true
+				default:
+					return false
+				}
+			}, 5*time.Second, 5*time.Millisecond, "the send loop returns after the failed send")
+
+			assert.Len(t, clientCh, 1, "the next job is left to the job manager")
+			lines := bytes.Split(bytes.TrimSpace(logOutput.Bytes()), []byte("\n"))
+			require.Len(t, lines, 1, "log: %s", logOutput.String())
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(lines[0], &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+			assert.NotContains(t, entry["@message"], "%w")
+			assert.Equal(t, "client-1", entry["clientID"])
+			assert.EqualValues(t, 7, entry["jobKey"])
+		})
+	}
+}
+
+// TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError verifies that
+// a response send failing because the client went away, having cancelled its
+// stream or closed its connection, or because the server stops is no error,
+// while one failing on a live stream is. A response over the send limit, which
+// no shutdown causes, is an error on a server that stops too.
+func TestSendJobStreamResponseLogsAStreamEndedOnPurposeBelowError(t *testing.T) {
+	stopped, stop := context.WithCancel(t.Context())
+	stop()
+	tests := []struct {
+		name      string
+		serverCtx context.Context
+		sendErr   error
+		level     string
+	}{
+		{name: "client cancelled its stream", serverCtx: t.Context(), sendErr: status.Error(codes.Canceled, "context canceled"), level: "debug"},
+		{name: "client closed its connection", serverCtx: t.Context(), sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug"},
+		{name: "server stops", serverCtx: stopped, sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "debug"},
+		{name: "message over the send limit while the server stops", serverCtx: stopped, sendErr: status.Error(codes.ResourceExhausted, "trying to send message larger than max"), level: "error"},
+		{name: "message that does not encode", serverCtx: t.Context(), sendErr: status.Error(codes.Internal, "grpc: error while marshaling"), level: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.sendErr = tt.sendErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{ctx: tt.serverCtx, logger: logger}
+
+			assert.False(t, server.sendJobStreamResponse(stream, "client-1", &sync.Mutex{}, nil, &proto.JobStreamResponse{}))
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(bytes.TrimSpace(logOutput.Bytes()), &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+			assert.Equal(t, "client-1", entry["clientID"])
+		})
+	}
+}
+
+// TestSendJobStreamResponseLogsALateAnswerBelowError verifies that an answer
+// failing once the handler of its stream returned is no error, whatever the
+// transport says about a stream gRPC had ended already, while the same
+// failure on a running stream is one. An answer over the send limit, which
+// gRPC refuses before it touches the stream, stays an error either way.
+func TestSendJobStreamResponseLogsALateAnswerBelowError(t *testing.T) {
+	running := make(chan struct{})
+	returned := make(chan struct{})
+	close(returned)
+	const sent, late = "Failed to send a job stream response", "Failed to send a job stream response after the stream ended"
+	racedStatus := status.Error(codes.Internal, "transport: SendHeader called multiple times")
+	overLimit := status.Error(codes.ResourceExhausted, "trying to send message larger than max")
+	tests := []struct {
+		name        string
+		handlerDone chan struct{}
+		sendErr     error
+		level       string
+		message     string
+	}{
+		{name: "answer racing the status of a returned handler", handlerDone: returned, sendErr: racedStatus, level: "debug", message: late},
+		{name: "the same failure on a running stream", handlerDone: running, sendErr: racedStatus, level: "error", message: sent},
+		{name: "answer to a closed connection after the handler returned", handlerDone: returned, sendErr: status.Error(codes.Unavailable, "transport is closing"), level: "debug", message: late},
+		{name: "answer over the send limit after the handler returned", handlerDone: returned, sendErr: overLimit, level: "error", message: sent},
+		{name: "answer over the send limit on a running stream", handlerDone: running, sendErr: overLimit, level: "error", message: sent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := newJobStreamTestServer()
+			stream.sendErr = tt.sendErr
+			var logOutput bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &logOutput, JSONFormat: true, Level: hclog.Trace})
+			server := &Server{ctx: t.Context(), logger: logger}
+
+			assert.False(t, server.sendJobStreamResponse(stream, "client-1", &sync.Mutex{}, tt.handlerDone, &proto.JobStreamResponse{}))
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(bytes.TrimSpace(logOutput.Bytes()), &entry), "log: %s", logOutput.String())
+			assert.Equal(t, tt.level, entry["@level"])
+			assert.Equal(t, tt.message, entry["@message"])
+			assert.Equal(t, "client-1", entry["clientID"])
 		})
 	}
 }
@@ -196,7 +368,7 @@ func TestRecvClientRequestsStopsAfterSubscriptionErrorSendFailure(t *testing.T) 
 	stream.sendErr = errors.New("stream closed")
 	server := &Server{jobManager: manager, logger: hclog.NewNullLogger()}
 
-	server.recvClientRequests(stream, "client-1", &sync.Mutex{})
+	server.recvClientRequests(stream, "client-1", &sync.Mutex{}, nil)
 
 	assert.Equal(t, 1, stream.recvCalls, "the receive loop must stop after the stream rejects a response")
 	assert.Equal(t, 1, manager.subscribeCalls)
@@ -327,6 +499,8 @@ type jobStreamTestServer struct {
 	recvCalls int
 	sent      []*proto.JobStreamResponse
 	sendErr   error
+	// recvErr ends the stream once the requests are consumed (io.EOF if nil)
+	recvErr error
 }
 
 func newJobStreamTestServer(requests ...*proto.JobStreamRequest) *jobStreamTestServer {
@@ -335,6 +509,9 @@ func newJobStreamTestServer(requests ...*proto.JobStreamRequest) *jobStreamTestS
 
 func (s *jobStreamTestServer) Recv() (*proto.JobStreamRequest, error) {
 	if s.recvCalls >= len(s.requests) {
+		if s.recvErr != nil {
+			return nil, s.recvErr
+		}
 		return nil, io.EOF
 	}
 	req := s.requests[s.recvCalls]

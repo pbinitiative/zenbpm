@@ -323,17 +323,14 @@ func shortDescriptionOf(value any) string {
 
 // fieldDescriptionOf names a field of a FEEL date or duration an error message
 // quotes, where the field is not what the FEEL runtime puts there. A context
-// or a list is named by its kind only: a context made to look like a date or
-// a duration may hold anything the instance knows, and the message becomes
-// that of an incident. The reason of a value Luxon marked invalid, a context
-// of its own, is quoted, as it tells what is wrong. Anything else is described
-// as shortDescriptionOf does.
+// or a list is named by its kind only, whatever it holds: a context made to
+// look like a date or a duration, which takes no more than its
+// isLuxonDateTime or isLuxonDuration field, may hold anything the instance
+// knows, and the message becomes that of an incident. Anything else is
+// described as shortDescriptionOf does.
 func fieldDescriptionOf(value any) string {
-	switch field := value.(type) {
+	switch value.(type) {
 	case map[string]any:
-		if reason, ok := field["reason"].(string); ok {
-			return shortDescriptionOf(reason)
-		}
 		return "a context"
 	case []any:
 		return "a list"

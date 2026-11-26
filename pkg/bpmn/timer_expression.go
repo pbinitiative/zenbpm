@@ -76,7 +76,15 @@ func timerOffsetOf(units map[string]float64) (timerOffset, error) {
 		seconds += amount
 		return nil
 	}
-	for unit, count := range units {
+	// The units are added in one order, which the map does not have, so that
+	// a duration comes to the same offset each time: a sum of fractions of a
+	// second rounds by the order of its terms, by microseconds within the
+	// bound, which the millisecond a timer is stored to does not show.
+	for _, unit := range []string{"years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds"} {
+		count, named := units[unit]
+		if !named {
+			continue
+		}
 		var err error
 		switch unit {
 		case "years", "quarters", "months", "weeks", "days":

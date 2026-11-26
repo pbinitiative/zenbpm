@@ -75,6 +75,11 @@ func TestTimeDateOfResult(t *testing.T) {
 		}{
 			"as what is invalid":  {map[string]any{"isLuxonDateTime": true, "invalid": secret}, "which is invalid: a context"},
 			"in place of a stamp": {map[string]any{"isLuxonDateTime": true, "ts": []any{secret}}, "which carries its moment as a list instead"},
+			// a context with a reason is not taken for the one Luxon marks an invalid value with
+			"with a reason, as what is invalid": {map[string]any{"isLuxonDateTime": true, "invalid": map[string]any{"reason": "CZ6508000000192000145399"}},
+				"which is invalid: a context"},
+			"with a reason, in place of a stamp": {map[string]any{"isLuxonDateTime": true, "ts": map[string]any{"reason": "CZ6508000000192000145399"}},
+				"which carries its moment as a context instead"},
 		} {
 			_, err := timeDateOfResult(tc.result)
 			require.ErrorContains(t, err, tc.message, name)
@@ -164,6 +169,16 @@ func TestTimeDurationOfResult(t *testing.T) {
 			_, err := timeDurationOfResult("PT1000000000000000H-60000000000000000M1S")
 			require.ErrorContains(t, err, "which is more than a timer can wait")
 		}
+		// within the bound, the sum rounds by the order of its terms: the
+		// order is fixed, so a duration comes to one offset
+		first, err := timeDurationOfResult("PT2500000H-150000000M0.000001S")
+		require.NoError(t, err)
+		for range 20 {
+			again, err := timeDurationOfResult("PT2500000H-150000000M0.000001S")
+			require.NoError(t, err)
+			require.Equal(t, first.clock, again.clock)
+		}
+		assert.Less(t, first.clock.Abs(), time.Millisecond, "the hours and minutes cancel, the microsecond is all there is")
 	})
 
 	for name, refused := range map[string]struct {
@@ -212,8 +227,21 @@ func TestTimeDurationOfResult(t *testing.T) {
 			assert.NotContains(t, err.Error(), "CZ65", name)
 		}
 
-		_, err := timeDurationOfResult(map[string]any{"isLuxonDuration": true, "invalid": map[string]any{"reason": "unparsable", "explanation": "…"}, "values": map[string]any{}})
-		assert.ErrorContains(t, err, "FEEL duration is invalid: unparsable", "the reason of a duration Luxon marked invalid is quoted")
+		// a context with a reason is not taken for the one Luxon marks an invalid value with
+		withReason := map[string]any{"reason": "CZ6508000000192000145399", "explanation": "CZ6508000000192000145399"}
+		for name, tc := range map[string]struct {
+			result  map[string]any
+			message string
+		}{
+			"in place of an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": withReason}},
+				"FEEL duration has a context hours, which is not a number"},
+			"as what is invalid": {map[string]any{"isLuxonDuration": true, "invalid": withReason, "values": map[string]any{"hours": 1}},
+				"FEEL duration is invalid: a context"},
+		} {
+			_, err := timeDurationOfResult(tc.result)
+			require.ErrorContains(t, err, tc.message, "a reason "+name)
+			assert.NotContains(t, err.Error(), "CZ65", "a reason "+name)
+		}
 	})
 }
 

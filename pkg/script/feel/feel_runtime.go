@@ -66,10 +66,16 @@ func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]a
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := res.(func(goja.FunctionCall) goja.Value); ok {
-		return nil, nil
+	return valueOf(res), nil
+}
+
+// valueOf is the result of an evaluation as its callers get it: a function,
+// which a name of a built-in evaluates to, is no value.
+func valueOf(result any) any {
+	if _, isFunction := result.(func(goja.FunctionCall) goja.Value); isFunction {
+		return nil
 	}
-	return res, err
+	return result
 }
 
 //go:embed feelin/index.esm.js

@@ -17,7 +17,10 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 	var err error
 	switch {
 	case timerDef.TimeCycle != nil:
-		timer, err = engine.createCycleTimer(instance, timerDef, element.GetId(), &currentToken)
+		// The token of an activity does not wait for the timer of its boundary
+		// event; that of a catch event, or of the gateway before it, does.
+		tokenWaitsForTimer := element.GetType() != bpmn20.ElementTypeBoundaryEvent
+		timer, err = engine.createCycleTimer(instance, timerDef, element.GetId(), &currentToken, tokenWaitsForTimer)
 	case timerDef.TimeDate != nil:
 		timer, err = engine.createDateTimer(instance, timerDef, element.GetId(), &currentToken)
 	default:
@@ -25,6 +28,9 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 	}
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
+		if isTimerExpressionError(err) {
+			return currentToken, fmt.Errorf("failed to create timer: %w", err)
+		}
 		return currentToken, fmt.Errorf("failed to create timer %+v: %w", timer, err)
 	}
 	if timer == nil { // timeCycle with no remaining occurrences
@@ -89,12 +95,25 @@ func (engine *Engine) createDurationTimer(
 	elementId string,
 	token *runtime.ExecutionToken,
 ) (*runtime.Timer, error) {
-	durationVal, err := findDurationValue(timerDef)
-	if err != nil {
-		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
-			"from Activity with ID=%s. Error:%s", elementId, err.Error())}
-	}
 	now := time.Now()
+	var dueAt time.Time
+	var length time.Duration
+	if timerDef.TimeDuration.IsExpression() {
+		createdAt, evaluated, err := resolveTimeDuration(engine.feelRuntime.Evaluate, elementId, timerDef.TimeDuration, timerVariables(instance))
+		if err != nil {
+			return nil, err
+		}
+		now, dueAt = createdAt, evaluated
+		length = dueAt.Sub(now)
+	} else {
+		durationVal, err := findDurationValue(timerDef)
+		if err != nil {
+			return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
+				"from Activity with ID=%s. Error:%s", elementId, err.Error())}
+		}
+		dueAt = durationVal.Shift(now)
+		length = time.Duration(durationVal.TS) * time.Second
+	}
 	var elementInstanceKey *int64
 	if token != nil {
 		elementInstanceKey = &token.ElementInstanceKey
@@ -107,8 +126,8 @@ func (engine *Engine) createDurationTimer(
 		ProcessInstanceKey:   &instance.ProcessInstance().Key,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            now,
-		DueAt:                durationVal.Shift(now),
-		Duration:             time.Duration(durationVal.TS) * time.Second,
+		DueAt:                dueAt,
+		Duration:             length,
 		Token:                token,
 	}
 	return &t, nil
@@ -127,6 +146,17 @@ func findDurationValue(timerDef bpmn20.TTimerEventDefinition) (duration.Duration
 		return duration.Duration{}, newEngineErrorf("Can't find 'timeDuration' value for element with id=%s", id)
 	}
 	return duration.ParseISO8601(durationStr)
+}
+
+// timeDateOf is the moment the timeDate of a timer definition names: what its
+// FEEL expression evaluates to against variables, or its literal. The error of
+// an expression is a *TimerExpressionError (see isTimerExpressionError); that
+// of a literal is the parser's, for the caller to word as it did before.
+func (engine *Engine) timeDateOf(timerDef bpmn20.TTimerEventDefinition, elementId string, variables map[string]any) (time.Time, error) {
+	if timerDef.TimeDate.IsExpression() {
+		return resolveTimeDate(engine.feelRuntime.Evaluate, elementId, timerDef.TimeDate, variables)
+	}
+	return findStartTime(timerDef)
 }
 
 func findStartTime(timerDef bpmn20.TTimerEventDefinition) (time.Time, error) {
@@ -151,8 +181,11 @@ func (engine *Engine) createDateTimer(
 	elementId string,
 	token *runtime.ExecutionToken,
 ) (*runtime.Timer, error) {
-	startTime, err := findStartTime(timerDef)
+	startTime, err := engine.timeDateOf(timerDef, elementId, timerVariables(instance))
 	if err != nil {
+		if isTimerExpressionError(err) {
+			return nil, err
+		}
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDate' value from element with ID=%s. Error:%s", elementId, err.Error())}
 	}
 	now := time.Now()
@@ -176,19 +209,34 @@ func (engine *Engine) createDateTimer(
 
 // createCycleTimer builds a runtime.Timer for the first iteration of a timer event definition
 // that uses timeCycle. Subsequent iterations are scheduled by scheduleNextCycleTimer after each fire.
+//
+// It returns nil for a cycle which has no occurrence left. For a literal that
+// is what it did before. A cycle an expression evaluated to may be over
+// because of a variable, a start in the past for one, and where the token
+// waits for the timer (tokenWaitsForTimer) nothing would ever let it go on:
+// that is an error, and so an incident to resolve.
 func (engine *Engine) createCycleTimer(
 	instance runtime.ProcessInstance,
 	timerDef bpmn20.TTimerEventDefinition,
 	elementId string,
 	token *runtime.ExecutionToken,
+	tokenWaitsForTimer bool,
 ) (*runtime.Timer, error) {
-	spec, err := findCycleValue(timerDef)
+	// resolvedCycle is the cycle an expression evaluated to, which the timers
+	// of the cycle keep
+	spec, resolvedCycle, err := engine.timeCycleOf(timerDef, elementId, "", timerVariables(instance))
 	if err != nil {
+		if isTimerExpressionError(err) {
+			return nil, err
+		}
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeCycle' value from element with ID=%s. Error:%s", elementId, err.Error())}
 	}
 	now := time.Now()
 	dueAt, ok := spec.nextDueAt(now, 0, time.Time{})
 	if !ok {
+		if resolvedCycle != "" && tokenWaitsForTimer {
+			return nil, cycleWithoutOccurrence(elementId, timerDef.TimeCycle, resolvedCycle)
+		}
 		return nil, nil
 	}
 	var elementInstanceKey *int64
@@ -206,6 +254,7 @@ func (engine *Engine) createCycleTimer(
 		DueAt:                dueAt,
 		Duration:             dueAt.Sub(now),
 		Token:                token,
+		ResolvedCycle:        resolvedCycle,
 	}, nil
 }
 

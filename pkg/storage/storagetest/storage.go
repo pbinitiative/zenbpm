@@ -462,6 +462,8 @@ func getTimer(key, pdKey, piKey int64, originActivity bpmnruntime.Job) bpmnrunti
 			State:              bpmnruntime.TokenStateWaiting,
 		},
 		Duration: 1 * time.Hour,
+		// what a timeCycle expression evaluated to is stored with the timer
+		ResolvedCycle: "R3/PT1H",
 	}
 }
 

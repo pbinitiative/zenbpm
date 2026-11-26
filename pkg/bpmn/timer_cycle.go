@@ -3,6 +3,7 @@ package bpmn
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -89,8 +90,11 @@ func parseISORepeatingInterval(expr string) (cycleSpec, error) {
 	spec := cycleSpec{kind: cycleKindISO, repetitions: reps}
 	interval := parts[1:]
 	if len(interval) == 1 {
-		d, err := parseNonZeroDuration(interval[0], expr)
+		d, err := duration.ParseISO8601(interval[0])
 		if err != nil {
+			return cycleSpec{}, fmt.Errorf("invalid period %q in timeCycle %q: %w", interval[0], expr, err)
+		}
+		if err := checkCyclePeriod(d, interval[0], expr); err != nil {
 			return cycleSpec{}, err
 		}
 		spec.period = d
@@ -103,26 +107,29 @@ func parseISORepeatingInterval(expr string) (cycleSpec, error) {
 	secondTime, secondTimeOK := tryParseTime(second)
 	switch {
 	case firstTimeOK && secondDurationOK:
-		if isZeroDuration(secondDuration) {
-			return cycleSpec{}, fmt.Errorf("invalid period %q in timeCycle %q: must not be zero", second, expr)
+		if err := checkCyclePeriod(secondDuration, second, expr); err != nil {
+			return cycleSpec{}, err
 		}
 		spec.hasStart = true
 		spec.start = firstTime
 		spec.period = secondDuration
 		return spec, nil
 	case firstDurationOK && secondTimeOK:
-		if isZeroDuration(firstDuration) {
-			return cycleSpec{}, fmt.Errorf("invalid period %q in timeCycle %q: must not be zero", first, expr)
+		if err := checkCyclePeriod(firstDuration, first, expr); err != nil {
+			return cycleSpec{}, err
 		}
 		spec.hasStart = true
 		shifts := 1
 		if reps > 0 {
 			shifts = reps - 1
 		}
-		spec.start = secondTime
-		for i := 0; i < shifts; i++ {
-			spec.start = shiftBack(spec.start, firstDuration)
+		start, shifted := shiftBackTimes(secondTime, firstDuration, shifts)
+		if reps > 0 {
+			// The repetitions before the year 1, which have passed long
+			// ago, are left out: the cycle begins with the first one after.
+			spec.repetitions = reps - (shifts - shifted)
 		}
+		spec.start = start
 		spec.period = firstDuration
 		return spec, nil
 	case firstTimeOK && secondTimeOK:
@@ -148,15 +155,29 @@ func parseCronCycle(expr string) (cycleSpec, error) {
 	return cycleSpec{kind: cycleKindCron, repetitions: -1, cronExpr: normalized}, nil
 }
 
-func parseNonZeroDuration(value string, expr string) (duration.Duration, error) {
-	d, err := duration.ParseISO8601(value)
-	if err != nil {
-		return duration.Duration{}, fmt.Errorf("invalid period %q in timeCycle %q: %w", value, expr, err)
+// maxCyclePeriodUnits bounds the years, months, weeks or days of the period of
+// a cycle, so that the calendar adds them up without wrapping around.
+const maxCyclePeriodUnits = 100_000_000
+
+// checkCyclePeriod refuses a period a cycle cannot step by: one of no length,
+// and one whose length does not fit into the arithmetic of the clock. The
+// hours, minutes and seconds of a period are multiplied out to nanoseconds,
+// and a product which wraps around is zero or negative: stepping by it would
+// never get past now.
+func checkCyclePeriod(period duration.Duration, value string, expr string) error {
+	if isZeroDuration(period) {
+		return fmt.Errorf("invalid period %q in timeCycle %q: must not be zero", value, expr)
 	}
-	if isZeroDuration(d) {
-		return duration.Duration{}, fmt.Errorf("invalid period %q in timeCycle %q: must not be zero", value, expr)
+	for _, units := range []int{period.Y, period.M, period.W, period.D} {
+		if units > maxCyclePeriodUnits {
+			return fmt.Errorf("invalid period %q in timeCycle %q: longer than a cycle can step by", value, expr)
+		}
 	}
-	return d, nil
+	seconds := float64(period.TH)*60*60 + float64(period.TM)*60 + float64(period.TS)
+	if seconds >= float64(math.MaxInt64)/float64(time.Second) {
+		return fmt.Errorf("invalid period %q in timeCycle %q: longer than a cycle can step by", value, expr)
+	}
+	return nil
 }
 
 func tryParseDuration(value string) (duration.Duration, bool) {
@@ -175,8 +196,49 @@ func shiftBack(t time.Time, d duration.Duration) time.Time {
 	return t.AddDate(-d.Y, -d.M, -(d.W*7 + d.D))
 }
 
+// shiftBackTimes is shiftBack applied a number of times, but never back
+// before the year 1, and how many times it was applied. The number comes with
+// the cycle, as the repetitions of R[n]/<duration>/<end>, so the work must not
+// grow with it: a period of hours, minutes and seconds is taken off many times
+// at once, and a period of the calendar, which has to be stepped by, is at
+// least a day, which bounds the steps back to the year 1.
+func shiftBackTimes(t time.Time, d duration.Duration, times int) (time.Time, int) {
+	shifted := 0
+	if !hasCalendarPart(d) {
+		period := durationTimePart(d)
+		yearOne := time.Date(1, time.January, 1, 0, 0, 0, 0, t.Location())
+		for shifted < times {
+			// the periods which fit between the year 1 and t; time.Sub stops
+			// at 292 years, so further from it these are a part of them
+			fit := int64(t.Sub(yearOne) / period)
+			if fit <= 0 {
+				break
+			}
+			steps := min(int64(times-shifted), fit)
+			t = t.Add(-time.Duration(steps) * period)
+			shifted += int(steps)
+		}
+		return t, shifted
+	}
+	for shifted < times {
+		previous := shiftBack(t, d)
+		if previous.Year() < 1 {
+			break
+		}
+		t = previous
+		shifted++
+	}
+	return t, shifted
+}
+
 func durationTimePart(d duration.Duration) time.Duration {
 	return time.Duration(d.TH)*time.Hour + time.Duration(d.TM)*time.Minute + time.Duration(d.TS)*time.Second
+}
+
+// hasCalendarPart reports whether a duration has years, months, weeks or days,
+// whose length depends on the moment they are added to.
+func hasCalendarPart(d duration.Duration) bool {
+	return d.Y != 0 || d.M != 0 || d.W != 0 || d.D != 0
 }
 
 func (c cycleSpec) shift(t time.Time) time.Time {
@@ -184,6 +246,19 @@ func (c cycleSpec) shift(t time.Time) time.Time {
 		return t.Add(c.fixedPeriod)
 	}
 	return c.period.Shift(t)
+}
+
+// clockPeriod is the period of the cycle when it is a length of time which is
+// the same wherever it is added, and false when it has years, months, weeks or
+// days.
+func (c cycleSpec) clockPeriod() (time.Duration, bool) {
+	if c.hasFixedPeriod {
+		return c.fixedPeriod, true
+	}
+	if hasCalendarPart(c.period) {
+		return 0, false
+	}
+	return durationTimePart(c.period), true
 }
 
 // findCycleValue extracts and parses the timeCycle expression from a TimerEventDefinition.
@@ -241,12 +316,34 @@ func (c cycleSpec) nextDueAt(now time.Time, consumedOccurrences int, firstDueFal
 		// R[n]/duration without persisted history starts relative to subscription creation.
 		due = c.shift(now)
 	}
+	// Occurrences which have passed are skipped. How many there are comes with
+	// the cycle, as its start and its period, so they are not walked one by
+	// one where that can be avoided: a period of the clock is skipped by
+	// division. A period of the calendar is at least a day, which bounds the
+	// steps from any start to now.
+	clockPeriod, hasClockPeriod := c.clockPeriod()
 	for !due.After(now) {
-		occurrenceIndex++
-		if c.repetitions != -1 && occurrenceIndex >= c.repetitions {
+		steps := 1
+		if hasClockPeriod {
+			// time.Sub stops at 292 years: the division then covers a part of
+			// the way and the loop the rest
+			steps = max(1, int(now.Sub(due)/clockPeriod))
+		}
+		if c.repetitions != -1 {
+			if steps >= c.repetitions-occurrenceIndex {
+				return time.Time{}, false
+			}
+			occurrenceIndex += steps
+		}
+		next := c.shift(due)
+		if hasClockPeriod {
+			next = due.Add(time.Duration(steps) * clockPeriod)
+		}
+		if !next.After(due) {
+			// a period which does not move time forward never gets past now
 			return time.Time{}, false
 		}
-		due = c.shift(due)
+		due = next
 	}
 	return due, true
 }
@@ -367,6 +464,10 @@ type cycleTimerStats struct {
 	triggeredCount int
 	firstDue       time.Time
 	createdExists  bool
+	// resolvedCycle is the cycle the timeCycle expression of the element
+	// evaluated to when the first of these timers was created; empty when the
+	// cycle is a literal or no timer exists yet.
+	resolvedCycle string
 }
 
 // cycleTimerStats computes the persisted view of a cycle timer's life-cycle for the given element.
@@ -378,6 +479,9 @@ type cycleTimerStats struct {
 func (engine *Engine) cycleTimerStats(ctx context.Context, processDefinitionKey int64, processInstanceKey *int64, elementId string, inFlightTriggeredTimerKey *int64) (cycleTimerStats, error) {
 	stats := cycleTimerStats{}
 	accountForTimerAsTriggered := func(t runtime.Timer) {
+		if stats.resolvedCycle == "" {
+			stats.resolvedCycle = t.ResolvedCycle
+		}
 		stats.triggeredCount++
 		if stats.firstDue.IsZero() || t.DueAt.Before(stats.firstDue) {
 			stats.firstDue = t.DueAt
@@ -402,6 +506,9 @@ func (engine *Engine) cycleTimerStats(ctx context.Context, processDefinitionKey 
 			continue
 		}
 		stats.createdExists = true
+		if stats.resolvedCycle == "" {
+			stats.resolvedCycle = t.ResolvedCycle
+		}
 		if stats.firstDue.IsZero() || t.DueAt.Before(stats.firstDue) {
 			stats.firstDue = t.DueAt
 		}
@@ -424,6 +531,11 @@ func (engine *Engine) findCycleTimersByState(ctx context.Context, processDefinit
 // inFlightTriggeredTimerKey may be set during renewal to identify a timer whose Triggered
 // transition lives in the open batch and is therefore still persisted as Created — see
 // cycleTimerStats for details.
+//
+// A timeCycle which is a FEEL expression is evaluated against variables when
+// the first timer of the cycle is created; every later timer takes the cycle
+// the earlier ones carry (runtime.Timer.ResolvedCycle), so a renewal neither
+// needs the variables nor follows a change of them.
 func (engine *Engine) createCycleStartTimer(
 	ctx context.Context,
 	processDefinitionKey int64,
@@ -431,11 +543,8 @@ func (engine *Engine) createCycleStartTimer(
 	elementId string,
 	timerDef bpmn20.TTimerEventDefinition,
 	inFlightTriggeredTimerKey *int64,
+	variables map[string]any,
 ) (*runtime.Timer, error) {
-	spec, err := findCycleValue(timerDef)
-	if err != nil {
-		return nil, err
-	}
 	stats, err := engine.cycleTimerStats(ctx, processDefinitionKey, processInstanceKey, elementId, inFlightTriggeredTimerKey)
 	if err != nil {
 		return nil, err
@@ -443,9 +552,16 @@ func (engine *Engine) createCycleStartTimer(
 	if stats.createdExists {
 		return nil, nil
 	}
+	spec, resolvedCycle, err := engine.timeCycleOf(timerDef, elementId, stats.resolvedCycle, variables)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	dueAt, ok := spec.nextDueAt(now, stats.triggeredCount, stats.firstDue)
 	if !ok {
+		return nil, nil
+	}
+	if resolvedCycle != "" && engine.endsCycleBeyondTimerYears(elementId, resolvedCycle, dueAt) {
 		return nil, nil
 	}
 	return &runtime.Timer{
@@ -459,7 +575,45 @@ func (engine *Engine) createCycleStartTimer(
 		DueAt:                dueAt,
 		Duration:             dueAt.Sub(now),
 		Token:                nil,
+		ResolvedCycle:        resolvedCycle,
 	}, nil
+}
+
+// timeCycleOf is the cycle the timeCycle of a timer definition names, and the
+// text of it which the timers of the cycle keep (runtime.Timer.ResolvedCycle):
+// empty for a literal, which is read from the model each time. An expression
+// is evaluated against variables unless the timers of the element carry what it
+// evaluated to already (carried), which is then the cycle. The error of an
+// expression is a *TimerExpressionError (see isTimerExpressionError); that of a
+// literal is the parser's, for the caller to word as it did before.
+func (engine *Engine) timeCycleOf(timerDef bpmn20.TTimerEventDefinition, elementId string, carried string, variables map[string]any) (cycleSpec, string, error) {
+	if !timerDef.TimeCycle.IsExpression() {
+		spec, err := findCycleValue(timerDef)
+		return spec, "", err
+	}
+	if carried != "" {
+		spec, err := parseCycle(carried)
+		if err != nil {
+			return cycleSpec{}, "", fmt.Errorf("failed to parse the cycle %q the timers of element %s carry: %w", carried, elementId, err)
+		}
+		return spec, carried, nil
+	}
+	text, spec, err := resolveTimeCycle(engine.feelRuntime.Evaluate, elementId, timerDef.TimeCycle, variables)
+	return spec, text, err
+}
+
+// endsCycleBeyondTimerYears reports whether the next timer of a cycle an
+// expression evaluated to would be due outside of the years a timer is due in
+// (see checkTimerMoment), which ends the cycle. The first timer of such a cycle
+// is refused where the expression is evaluated; a later one has no expression
+// to fail and no token to raise an incident on, so the cycle is over instead.
+func (engine *Engine) endsCycleBeyondTimerYears(elementId string, resolvedCycle string, dueAt time.Time) bool {
+	if err := checkTimerMoment(dueAt); err == nil {
+		return false
+	}
+	engine.logger.Warn("timer cycle ends: its next timer is due outside of the years a timer is due in",
+		"element", elementId, "cycle", describeTimerResult(resolvedCycle), "dueAt", dueAt.UTC().Format(time.RFC3339))
+	return true
 }
 
 // scheduleNextCycleTimer schedules the next iteration for a fired timeCycle timer on the
@@ -548,7 +702,7 @@ func (engine *Engine) buildNextCycleTimerFromSpec(
 	timerDef bpmn20.TTimerEventDefinition,
 	triggeredTimer runtime.Timer,
 ) (*runtime.Timer, error) {
-	spec, err := findCycleValue(timerDef)
+	spec, err := cycleSpecOfFiredTimer(timerDef, triggeredTimer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse timeCycle for element %s: %w", triggeredTimer.ElementId, err)
 	}
@@ -566,6 +720,9 @@ func (engine *Engine) buildNextCycleTimerFromSpec(
 	if !ok {
 		return nil, nil
 	}
+	if triggeredTimer.ResolvedCycle != "" && engine.endsCycleBeyondTimerYears(triggeredTimer.ElementId, triggeredTimer.ResolvedCycle, dueAt) {
+		return nil, nil
+	}
 	return &runtime.Timer{
 		ElementId:            triggeredTimer.ElementId,
 		Key:                  engine.generateKey(),
@@ -577,5 +734,6 @@ func (engine *Engine) buildNextCycleTimerFromSpec(
 		DueAt:                dueAt,
 		Duration:             dueAt.Sub(now),
 		Token:                triggeredTimer.Token,
+		ResolvedCycle:        triggeredTimer.ResolvedCycle,
 	}, nil
 }

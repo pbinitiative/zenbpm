@@ -55,7 +55,7 @@ func (q *Queries) DeleteProcessInstancesTimers(ctx context.Context, processinsta
 
 const findElementTimers = `-- name: FindElementTimers :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer
 WHERE
@@ -87,6 +87,7 @@ func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersPa
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -103,7 +104,7 @@ func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersPa
 
 const findProcessDefinitionTimersInState = `-- name: FindProcessDefinitionTimersInState :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
@@ -136,6 +137,7 @@ func (q *Queries) FindProcessDefinitionTimersInState(ctx context.Context, arg Fi
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -152,7 +154,7 @@ func (q *Queries) FindProcessDefinitionTimersInState(ctx context.Context, arg Fi
 
 const findProcessDefinitionTimersInStateByElement = `-- name: FindProcessDefinitionTimersInStateByElement :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer INDEXED BY idx_fk_timer_process_definition_key
 WHERE
@@ -188,6 +190,7 @@ func (q *Queries) FindProcessDefinitionTimersInStateByElement(ctx context.Contex
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -204,7 +207,7 @@ func (q *Queries) FindProcessDefinitionTimersInStateByElement(ctx context.Contex
 
 const findProcessInstanceTimersInState = `-- name: FindProcessInstanceTimersInState :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
@@ -239,6 +242,7 @@ func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg Find
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -255,7 +259,7 @@ func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg Find
 
 const findProcessInstanceTimersInStateByElement = `-- name: FindProcessInstanceTimersInStateByElement :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer INDEXED BY idx_fk_timer_process_instance_key
 WHERE
@@ -290,6 +294,7 @@ func (q *Queries) FindProcessInstanceTimersInStateByElement(ctx context.Context,
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -306,7 +311,7 @@ func (q *Queries) FindProcessInstanceTimersInStateByElement(ctx context.Context,
 
 const findProcessInstanceTimersPage = `-- name: FindProcessInstanceTimersPage :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token,
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle,
     COUNT(*) OVER () AS total_count
 FROM
     timer INDEXED BY idx_fk_timer_process_instance_key
@@ -325,16 +330,17 @@ type FindProcessInstanceTimersPageParams struct {
 }
 
 type FindProcessInstanceTimersPageRow struct {
-	Key                  int64         `json:"key"`
-	ElementInstanceKey   sql.NullInt64 `json:"element_instance_key"`
-	ElementID            string        `json:"element_id"`
-	ProcessDefinitionKey int64         `json:"process_definition_key"`
-	ProcessInstanceKey   sql.NullInt64 `json:"process_instance_key"`
-	State                int64         `json:"state"`
-	CreatedAt            int64         `json:"created_at"`
-	DueAt                int64         `json:"due_at"`
-	ExecutionToken       sql.NullInt64 `json:"execution_token"`
-	TotalCount           int64         `json:"total_count"`
+	Key                  int64          `json:"key"`
+	ElementInstanceKey   sql.NullInt64  `json:"element_instance_key"`
+	ElementID            string         `json:"element_id"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	DueAt                int64          `json:"due_at"`
+	ExecutionToken       sql.NullInt64  `json:"execution_token"`
+	ResolvedCycle        sql.NullString `json:"resolved_cycle"`
+	TotalCount           int64          `json:"total_count"`
 }
 
 // Pinned to idx_fk_timer_process_instance_key. See note on FindProcessInstanceTimersInState.
@@ -362,6 +368,7 @@ func (q *Queries) FindProcessInstanceTimersPage(ctx context.Context, arg FindPro
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -379,7 +386,7 @@ func (q *Queries) FindProcessInstanceTimersPage(ctx context.Context, arg FindPro
 
 const findTimers = `-- name: FindTimers :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer
 WHERE
@@ -425,6 +432,7 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -441,7 +449,7 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer
 
 const findTimersInStateTillDueAt = `-- name: FindTimersInStateTillDueAt :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer
 WHERE
@@ -473,6 +481,7 @@ func (q *Queries) FindTimersInStateTillDueAt(ctx context.Context, arg FindTimers
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -489,7 +498,7 @@ func (q *Queries) FindTimersInStateTillDueAt(ctx context.Context, arg FindTimers
 
 const findTokenTimers = `-- name: FindTokenTimers :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer
 WHERE
@@ -521,6 +530,7 @@ func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams
 			&i.CreatedAt,
 			&i.DueAt,
 			&i.ExecutionToken,
+			&i.ResolvedCycle,
 		); err != nil {
 			return nil, err
 		}
@@ -537,7 +547,7 @@ func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams
 
 const getTimerByKey = `-- name: GetTimerByKey :one
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle
 FROM
     timer
 WHERE
@@ -557,28 +567,30 @@ func (q *Queries) GetTimerByKey(ctx context.Context, timerKey int64) (Timer, err
 		&i.CreatedAt,
 		&i.DueAt,
 		&i.ExecutionToken,
+		&i.ResolvedCycle,
 	)
 	return i, err
 }
 
 const saveTimer = `-- name: SaveTimer :exec
-INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token, resolved_cycle)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
 `
 
 type SaveTimerParams struct {
-	Key                  int64         `json:"key"`
-	ElementID            string        `json:"element_id"`
-	ElementInstanceKey   sql.NullInt64 `json:"element_instance_key"`
-	ProcessDefinitionKey int64         `json:"process_definition_key"`
-	ProcessInstanceKey   sql.NullInt64 `json:"process_instance_key"`
-	State                int64         `json:"state"`
-	CreatedAt            int64         `json:"created_at"`
-	DueAt                int64         `json:"due_at"`
-	ExecutionToken       sql.NullInt64 `json:"execution_token"`
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ElementInstanceKey   sql.NullInt64  `json:"element_instance_key"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	DueAt                int64          `json:"due_at"`
+	ExecutionToken       sql.NullInt64  `json:"execution_token"`
+	ResolvedCycle        sql.NullString `json:"resolved_cycle"`
 }
 
 func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
@@ -592,6 +604,7 @@ func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
 		arg.CreatedAt,
 		arg.DueAt,
 		arg.ExecutionToken,
+		arg.ResolvedCycle,
 	)
 	return err
 }

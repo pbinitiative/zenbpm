@@ -277,7 +277,8 @@ CREATE TABLE IF NOT EXISTS reporting.timer (
     state BIGINT NOT NULL,
     created_at BIGINT NOT NULL,
     due_at BIGINT NOT NULL,
-    execution_token BIGINT
+    execution_token BIGINT,
+    resolved_cycle TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_fk_timer_process_definition_key

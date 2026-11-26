@@ -444,9 +444,10 @@ func TestARetryBackoffExpressionMayProduceFeelDurations(t *testing.T) {
 		`={wait: duration("P1D")}`: "which is neither a duration nor a list of durations",
 		`=duration("PT")`:          "names no amount of any unit",
 		// contexts made to look like a duration, which must not read as no backoff
-		`={isLuxonDuration: true}`:                                              "carries its units as <nil> (<nil>) instead of a context",
-		`={isLuxonDuration: true, values: "wrong"}`:                             "carries its units as wrong (string) instead of a context",
+		`={isLuxonDuration: true}`:                                              "carries its units as nothing instead of a context",
+		`={isLuxonDuration: true, values: "wrong"}`:                             "carries its units as a string instead of a context",
 		`={isLuxonDuration: true, invalid: "unparsable", values: {seconds: 1}}`: "FEEL duration is invalid: unparsable",
+		`={isLuxonDuration: true, invalid: "no", values: {seconds: 1}}`:         "FEEL duration is marked invalid",
 	} {
 		t.Run(expression, func(t *testing.T) {
 			_, err := policyOf(expression)

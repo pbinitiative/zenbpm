@@ -27,7 +27,7 @@ Rendered as a rounded rectangle with a dotted border; expanded, the embedded flo
 
 Execution flow:
 
-1. When an instance of the containing scope is created, the engine arms the trigger: a message subscription — with the correlation key evaluated against the scope's variables, unlike a top-level message start event — or a timer (`timeDate`, `timeDuration`, or `timeCycle`). An error start event needs no subscription; it is matched when an error propagates through the scope. If arming fails (for example the correlation key cannot be evaluated), an incident is recorded.
+1. When an instance of the containing scope is created, the engine arms the trigger: a message subscription — with the correlation key evaluated against the scope's variables, unlike a top-level message start event — or a timer (`timeDate`, `timeDuration`, or `timeCycle`). An error start event needs no subscription; it is matched when an error propagates through the scope. If arming fails because an expression does not evaluate against the scope's variables — the correlation key, or a timer value which is a [FEEL expression](../events/timer-events.md#feel-expressions) — an incident is recorded on the start event and the scope keeps running; resolving the incident arms the trigger.
 2. When the trigger fires, the behavior depends on the start event:
    - **Interrupting** (default) — all active tokens of the containing scope are cancelled, then the event sub process runs.
    - **Non-interrupting** (`isInterrupting="false"`) — the scope keeps running and the trigger is re-armed (the message subscription is re-created, a `timeCycle` timer is re-scheduled), so the event sub process can fire any number of times while the scope is active.

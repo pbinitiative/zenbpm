@@ -3031,7 +3031,9 @@ paths:
             the error and the way out: correct the variables the expression reads and repeat the
             resolution, or repeat it with the job's `retries` in the body. Or the input mappings of
             the incident's element no longer evaluate: correct the variables they read and repeat
-            the resolution.
+            the resolution. Or the incident is on the timer start event of an event sub process and
+            the FEEL expression of its timer still does not evaluate: correct the variables of the
+            process instance the message names and repeat the resolution.
           content:
             application/json:
               schema:

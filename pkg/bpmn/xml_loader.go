@@ -99,11 +99,15 @@ func (engine *Engine) loadLocked(ctx context.Context, processInfo runtime.Proces
 // definition-level subscriptions of the previously newest version are
 // retired, as any deployment does. Registering the subscriptions of the new
 // version is left to the caller (only one partition owns them).
+//
+// The timer expressions of the definition are not checked again: the cluster
+// checked them before it allocated the key and version (see
+// parseProcessDefinitionForAllocatedDeployment).
 func (engine *Engine) DeployProcessDefinition(ctx context.Context, xmlData []byte, key int64, version int32) (*runtime.ProcessDefinition, error) {
 	if version < 1 {
 		return nil, fmt.Errorf("failed to deploy process definition %d: version must be positive, got %d", key, version)
 	}
-	processInfo, err := parseProcessDefinitionForDeployment(xmlData, key)
+	processInfo, err := parseProcessDefinitionForAllocatedDeployment(xmlData, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process definition %d: %w", key, err)
 	}
@@ -222,6 +226,25 @@ func ParseProcessDefinitionIdentity(xmlData []byte) (ProcessDefinitionIdentity, 
 // stored (ImportProcessDefinition) parses without them: what is stored has to
 // keep loading whatever a later engine would refuse.
 func parseProcessDefinitionForDeployment(xmlData []byte, key int64) (runtime.ProcessDefinition, error) {
+	definition, err := parseProcessDefinitionForAllocatedDeployment(xmlData, key)
+	if err != nil {
+		return runtime.ProcessDefinition{}, err
+	}
+	if err := validateTimerExpressions(&definition.Definitions); err != nil {
+		return runtime.ProcessDefinition{}, fmt.Errorf("failed to deploy process %s: %w", definition.BpmnProcessId, err)
+	}
+	return definition, nil
+}
+
+// parseProcessDefinitionForAllocatedDeployment is parseProcessDefinitionForDeployment
+// without the check of the timer expressions, for a deployment whose key and
+// version the cluster allocated (DeployProcessDefinition). The cluster made
+// that check where the deployment came in (ParseProcessDefinitionIdentity),
+// before it allocated them. The check is held to a time limit, and it
+// evaluates the expression of the start event of the process, which may read
+// the clock: made again on a partition it may come out otherwise, after the
+// version is taken, and fail the deployment with a technical error.
+func parseProcessDefinitionForAllocatedDeployment(xmlData []byte, key int64) (runtime.ProcessDefinition, error) {
 	definition, err := parseProcessDefinition(xmlData, key)
 	if err != nil {
 		return runtime.ProcessDefinition{}, err

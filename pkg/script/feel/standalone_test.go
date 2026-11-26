@@ -1,0 +1,221 @@
+package feel
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestValidateExpressionChecksSyntaxOnly(t *testing.T) {
+	for _, expression := range []string{
+		`dueAt`,
+		`date and time(sentAt) + duration("P3D")`,
+		`if priority < 5 then early else late`,
+		// a name of several words parses as one name without its variable
+		`date and time(sent at) + duration(grace period)`,
+		`now() + duration("PT1H")`,
+	} {
+		assert.NoError(t, ValidateExpression(expression), expression)
+	}
+	for _, expression := range []string{`dueAt +`, `date and time(`, `1 2`} {
+		assert.Error(t, ValidateExpression(expression), expression)
+	}
+}
+
+// Which words are a name depends on the variables in FEEL, and a check of
+// syntax has none. A name which holds a FEEL keyword therefore evaluates where
+// its variable exists but does not parse on its own. This pins the limit, so
+// that a change of the FEEL runtime which lifts it is noticed.
+func TestValidateExpressionDoesNotParseNamesWhichHoldKeywords(t *testing.T) {
+	for _, name := range []string{`valid for`, `a then b`, `return date`} {
+		assert.Error(t, ValidateExpression(name), name)
+
+		result, err := Evaluate(name, map[string]any{name: "PT1H"})
+		require.NoError(t, err, name)
+		assert.Equal(t, "PT1H", result, name)
+	}
+}
+
+// An expression which runs on and on is stopped, so that it does not hold the
+// runner and whatever waits for it, and the runner serves the next expression.
+func TestEvaluateStopsAnExpressionWhichTakesTooLong(t *testing.T) {
+	standaloneEvaluationLimit = 200 * time.Millisecond
+	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
+
+	started := time.Now()
+	_, err := Evaluate(`count(for i in 1..1000000000 return i)`, map[string]any{})
+	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+	assert.Less(t, time.Since(started), 30*time.Second, "the evaluation was interrupted rather than left to finish")
+
+	result, err := Evaluate(`1 + 1`, map[string]any{})
+	require.NoError(t, err, "the next expression is evaluated")
+	assert.EqualValues(t, 2, result)
+
+	// a check of syntax has a runner of its own and does not wait for an evaluation
+	evaluating := make(chan struct{})
+	evaluated := make(chan error, 1)
+	standaloneEvaluator.mu.Lock()
+	go func() {
+		close(evaluating)
+		_, err := Evaluate(`1 + 1`, map[string]any{})
+		evaluated <- err
+	}()
+	<-evaluating
+	assert.NoError(t, ValidateExpression(`dueAt`), "validation goes on while the evaluator is taken")
+	standaloneEvaluator.mu.Unlock()
+	require.NoError(t, <-evaluated)
+}
+
+// An interrupt ends a FEEL loop but not the match of a regular expression,
+// which runs outside of the interpreter. Evaluate returns at the limit all the
+// same, so that the caller does not wait for a pattern which backtracks. The
+// match keeps a processor busy until it ends, so the evaluations after it are
+// refused until then, rather than each leaving another one behind.
+func TestEvaluateReturnsAtTheLimitWhenTheExpressionCannotBeInterrupted(t *testing.T) {
+	standaloneEvaluationLimit = 50 * time.Millisecond
+	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
+
+	// the time of this match doubles with every "a": about a second at this length
+	backtracking := `matches("` + strings.Repeat("a", 24) + `!", "^(?=a)(a+)+$")`
+
+	started := time.Now()
+	_, err := Evaluate(backtracking, map[string]any{})
+	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+	assert.Less(t, time.Since(started), 2*time.Second, "the evaluation was given up at the limit rather than waited for")
+
+	_, err = Evaluate(`1 + 1`, map[string]any{})
+	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning, "the match given up still runs")
+
+	require.Eventually(t, func() bool {
+		result, err := Evaluate(`1 + 1`, map[string]any{})
+		return err == nil && result == int64(2)
+	}, time.Minute, 50*time.Millisecond, "once the match has ended, expressions are evaluated again")
+}
+
+// The check of syntax is held to the same limit: one nested deeply takes
+// minutes to parse.
+func TestValidateExpressionStopsACheckWhichTakesTooLong(t *testing.T) {
+	standaloneEvaluationLimit = 100 * time.Millisecond
+	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
+
+	started := time.Now()
+	err := ValidateExpression(strings.Repeat(`{a:`, 1100))
+	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+	assert.ErrorContains(t, err, "took too long to check")
+	assert.Less(t, time.Since(started), 10*time.Second, "the check was stopped at the limit")
+
+	// a parser is interrupted, so the next check does not wait for it
+	assert.NoError(t, ValidateExpression(`dueAt`))
+}
+
+// Work given up at the limit which ends while the next call waits for it does
+// not keep that call from running. Work which does not end within the limit
+// refuses that call, and the ones after it without waiting again, until it
+// ends.
+func TestStandaloneRunnerWaitsAtMostTheLimitForWorkItGaveUp(t *testing.T) {
+	standaloneEvaluationLimit = 100 * time.Millisecond
+	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
+
+	var runner standaloneRunner
+	// work which pays no heed to an interrupt, as the match of a regular expression
+	uninterruptible := func(release <-chan struct{}) func(*FeelinRunner) (any, error) {
+		return func(*FeelinRunner) (any, error) {
+			<-release
+			return nil, nil
+		}
+	}
+	two := func(*FeelinRunner) (any, error) { return 2, nil }
+
+	release := make(chan struct{})
+	_, err := runner.run("evaluate", uninterruptible(release))
+	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		close(release)
+	}()
+	result, err := runner.run("evaluate", two)
+	require.NoError(t, err, "the work given up ended while this call waited")
+	assert.Equal(t, 2, result)
+
+	release = make(chan struct{})
+	_, err = runner.run("evaluate", uninterruptible(release))
+	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+	_, err = runner.run("evaluate", two)
+	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning)
+	assert.True(t, runner.givenUpOverdue, "the call waited the limit in vain")
+	_, err = runner.run("evaluate", two)
+	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning, "refused as long as the work given up runs")
+
+	close(release)
+	require.Eventually(t, func() bool {
+		result, err := runner.run("evaluate", two)
+		return err == nil && result == 2
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.False(t, runner.givenUpOverdue)
+}
+
+// A panic in the work, which goja raises for an error of the Go runtime, is
+// the error of the call rather than the end of the node, and the runner, whose
+// state is not known after it, is replaced.
+func TestStandaloneRunnerRecoversAPanic(t *testing.T) {
+	var runner standaloneRunner
+	_, err := runner.run("evaluate", func(*FeelinRunner) (any, error) { panic("broken runner") })
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "broken runner")
+	assert.Nil(t, runner.runner, "the runner is given up")
+
+	result, err := runner.run("evaluate", func(*FeelinRunner) (any, error) { return 2, nil })
+	require.NoError(t, err)
+	assert.Equal(t, 2, result)
+}
+
+func TestEvaluateOnTheStandaloneRunner(t *testing.T) {
+	result, err := Evaluate(`greeting + " " + name`, map[string]any{"greeting": "hello", "name": "timer"})
+	require.NoError(t, err)
+	assert.Equal(t, "hello timer", result)
+
+	result, err = Evaluate(`missing`, map[string]any{})
+	require.NoError(t, err)
+	assert.Nil(t, result, "a variable which is not there evaluates to null")
+
+	_, err = Evaluate(`1 +`, map[string]any{})
+	assert.Error(t, err)
+
+	result, err = Evaluate(`now`, map[string]any{})
+	require.NoError(t, err)
+	assert.Nil(t, result, "a function is no value")
+}
+
+// A FEEL date and time written without a zone is a moment in the zone of the
+// server, as a literal timeDate without a zone is. The FEEL runtime takes the
+// offset from the Go runtime; this pins it, as timers written either way have
+// to fire at the same moment.
+func TestDateAndTimeWithoutZoneIsInTheLocalZone(t *testing.T) {
+	prague, err := time.LoadLocation("Europe/Prague")
+	if err != nil {
+		t.Skipf("no time zone database: %v", err)
+	}
+	original := time.Local
+	time.Local = prague
+	t.Cleanup(func() { time.Local = original })
+
+	for expression, want := range map[string]time.Time{
+		`date and time("2099-12-03T09:00:00")`:       time.Date(2099, 12, 3, 9, 0, 0, 0, prague),
+		`date and time("2099-07-03T09:00:00")`:       time.Date(2099, 7, 3, 9, 0, 0, 0, prague),
+		`date and time("2099-12-03T09:00:00+05:00")`: time.Date(2099, 12, 3, 4, 0, 0, 0, time.UTC),
+		`date and time("2099-12-03T09:00:00Z")`:      time.Date(2099, 12, 3, 9, 0, 0, 0, time.UTC),
+		`date("2099-12-03")`:                         time.Date(2099, 12, 3, 0, 0, 0, 0, time.UTC),
+	} {
+		result, err := Evaluate(expression, map[string]any{})
+		require.NoError(t, err, expression)
+		fields, ok := result.(map[string]any)
+		require.True(t, ok, "%s evaluates to the fields of a date and time, got %T", expression, result)
+		require.Equal(t, true, fields["isLuxonDateTime"], expression)
+		milliseconds, ok := fields["ts"].(int64)
+		require.True(t, ok, "%s carries its moment in milliseconds, got %T", expression, fields["ts"])
+		assert.True(t, want.Equal(time.UnixMilli(milliseconds)), "%s: got %s, want %s", expression, time.UnixMilli(milliseconds).UTC(), want.UTC())
+	}
+}

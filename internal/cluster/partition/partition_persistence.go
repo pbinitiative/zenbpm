@@ -1729,6 +1729,7 @@ func (rq *DB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]bpmnru
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
 			Token:                executionToken,
+			ResolvedCycle:        timer.ResolvedCycle.String,
 		}
 		if executionToken != nil {
 			tokensToLoad = append(tokensToLoad, executionToken.Key)
@@ -1789,6 +1790,7 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer
 		CreatedAt:            timer.CreatedAt.UnixMilli(),
 		DueAt:                timer.DueAt.UnixMilli(),
 		ExecutionToken:       executionTokenKey,
+		ResolvedCycle:        ssql.NullString{String: timer.ResolvedCycle, Valid: timer.ResolvedCycle != ""},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save timer %d: %w", timer.GetKey(), err)

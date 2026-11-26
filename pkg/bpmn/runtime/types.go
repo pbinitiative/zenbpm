@@ -404,6 +404,11 @@ type Timer struct {
 	DueAt                time.Time
 	Duration             time.Duration
 	Token                *ExecutionToken
+	// ResolvedCycle is the cycle a timeCycle FEEL expression evaluated to when
+	// the first timer of the cycle was created. Every following timer of the
+	// cycle carries it over, so the expression is evaluated once. Empty for a
+	// timer whose definition is a literal or not a cycle.
+	ResolvedCycle string
 }
 
 func (t Timer) GetId() string {
@@ -447,6 +452,7 @@ func (t Timer) EqualTo(t2 Timer) bool {
 		t.CreatedAt.Truncate(time.Millisecond).Equal(t2.CreatedAt.Truncate(time.Millisecond)) &&
 		t.DueAt.Truncate(time.Millisecond).Equal(t2.DueAt.Truncate(time.Millisecond)) &&
 		t.Duration == t2.Duration &&
+		t.ResolvedCycle == t2.ResolvedCycle &&
 		elementInstanceKeyMatch &&
 		processInstanceKeyMatch &&
 		tokenMatch {

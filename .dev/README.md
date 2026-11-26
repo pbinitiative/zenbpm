@@ -28,6 +28,17 @@ PostgreSQL stores its data in `tmpfs`. The database is intentionally ephemeral:
 stopping or recreating the PostgreSQL container removes all data, and the next
 start initializes a clean `reporting` schema from `postgres-init.sql`.
 
+`postgres-init.sql` runs only when the database is initialized. A reporting
+database which is kept across an upgrade of the engine has to gain the columns
+the upgrade adds to the engine's tables, because the function which applies the
+change stream refuses a row with a column its reporting table does not have.
+Recreate the PostgreSQL container, or add the columns before starting the new
+engine:
+
+| Since | Statement |
+| --- | --- |
+| `timer.resolved_cycle` (timer expressions) | `ALTER TABLE reporting.timer ADD COLUMN IF NOT EXISTS resolved_cycle TEXT;` |
+
 Configure the development CDC output in `conf/zenbpm/conf-dev.yaml` as follows:
 
 ```yaml

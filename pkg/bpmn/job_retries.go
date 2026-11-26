@@ -233,29 +233,12 @@ func isFeelDuration(result any) bool {
 // runtime hands them over, as a context made to look like a duration may: it
 // would otherwise read as no backoff at all.
 func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
-	if invalid := duration["invalid"]; invalid != nil {
-		return 0, fmt.Errorf("FEEL duration is invalid: %s", shortDescriptionOf(invalid))
-	}
-	units, ok := duration["values"].(map[string]any)
-	if !ok {
-		return 0, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", shortDescriptionOf(duration["values"]))
-	}
-	if len(units) == 0 {
-		return 0, errors.New("FEEL duration names no amount of any unit")
+	units, err := feelDurationUnits(duration)
+	if err != nil {
+		return 0, err
 	}
 	seconds := 0.0
-	for unit, amount := range units {
-		count, ok := amount.(float64)
-		if !ok {
-			whole, isWhole := amount.(int64)
-			if !isWhole {
-				return 0, fmt.Errorf("FEEL duration has %s %s, which is not a number", shortDescriptionOf(amount), unit)
-			}
-			count = float64(whole)
-		}
-		if math.IsNaN(count) || math.IsInf(count, 0) {
-			return 0, fmt.Errorf("FEEL duration has %v %s, which is not a finite number", count, unit)
-		}
+	for unit, count := range units {
 		switch unit {
 		case "years", "quarters", "months":
 			if count != 0 {
@@ -273,8 +256,6 @@ func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
 			seconds += count
 		case "milliseconds":
 			seconds += count / 1000
-		default:
-			return 0, fmt.Errorf("FEEL duration has the unknown unit %q", unit)
 		}
 	}
 	if seconds < 0 {
@@ -286,6 +267,46 @@ func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
 		return time.Duration(math.MaxInt64), nil
 	}
 	return time.Duration(seconds) * time.Second, nil
+}
+
+// feelDurationUnits reads the units of a FEEL duration and the amount of each:
+// years, quarters, months, weeks, days, hours, minutes, seconds and
+// milliseconds, of which a duration names only those it was built from. It
+// refuses a duration the FEEL runtime marked invalid, one which names no unit,
+// such as duration("PT"), and one which does not carry its units the way the
+// FEEL runtime hands them over, as a context made to look like a duration may.
+func feelDurationUnits(duration map[string]any) (map[string]float64, error) {
+	if invalid := duration["invalid"]; invalid != nil {
+		return nil, fmt.Errorf("FEEL duration is invalid: %s", shortDescriptionOf(invalid))
+	}
+	units, ok := duration["values"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", shortDescriptionOf(duration["values"]))
+	}
+	if len(units) == 0 {
+		return nil, errors.New("FEEL duration names no amount of any unit")
+	}
+	amounts := make(map[string]float64, len(units))
+	for unit, amount := range units {
+		count, ok := amount.(float64)
+		if !ok {
+			whole, isWhole := amount.(int64)
+			if !isWhole {
+				return nil, fmt.Errorf("FEEL duration has %s %s, which is not a number", shortDescriptionOf(amount), unit)
+			}
+			count = float64(whole)
+		}
+		if math.IsNaN(count) || math.IsInf(count, 0) {
+			return nil, fmt.Errorf("FEEL duration has %v %s, which is not a finite number", count, unit)
+		}
+		switch unit {
+		case "years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds":
+			amounts[unit] = count
+		default:
+			return nil, fmt.Errorf("FEEL duration has the unknown unit %q", unit)
+		}
+	}
+	return amounts, nil
 }
 
 // shortDescriptionOf names an expression result an error message quotes: its

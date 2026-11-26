@@ -842,6 +842,21 @@ func (engine *Engine) createInstanceWithStartingElements(
 
 var errRecoverableEventSubprocessSubscription = errors.New("recoverable event subprocess subscription creation failure")
 
+// recoverableEventSubprocessSubscriptionError marks its cause as
+// errRecoverableEventSubprocessSubscription without adding to its text, which
+// becomes the message of the incident.
+type recoverableEventSubprocessSubscriptionError struct {
+	cause error
+}
+
+func (e recoverableEventSubprocessSubscriptionError) Error() string { return e.cause.Error() }
+
+func (e recoverableEventSubprocessSubscriptionError) Unwrap() error { return e.cause }
+
+func (e recoverableEventSubprocessSubscriptionError) Is(target error) bool {
+	return target == errRecoverableEventSubprocessSubscription
+}
+
 // createEventSubProcessSubscriptions scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
 // For each event subprocess that has only 1 StartEvent it creates a subscription to start that event sub process
 func (engine *Engine) createEventSubProcessSubscriptions(
@@ -934,7 +949,15 @@ func (engine *Engine) createStartEventSubscriptions(
 		for _, startEventDefinition := range startEvent.EventDefinitions {
 			err := engine.createTimerStartEventTimers(ctx, batch, startEventDefinition, startEvent, processDefinition.Key, processInstance, nil)
 			if err != nil {
-				return fmt.Errorf("failed to create timers for timer start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
+				err = fmt.Errorf("failed to create timers for timer start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
+				// The timer expression of an event subprocess start event which does
+				// not evaluate against the variables of the instance is an incident
+				// to resolve once the variables are corrected, as a correlation key
+				// which does not evaluate is.
+				if processInstance != nil && isTimerExpressionError(err) {
+					return recoverableEventSubprocessSubscriptionError{cause: err}
+				}
+				return err
 			}
 			err = engine.createMessageStartEventMessageSubscriptions(ctx, batch, startEventDefinition, startEvent, processDefinition, processInstance)
 			if err != nil {
@@ -959,15 +982,22 @@ func (engine *Engine) createTimerStartEventTimers(
 		return nil
 	}
 	var processInstanceKey *int64
+	// The start event of the process itself has no instance to take variables
+	// from: its expression is evaluated against none.
+	variables := map[string]any{}
 	if processInstance != nil {
 		key := (*processInstance).ProcessInstance().Key
 		processInstanceKey = &key
+		variables = timerVariables(*processInstance)
 	}
 	var timer *runtime.Timer
 	switch {
 	case timerStartEventDefinition.TimeDate != nil:
-		startTime, err := findStartTime(timerStartEventDefinition)
+		startTime, err := engine.timeDateOf(timerStartEventDefinition, startEvent.GetId(), variables)
 		if err != nil {
+			if isTimerExpressionError(err) {
+				return err
+			}
 			return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
 				startEvent.GetId(), processDefinitionKey, err)
 		}
@@ -992,13 +1022,21 @@ func (engine *Engine) createTimerStartEventTimers(
 		}
 		t, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
 		if err != nil {
+			// the error of an expression names the element itself, and the
+			// caller names the start event and the definition
+			if isTimerExpressionError(err) {
+				return err
+			}
 			return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
 				startEvent.GetId(), processDefinitionKey, err)
 		}
 		timer = t
 	case timerStartEventDefinition.TimeCycle != nil:
-		t, err := engine.createCycleStartTimer(ctx, processDefinitionKey, processInstanceKey, startEvent.GetId(), timerStartEventDefinition, inFlightTriggeredCycleTimerKey)
+		t, err := engine.createCycleStartTimer(ctx, processDefinitionKey, processInstanceKey, startEvent.GetId(), timerStartEventDefinition, inFlightTriggeredCycleTimerKey, variables)
 		if err != nil {
+			if isTimerExpressionError(err) {
+				return err
+			}
 			return fmt.Errorf("failed to create cycle timer for timer start event %s of definition %d: %w",
 				startEvent.GetId(), processDefinitionKey, err)
 		}

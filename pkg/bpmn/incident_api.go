@@ -287,6 +287,13 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64, options ..
 			return incidentWithoutJobRefusesRetries(key)
 		}
 		if err := engine.retryEventSubprocessSubscriptionIncident(ctx, &batch, instance, incident); err != nil {
+			if isTimerExpressionError(err) {
+				// The variables are as they were: the incident stays open. The
+				// instance is named, for inside an embedded subprocess it is the
+				// subprocess instance, which holds variables of its own.
+				return fmt.Errorf("%w: %w; correct the variables of process instance %d which the expression reads and resolve incident %d again",
+					ErrIncidentNotResolvable, err, incident.ProcessInstanceKey, key)
+			}
 			return fmt.Errorf("failed to recreate event subprocess subscription for incident %d: %w", key, err)
 		}
 		incident.ResolvedAt = new(time.Now())

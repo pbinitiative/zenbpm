@@ -76,11 +76,12 @@ func timerOffsetOf(units map[string]float64) (timerOffset, error) {
 		seconds += amount
 		return nil
 	}
-	// The units are added in one order, which the map does not have, so that
-	// a duration comes to the same offset each time: a sum of fractions of a
-	// second rounds by the order of its terms, by microseconds within the
-	// bound, which the millisecond a timer is stored to does not show.
-	for _, unit := range []string{"years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds"} {
+	// The units are added in one order, which the map does not have: a sum of
+	// fractions of a second rounds by the order of its terms, by a few
+	// microseconds within the bound. That error is accepted; with the order
+	// fixed, a duration at least comes to the same offset each time, and so
+	// to the same millisecond a timer is stored to.
+	for _, unit := range feelDurationUnitNames {
 		count, named := units[unit]
 		if !named {
 			continue
@@ -277,7 +278,10 @@ func timeDateOfResult(result any) (time.Time, error) {
 	}
 	fields := result.(map[string]any)
 	if invalid := fields["invalid"]; invalid != nil {
-		return time.Time{}, fmt.Errorf("which is invalid: %s", fieldDescriptionOf(invalid))
+		if reason, ok := luxonInvalidReason(invalid); ok {
+			return time.Time{}, fmt.Errorf("which is invalid: %s", reason)
+		}
+		return time.Time{}, errors.New("which is marked invalid")
 	}
 	// the FEEL runtime holds a time as that time on the first day of 1900
 	if calendar, ok := fields["c"].(map[string]any); ok {
@@ -290,7 +294,7 @@ func timeDateOfResult(result any) (time.Time, error) {
 	}
 	milliseconds, ok := numberOf(fields["ts"])
 	if !ok || math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) || math.Abs(milliseconds) > maxTimerEpochMilliseconds {
-		return time.Time{}, fmt.Errorf("which carries its moment as %s instead of milliseconds since 1970", fieldDescriptionOf(fields["ts"]))
+		return time.Time{}, fmt.Errorf("which carries its moment as %s instead of milliseconds since 1970", kindOf(fields["ts"]))
 	}
 	dueAt := time.UnixMilli(int64(milliseconds))
 	return dueAt, checkTimerMoment(dueAt)

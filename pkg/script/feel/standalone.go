@@ -75,8 +75,7 @@ var ErrEarlierExpressionStillRunning = errors.New("a FEEL expression given up ea
 // such as "valid for", does not parse here although it evaluates in an
 // instance which has it.
 //
-// A check which takes longer than StandaloneEvaluationLimit fails with
-// ErrEvaluationTookTooLong, as an evaluation does in Evaluate.
+// A check is held to StandaloneEvaluationLimit as an evaluation is in Evaluate.
 func ValidateExpression(expression string) error {
 	_, err := standaloneValidator.run("check", func(runner *FeelinRunner) (any, error) {
 		return nil, (*runner.validateExpression)(expression)
@@ -86,10 +85,13 @@ func ValidateExpression(expression string) error {
 
 // Evaluate evaluates a FEEL expression the way FeelinRuntime.Evaluate does, on
 // a runner of its own. See ValidateExpression for when to use it instead of
-// the FEEL runtime of an engine. An expression which runs longer than
-// StandaloneEvaluationLimit fails with ErrEvaluationTookTooLong.
+// the FEEL runtime of an engine. Evaluate waits StandaloneEvaluationLimit for
+// an expression, then gives it up and fails with ErrEvaluationTookTooLong. The
+// limit is when the caller stops waiting, not a deadline the result is held
+// to: one which is ready just as the limit runs out may still be returned,
+// and it is the true result, as nothing interrupted it.
 //
-// Such an expression is interrupted, which ends a FEEL loop. It does not end
+// An expression given up is interrupted, which ends a FEEL loop. It does not end
 // the match of a regular expression, which runs outside of the interpreter and
 // can take very long for a pattern that backtracks: Evaluate then returns all
 // the same, and leaves that evaluation to end on a runner nothing else uses
@@ -114,9 +116,9 @@ type outcome struct {
 	panicked bool
 }
 
-// run runs work on the runner, for at most standaloneEvaluationLimit. Work
-// which takes longer is interrupted and its runner given up, so that the next
-// call meets neither; task names the work in the error ("evaluate", "check").
+// run runs work on the runner and waits standaloneEvaluationLimit for it.
+// Work still running then is interrupted and its runner given up, so that the
+// next call meets neither; task names the work in the error ("evaluate", "check").
 // A panic of the work is recovered into its error, and the runner, whose state
 // is then unknown, is given up as well.
 func (s *standaloneRunner) run(task string, work func(runner *FeelinRunner) (any, error)) (any, error) {

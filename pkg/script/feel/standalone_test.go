@@ -2,6 +2,7 @@ package feel
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,11 +78,12 @@ func TestEvaluateStopsAnExpressionWhichTakesTooLong(t *testing.T) {
 // TestStandaloneRunnerWaitsAtMostTheLimitForWorkItGaveUp, whose work ends when
 // the test says so: when a real match ends is up to the machine.
 func TestEvaluateReturnsAtTheLimitWhenTheExpressionCannotBeInterrupted(t *testing.T) {
-	standaloneEvaluationLimit = 50 * time.Millisecond
+	standaloneEvaluationLimit = 20 * time.Millisecond
 	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
 
-	// the time of this match doubles with every "a": about a second at this length
-	backtracking := `matches("` + strings.Repeat("a", 24) + `!", "^(?=a)(a+)+$")`
+	// The time of this match doubles with every "a": a quarter of a second at
+	// this length, ten times the limit, and seconds under the race detector.
+	backtracking := `matches("` + strings.Repeat("a", 22) + `!", "^(?=a)(a+)+$")`
 
 	started := time.Now()
 	_, err := Evaluate(backtracking, map[string]any{})
@@ -119,28 +121,41 @@ func TestStandaloneRunnerWaitsAtMostTheLimitForWorkItGaveUp(t *testing.T) {
 	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
 
 	var runner standaloneRunner
-	// work which pays no heed to an interrupt, as the match of a regular expression
-	uninterruptible := func(release <-chan struct{}) func(*FeelinRunner) (any, error) {
-		return func(*FeelinRunner) (any, error) {
-			<-release
-			return nil, nil
-		}
-	}
 	two := func(*FeelinRunner) (any, error) { return 2, nil }
 
-	release := make(chan struct{})
-	_, err := runner.run("evaluate", uninterruptible(release))
+	stuck := newUninterruptibleWork(t)
+	_, err := runner.run("evaluate", stuck.work)
 	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
+
+	// The next call is given a limit it cannot run out of, and the work is
+	// released once that call holds the runner, which it does while it waits.
+	standaloneEvaluationLimit = time.Minute
+	called := make(chan error, 1)
+	var result any
 	go func() {
-		time.Sleep(20 * time.Millisecond)
-		close(release)
+		var err error
+		result, err = runner.run("evaluate", two)
+		called <- err
 	}()
-	result, err := runner.run("evaluate", two)
-	require.NoError(t, err, "the work given up ended while this call waited")
+	require.Eventually(t, func() bool {
+		if runner.mu.TryLock() {
+			runner.mu.Unlock()
+			return false
+		}
+		return true
+	}, 5*time.Second, time.Millisecond, "the next call takes the runner")
+	stuck.end()
+	select {
+	case err := <-called:
+		require.NoError(t, err, "the work given up ended while this call waited")
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the call did not go on once the work given up had ended")
+	}
 	assert.Equal(t, 2, result)
 
-	release = make(chan struct{})
-	_, err = runner.run("evaluate", uninterruptible(release))
+	standaloneEvaluationLimit = 100 * time.Millisecond
+	stuck = newUninterruptibleWork(t)
+	_, err = runner.run("evaluate", stuck.work)
 	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
 	_, err = runner.run("evaluate", two)
 	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning)
@@ -148,7 +163,7 @@ func TestStandaloneRunnerWaitsAtMostTheLimitForWorkItGaveUp(t *testing.T) {
 	_, err = runner.run("evaluate", two)
 	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning, "refused as long as the work given up runs")
 
-	close(release)
+	stuck.end()
 	require.Eventually(t, func() bool {
 		result, err := runner.run("evaluate", two)
 		return err == nil && result == 2
@@ -217,4 +232,29 @@ func TestDateAndTimeWithoutZoneIsInTheLocalZone(t *testing.T) {
 		require.True(t, ok, "%s carries its moment in milliseconds, got %T", expression, fields["ts"])
 		assert.True(t, want.Equal(time.UnixMilli(milliseconds)), "%s: got %s, want %s", expression, time.UnixMilli(milliseconds).UTC(), want.UTC())
 	}
+}
+
+// uninterruptibleWork is work for a standalone runner which pays no heed to an
+// interrupt, as the match of a regular expression does, and which ends when
+// the test ends it, or with the test, so that no work outlives a failed
+// assertion.
+type uninterruptibleWork struct {
+	release chan struct{}
+	once    sync.Once
+}
+
+func newUninterruptibleWork(t *testing.T) *uninterruptibleWork {
+	t.Helper()
+	work := &uninterruptibleWork{release: make(chan struct{})}
+	t.Cleanup(work.end)
+	return work
+}
+
+func (w *uninterruptibleWork) work(*FeelinRunner) (any, error) {
+	<-w.release
+	return nil, nil
+}
+
+func (w *uninterruptibleWork) end() {
+	w.once.Do(func() { close(w.release) })
 }

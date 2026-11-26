@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -269,42 +270,54 @@ func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
 	return time.Duration(seconds) * time.Second, nil
 }
 
-// feelDurationUnits reads the units of a FEEL duration and the amount of each:
-// years, quarters, months, weeks, days, hours, minutes, seconds and
-// milliseconds, of which a duration names only those it was built from. It
-// refuses a duration the FEEL runtime marked invalid, one which names no unit,
-// such as duration("PT"), and one which does not carry its units the way the
-// FEEL runtime hands them over, as a context made to look like a duration may.
+// feelDurationUnitNames are the units a FEEL duration names, from the largest
+// to the smallest: the FEEL runtime hands a duration over with an amount for
+// each unit it was built from.
+var feelDurationUnitNames = []string{"years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds"}
+
+// feelDurationUnits reads the units of a FEEL duration and the amount of each
+// (see feelDurationUnitNames), of which a duration names only those it was
+// built from. It refuses a duration the FEEL runtime marked invalid, one which
+// names no unit, such as duration("PT"), and one which does not carry its
+// units the way the FEEL runtime hands them over, as a context made to look
+// like a duration may.
+//
+// Its errors become the messages of incidents. They name what a field holds
+// by its kind only (see kindOf) and do not name a unit the runtime does not
+// know: a context made to look like a duration, which takes no more than its
+// isLuxonDuration field, may hold anything the instance knows, in its values
+// and in its keys.
 func feelDurationUnits(duration map[string]any) (map[string]float64, error) {
 	if invalid := duration["invalid"]; invalid != nil {
-		return nil, fmt.Errorf("FEEL duration is invalid: %s", fieldDescriptionOf(invalid))
+		if reason, ok := luxonInvalidReason(invalid); ok {
+			return nil, fmt.Errorf("FEEL duration is invalid: %s", reason)
+		}
+		return nil, errors.New("FEEL duration is marked invalid")
 	}
 	units, ok := duration["values"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", fieldDescriptionOf(duration["values"]))
+		return nil, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", kindOf(duration["values"]))
 	}
 	if len(units) == 0 {
 		return nil, errors.New("FEEL duration names no amount of any unit")
 	}
 	amounts := make(map[string]float64, len(units))
 	for unit, amount := range units {
+		if !slices.Contains(feelDurationUnitNames, unit) {
+			return nil, errors.New("FEEL duration has a unit it does not know")
+		}
 		count, ok := amount.(float64)
 		if !ok {
 			whole, isWhole := amount.(int64)
 			if !isWhole {
-				return nil, fmt.Errorf("FEEL duration has %s %s, which is not a number", fieldDescriptionOf(amount), unit)
+				return nil, fmt.Errorf("FEEL duration has %s for %s, which is not a number", kindOf(amount), unit)
 			}
 			count = float64(whole)
 		}
 		if math.IsNaN(count) || math.IsInf(count, 0) {
 			return nil, fmt.Errorf("FEEL duration has %v %s, which is not a finite number", count, unit)
 		}
-		switch unit {
-		case "years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds":
-			amounts[unit] = count
-		default:
-			return nil, fmt.Errorf("FEEL duration has the unknown unit %q", unit)
-		}
+		amounts[unit] = count
 	}
 	return amounts, nil
 }
@@ -321,21 +334,51 @@ func shortDescriptionOf(value any) string {
 	return fmt.Sprintf("%s (%T)", string(text), value)
 }
 
-// fieldDescriptionOf names a field of a FEEL date or duration an error message
-// quotes, where the field is not what the FEEL runtime puts there. A context
-// or a list is named by its kind only, whatever it holds: a context made to
-// look like a date or a duration, which takes no more than its
-// isLuxonDateTime or isLuxonDuration field, may hold anything the instance
-// knows, and the message becomes that of an incident. Anything else is
-// described as shortDescriptionOf does.
-func fieldDescriptionOf(value any) string {
+// kindOf names the kind of a value held in a field of a FEEL date or duration
+// which is not what the FEEL runtime puts there, for an error message: the
+// value itself is not quoted, whatever it is. Such a field comes from a
+// context made to look like a date or a duration, which may hold anything the
+// instance knows, and the message becomes that of an incident.
+func kindOf(value any) string {
 	switch value.(type) {
+	case nil:
+		return "nothing"
+	case string:
+		return "a string"
+	case bool:
+		return "a boolean"
+	case int, int32, int64, float32, float64:
+		return "a number"
 	case map[string]any:
 		return "a context"
 	case []any:
 		return "a list"
 	}
-	return shortDescriptionOf(value)
+	return fmt.Sprintf("a value of type %T", value)
+}
+
+// luxonInvalidReasons are the reasons Luxon, which holds the dates and
+// durations of the FEEL runtime, gives for a value it marks invalid. They are
+// fixed texts of the library; what it says about the input goes into the
+// explanation, which is not quoted.
+var luxonInvalidReasons = []string{
+	"invalid input", "unparsable", "unsupported zone", "unit out of range", "Timestamp out of range",
+	"missing or invalid start", "missing or invalid end", "created by diffing an invalid DateTime",
+}
+
+// luxonInvalidReason is the reason in the invalid field of a FEEL date or
+// duration, when it is one Luxon gives (see luxonInvalidReasons): Luxon puts
+// a context with a reason there, a context made to look so may put anything.
+// The reason is the one thing of such a field an error message quotes.
+func luxonInvalidReason(invalid any) (string, bool) {
+	reason, ok := invalid.(string)
+	if fields, isContext := invalid.(map[string]any); isContext {
+		reason, ok = fields["reason"].(string)
+	}
+	if !ok || !slices.Contains(luxonInvalidReasons, reason) {
+		return "", false
+	}
+	return reason, true
 }
 
 // backoffForAttempt is how long the job waits after its n-th failure: the

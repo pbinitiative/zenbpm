@@ -73,18 +73,30 @@ func TestTimeDateOfResult(t *testing.T) {
 			result  map[string]any
 			message string
 		}{
-			"as what is invalid":  {map[string]any{"isLuxonDateTime": true, "invalid": secret}, "which is invalid: a context"},
+			"as what is invalid":  {map[string]any{"isLuxonDateTime": true, "invalid": secret}, "which is marked invalid"},
 			"in place of a stamp": {map[string]any{"isLuxonDateTime": true, "ts": []any{secret}}, "which carries its moment as a list instead"},
+			"a string as a stamp": {map[string]any{"isLuxonDateTime": true, "ts": "CZ6508000000192000145399"}, "which carries its moment as a string instead"},
 			// a context with a reason is not taken for the one Luxon marks an invalid value with
 			"with a reason, as what is invalid": {map[string]any{"isLuxonDateTime": true, "invalid": map[string]any{"reason": "CZ6508000000192000145399"}},
-				"which is invalid: a context"},
+				"which is marked invalid"},
 			"with a reason, in place of a stamp": {map[string]any{"isLuxonDateTime": true, "ts": map[string]any{"reason": "CZ6508000000192000145399"}},
 				"which carries its moment as a context instead"},
+			// values a program which embeds the engine may set from Go
+			"a typed map as what is invalid": {map[string]any{"isLuxonDateTime": true, "invalid": map[string]string{"iban": "CZ6508000000192000145399"}},
+				"which is marked invalid"},
+			"a typed list as a stamp": {map[string]any{"isLuxonDateTime": true, "ts": []string{"CZ6508000000192000145399"}},
+				"which carries its moment as a value of type []string instead"},
 		} {
 			_, err := timeDateOfResult(tc.result)
 			require.ErrorContains(t, err, tc.message, name)
 			assert.NotContains(t, err.Error(), "CZ65", name)
 		}
+	})
+
+	t.Run("a date the FEEL runtime marked invalid names the reason it gives", func(t *testing.T) {
+		// beyond the years of a JavaScript date: Luxon marks the sum invalid
+		_, err := timeDateOfResult(feelResult(t, `date and time("9999-12-31T00:00:00") + duration("P999999999Y")`, nil))
+		assert.EqualError(t, err, "which is invalid: invalid input")
 	})
 }
 
@@ -132,53 +144,58 @@ func TestTimeDurationOfResult(t *testing.T) {
 	}
 
 	t.Run("a duration moves a timer as the same literal does", func(t *testing.T) {
-		// the literal is read as createDurationTimer reads it, from the model
-		literalDueAt := func(t *testing.T, literal string, from time.Time) time.Time {
-			t.Helper()
-			value, err := findDurationValue(bpmn20.TTimerEventDefinition{TimeDuration: &bpmn20.TTimeInfo{XMLText: literal}})
-			require.NoError(t, err)
-			return value.Shift(from)
-		}
-		newYork, err := time.LoadLocation("America/New_York")
-		if err != nil {
-			t.Skipf("no time zone database: %v", err)
-		}
-		// the second 01:15 of the night daylight saving time ended in New York
-		inRepeatedHour := time.Date(2011, 11, 6, 6, 15, 0, 0, time.UTC).In(newYork)
-		for _, tc := range []struct{ literal, expression string }{
+		durations := []struct{ literal, expression string }{
 			{"P1M", `duration("P1M")`},
 			{"P1DT2H", `duration("P1DT2H")`},
 			{"PT15M", `duration("PT15M")`},
-		} {
-			for _, from := range []time.Time{base, inRepeatedHour} {
+		}
+		assertMovedAsTheLiteral := func(t *testing.T, from time.Time) {
+			t.Helper()
+			for _, tc := range durations {
 				offset, err := timeDurationOfResult(feelResult(t, tc.expression, nil))
 				require.NoError(t, err, tc.expression)
-				want := literalDueAt(t, tc.literal, from)
-				assert.True(t, want.Equal(offset.Shift(from)), "%s from %s: got %s, the literal %s", tc.expression, from, offset.Shift(from), want)
+				// the literal is read as createDurationTimer reads it, from the model
+				literal, err := findDurationValue(bpmn20.TTimerEventDefinition{TimeDuration: &bpmn20.TTimeInfo{XMLText: tc.literal}})
+				require.NoError(t, err, tc.literal)
+				assert.True(t, literal.Shift(from).Equal(offset.Shift(from)), "%s from %s: got %s, the literal %s", tc.expression, from, offset.Shift(from), literal.Shift(from))
 			}
 		}
-		offset, err := timeDurationOfResult(feelResult(t, `duration("PT15M")`, nil))
-		require.NoError(t, err)
-		assert.True(t, inRepeatedHour.Add(15*time.Minute).Equal(offset.Shift(inRepeatedHour)),
-			"a duration of the clock keeps the instant it starts from, in the repeated hour as well")
+
+		t.Run("from the end of a month", func(t *testing.T) {
+			assertMovedAsTheLiteral(t, base)
+		})
+
+		t.Run("from the hour repeated as daylight saving time ends", func(t *testing.T) {
+			newYork, err := time.LoadLocation("America/New_York")
+			if err != nil {
+				t.Skipf("no time zone database: %v", err)
+			}
+			// the second 01:15 of the night daylight saving time ended in New York
+			inRepeatedHour := time.Date(2011, 11, 6, 6, 15, 0, 0, time.UTC).In(newYork)
+			assertMovedAsTheLiteral(t, inRepeatedHour)
+
+			offset, err := timeDurationOfResult(feelResult(t, `duration("PT15M")`, nil))
+			require.NoError(t, err)
+			assert.True(t, inRepeatedHour.Add(15*time.Minute).Equal(offset.Shift(inRepeatedHour)),
+				"a duration of the clock keeps the instant it starts from, in the repeated hour as well")
+		})
 	})
 
 	t.Run("the units of a duration are bounded before they are added up", func(t *testing.T) {
 		// added in some orders, the second would be lost between the other two
-		for range 20 {
-			_, err := timeDurationOfResult("PT1000000000000000H-60000000000000000M1S")
-			require.ErrorContains(t, err, "which is more than a timer can wait")
-		}
+		_, err := timeDurationOfResult("PT1000000000000000H-60000000000000000M1S")
+		require.ErrorContains(t, err, "which is more than a timer can wait")
+		// the example of the documentation: an hour net, of units beyond the bound
+		_, err = timeDurationOfResult("PT3000000H-179999940M")
+		require.ErrorContains(t, err, "which is more than a timer can wait")
+
 		// within the bound, the sum rounds by the order of its terms: the
-		// order is fixed, so a duration comes to one offset
-		first, err := timeDurationOfResult("PT2500000H-150000000M0.000001S")
-		require.NoError(t, err)
+		// order is fixed, so a duration comes to one offset, here the exact one
 		for range 20 {
-			again, err := timeDurationOfResult("PT2500000H-150000000M0.000001S")
+			offset, err := timeDurationOfResult("PT2500000H-150000000M0.000001S")
 			require.NoError(t, err)
-			require.Equal(t, first.clock, again.clock)
+			require.Equal(t, time.Microsecond, offset.clock, "the hours and minutes cancel, the microsecond is all there is")
 		}
-		assert.Less(t, first.clock.Abs(), time.Millisecond, "the hours and minutes cancel, the microsecond is all there is")
 	})
 
 	for name, refused := range map[string]struct {
@@ -216,11 +233,23 @@ func TestTimeDurationOfResult(t *testing.T) {
 			message string
 		}{
 			"in place of an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": secret}},
-				"FEEL duration has a context hours, which is not a number"},
+				"FEEL duration has a context for hours, which is not a number"},
 			"in place of the units": {map[string]any{"isLuxonDuration": true, "values": []any{secret}},
 				"FEEL duration carries its units as a list instead"},
 			"as what is invalid": {map[string]any{"isLuxonDuration": true, "invalid": secret, "values": map[string]any{"hours": 1}},
-				"FEEL duration is invalid: a context"},
+				"FEEL duration is marked invalid"},
+			// the units are the keys of a context, which may be data as well
+			"as the units": {map[string]any{"isLuxonDuration": true, "values": secret},
+				"FEEL duration has a unit it does not know"},
+			"keyed by data, with a number": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"CZ6508000000192000145399": int64(1)}},
+				"FEEL duration has a unit it does not know"},
+			"a string as an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": "CZ6508000000192000145399"}},
+				"FEEL duration has a string for hours, which is not a number"},
+			// values a program which embeds the engine may set from Go
+			"a typed list as an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": []string{"CZ6508000000192000145399"}}},
+				"FEEL duration has a value of type []string for hours, which is not a number"},
+			"a typed map as what is invalid": {map[string]any{"isLuxonDuration": true, "invalid": map[string]string{"reason": "CZ6508000000192000145399"}, "values": map[string]any{"hours": 1}},
+				"FEEL duration is marked invalid"},
 		} {
 			_, err := timeDurationOfResult(tc.result)
 			require.ErrorContains(t, err, tc.message, name)
@@ -234,9 +263,9 @@ func TestTimeDurationOfResult(t *testing.T) {
 			message string
 		}{
 			"in place of an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": withReason}},
-				"FEEL duration has a context hours, which is not a number"},
+				"FEEL duration has a context for hours, which is not a number"},
 			"as what is invalid": {map[string]any{"isLuxonDuration": true, "invalid": withReason, "values": map[string]any{"hours": 1}},
-				"FEEL duration is invalid: a context"},
+				"FEEL duration is marked invalid"},
 		} {
 			_, err := timeDurationOfResult(tc.result)
 			require.ErrorContains(t, err, tc.message, "a reason "+name)

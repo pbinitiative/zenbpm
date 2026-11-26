@@ -66,6 +66,21 @@ func TestTimeDateOfResult(t *testing.T) {
 			assert.ErrorContains(t, err, refused.message)
 		})
 	}
+
+	t.Run("a context made to look like a date is not quoted", func(t *testing.T) {
+		secret := map[string]any{"iban": "CZ6508000000192000145399"}
+		for name, tc := range map[string]struct {
+			result  map[string]any
+			message string
+		}{
+			"as what is invalid":  {map[string]any{"isLuxonDateTime": true, "invalid": secret}, "which is invalid: a context"},
+			"in place of a stamp": {map[string]any{"isLuxonDateTime": true, "ts": []any{secret}}, "which carries its moment as a list instead"},
+		} {
+			_, err := timeDateOfResult(tc.result)
+			require.ErrorContains(t, err, tc.message, name)
+			assert.NotContains(t, err.Error(), "CZ65", name)
+		}
+	})
 }
 
 func TestTimeDurationOfResult(t *testing.T) {
@@ -111,12 +126,44 @@ func TestTimeDurationOfResult(t *testing.T) {
 		})
 	}
 
-	t.Run("a month is moved by the calendar, as a literal moves it", func(t *testing.T) {
-		literal, err := timeDurationOfResult("P1M")
+	t.Run("a duration moves a timer as the same literal does", func(t *testing.T) {
+		// the literal is read as createDurationTimer reads it, from the model
+		literalDueAt := func(t *testing.T, literal string, from time.Time) time.Time {
+			t.Helper()
+			value, err := findDurationValue(bpmn20.TTimerEventDefinition{TimeDuration: &bpmn20.TTimeInfo{XMLText: literal}})
+			require.NoError(t, err)
+			return value.Shift(from)
+		}
+		newYork, err := time.LoadLocation("America/New_York")
+		if err != nil {
+			t.Skipf("no time zone database: %v", err)
+		}
+		// the second 01:15 of the night daylight saving time ended in New York
+		inRepeatedHour := time.Date(2011, 11, 6, 6, 15, 0, 0, time.UTC).In(newYork)
+		for _, tc := range []struct{ literal, expression string }{
+			{"P1M", `duration("P1M")`},
+			{"P1DT2H", `duration("P1DT2H")`},
+			{"PT15M", `duration("PT15M")`},
+		} {
+			for _, from := range []time.Time{base, inRepeatedHour} {
+				offset, err := timeDurationOfResult(feelResult(t, tc.expression, nil))
+				require.NoError(t, err, tc.expression)
+				want := literalDueAt(t, tc.literal, from)
+				assert.True(t, want.Equal(offset.Shift(from)), "%s from %s: got %s, the literal %s", tc.expression, from, offset.Shift(from), want)
+			}
+		}
+		offset, err := timeDurationOfResult(feelResult(t, `duration("PT15M")`, nil))
 		require.NoError(t, err)
-		feelDuration, err := timeDurationOfResult(feelResult(t, `duration("P1M")`, nil))
-		require.NoError(t, err)
-		assert.Equal(t, literal.Shift(base), feelDuration.Shift(base))
+		assert.True(t, inRepeatedHour.Add(15*time.Minute).Equal(offset.Shift(inRepeatedHour)),
+			"a duration of the clock keeps the instant it starts from, in the repeated hour as well")
+	})
+
+	t.Run("the units of a duration are bounded before they are added up", func(t *testing.T) {
+		// added in some orders, the second would be lost between the other two
+		for range 20 {
+			_, err := timeDurationOfResult("PT1000000000000000H-60000000000000000M1S")
+			require.ErrorContains(t, err, "which is more than a timer can wait")
+		}
 	})
 
 	for name, refused := range map[string]struct {
@@ -146,6 +193,28 @@ func TestTimeDurationOfResult(t *testing.T) {
 			assert.ErrorContains(t, err, refused.message)
 		})
 	}
+
+	t.Run("a context made to look like a duration is not quoted", func(t *testing.T) {
+		secret := map[string]any{"iban": "CZ6508000000192000145399"}
+		for name, tc := range map[string]struct {
+			result  map[string]any
+			message string
+		}{
+			"in place of an amount": {map[string]any{"isLuxonDuration": true, "values": map[string]any{"hours": secret}},
+				"FEEL duration has a context hours, which is not a number"},
+			"in place of the units": {map[string]any{"isLuxonDuration": true, "values": []any{secret}},
+				"FEEL duration carries its units as a list instead"},
+			"as what is invalid": {map[string]any{"isLuxonDuration": true, "invalid": secret, "values": map[string]any{"hours": 1}},
+				"FEEL duration is invalid: a context"},
+		} {
+			_, err := timeDurationOfResult(tc.result)
+			require.ErrorContains(t, err, tc.message, name)
+			assert.NotContains(t, err.Error(), "CZ65", name)
+		}
+
+		_, err := timeDurationOfResult(map[string]any{"isLuxonDuration": true, "invalid": map[string]any{"reason": "unparsable", "explanation": "…"}, "values": map[string]any{}})
+		assert.ErrorContains(t, err, "FEEL duration is invalid: unparsable", "the reason of a duration Luxon marked invalid is quoted")
+	})
 }
 
 func TestTimeCycleOfResult(t *testing.T) {

@@ -71,9 +71,11 @@ func TestEvaluateStopsAnExpressionWhichTakesTooLong(t *testing.T) {
 
 // An interrupt ends a FEEL loop but not the match of a regular expression,
 // which runs outside of the interpreter. Evaluate returns at the limit all the
-// same, so that the caller does not wait for a pattern which backtracks. The
-// match keeps a processor busy until it ends, so the evaluations after it are
-// refused until then, rather than each leaving another one behind.
+// same, so that the caller does not wait for a pattern which backtracks, and
+// once the match has ended the runner serves expressions again. That the calls
+// in between are refused is pinned by
+// TestStandaloneRunnerWaitsAtMostTheLimitForWorkItGaveUp, whose work ends when
+// the test says so: when a real match ends is up to the machine.
 func TestEvaluateReturnsAtTheLimitWhenTheExpressionCannotBeInterrupted(t *testing.T) {
 	standaloneEvaluationLimit = 50 * time.Millisecond
 	t.Cleanup(func() { standaloneEvaluationLimit = StandaloneEvaluationLimit })
@@ -85,9 +87,6 @@ func TestEvaluateReturnsAtTheLimitWhenTheExpressionCannotBeInterrupted(t *testin
 	_, err := Evaluate(backtracking, map[string]any{})
 	require.ErrorIs(t, err, ErrEvaluationTookTooLong)
 	assert.Less(t, time.Since(started), 2*time.Second, "the evaluation was given up at the limit rather than waited for")
-
-	_, err = Evaluate(`1 + 1`, map[string]any{})
-	require.ErrorIs(t, err, ErrEarlierExpressionStillRunning, "the match given up still runs")
 
 	require.Eventually(t, func() bool {
 		result, err := Evaluate(`1 + 1`, map[string]any{})

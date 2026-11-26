@@ -39,8 +39,14 @@ type timerOffset struct {
 	clock               time.Duration
 }
 
-// Shift returns t moved by the offset.
+// Shift returns t moved by the offset. Without years, months or days the
+// calendar is not touched, as a literal duration does not touch it: AddDate
+// rebuilds t from its wall clock, which in the hour repeated at the end of
+// daylight saving time may name the other of its two instants.
 func (offset timerOffset) Shift(t time.Time) time.Time {
+	if offset.years == 0 && offset.months == 0 && offset.days == 0 {
+		return t.Add(offset.clock)
+	}
 	return t.AddDate(offset.years, offset.months, offset.days).Add(offset.clock)
 }
 
@@ -55,9 +61,23 @@ const maxTimerCalendarUnits = 100_000_000
 // numbers, as the calendar moves by whole ones; hours and below may carry a
 // fraction.
 func timerOffsetOf(units map[string]float64) (timerOffset, error) {
+	// converting a float beyond the range of int64 is not defined, so the
+	// bound is checked before the conversion
+	maxSeconds := float64(math.MaxInt64) / float64(time.Second)
 	offset := timerOffset{}
 	seconds := 0.0
+	addSeconds := func(amount float64) error {
+		// Each unit is held to the bound before it is added: units of
+		// opposite signs far beyond it would cancel in the sum, and lose
+		// what the others add, in an order the map does not fix.
+		if math.IsNaN(amount) || math.Abs(amount) >= maxSeconds {
+			return errors.New("which is more than a timer can wait")
+		}
+		seconds += amount
+		return nil
+	}
 	for unit, count := range units {
+		var err error
 		switch unit {
 		case "years", "quarters", "months", "weeks", "days":
 			if count != math.Trunc(count) {
@@ -79,18 +99,19 @@ func timerOffsetOf(units map[string]float64) (timerOffset, error) {
 				offset.days += int(count)
 			}
 		case "hours":
-			seconds += count * 60 * 60
+			err = addSeconds(count * 60 * 60)
 		case "minutes":
-			seconds += count * 60
+			err = addSeconds(count * 60)
 		case "seconds":
-			seconds += count
+			err = addSeconds(count)
 		case "milliseconds":
-			seconds += count / 1000
+			err = addSeconds(count / 1000)
+		}
+		if err != nil {
+			return timerOffset{}, err
 		}
 	}
-	// converting a float beyond the range of int64 is not defined, so the
-	// bound is checked before the conversion
-	if math.IsNaN(seconds) || math.Abs(seconds) >= float64(math.MaxInt64)/float64(time.Second) {
+	if math.IsNaN(seconds) || math.Abs(seconds) >= maxSeconds {
 		return timerOffset{}, errors.New("which is more than a timer can wait")
 	}
 	offset.clock = time.Duration(seconds * float64(time.Second))
@@ -248,7 +269,7 @@ func timeDateOfResult(result any) (time.Time, error) {
 	}
 	fields := result.(map[string]any)
 	if invalid := fields["invalid"]; invalid != nil {
-		return time.Time{}, fmt.Errorf("which is invalid: %s", shortDescriptionOf(invalid))
+		return time.Time{}, fmt.Errorf("which is invalid: %s", fieldDescriptionOf(invalid))
 	}
 	// the FEEL runtime holds a time as that time on the first day of 1900
 	if calendar, ok := fields["c"].(map[string]any); ok {
@@ -261,7 +282,7 @@ func timeDateOfResult(result any) (time.Time, error) {
 	}
 	milliseconds, ok := numberOf(fields["ts"])
 	if !ok || math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) || math.Abs(milliseconds) > maxTimerEpochMilliseconds {
-		return time.Time{}, fmt.Errorf("which carries its moment as %s instead of milliseconds since 1970", shortDescriptionOf(fields["ts"]))
+		return time.Time{}, fmt.Errorf("which carries its moment as %s instead of milliseconds since 1970", fieldDescriptionOf(fields["ts"]))
 	}
 	dueAt := time.UnixMilli(int64(milliseconds))
 	return dueAt, checkTimerMoment(dueAt)

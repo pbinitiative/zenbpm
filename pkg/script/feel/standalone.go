@@ -43,6 +43,13 @@ var (
 // i) would otherwise hold the runner, and everything waiting for it, until it
 // is done; so would the check of one nested a few thousand levels deep, which
 // takes minutes.
+//
+// The limit bounds the work on one expression, not the time a call takes: a
+// call first waits for the runner, which serves one expression at a time, and
+// may wait up to the limit for one given up before it (see Evaluate). So that
+// the expressions waiting are all served, each gets the whole limit for its
+// own work, rather than one shared with the wait: a valid expression is not
+// refused because others were checked before it.
 const StandaloneEvaluationLimit = 2 * time.Second
 
 // standaloneEvaluationLimit is StandaloneEvaluationLimit, a variable for the

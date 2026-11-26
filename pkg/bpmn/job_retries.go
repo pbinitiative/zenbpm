@@ -277,11 +277,11 @@ func backoffOfFeelDuration(duration map[string]any) (time.Duration, error) {
 // FEEL runtime hands them over, as a context made to look like a duration may.
 func feelDurationUnits(duration map[string]any) (map[string]float64, error) {
 	if invalid := duration["invalid"]; invalid != nil {
-		return nil, fmt.Errorf("FEEL duration is invalid: %s", shortDescriptionOf(invalid))
+		return nil, fmt.Errorf("FEEL duration is invalid: %s", fieldDescriptionOf(invalid))
 	}
 	units, ok := duration["values"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", shortDescriptionOf(duration["values"]))
+		return nil, fmt.Errorf("FEEL duration carries its units as %s instead of a context of units and amounts", fieldDescriptionOf(duration["values"]))
 	}
 	if len(units) == 0 {
 		return nil, errors.New("FEEL duration names no amount of any unit")
@@ -292,7 +292,7 @@ func feelDurationUnits(duration map[string]any) (map[string]float64, error) {
 		if !ok {
 			whole, isWhole := amount.(int64)
 			if !isWhole {
-				return nil, fmt.Errorf("FEEL duration has %s %s, which is not a number", shortDescriptionOf(amount), unit)
+				return nil, fmt.Errorf("FEEL duration has %s %s, which is not a number", fieldDescriptionOf(amount), unit)
 			}
 			count = float64(whole)
 		}
@@ -319,6 +319,26 @@ func shortDescriptionOf(value any) string {
 		text = append(text[:maxLength], []rune("...")...)
 	}
 	return fmt.Sprintf("%s (%T)", string(text), value)
+}
+
+// fieldDescriptionOf names a field of a FEEL date or duration an error message
+// quotes, where the field is not what the FEEL runtime puts there. A context
+// or a list is named by its kind only: a context made to look like a date or
+// a duration may hold anything the instance knows, and the message becomes
+// that of an incident. The reason of a value Luxon marked invalid, a context
+// of its own, is quoted, as it tells what is wrong. Anything else is described
+// as shortDescriptionOf does.
+func fieldDescriptionOf(value any) string {
+	switch field := value.(type) {
+	case map[string]any:
+		if reason, ok := field["reason"].(string); ok {
+			return shortDescriptionOf(reason)
+		}
+		return "a context"
+	case []any:
+		return "a list"
+	}
+	return shortDescriptionOf(value)
 }
 
 // backoffForAttempt is how long the job waits after its n-th failure: the
